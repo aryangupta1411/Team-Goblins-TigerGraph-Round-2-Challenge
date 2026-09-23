@@ -30,7 +30,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))   # repo root, for ops.console
-from tg import GRAPH_DIR, connect, ensure_awake, gsql, merged, run_query  # noqa: E402
+from tg import GRAPH_DIR, backoff_delays, connect, ensure_awake, gsql, merged, run_query  # noqa: E402
 
 from ops.console import Col, Table, detail, fail, header, joinlist, ok, step, summary, warn  # noqa: E402
 
@@ -93,6 +93,28 @@ def result_cells(name: str, res: dict) -> list[str]:
     return cells or [f"{k}={v}" for k, v in list(res.items())[:4] if not isinstance(v, (list, dict))]
 
 
+def settle_edge_count(conn, edge_type: str, max_wait_s: float = 90) -> int:
+    """Wait for RESTPP's edge count to stop moving before an algorithm reads the edge set.
+
+    getEdgeCount() lags a bulk insert by tens of seconds (same trap as graph/load_all.py verify_counts
+    and rag/load_vectors.py stats parsing): a query that reads SHARES_DEVICE right after
+    project_shares_device can see a small fraction of the real edges and silently produce a wrong
+    answer instead of an error -- tg_wcc reported every Card isolated once, reading the graph seconds
+    after a 109,507-edge insert. Polls until two consecutive reads agree, not a hard target: the
+    insert's own n_inserts double-counts an undirected edge from both endpoints, so the converged count
+    is not a number this script can predict in advance.
+    """
+    last = -1
+    for delay in backoff_delays(max_wait_s, first=3.0, cap=15.0):
+        n = conn.getEdgeCount(edge_type)
+        if n == last:
+            return n
+        detail(f"{edge_type} edge count still settling: {n:,} (was {last:,})" if last >= 0 else f"{edge_type} edge count: {n:,}")
+        last = n
+        time.sleep(delay)
+    return last
+
+
 def run_step(conn, report: dict, name: str, params: dict) -> dict:
     """Run one installed algorithm query, timed. Results go in the table after the pass, not here."""
     step(f"{name} - {WRITES_BACK.get(name, 'runs')}")
@@ -135,6 +157,9 @@ def main(argv: list[str] | None = None) -> int:
             detail(joinlist([f"{k}={v}" for k, v in proj.items()], sep="  ", empty="empty result"))
             summary("algorithm pass aborted", {"stage": "project_shares_device", "SHARES_DEVICE edges": 0}, status="fail")
             return 1
+        step("settling SHARES_DEVICE edge count before tg_wcc reads it")
+        settled = settle_edge_count(conn, "SHARES_DEVICE")
+        ok(f"SHARES_DEVICE settled at {settled:,} edges")
 
     run_step(conn, report, "tg_wcc", {"v_type_set": ["Card"], "e_type_set": ["SHARES_DEVICE"], "print_limit": 0,
                                       "print_results": False, "result_attribute": "wcc_id", "file_path": ""})

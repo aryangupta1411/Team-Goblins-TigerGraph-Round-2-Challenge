@@ -1,0 +1,160 @@
+{
+  "case_id": "HHG-008",
+  "case": {
+    "status": "closed_fraud",
+    "verdict": "fraud",
+    "fraud_probability": 0.9,
+    "pattern": "card_not_present_new_device",
+    "pattern_description": "",
+    "affected_txn_ids": [
+      "3557979",
+      "3557987",
+      "3558054"
+    ],
+    "first_suspicious_txn_id": "3557979",
+    "connected_card_ids": [],
+    "connected_device_profiles": [],
+    "exposure_usd": 166.97,
+    "evidence": [
+      {
+        "claim": "Customer C13171 denies making the $55.68 purchase 3558054 on card C13171-K2; the harness notes 0 of the bank's prior customer denials were ever cleared, which floors the probability at 0.55.",
+        "source": "customer",
+        "ref": "trigger",
+        "entity_ids": [
+          "3558054",
+          "C13171"
+        ]
+      },
+      {
+        "claim": "The flagged transaction 3558054 (amt $55.68, ts 2016-12-19 22:08:56, product C, online) has a case-memory score cms_p=0.9573, far above the real-time risk_score of 0.38.",
+        "source": "graph",
+        "ref": "query:case_context(t=3558054)",
+        "entity_ids": [
+          "3558054"
+        ]
+      },
+      {
+        "claim": "The episode chain shows a tight cluster on the same generic device (NULL | NULL | chrome 66.0 | NULL) and hotmail.com email within 22 minutes: 3557979 ($55.60, cms_p=0.9276), 3557987 ($55.69, device_new=New, cms_p=0.280), and 3558054 ($55.68, cms_p=0.9573), giving exposure of $166.97 with a New-device member.",
+        "source": "graph",
+        "ref": "query:episode_candidates(t=3558054, gap_h=48)",
+        "entity_ids": [
+          "3557979",
+          "3557987",
+          "3558054",
+          "NULL | NULL | chrome 66.0 | NULL"
+        ]
+      },
+      {
+        "claim": "Card C13171-K2 has 18 prior CLOSED confirmed_fraud cases since 2016-07-04 (CC-0056 through CC-5010), 10 labeled card_not_present_new_device, the most recent opened 2016-10-19, showing this card is repeatedly compromised with the same signature.",
+        "source": "graph",
+        "ref": "query:prior_cases_for_customer(cu=C13171)",
+        "entity_ids": [
+          "CC-5010",
+          "CC-4485",
+          "CC-4163",
+          "CC-3928",
+          "CC-3728",
+          "CC-3566",
+          "CC-3422",
+          "CC-3079",
+          "CC-2716",
+          "CC-2454",
+          "CC-2244",
+          "CC-2059",
+          "CC-1925",
+          "CC-1715",
+          "CC-1293",
+          "CC-0772",
+          "CC-0467",
+          "CC-0056",
+          "C13171-K2"
+        ]
+      },
+      {
+        "claim": "recurring_charge_check found 7 prior hotmail.com/product-C purchases near $55.68 +-1% but the R7 legitimate-recurring gate fails: gap_cv=1.11 (>0.6 threshold) on the 5-member hotmail group and the flagged cms_p (0.9573) is far above the 0.30 ceiling, so this is not a monthly recurring bill.",
+        "source": "graph",
+        "ref": "query:recurring_charge_check(t=3558054, tol=0.01)",
+        "entity_ids": [
+          "3558054",
+          "C13171-K2"
+        ]
+      },
+      {
+        "claim": "card_testing_check over the prior 217-member online chain found only 2 sub-$5 members and no qualifying run/larger-purchase shape, ruling out the R5 card-testing pattern for this card.",
+        "source": "graph",
+        "ref": "query:card_testing_check(c=C13171-K2, small=5, window_min=60, min_n=3, big=100)",
+        "entity_ids": [
+          "C13171-K2"
+        ]
+      },
+      {
+        "claim": "The flagged device profile NULL | NULL | chrome 66.0 | NULL is generic (is_strong=false, 175 cards all-time, 175 in 30d, 4 proxy hits) and device_neighbors/ring_profile returned no connected cards or ring cases, so it is not shared-origin evidence.",
+        "source": "graph",
+        "ref": "query:device_neighbors(d=NULL | NULL | chrome 66.0 | NULL, from_ts=2016-11-19 22:08:56, to_ts=2016-12-20 03:08:56)",
+        "entity_ids": [
+          "NULL | NULL | chrome 66.0 | NULL"
+        ]
+      },
+      {
+        "claim": "The device profile was already known to this card with 9 prior uses since 2016-12-05, and the $55.68 amount sits within the card's baseline (prior median $39.37, prior max $407.32 over 899 transactions), which is the strongest legitimacy-leaning signal present.",
+        "source": "graph",
+        "ref": "query:device_history(c=C13171-K2, d=NULL | NULL | chrome 66.0 | NULL)",
+        "entity_ids": [
+          "C13171-K2",
+          "NULL | NULL | chrome 66.0 | NULL",
+          "3558054"
+        ]
+      }
+    ],
+    "similar_prior_cases": [
+      "CC-5010",
+      "CC-4485",
+      "CC-4163",
+      "CC-3928",
+      "CC-2716"
+    ],
+    "summary": "Verdict: fraud at probability 0.90. Customer C13171 denied the $55.68 charge (3558054, 2016-12-19 22:08:56, online, product C), and the episode is a tight three-transaction cluster on the same generic device and hotmail.com email within 22 minutes — 3557979 ($55.60), 3557987 ($55.69, New device), and 3558054 ($55.68) — for total exposure $166.97, matching the card_not_present_new_device pattern. The decisive evidence is the customer denial (family: customer) plus the case-memory scorer's 0.9573 on the flagged transaction against a real-time risk_score of only 0.38, reinforced by 18 prior CLOSED confirmed-fraud cases on this same card with the identical pattern, most recently CC-5010, CC-4485, CC-4163, CC-3928, and CC-2716 (family: memory); against this, amount-within-baseline and a previously-seen device offered only weak legitimacy signal and did not satisfy the R7 recurring-charge gate (gap_cv 1.11 exceeds the 0.6 threshold). No evidence request was made — none was needed, and none would have moved a card with this dense a fraud history off a fraud verdict. The bank should create a case and block the card via the L1 route (exposure $166.97 ≤ $2,500); an analyst could alternatively read the $55.68 price point as a recurring hotmail.com charge given 7 same-amount prior purchases, but the irregular cadence (gap_cv 1.11) and the very high memory score argue against that reading.",
+    "written_to_graph": true,
+    "graph_case_id": "AC-HHG-008"
+  },
+  "evidence_requests": [],
+  "next_best_actions": {
+    "initial": [
+      {
+        "action": "CREATE_CASE",
+        "route": "auto",
+        "reason": "3a: probability 0.90 and customer dispute on transaction 3558054 open a case (exposure $166.97)."
+      },
+      {
+        "action": "BLOCK_CARD",
+        "route": "L1",
+        "reason": "R2: customer denied; exposure $166.97 ≤ $2,500."
+      }
+    ],
+    "final": [
+      {
+        "action": "CREATE_CASE",
+        "route": "auto",
+        "reason": "3a: probability 0.90 and customer dispute on transaction 3558054 open a case (exposure $166.97)."
+      },
+      {
+        "action": "BLOCK_CARD",
+        "route": "L1",
+        "reason": "R2: customer denied; exposure $166.97 ≤ $2,500."
+      }
+    ],
+    "what_changed": "nothing"
+  },
+  "sar": {
+    "file": false,
+    "reason": "3a not met: exposure $166.97 <= $1,000; the profile `NULL | NULL | chrome 66.0 | NULL` is used by 175 cards with no fraud linkage strong enough to be a shared-origin signal; no shared region cluster; no other customer's fraud connected; documented pattern",
+    "narrative": "",
+    "subjects": [],
+    "total_amount_usd": 0,
+    "activity_dates": []
+  },
+  "stop_reason": "Policy §6 test 1 fired: fraud probability 0.90 is at or above the 0.85 threshold with two independent evidence families (customer denial and case-memory/prior-case history), so the initial CREATE_CASE + BLOCK_CARD recommendation is already final and no evidence request could change the action set.",
+  "tool_calls": 18,
+  "tokens": 341530,
+  "latency_s": 128.7
+}

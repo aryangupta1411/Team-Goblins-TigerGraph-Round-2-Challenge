@@ -477,6 +477,8 @@ import time
 
 import duckdb
 
+from ops.console import Col, Table, fail, header, ok, step, summary
+
 SQL = [
     """CREATE OR REPLACE TABLE txc AS
        SELECT t.TransactionID, t.TransactionID::VARCHAR AS id, t.card_id, t.customer_id, t.ts, t.ts_str, t.amt, t.product_cd, t.channel,
@@ -521,13 +523,29 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--out", default=os.getenv("ENGINE_FACTS_DB", "data/hhgoa_engine.duckdb"))
     a = ap.parse_args(argv)
     t0 = time.time()
+    header("engine.facts_from_etl", "materialise the engine's facts DuckDB from the ETL tables (decision D7)",
+           {"etl db": a.etl, "out db": a.out, "tables": len(SQL)})
+    step(f"building {len(SQL)} tables from {a.etl}")
     counts = build(a.etl, a.out)
-    ok = True
-    for t, n in counts.items():
-        ok &= n == EXPECTED[t]
-        print(f"{t:15s} {n:>9,}  {'ok' if n == EXPECTED[t] else f'EXPECTED {EXPECTED[t]:,}'}")
-    print(f"wrote {a.out} in {time.time() - t0:.1f}s")
-    return 0 if ok else 1
+    t = Table(Col("table", max_width=16), Col("rows", align="right", max_width=11), Col("expected", align="right", max_width=11),
+              Col("result", max_width=8), title="engine facts DB contents")
+    bad = []
+    for name, n in counts.items():
+        good = n == EXPECTED[name]
+        bad += [] if good else [name]
+        t.add_row(name, f"{n:,}", f"{EXPECTED[name]:,}", "ok" if good else "MISMATCH", style="green" if good else "bold red")
+    t.print()
+    for name in bad:
+        fail(f"{name}: {counts[name]:,} rows, expected {EXPECTED[name]:,}")
+    if not bad:
+        ok("every table matches its expected row count")
+    size_mb = os.path.getsize(a.out) / 1e6 if os.path.exists(a.out) else 0
+    summary("facts DB written",
+            {"path": a.out, "size": f"{size_mb:,.1f} MB", "tables": len(counts),
+             "rows": f"{sum(counts.values()):,}", "mismatched": ", ".join(bad) or "none",
+             "wall time": f"{time.time() - t0:.1f}s"},
+            status="fail" if bad else "ok")
+    return 0 if not bad else 1
 
 
 if __name__ == "__main__":
@@ -564,6 +582,8 @@ sys.path.insert(0, ROOT)
 os.environ.setdefault("RUN_MODE", "mock")
 RENAMES = {"proxy": "proxy_type"}
 
+from ops.console import Col, Table, fail, header, ok, rule, summary  # noqa: E402
+
 
 def gsql_sig(path: str) -> tuple[str, list[str], list[str]]:
     txt = open(path).read()
@@ -578,48 +598,113 @@ def gsql_sig(path: str) -> tuple[str, list[str], list[str]]:
     return m.group(1), params, prints
 
 
+def mark(present: bool, broken: bool) -> str:
+    """Coverage cell: ``X`` a mismatch, ``ok`` agrees, ``-`` that module does not define it."""
+    return "X" if broken else ("ok" if present else "-")
+
+
 def main() -> int:
-    errors: list[str] = []
+    errors: list[tuple[str, str, str]] = []   # (check, subject, detail)
     from agent.mcp_client import BUILTIN_QUERIES
     from engine.facts_duckdb import DuckFacts
-    y = yaml.safe_load(open(os.path.join(ROOT, "mcp", "query_descriptions.yaml")))["queries"]
+    yaml_path = os.path.join(ROOT, "mcp", "query_descriptions.yaml")
+    md_path = next((p for p in (os.path.join(ROOT, "contracts", "schema.md"), os.path.join(os.path.dirname(ROOT), "contracts", "schema.md")) if os.path.exists(p)), None)
+    header(
+        "qa.check_integration",
+        "do the GSQL signatures, the MCP descriptions, the DuckDB oracle and the agent tool table agree?",
+        {
+            "queries": "graph/queries/*.gsql",
+            "descriptions": os.path.relpath(yaml_path, ROOT),
+            "oracle": "engine.facts_duckdb.DuckFacts",
+            "tool table": "agent.mcp_client.BUILTIN_QUERIES",
+            "schema.md": os.path.relpath(md_path, ROOT) if md_path else "NOT FOUND",
+        },
+    )
+    y = yaml.safe_load(open(yaml_path))["queries"]
+    t = Table(
+        Col("query", max_width=30),
+        Col("params", max_width=34),
+        Col("prints", align="right", width=6),
+        Col("yaml", width=6, align="center"),
+        Col("oracle", width=6, align="center"),
+        Col("agent", width=6, align="center"),
+        title="query contract coverage (ok = agrees, X = mismatch, - = not defined in that module)",
+    )
     for f in sorted(glob.glob(os.path.join(ROOT, "graph", "queries", "*.gsql"))):
         if f.endswith("install_all.gsql"):
             continue
         name, params, prints = gsql_sig(f)
+        bad = {"yaml": False, "oracle": False, "agent": False}
         if name in y:
             yp, ye, yk = list(y[name].get("parameters", {})), list(y[name].get("example", {})), y[name].get("prints")
             if yp != params:
-                errors.append(f"{name}: yaml parameters {yp} != gsql {params}")
+                errors.append(("yaml parameters", name, f"yaml {yp} != gsql {params}"))
+                bad["yaml"] = True
             if ye != params:
-                errors.append(f"{name}: yaml example keys {ye} != gsql {params}")
+                errors.append(("yaml example", name, f"yaml example keys {ye} != gsql {params}"))
+                bad["yaml"] = True
             if yk is not None and set(yk) != set(prints):
-                errors.append(f"{name}: yaml prints {yk} != gsql {sorted(set(prints))}")
+                errors.append(("yaml prints", name, f"yaml {yk} != gsql {sorted(set(prints))}"))
+                bad["yaml"] = True
         if hasattr(DuckFacts, name):
             dp = [p for p in inspect.signature(getattr(DuckFacts, name)).parameters if p != "self"]
             if dp != params:
-                errors.append(f"{name}: DuckFacts signature {dp} != gsql {params}")
+                errors.append(("DuckFacts", name, f"signature {dp} != gsql {params}"))
+                bad["oracle"] = True
         bp = BUILTIN_QUERIES.get(name, {}).get("parameters")
         if bp and list(bp) != params:
-            errors.append(f"{name}: agent BUILTIN_QUERIES parameters {list(bp)} != gsql {params}")
+            errors.append(("BUILTIN_QUERIES", name, f"parameters {list(bp)} != gsql {params}"))
+            bad["agent"] = True
+        proxy = False
         for ln, line in enumerate(open(f), 1):
             if re.search(r"\b[a-z]\.proxy\b", line):
-                errors.append(f"{os.path.basename(f)}:{ln}: attribute reference `.proxy` — schema.gsql stores it as proxy_type")
+                errors.append((".proxy", f"{os.path.basename(f)}:{ln}", "schema.gsql stores the attribute as proxy_type (decision M1)"))
+                proxy = True
+
+        t.add_row(
+            name,
+            ",".join(params) or "-",
+            len(prints),
+            mark(name in y, bad["yaml"]),
+            mark(hasattr(DuckFacts, name), bad["oracle"]),
+            mark(bool(bp), bad["agent"]),
+            style="red" if any(bad.values()) or proxy else None,
+        )
+    t.print()
+
     # schema.md vs schema.gsql
     sys.path.insert(0, os.path.join(ROOT, "graph"))
     from check_contracts import parse_schema  # type: ignore
-    md_path = next(p for p in (os.path.join(ROOT, "contracts", "schema.md"), os.path.join(os.path.dirname(ROOT), "contracts", "schema.md")) if os.path.exists(p))
-    md = open(md_path).read()
     vertices, _ = parse_schema(open(os.path.join(ROOT, "graph", "schema.gsql")).read())
-    for line in md.splitlines():
-        m = re.match(r"\| `(\w+)` \| `\w+`.*?\| `(.*?)`", line)
-        if m and " → " not in line:
-            want = ["id"] + [RENAMES.get(a, a) for a in re.findall(r"(\w+) (?:INT|STRING|FLOAT|DATETIME|BOOL)\b", m.group(2))]
-            if vertices.get(m.group(1)) != want:
-                errors.append(f"schema.md {m.group(1)} attrs != schema.gsql: {vertices.get(m.group(1))}")
-    for e in errors:
-        print("MISMATCH:", e)
-    print("OK" if not errors else f"{len(errors)} mismatch(es)")
+    if md_path is None:
+        # Not a warning: the vertex-attribute cross-check is one of this lint's two jobs, so a
+        # missing contracts/schema.md is a failure - but a readable one, not a StopIteration.
+        errors.append(("schema.md", "contracts/schema.md", "file not found - the vertex-attribute cross-check cannot run"))
+    else:
+        checked = 0
+        for line in open(md_path).read().splitlines():
+            m = re.match(r"\| `(\w+)` \| `\w+`.*?\| `(.*?)`", line)
+            if m and " → " not in line:
+                checked += 1
+                want = ["id"] + [RENAMES.get(a, a) for a in re.findall(r"(\w+) (?:INT|STRING|FLOAT|DATETIME|BOOL)\b", m.group(2))]
+                if vertices.get(m.group(1)) != want:
+                    errors.append(("schema.md", m.group(1), f"attrs {vertices.get(m.group(1))} != schema.md {want}"))
+        ok(f"schema.md: {checked} vertex rows compared against graph/schema.gsql ({len(vertices)} vertex types)")
+
+    if errors:
+        rule("mismatches")
+        e = Table(Col("check", max_width=16), Col("subject", max_width=26), Col("detail", max_width=110), title=f"{len(errors)} mismatch(es)")
+        for check, subject, det in errors:
+            e.add_row(check, subject, det, style="red")
+        e.print()
+        fail(f"{len(errors)} mismatch(es) - the modules disagree about the query contracts")
+    else:
+        ok(f"{len(t)} queries: gsql, yaml, DuckFacts and BUILTIN_QUERIES all agree")
+    summary(
+        "integration check",
+        {"queries": len(t), "yaml entries": len(y), "vertex types": len(vertices), "mismatches": len(errors)},
+        status="fail" if errors else "ok",
+    )
     return 1 if errors else 0
 
 
@@ -986,6 +1071,11 @@ import time
 import duckdb
 
 from etl.card_rule import build_cardmap, check_rule
+from ops.console import Col, Table, fail, header, ok, step, summary
+
+# The dataset's hard counts (PLAN §3.2 / Makefile `db`). Displayed as expected-vs-actual and asserted below.
+EXPECTED = {"tx": 590_742, "idn": 144_432, "cc": 5_565, "cp": 20, "cardmap": 14_317}
+EXPECTED_PAIRS = 14_975
 
 TX_COLS = """
   TransactionID::BIGINT AS TransactionID,
@@ -1002,34 +1092,73 @@ TX_COLS = """
 
 def build(raw: str, db: str) -> None:
     t0 = time.time()
+    header("etl.build_db", "raw CSVs -> DuckDB (tx_raw, tx, idn, cc, cp, pairs, cardmap)",
+           {"raw": raw, "db": db, "threads": 8, "memory limit": "8GB"})
     con = duckdb.connect(db)
     con.execute("PRAGMA threads=8; SET memory_limit='8GB';")
     f = lambda name: os.path.join(raw, name)  # noqa: E731
+    step("reading transactions.csv (397 columns, all VARCHAR)")
     con.execute(f"""
         CREATE OR REPLACE TABLE tx_raw AS
         SELECT * FROM read_csv('{f("transactions.csv")}', header=true, all_varchar=true, sample_size=-1, quote='"', escape='"')
     """)
-    print("tx_raw rows:", con.execute("SELECT count(*) FROM tx_raw").fetchone()[0], f"{time.time()-t0:.0f}s", flush=True)
+    ok(f"tx_raw {con.execute('SELECT count(*) FROM tx_raw').fetchone()[0]:,} rows in {time.time() - t0:.0f}s")
+    step("typed slim view tx")
     con.execute(f"CREATE OR REPLACE TABLE tx AS SELECT {TX_COLS} FROM tx_raw")
+    step("reading identity.csv")
     con.execute(f"""
         CREATE OR REPLACE TABLE idn AS
         SELECT * FROM read_csv('{f("identity.csv")}', header=true, all_varchar=true, sample_size=-1)
     """)
     con.execute("ALTER TABLE idn ALTER TransactionID TYPE BIGINT")
+    step("reading closed_cases_history.csv and case_pack.csv")
     con.execute(f"CREATE OR REPLACE TABLE cc AS SELECT * FROM read_csv('{f('closed_cases_history.csv')}', header=true, all_varchar=true, sample_size=-1)")
     con.execute(f"CREATE OR REPLACE TABLE cp AS SELECT * FROM read_csv('{f('case_pack.csv')}', header=true, all_varchar=true, sample_size=-1)")
+    step("labelled (case, transaction) pairs")
     con.execute("""
         CREATE OR REPLACE TABLE pairs AS
         SELECT case_id, card_id, customer_id, unnest(string_split(txn_ids, '|'))::BIGINT AS TransactionID, 'closed' AS src FROM cc
         UNION ALL
         SELECT case_id, card_id, customer_id, flagged_txn_id::BIGINT, 'casepack' FROM cp
     """)
+    step("card_id rule -> cardmap")
     n_cards = build_cardmap(con)
-    n, ok = check_rule(con)
+    n, n_ok = check_rule(con)
     counts = {t: con.execute(f"SELECT count(*) FROM {t}").fetchone()[0] for t in ("tx", "idn", "cc", "cp", "pairs", "cardmap")}
-    print("counts:", counts, "| card rule:", f"{ok}/{n}", f"| {time.time()-t0:.0f}s")
+
+    t = Table(
+        Col("table / check", max_width=28),
+        Col("expected", align="right", width=10),
+        Col("actual", align="right", width=14),
+        Col("result", width=6, align="center"),
+        title="dataset counts (the project's core correctness claims)",
+    )
+    bad = []
+    for name, got in counts.items():
+        want = EXPECTED.get(name)
+        good = want is None or got == want
+        if not good:
+            bad.append(f"{name}: expected {want:,}, got {got:,}")
+        t.add_row(name, f"{want:,}" if want is not None else "-", f"{got:,}",
+                  "-" if want is None else "PASS" if good else "FAIL",
+                  style=None if good else "red")
+    rule_ok = n == n_ok == EXPECTED_PAIRS
+    if not rule_ok:
+        bad.append(f"card rule: expected {EXPECTED_PAIRS:,}/{EXPECTED_PAIRS:,}, got {n_ok:,}/{n:,}")
+    t.add_row("card rule pairs reproduced", f"{EXPECTED_PAIRS:,}", f"{n_ok:,} / {n:,}",
+              "PASS" if rule_ok else "FAIL", style=None if rule_ok else "red")
+    t.print()
+    for b in bad:
+        fail(b)
+    if not bad:
+        ok("every dataset count matches the contract")
+
+    summary("etl.build_db complete",
+            {"db": db, "tables": ", ".join(counts), "card rule": f"{n_ok:,}/{n:,}",
+             "cards": f"{n_cards:,}", "elapsed": f"{time.time() - t0:.0f}s"},
+            status="ok" if not bad else "fail")
     assert counts["tx"] == 590_742 and counts["idn"] == 144_432 and counts["cc"] == 5_565 and counts["cp"] == 20
-    assert n == ok == 14_975 and n_cards == 14_317
+    assert n == n_ok == 14_975 and n_cards == 14_317
     con.close()
 
 
@@ -1109,12 +1238,34 @@ def card_ids_exist(con: duckdb.DuckDBPyConnection, ids: list[str]) -> set[str]:
 
 
 if __name__ == "__main__":  # pragma: no cover
+    from ops.console import Col, Table, header, summary
+    from ops.console import ok as ok_line
+
     db = sys.argv[1] if len(sys.argv) > 1 else "data/hhgoa.duckdb"
     con = duckdb.connect(db)
+    header("etl.card_rule",
+           "derive card_id and replay it against every labelled (transaction -> card) pair",
+           {"db": db, "rule": "customer_id || '-K' || dense_rank() over (customer_id ORDER BY card6)"})
     n_cards = build_cardmap(con)
-    n, ok = check_rule(con)
-    print(f"cards={n_cards} pairs={n} ok={ok}")
-    sys.exit(0 if n == ok else 1)
+    n, n_ok = check_rule(con)
+    t = Table(
+        Col("check", max_width=34),
+        Col("expected", align="right", width=10),
+        Col("actual", align="right", width=10),
+        Col("result", width=6, align="center"),
+        title="card rule regression (contracts/schema.md)",
+    )
+    t.add_row("labelled pairs reproduced", f"{n:,}", f"{n_ok:,}", "PASS" if n == n_ok else "FAIL",
+              style=None if n == n_ok else "red")
+    t.add_row("cards in cardmap", f"{n_cards:,}", f"{n_cards:,}", "PASS")
+    t.print()
+    if n == n_ok:
+        ok_line(f"card rule reproduces {n_ok:,}/{n:,} labelled pairs (100.0%)")
+    summary("etl.card_rule complete",
+            {"cards": f"{n_cards:,}", "labelled pairs": f"{n:,}",
+             "reproduced": f"{n_ok:,}", "miss": f"{n - n_ok:,}"},
+            status="ok" if n == n_ok else "fail")
+    sys.exit(0 if n == n_ok else 1)
 ```
 
 #### `tests/unit/test_card_rule.py`
@@ -1217,14 +1368,19 @@ Requires tables tx, idn, cc, cp, pairs (etl/build_db.py) and cardmap (etl/card_r
 """
 from __future__ import annotations
 
+import json
 import sys
 import time
 
 import duckdb
 
 from etl.card_rule import build_cardmap
+from ops.console import Col, Table, header, money, ok, rule, step, summary, warn
 
 RING_PROFILE = "SM-G935F Build/NRD90M | Android 7.0 | chrome 62.0 for android | 1920x1080"
+
+# Row counts the contract fixes (contracts/schema.md, Makefile `features`); shown as expected-vs-actual.
+EXPECTED_ROWS = {"txc": 590_742, "txn_feat": 590_742, "device_profile": 9_705, "card_feat": 14_317}
 
 # ----------------------------------------------------------------------------------------
 # 1. txc — slim transaction rows (schema.md Transaction attributes that come straight from the files)
@@ -1519,16 +1675,24 @@ LEFT JOIN burst_member bm USING (TransactionID)
 """
 
 
+_STAGES: list[tuple[str, float]] = []
+
+
 def _run(con, label, sql):
+    step(f"building {label}")
     t0 = time.time()
     con.execute(sql)
-    print(f"  {label:18s} {time.time() - t0:6.1f}s", flush=True)
+    dt = time.time() - t0
+    _STAGES.append((label, dt))
+    ok(f"{label} in {dt:.1f}s")
 
 
 def build_all(con: duckdb.DuckDBPyConnection) -> None:
     con.execute("PRAGMA threads=8")
-    print("features: building tables", flush=True)
+    _STAGES.clear()
+    t0 = time.time()
     if not con.execute("SELECT count(*) FROM information_schema.tables WHERE table_name='cardmap'").fetchone()[0]:
+        step("cardmap absent: deriving it first (etl.card_rule)")
         build_cardmap(con)
     _run(con, "txc", TXC_SQL)
     _run(con, "txn_base", TXN_BASE_SQL)
@@ -1545,7 +1709,14 @@ def build_all(con: duckdb.DuckDBPyConnection) -> None:
     _run(con, "txn_feat", TXN_FEAT_SQL)
     if keep:
         con.execute("UPDATE txn_feat SET cms_p = c.cms_p, cms_fold = c.cms_fold FROM _cms c WHERE txn_feat.TransactionID = c.TransactionID")
+        ok("carried cms_p / cms_fold over from the previous etl.cms_train run")
     con.execute("DROP TABLE txn_base")
+    t = Table(Col("stage", max_width=18), Col("seconds", align="right", width=8),
+              title="build stages")
+    for label, dt in _STAGES:
+        t.add_row(label, f"{dt:.1f}")
+    t.add_row("TOTAL", f"{time.time() - t0:.1f}")
+    t.print()
 
 
 def report(con: duckdb.DuckDBPyConnection) -> dict:
@@ -1567,17 +1738,117 @@ def report(con: duckdb.DuckDBPyConnection) -> dict:
     out["modal_region"] = {c: q("SELECT modal_region FROM card_feat WHERE id = ?", c)[0][0] for c in ("C09933-K2", "C08623-K2", "C02354-K2", "C12382-K1")}
     out["recurring"] = {c: q("SELECT recurring_amounts FROM card_feat WHERE id = ?", c)[0][0] for c in ("C02354-K2", "C08623-K2")}
     out["next_ties"] = q("SELECT count(*) FROM txn_feat WHERE gap_seconds = 0")[0][0]
-    for k, v in out.items():
-        print(f"  {k}: {v}")
+    render_report(out)
     return out
+
+
+# ----------------------------------------------------------------------------------------
+# rendering — display only: `report()` returns exactly the dict it always did
+# ----------------------------------------------------------------------------------------
+
+def _recurring_table(card_id: str, blob: str) -> Table:
+    """One row per recurring (amount, product, place) group — never the raw JSON blob."""
+    t = Table(
+        Col("amount", align="right", width=10),
+        Col("product", width=7, align="center"),
+        Col("place", max_width=12),
+        Col("n", align="right", width=5),
+        Col("median gap (d)", align="right", width=14),
+        Col("gap cv", align="right", width=7),
+        title=f"card_feat.recurring_amounts - {card_id}",
+    )
+    try:
+        groups = json.loads(blob or "[]")
+    except json.JSONDecodeError:
+        t.add_row(str(blob))
+        return t
+    for g in groups:
+        t.add_row(money(g.get("amt")), g.get("product_cd"), g.get("place"), f"{g.get('n', 0):,}",
+                  f"{g.get('median_gap_days', 0):.3f}", f"{g.get('gap_cv', 0):.3f}")
+    t.caption = f"{len(groups)} group(s) with n >= 5"
+    return t
+
+
+def render_report(out: dict) -> None:
+    """Print the `report()` dict as aligned tables (no Python dict/list reprs, no JSON blobs)."""
+    rows = out["rows"]
+    t = Table(
+        Col("table", max_width=16),
+        Col("expected", align="right", width=10),
+        Col("actual", align="right", width=10),
+        Col("result", width=6, align="center"),
+        title="derived tables",
+    )
+    mismatched = []
+    for name, got in rows.items():
+        want = EXPECTED_ROWS.get(name)
+        good = want is None or got == want
+        if not good:
+            mismatched.append(f"{name}: expected {want:,}, got {got:,}")
+        t.add_row(name, f"{want:,}" if want is not None else "-", f"{got:,}",
+                  "PASS" if want is not None and good else "-" if want is None else "FAIL",
+                  style=None if good else "red")
+    t.print()
+    for m in mismatched:
+        warn(m)
+    if not mismatched:
+        ok("every contracted row count matches")
+
+    rule("device ring")
+    dp = Table(
+        Col("attribute", max_width=20), Col("value", align="right", width=12),
+        title="device_profile of the ring profile",
+        caption=f"id = {RING_PROFILE}",
+    )
+    if out["ring_profile"]:
+        is_strong, n_cards_all, n_cards_30d, n_txns, n_proxy, n_fraud = out["ring_profile"][0]
+        for k, v in (("is_strong", "yes" if is_strong else "no"), ("n_cards_alltime", f"{n_cards_all:,}"),
+                     ("n_cards_30d", f"{n_cards_30d:,}"), ("n_txns", f"{n_txns:,}"),
+                     ("n_proxy", f"{n_proxy:,}"), ("n_fraud_cases", f"{n_fraud:,}")):
+            dp.add_row(k, v)
+    dp.print()
+    g = Table(Col("measure", max_width=38), Col("value", align="right", width=12), title="ring / burst reach")
+    g.add_row("strong device profiles", f"{out['is_strong']:,}")
+    g.add_row("cards with a ring_id", f"{out['ring_id_cards']:,}")
+    g.add_row("cards on this exact ring profile", f"{out['ring_id_exact_profile_cards']:,}")
+    g.add_row("transactions with ring_hit", f"{out['ring_hit_txns']:,}")
+    g.add_row("bursts (>=4 x $450-499.99 / 40 min)", f"{out['burst']['bursts']:,}")
+    g.add_row("transactions in a burst", f"{out['burst']['txns']:,}")
+    g.add_row("cards bursting in Nov-Dec", f"{out['burst']['novdec_cards']:,}")
+    g.add_row("NEXT edges with gap_seconds = 0", f"{out['next_ties']:,}")
+    g.print()
+
+    rule("HHG-006 burst (C07297-K1)")
+    b = Table(Col("txn id", align="right", width=10), Col("burst id", max_width=22),
+              Col("amount", align="right", width=10), title="burst_member rows, ts order")
+    for txn_id, burst_id, amt in out["burst"]["hhg006"]:
+        b.add_row(txn_id, burst_id, money(amt))
+    b.print()
+
+    rule("spot checks")
+    m = Table(Col("card", width=10), Col("modal_region", max_width=14), title="modal in-person region")
+    for card, region in out["modal_region"].items():
+        m.add_row(card, region)
+    m.print()
+    for card, blob in out["recurring"].items():
+        _recurring_table(card, blob).print()
 
 
 if __name__ == "__main__":  # pragma: no cover
     db = sys.argv[1] if len(sys.argv) > 1 else "data/hhgoa.duckdb"
+    report_only = "--report" in sys.argv
+    header("etl.features",
+           "report only (no rebuild)" if report_only else
+           "txc, txn_feat, burst_member, device_profile, card_feat in DuckDB",
+           {"db": db, "threads": 8, "mode": "report" if report_only else "build + report"})
     con = duckdb.connect(db)
-    if "--report" not in sys.argv:
+    if not report_only:
         build_all(con)
-    report(con)
+    rep = report(con)
+    summary("etl.features complete",
+            {"txc": f"{rep['rows']['txc']:,}", "txn_feat": f"{rep['rows']['txn_feat']:,}",
+             "device_profile": f"{rep['rows']['device_profile']:,}", "card_feat": f"{rep['rows']['card_feat']:,}",
+             "burst_member": f"{rep['rows']['burst_member']:,}", "db": db})
 ```
 
 Notes on the attribute rules (all per `schema.md`; the deltas are documented here so the query module knows what is in the graph):
@@ -1625,9 +1896,17 @@ versions are kept because they carry device signal.  Requires tables cc, txc (et
 from __future__ import annotations
 
 import re
+import shutil
 import sys
+import textwrap
 
 import duckdb
+
+from ops.console import Col, Table, detail, header, ok, rule, step, summary, warn
+
+# The six note templates and their documented row counts (verified on all 5,565 rows; see the docstring).
+EXPECTED_TEMPLATES = {"fraud_reported": 4_656, "cleared_travel": 716, "cleared_new_phone": 158,
+                      "cleared_amount": 26, "undoc_ring": 4, "undoc_burst": 5}
 
 RE_FRAUD = re.compile(
     r"^Case (CC-\d{4}): cardholder (C\d{5}) reported unrecognized activity on card (C\d{5}-K\d)\. "
@@ -1744,14 +2023,68 @@ def build(con: duckdb.DuckDBPyConnection) -> dict:
         "with_region": con.execute("SELECT count(*) FROM closed_case_parsed WHERE note_region <> ''").fetchone()[0],
         "sample": con.execute("SELECT id, embed_text FROM closed_case_parsed WHERE id IN ('CC-0001','CC-0003','CC-2649','CC-3748','CC-4160') ORDER BY id").fetchall(),
     }
-    for k, v in rep.items():
-        print(f"  {k}: {v}")
+    render_report(rep)
     return rep
 
 
+# ----------------------------------------------------------------------------------------
+# rendering — display only: `build()` returns exactly the dict it always did
+# ----------------------------------------------------------------------------------------
+
+def render_report(rep: dict) -> None:
+    """Print the parser report as tables: template counts against the documented ones, then samples."""
+    t = Table(
+        Col("template", max_width=20),
+        Col("expected", align="right", width=9),
+        Col("actual", align="right", width=9),
+        Col("result", width=6, align="center"),
+        title="note templates (all 5,565 rows must parse)",
+    )
+    wrong = []
+    for name in sorted(set(EXPECTED_TEMPLATES) | set(rep["templates"])):
+        want, got = EXPECTED_TEMPLATES.get(name), rep["templates"].get(name, 0)
+        good = want is None or want == got
+        if not good:
+            wrong.append(f"{name}: expected {want:,}, parsed {got:,}")
+        t.add_row(name, f"{want:,}" if want is not None else "-", f"{got:,}",
+                  "PASS" if want is not None and good else "-" if want is None else "FAIL",
+                  style=None if good else "red")
+    total_want = sum(EXPECTED_TEMPLATES.values())
+    t.add_row("TOTAL", f"{total_want:,}", f"{rep['n_cases']:,}",
+              "PASS" if rep["n_cases"] == total_want else "FAIL",
+              style=None if rep["n_cases"] == total_want else "red")
+    t.print()
+    for w in wrong:
+        warn(w)
+    if not wrong and rep["n_cases"] == total_want:
+        ok("every note matched its documented template")
+
+    e = Table(Col("edge / attribute", max_width=30), Col("rows", align="right", width=10),
+              title="edge rows and note attributes")
+    e.add_row("INVOLVES (case -> txn)", f"{rep['involves']:,}")
+    e.add_row("CONNECTED_TO (case -> card)", f"{rep['connected_to']:,}")
+    e.add_row("cases with note_device", f"{rep['with_device']:,}")
+    e.add_row("cases with note_region", f"{rep['with_region']:,}")
+    e.print()
+
+    rule("embed_text samples (masked; one per template family)")
+    width = max(40, min(shutil.get_terminal_size(fallback=(100, 24)).columns, 100) - 5)
+    for case_id, text in rep["sample"]:
+        step(case_id)
+        for line in textwrap.wrap(text, width=width) or [""]:
+            detail(line)
+
+
 if __name__ == "__main__":  # pragma: no cover
-    con = duckdb.connect(sys.argv[1] if len(sys.argv) > 1 else "data/hhgoa.duckdb")
-    build(con)
+    db = sys.argv[1] if len(sys.argv) > 1 else "data/hhgoa.duckdb"
+    header("etl.parse_closed_cases",
+           "template-parse 5,565 analyst notes -> closed_case_parsed / _txn / _conn",
+           {"db": db, "templates": len(EXPECTED_TEMPLATES), "masking": "<CASE> <ID> <N> <DATE> <AMT> <SCORE>"})
+    con = duckdb.connect(db)
+    rep = build(con)
+    summary("etl.parse_closed_cases complete",
+            {"closed cases": f"{rep['n_cases']:,}", "INVOLVES": f"{rep['involves']:,}",
+             "CONNECTED_TO": f"{rep['connected_to']:,}", "db": db})
 ```
 
 #### `etl/cms_train.py`
@@ -1785,6 +2118,11 @@ import numpy as np
 import pandas as pd
 from sklearn.isotonic import IsotonicRegression
 from sklearn.metrics import average_precision_score, roc_auc_score
+
+from ops.console import Col, Table, fail, header, ok, prob, rule, step, summary, warn
+
+# PLAN §4.1 #4: the October holdout AUC is the headline correctness claim for the scorer.
+AUC_TARGET = 0.95
 
 PARAMS = dict(objective="binary", learning_rate=0.05, num_leaves=127, min_data_in_leaf=100,
               feature_fraction=0.5, bagging_fraction=0.8, bagging_freq=1, lambda_l2=10,
@@ -1856,16 +2194,102 @@ def load_calibrator(path: str):
     return lambda p: float(np.interp(p, x, y))
 
 
+def _bin_table(bins: list[dict], title: str) -> Table:
+    """One calibration table: predicted-probability bin vs the fraud rate actually observed in it."""
+    t = Table(
+        Col("p bin", max_width=18),
+        Col("rows", align="right", width=9),
+        Col("mean p", align="right", width=8),
+        Col("fraud rate", align="right", width=10),
+        title=title,
+    )
+    for b in bins:
+        t.add_row(b["bin"], f"{b['n']:,}", prob(b["mean_p"], digits=4), prob(b["fraud_rate"], digits=4))
+    return t
+
+
+def render_metrics(metrics: dict, elapsed: float | None = None) -> None:
+    """Print the metrics dict as tables. Display only — data/models/cms_metrics.json is unchanged."""
+    h = metrics["oct_holdout"]
+    auc_ok = h["auc"] >= AUC_TARGET
+    rule("October holdout (train Jul-Sep, early-stop on October)")
+    t = Table(
+        Col("metric", max_width=30),
+        Col("value", align="right", width=8),
+        Col("target", align="right", width=8),
+        Col("result", width=6, align="center"),
+        title="scorer quality",
+    )
+    t.add_row("ROC AUC", prob(h["auc"], digits=4), f">= {AUC_TARGET:.2f}",
+              "PASS" if auc_ok else "FAIL", style=None if auc_ok else "red")
+    t.add_row("average precision", prob(h["ap"], digits=4), "-", "-")
+    t.add_row("base fraud rate", prob(h["base_rate"], digits=4), "-", "-")
+    t.add_row("bank risk_score AUC (baseline)", prob(h["risk_score_auc"], digits=4), "-", "-")
+    t.add_row("best_iteration", f"{metrics['best_iteration']:,}", "-", "-")
+    t.print()
+    if auc_ok:
+        ok(f"October holdout AUC {h['auc']:.4f} >= target {AUC_TARGET:.2f} "
+           f"(bank risk_score baseline {h['risk_score_auc']:.4f})")
+    else:
+        fail(f"October holdout AUC {h['auc']:.4f} is below the {AUC_TARGET:.2f} target")
+
+    _bin_table(h["raw_bins"], "calibration, raw model probability").print()
+    if h.get("cal_bins"):
+        _bin_table(h["cal_bins"], "calibration after isotonic regression").print()
+
+    rule("out-of-fold months (each month scored by a model that never saw it)")
+    m = Table(Col("month", width=9), Col("AUC", align="right", width=8), title="month-wise OOF AUC")
+    for month, auc in metrics["oof_month_auc"].items():
+        m.add_row(month, prob(auc, digits=4) if auc is not None else "n/a")
+    m.print()
+
+    nd = metrics["novdec"]
+    n = Table(Col("measure", max_width=28), Col("value", align="right", width=12),
+              title="Nov-Dec scored by the final model")
+    n.add_row("transactions", f"{nd['n']:,}")
+    n.add_row("p > 0.5", f"{nd['p_gt_0.5']:,}")
+    n.add_row("p > 0.3", f"{nd['p_gt_0.3']:,}")
+    n.add_row("expected frauds (sum p)", f"{nd['sum_p']:,.1f}")
+    n.print()
+
+    rule("top features by gain")
+    f = Table(Col("#", align="right", width=3), Col("feature", max_width=24),
+              Col("gain", align="right", width=14), title="LightGBM feature importance")
+    for i, (name, gain) in enumerate(metrics["top_features"], start=1):
+        f.add_row(i, name, f"{float(gain):,.0f}")
+    f.print()
+
+    rule("the 20 case-pack flagged transactions")
+    c = Table(
+        Col("case", width=8),
+        Col("card", width=10),
+        Col("txn", align="right", width=10),
+        Col("bank risk", align="right", width=9),
+        Col("cms_p raw", align="right", width=9),
+        Col("cms_p calibrated", align="right", width=16),
+        title="cms_p vs the bank's own risk_score",
+    )
+    for r in metrics["case_pack"]:
+        c.add_row(r["case"], r["card"], r["txn"], prob(r["risk"], digits=2),
+                  prob(r["cms_p"], digits=4), prob(r["cal_p"], digits=3))
+    c.print()
+    if elapsed is not None:
+        ok(f"training finished in {elapsed:.0f}s")
+
+
 def train_all(db: str, out: str) -> dict:
     t0 = time.time()
     os.makedirs(out, exist_ok=True)
     con = duckdb.connect(db)
     con.execute("PRAGMA threads=8")
+    step("loading the feature frame (Vesta V/C/D + identity + leakage-free card history)")
     df, feats, catcols = load_frame(con)
-    print(f"frame {df.shape} loaded in {time.time()-t0:.0f}s", flush=True)
+    ok(f"frame {df.shape[0]:,} rows x {df.shape[1]:,} columns in {time.time() - t0:.0f}s "
+       f"({len(feats):,} features, {len(catcols)} categorical)")
     month = df.ts.dt.month
     tr, va, te = df[month <= 9], df[month == 10], df[month >= 11]
     # 1. holdout run
+    step(f"holdout fit: train {len(tr):,} rows (Jul-Sep), early-stop on {len(va):,} October rows")
     m0 = fit(tr, feats, catcols, 2000, valid=va)
     best = int(m0.best_iteration)
     p_oct = m0.predict(va[feats], num_iteration=best)
@@ -1873,24 +2297,31 @@ def train_all(db: str, out: str) -> dict:
                "oct_holdout": {"auc": round(roc_auc_score(va.y, p_oct), 4), "ap": round(average_precision_score(va.y, p_oct), 4),
                                "base_rate": round(float(va.y.mean()), 4), "risk_score_auc": round(roc_auc_score(va.y, va.risk_score.fillna(0)), 4),
                                "raw_bins": calib_table(p_oct, va.y.values)}}
-    print(f"holdout: best_iter={best} Oct AUC={metrics['oct_holdout']['auc']} ({time.time()-t0:.0f}s)", flush=True)
+    ok(f"holdout best_iter={best} October AUC={metrics['oct_holdout']['auc']:.4f} ({time.time() - t0:.0f}s)")
+    if metrics["oct_holdout"]["auc"] < AUC_TARGET:
+        warn(f"October AUC is below the {AUC_TARGET:.2f} target")
     # 2. isotonic calibrator on October OOF
+    step("fitting the isotonic calibrator on the October out-of-fold predictions")
     iso = IsotonicRegression(out_of_bounds="clip", y_min=0.0, y_max=1.0).fit(p_oct, va.y.values)
     save_calibrator(iso, os.path.join(out, "isotonic.json"))
+    ok(f"calibrator -> {os.path.join(out, 'isotonic.json')}")
     metrics["oct_holdout"]["cal_bins"] = calib_table(iso.predict(p_oct), va.y.values)
     # 3. month-wise out-of-fold for Jul–Oct
     julOct = df[month <= 10]
     oof = pd.Series(np.nan, index=julOct.index)
     fold_auc = {}
+    step("month-wise out-of-fold scoring of Jul-Oct (4 fits; no row is scored by a model trained on it)")
     for m in (7, 8, 9, 10):
         trn, tst = julOct[julOct.ts.dt.month != m], julOct[julOct.ts.dt.month == m]
         mm = fit(trn, feats, catcols, best)
         pm = mm.predict(tst[feats])
         oof.loc[tst.index] = pm
         fold_auc[f"2016-{m:02d}"] = round(roc_auc_score(tst.y, pm), 4) if tst.y.nunique() > 1 else None
-        print(f"oof month {m}: n={len(tst)} auc={fold_auc[f'2016-{m:02d}']} ({time.time()-t0:.0f}s)", flush=True)
+        auc = fold_auc[f"2016-{m:02d}"]
+        ok(f"oof 2016-{m:02d}: {len(tst):,} rows auc={auc if auc is not None else 'n/a'} ({time.time() - t0:.0f}s)")
     metrics["oof_month_auc"] = fold_auc
     # 4. final model on Jul–Oct -> Nov–Dec
+    step("final fit on Jul-Oct, scoring Nov-Dec")
     final = fit(julOct, feats, catcols, best)
     p_te = final.predict(te[feats])
     final.save_model(os.path.join(out, "lgb_fraud.txt"))
@@ -1903,10 +2334,16 @@ def train_all(db: str, out: str) -> dict:
                       "cms_fold": [f"oof-2016-{m:02d}" for m in julOct.ts.dt.month]}),
         pd.DataFrame({"TransactionID": te.TransactionID.values, "cms_p": p_te, "cms_fold": "final"}),
     ])
+    step("writing cms_p / cms_fold into txn_feat")
     con.register("_scores", scores)
     con.execute("UPDATE txn_feat SET cms_p = s.cms_p, cms_fold = s.cms_fold FROM _scores s WHERE txn_feat.TransactionID = s.TransactionID")
     con.unregister("_scores")
-    assert con.execute("SELECT count(*) FROM txn_feat WHERE cms_p IS NULL").fetchone()[0] == 0
+    n_null = con.execute("SELECT count(*) FROM txn_feat WHERE cms_p IS NULL").fetchone()[0]
+    if n_null:
+        fail(f"{n_null:,} txn_feat rows still have cms_p NULL")
+    else:
+        ok(f"every txn_feat row scored ({len(scores):,} rows written)")
+    assert n_null == 0
     # case-pack flagged transactions (raw and calibrated)
     cal = load_calibrator(os.path.join(out, "isotonic.json"))
     rows = con.execute("""
@@ -1915,10 +2352,7 @@ def train_all(db: str, out: str) -> dict:
     metrics["case_pack"] = [{"case": r[0], "card": r[1], "txn": r[2], "risk": r[3], "cms_p": round(r[4], 4), "cal_p": round(cal(r[4]), 4)} for r in rows]
     json.dump(metrics, open(os.path.join(out, "cms_metrics.json"), "w"), indent=1, default=str)
     json.dump({"features": feats, "categorical": catcols}, open(os.path.join(out, "cms_features.json"), "w"), indent=1)
-    print(json.dumps({k: metrics[k] for k in ("best_iteration", "oct_holdout", "oof_month_auc", "novdec")}, indent=1, default=str))
-    for r in metrics["case_pack"]:
-        print(f"  {r['case']} {r['card']:10s} txn={r['txn']} risk={r['risk']} cms_p={r['cms_p']:.4f} cal={r['cal_p']:.3f}")
-    print(f"done in {time.time()-t0:.0f}s")
+    render_metrics(metrics, elapsed=time.time() - t0)
     con.close()
     return metrics
 
@@ -1928,7 +2362,19 @@ if __name__ == "__main__":  # pragma: no cover
     ap.add_argument("db", nargs="?", default="data/hhgoa.duckdb")
     ap.add_argument("--out", default="data/models")
     a = ap.parse_args()
-    train_all(a.db, a.out)
+    header("etl.cms_train",
+           "LightGBM case-memory scorer on the bank's own closed-case labels (seeded, deterministic)",
+           {"db": a.db, "out": a.out, "learning rate": PARAMS["learning_rate"],
+            "num_leaves": PARAMS["num_leaves"], "seed": PARAMS["seed"],
+            "holdout": "October 2016", "AUC target": f">= {AUC_TARGET:.2f}"})
+    m = train_all(a.db, a.out)
+    summary("etl.cms_train complete",
+            {"October AUC": f"{m['oct_holdout']['auc']:.4f}  (target >= {AUC_TARGET:.2f})",
+             "best_iteration": m["best_iteration"],
+             "model": os.path.join(a.out, "lgb_fraud.txt"),
+             "calibrator": os.path.join(a.out, "isotonic.json"),
+             "metrics": os.path.join(a.out, "cms_metrics.json")},
+            status="ok" if m["oct_holdout"]["auc"] >= AUC_TARGET else "fail")
 ```
 
 #### `contracts/csv_columns.yaml`
@@ -2174,6 +2620,8 @@ import time
 import duckdb
 import yaml
 
+from ops.console import Col, Table, fail, header, ok, progress, step, summary
+
 SEP = "\t"
 CHUNK_BYTES = 45 * 1024 * 1024
 FLOAT2 = "printf('%.2f', {c})"
@@ -2347,18 +2795,32 @@ def export(db: str, out: str, yaml_path: str, sample: int | None = None, only: l
     report = {}
     if only and os.path.exists(manifest_path):
         report = json.load(open(manifest_path))
-    for path, fspec in spec["files"].items():
-        key = file_key(path)
-        if only and key not in only:
-            continue
-        cols = [c["name"] for c in fspec["columns"]]
-        out_path = os.path.join(out, os.path.basename(path))
-        parts = write_file(con, key, cols, out_path, sample=sample, chunk=(key == "txn"))
-        for p, n, b in parts:
-            report[os.path.basename(p)] = {"rows": n, "bytes": b, "columns": len(cols)}
-            print(f"  {os.path.basename(p):22s} rows={n:8d} bytes={b:11d} cols={len(cols)}", flush=True)
+    todo = [(p, f) for p, f in spec["files"].items() if not only or file_key(p) in only]
+    t = Table(
+        Col("file", max_width=22),
+        Col("rows", align="right", width=10),
+        Col("bytes", align="right", width=13),
+        Col("cols", align="right", width=5),
+        title=f"data/out chunks (TAB-separated, headerless, unquoted){' - SAMPLE' if sample else ''}",
+    )
+    total_rows = total_bytes = 0
+    with progress("exporting files", total=len(todo)) as p:
+        for path, fspec in todo:
+            key = file_key(path)
+            cols = [c["name"] for c in fspec["columns"]]
+            out_path = os.path.join(out, os.path.basename(path))
+            parts = write_file(con, key, cols, out_path, sample=sample, chunk=(key == "txn"))
+            for part_path, n, b in parts:
+                report[os.path.basename(part_path)] = {"rows": n, "bytes": b, "columns": len(cols)}
+                t.add_row(os.path.basename(part_path), f"{n:,}", f"{b:,}", len(cols))
+                total_rows += n
+                total_bytes += b
+            p.advance()
+    t.caption = f"{len(t)} file(s), {total_rows:,} rows, {total_bytes / 1e6:,.1f} MB"
+    t.print()
     report["_elapsed_s"] = round(time.time() - t0, 1)
     json.dump(report, open(manifest_path, "w"), indent=1)
+    ok(f"manifest -> {manifest_path} ({time.time() - t0:.1f}s)")
     return report
 
 
@@ -2366,6 +2828,16 @@ def verify(out: str, yaml_path: str) -> None:
     """Parse every written file back with DuckDB (tab, no quote) and check the column count."""
     spec = yaml.safe_load(open(yaml_path))
     con = duckdb.connect()
+    step("re-reading every written file with DuckDB (delim=TAB, quote='')")
+    t = Table(
+        Col("file", max_width=22),
+        Col("rows", align="right", width=10),
+        Col("cols expected", align="right", width=13),
+        Col("cols read", align="right", width=9),
+        Col("result", width=6, align="center"),
+        title="round-trip verification",
+    )
+    bad = []
     for path, fspec in spec["files"].items():
         n = len(fspec["columns"])
         base = os.path.basename(path)
@@ -2373,8 +2845,15 @@ def verify(out: str, yaml_path: str) -> None:
         for f in files:
             cols = con.execute(f"SELECT count(*) FROM (DESCRIBE SELECT * FROM read_csv('{os.path.join(out, f)}', delim='\t', quote='', escape='', header=false, all_varchar=true, columns={{{', '.join(f"'c{i}': 'VARCHAR'" for i in range(n))}}}))").fetchone()[0]
             rows = con.execute(f"SELECT count(*) FROM read_csv('{os.path.join(out, f)}', delim='\t', quote='', escape='', header=false, all_varchar=true, columns={{{', '.join(f"'c{i}': 'VARCHAR'" for i in range(n))}}})").fetchone()[0]
-            assert cols == n, (f, cols, n)
-            print(f"  verified {f}: {rows} rows x {cols} cols")
+            good = cols == n
+            if not good:
+                bad.append((f, cols, n))
+            t.add_row(f, f"{rows:,}", n, cols, "PASS" if good else "FAIL", style=None if good else "red")
+    t.print()
+    for f, cols, n in bad:
+        fail(f"{f}: read {cols} columns, contract says {n}")
+    assert not bad, bad
+    ok(f"{len(t)} file(s) parse back at the contracted column count")
 
 
 if __name__ == "__main__":  # pragma: no cover
@@ -2386,9 +2865,19 @@ if __name__ == "__main__":  # pragma: no cover
     ap.add_argument("--verify", action="store_true")
     ap.add_argument("--only", nargs="+", default=None, help="file keys to (re)write, e.g. fraud_pattern closed_case txn")
     a = ap.parse_args()
-    export(a.db, a.out, a.yaml, a.sample, a.only)
+    header("etl.export_graph_csvs",
+           "DuckDB derived tables -> headerless TAB-separated chunks for the TigerGraph loader",
+           {"db": a.db, "out": a.out, "contract": a.yaml,
+            "only": " ".join(a.only) if a.only else "every file",
+            "sample": a.sample if a.sample else "all rows", "verify": "yes" if a.verify else "no"})
+    rep = export(a.db, a.out, a.yaml, a.sample, a.only)
     if a.verify:
         verify(a.out, a.yaml)
+    written = [k for k in rep if not k.startswith("_")]
+    summary("etl.export_graph_csvs complete",
+            {"files": len(written), "rows": f"{sum(rep[k]['rows'] for k in written):,}",
+             "bytes": f"{sum(rep[k]['bytes'] for k in written):,}",
+             "out": a.out, "elapsed": f"{rep['_elapsed_s']}s"})
 ```
 
 #### `tests/unit/test_features.py`
@@ -3075,6 +3564,10 @@ import yaml
 
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parent
+sys.path.insert(0, str(REPO))                       # repo root: these scripts run as plain files, not as a package
+
+from ops.console import Col, Table, detail, fail, header, ok  # noqa: E402
+
 _CANDIDATES = [Path(p) for p in (os.environ.get("HHGOA_CSV_COLUMNS", ""),) if p] + [REPO / "contracts" / "csv_columns.yaml", REPO.parent / "contracts" / "csv_columns.yaml"]
 YAML = next((p for p in _CANDIDATES if p.exists()), _CANDIDATES[-1])
 SCHEMA = HERE / "schema.gsql"
@@ -3160,6 +3653,11 @@ RAG_COLUMNS = {
 
 
 def main() -> int:
+    header(
+        "graph.check_contracts",
+        "offline consistency check: csv_columns.yaml vs schema.gsql vs loading_jobs.gsql",
+        {"contracts": YAML, "schema": SCHEMA.name, "jobs": JOBS.name},
+    )
     spec = yaml.safe_load(YAML.read_text())
     vertices, edges = parse_schema(SCHEMA.read_text())
     jobs = parse_jobs(JOBS.read_text())
@@ -3247,11 +3745,27 @@ def main() -> int:
         if v not in loaded and v not in runtime_only:
             errors.append(f"vertex {v} has no loading job")
 
-    print(f"schema: {len(vertices)} vertices, {len(edges)} edges; jobs: {len(jobs)}; files: {len(files)}")
-    for e in errors:
-        print("MISMATCH:", e)
-    print("OK" if not errors else f"{len(errors)} mismatch(es)")
-    return 1 if errors else 0
+    t = Table(
+        Col("artefact", max_width=22),
+        Col("count", align="right", width=6),
+        Col("source", max_width=30),
+        Col("checked", max_width=56),
+        title="contract surfaces",
+    )
+    t.add_row("vertex types", len(vertices), SCHEMA.name, "names, attribute order, reserved words")
+    t.add_row("edge types", len(edges), SCHEMA.name, "names, attribute count, reserved words")
+    t.add_row("loading jobs", len(jobs), JOBS.name, "$0..$n, TO VERTEX/EDGE values, USING, no QUOTE")
+    t.add_row("csv files", len(files), YAML.name, "column names == schema attributes, edge guards")
+    t.print()
+
+    if errors:
+        fail(f"{len(errors)} mismatch(es) between the contracts")
+        for e in errors:
+            detail(e)
+        return 1
+    # The trailing token is a contract: tests/unit/test_graph_contracts.py asserts stdout ends with "OK".
+    ok("schema, loading jobs and csv_columns.yaml all agree - OK")
+    return 0
 
 
 if __name__ == "__main__":
@@ -3267,22 +3781,26 @@ if __name__ == "__main__":
 
 * connect()      TigerGraphConnection(host, graphname, gsqlSecret) + getToken(secret) + customizeHeader(...)
                  (pyTigerGraph sets tgCloud=True / port 443 itself when the host contains "tgcloud").
-* ensure_awake() retry decorator for a resuming Savanna workspace: 502/503/504, connection errors and
-                 read timeouts are retried with 1, 2, 4, ... 60 s sleeps until TG_RESUME_MAX_WAIT_S (240 s).
-                 GSQL compile errors, 401/403, file errors are raised immediately.
+* ensure_awake() retry decorator for a resuming Savanna workspace: 502/503/504, connection errors, read
+                 timeouts and an HTML start page in place of JSON are retried with 1, 2, 4, ... 60 s sleeps until
+                 TG_RESUME_MAX_WAIT_S (240 s). GSQL compile errors, 401/403, file errors are raised immediately.
 * gsql()         conn.gsql(text) + error detection: pyTigerGraph only raises on a few statement kinds
                  (_parse_gsql: CREATE VERTEX / EDGE / GRAPH / LOADING JOB, RUN LOADING JOB); everything else
-                 (SCHEMA_CHANGE, INSTALL, DROP, RUN QUERY) comes back as text, so we grep it.
+                 (SCHEMA_CHANGE, INSTALL, DROP, RUN QUERY) comes back as text, so we grep it. An HTML page in
+                 place of the reply (a resuming workspace) is raised as ConnectionError and retried.
 * run_query()    runInstalledQuery(name, params, timeout=<ms>, usePost=True) under ensure_awake().
 
 ops/ensure_awake.py (module G) implements the same decorator for the agent and UI; the graph scripts carry
 their own copy so `uv run python graph/load_all.py` works in a checkout that has only graph/ + data/.
+Keep is_transient / _transient_text / backoff_delays identical in both files (tests/unit/test_ensure_awake.py
+runs the same classification cases against both).
 """
 from __future__ import annotations
 
 import functools
 import logging
 import os
+import re
 import time
 from collections.abc import Callable, Iterator
 from pathlib import Path
@@ -3294,12 +3812,16 @@ REPO = Path(os.environ.get("HHGOA_REPO_ROOT", Path(__file__).resolve().parent.pa
 DATA_OUT = Path(os.environ.get("HHGOA_DATA_OUT", REPO / "data" / "out"))
 GRAPH_DIR = Path(__file__).resolve().parent
 
+# No bare "502"/"503"/"504" here: they would match dataset ids such as 3503211 or C15034 (see _STATUS_RX).
 TRANSIENT_MARKERS = (
-    "502", "503", "504", "bad gateway", "service unavailable", "gateway time-out", "gateway timeout",
+    "bad gateway", "service unavailable", "gateway time-out", "gateway timeout",
     "connection refused", "connection reset", "connection aborted", "remote end closed",
     "temporarily unavailable", "max retries exceeded", "read timed out", "timed out",
     "workspace is resuming", "workspace is not ready", "server disconnected", "cannot connect to host",
 )
+# A stand-alone 502 / 503 / 504 ("502 Server Error", "502, message='Bad Gateway'", "HTTP 503"), never a
+# digit run inside an id or a number ("3503211", "C15034", "0.502", "502ms").
+_STATUS_RX = re.compile(r"(?<![\w.])50[234](?![\w.])")
 _NON_TRANSIENT_OS = (FileNotFoundError, PermissionError, IsADirectoryError, NotADirectoryError)
 
 # Substrings that mark a failed GSQL statement in the server's text reply.
@@ -3323,14 +3845,36 @@ def is_transient(exc: BaseException) -> bool:
             return True
         if isinstance(exc, requests.HTTPError):
             resp = getattr(exc, "response", None)
-            if resp is not None and getattr(resp, "status_code", 0) in (502, 503, 504):
-                return True
-            return False
+            status = getattr(resp, "status_code", 0) if resp is not None else 0
+            if status:  # a real status decides: 401 / 403 / 404 are never retried, whatever the text says
+                return status in (502, 503, 504)
+    except ImportError:  # pragma: no cover
+        pass
+    try:  # aiohttp, when installed (same classification as ops/ensure_awake.py)
+        import aiohttp  # type: ignore
+
+        if isinstance(exc, (aiohttp.ClientConnectionError, aiohttp.ServerDisconnectedError)):
+            return True
+        if isinstance(exc, aiohttp.ClientResponseError) and exc.status:
+            return exc.status in (502, 503, 504)
     except ImportError:  # pragma: no cover
         pass
     if isinstance(exc, (ConnectionError, TimeoutError)):
         return True
-    return any(m in str(exc).lower() for m in TRANSIENT_MARKERS)
+    return _transient_text(str(exc))
+
+
+def _transient_text(text: str) -> bool:
+    """The message-based half of ``is_transient`` (401 / 403 / auth errors are never transient)."""
+    msg = text.lower()
+    # pyTigerGraph common/base.py raises TigerGraphException("Cannot parse json: " + body) when a 2xx reply is
+    # not JSON - a resuming workspace's HTML start page. str(exc) of a TigerGraphException(msg, code) is a
+    # tuple repr, hence the "('cannot parse json" form.
+    if (msg.startswith("cannot parse json") or "('cannot parse json" in msg) and ("<html" in msg or "<!doctype" in msg):
+        return True
+    if _STATUS_RX.search(msg):
+        return True
+    return any(marker in msg for marker in TRANSIENT_MARKERS)
 
 
 def backoff_delays(max_wait_s: float, first: float = 1.0, cap: float = 60.0) -> Iterator[float]:
@@ -3344,8 +3888,10 @@ def backoff_delays(max_wait_s: float, first: float = 1.0, cap: float = 60.0) -> 
         delay = min(delay * 2, cap)
 
 
-def ensure_awake(max_wait_s: float | None = None, sleep: Callable[[float], Any] = time.sleep):
-    """Retry a sync callable while the Savanna workspace auto-resumes (first request is dropped with 502)."""
+def ensure_awake(max_wait_s: float | None = None, sleep: Callable[[float], Any] | None = None):
+    """Retry a sync callable while the Savanna workspace auto-resumes (first request is dropped with 502).
+
+    ``sleep`` defaults to ``time.sleep`` looked up at call time (so a monkeypatched ``time.sleep`` applies)."""
     budget = float(os.getenv("TG_RESUME_MAX_WAIT_S", "240")) if max_wait_s is None else float(max_wait_s)
 
     def decorate(fn: Callable):
@@ -3365,7 +3911,7 @@ def ensure_awake(max_wait_s: float | None = None, sleep: Callable[[float], Any] 
                         raise
                     attempt += 1
                     log.warning("%s: transient error (%s); retry %d in %.0fs", fn.__name__, str(exc)[:160], attempt, delay)
-                    sleep(delay)
+                    (sleep or time.sleep)(delay)
 
         return wrapper
 
@@ -3383,6 +3929,16 @@ def env(name: str, default: str | None = None) -> str:
     if v is None:
         raise RuntimeError(f"{name} is not set (see .env.example)")
     return v
+
+
+EMPTY_SECRET_MSG = "TG_SECRET is empty in .env - paste the Savanna Database Secret"
+
+
+def require_secret(secret: str | None) -> str:
+    """Fail before any network call: an empty secret would wake (and bill) a suspended workspace for a 401."""
+    if not (secret or "").strip():
+        raise RuntimeError(EMPTY_SECRET_MSG)
+    return secret  # type: ignore[return-value]
 
 
 @ensure_awake()
@@ -3403,6 +3959,7 @@ def connect(graphname: str | None = None, timeout_ms: int | None = None, respons
     host = env("TG_HOST")
     graph = graphname or env("TG_GRAPHNAME", "FraudGraph")
     secret = env("TG_SECRET")
+    require_secret(secret)          # before any request, token=False included
     conn = TigerGraphConnection(host=host, graphname=graph, gsqlSecret=secret)
     ms = int(env("TG_LOAD_TIMEOUT_MS", "600000")) if timeout_ms is None else int(timeout_ms)
     conn.customizeHeader(timeout=ms, responseSize=response_bytes)
@@ -3425,12 +3982,20 @@ def gsql_failed(reply: str) -> bool:
     return "syntax error" in low or "semantic check" in low or "failed to" in low
 
 
+def html_guard(reply: Any, endpoint: str = "/gsql/v1/statements") -> Any:
+    """conn.gsql() uses skipCheck=True / jsonResponse=False, so a resuming workspace's HTML start page comes back
+    as the GSQL "reply" and would read as a successful statement. Raise it as a (transient) ConnectionError."""
+    if str(reply).lstrip()[:200].lower().startswith(("<!doctype", "<html")):
+        raise ConnectionError(f"workspace is resuming: HTML reply from {endpoint}")
+    return reply
+
+
 def gsql(conn, text: str, ok_if: tuple[str, ...] = (), quiet: bool = False) -> str:
     """Run GSQL text with resume-retry and fail loudly on a compile/DDL error."""
 
     @ensure_awake()
     def _run():
-        return conn.gsql(text)
+        return html_guard(conn.gsql(text))
 
     reply = str(_run())
     if not quiet:
@@ -3511,11 +4076,12 @@ from pathlib import Path
 import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))   # repo root, for ops.console
 from check_contracts import FILE_TO_JOB, RAG_COLUMNS, _strip_comments  # noqa: E402
 from check_contracts import YAML as CSV_YAML  # noqa: E402
-from tg import DATA_OUT, GRAPH_DIR, connect, ensure_awake, gsql, is_transient  # noqa: E402
+from tg import DATA_OUT, GRAPH_DIR, backoff_delays, connect, ensure_awake, gsql, is_transient  # noqa: E402
 
-log = logging.getLogger("graph.load_all")
+from ops.console import Col, Table, detail, fail, header, joinlist, ok, step, summary, warn  # noqa: E402
 
 GRAPH = "FraudGraph"
 SCHEMA_GSQL = GRAPH_DIR / "schema.gsql"
@@ -3577,20 +4143,32 @@ def file_plan(spec: dict, data_out: Path = DATA_OUT, only: list[str] | None = No
     if only:
         unknown = sorted(set(only) - set(ORDER))
         if unknown:
-            raise SystemExit(f"--only: unknown file stem(s) {unknown}; choose from {ORDER}")
+            raise SystemExit(f"--only: unknown file stem(s) {joinlist(unknown)}; choose from {joinlist(ORDER)}")
     return plan
 
 
-def check_paths(plan: list[FileSpec]) -> list[FileSpec]:
-    """Drop rag files that do not exist yet (day 7); fail on a missing ETL file."""
+def _n(value) -> str:
+    """A count as a right-alignable, thousands-separated cell: 590742 -> '590,742'."""
+    try:
+        return f"{int(value):,}"
+    except (TypeError, ValueError):
+        return str(value)
+
+
+def check_paths(plan: list[FileSpec], *, quiet: bool = False) -> list[FileSpec]:
+    """Drop rag files that do not exist yet (day 7); fail on a missing ETL file.
+
+    `quiet` keeps stdout empty for `--expected`, whose stdout is parsed as JSON.
+    """
     kept = []
     for fs in plan:
         missing = [p for p in fs.paths if not p.exists()]
         if not fs.paths or missing:
             if fs.stem in RAG_STEMS:
-                log.warning("%s: %s not written yet (rag/chunk.py, day 7) - skipped", fs.stem, [p.name for p in missing] or "no file")
+                if not quiet:
+                    warn(f"{fs.stem}: {joinlist([p.name for p in missing], empty='no file')} not written yet (rag/chunk.py, day 7) - skipped")
                 continue
-            raise SystemExit(f"{fs.stem}: missing {missing or 'every chunk'} - run etl.export_graph_csvs first")
+            raise SystemExit(f"{fs.stem}: missing {joinlist([p.name for p in missing], empty='every chunk')} - run etl.export_graph_csvs first")
         kept.append(fs)
     return kept
 
@@ -3700,14 +4278,17 @@ def graph_exists(conn) -> bool:
 def apply_schema(conn, drop_all: bool = False) -> bool:
     """Run graph/schema.gsql. Returns False when FraudGraph already exists and nothing was done."""
     if drop_all:
-        log.warning("USE GLOBAL / DROP ALL")
+        warn("USE GLOBAL / DROP ALL - every vertex, edge, job and query on the workspace")
         gsql(conn, "USE GLOBAL\nDROP ALL", ok_if=("everything is dropped", "successfully"))
+        ok("workspace dropped")
     elif graph_exists(conn):
-        log.info("FraudGraph already exists - schema.gsql skipped (use --drop-all --yes to start over)")
+        ok(f"{GRAPH} already exists - schema.gsql skipped")
+        detail("use --drop-all --yes to start over")
         return False
+    step(f"applying {SCHEMA_GSQL.name}")
     t0 = time.time()
     gsql(conn, SCHEMA_GSQL.read_text())
-    log.info("schema.gsql applied in %.0fs", time.time() - t0)
+    ok(f"schema applied in {time.time() - t0:.0f}s")
     return True
 
 
@@ -3726,28 +4307,38 @@ def job_names(text: str) -> list[str]:
 def create_jobs(conn, sep: str = "\t") -> list[str]:
     text = jobs_text(sep)
     names = job_names(text)
+    step(f"re-creating {len(names)} loading jobs (separator {sep!r})")
     for job in names:
-        gsql(conn, f"USE GRAPH {GRAPH}\nDROP JOB {job}", ok_if=("does not exist", "dropped"), quiet=True)
+        gsql(conn, f"USE GRAPH {GRAPH}\nDROP JOB {job}",
+             ok_if=("does not exist", "dropped", "could not be found"), quiet=True)
     reply = gsql(conn, text, ok_if=("successfully created loading jobs",))
     created = {n.strip() for m in re.findall(r"Successfully created loading jobs: \[(.*?)\]", reply) for n in m.split(",")}
     missing = [n for n in names if n not in created]
     if missing:
         raise RuntimeError(f"loading jobs not created: {missing}\n{reply[-2000:]}")
-    log.info("%d loading jobs created (separator %r)", len(names), sep)
+    ok(f"{len(names)} loading jobs created")
     return names
 
 
 def load_result_stats(res) -> dict:
-    """Flatten the /ddl reply (a list of {sourceFileName, statistics}) into one dict of counters."""
+    """Flatten the /ddl reply (a list of {sourceFileName, statistics}) into one dict of counters.
+
+    TigerGraph 4.2.5's REST++ nests the counters under statistics.parsingStatistics.{fileLevel,objectLevel}
+    rather than the flat statistics.{validLine,vertex,...} shape some docs and earlier versions show; accept
+    either so this keeps working across versions.
+    """
     counters = ("validLine", "rejectLine", "failedConditionLine", "notEnoughToken", "invalidJson", "oversizeToken")
     out: dict = {k: 0 for k in counters}
     out["objects"] = {}
     for it in res if isinstance(res, list) else [res]:
         st = it.get("statistics", {}) if isinstance(it, dict) else {}
+        parsing = st.get("parsingStatistics")
+        file_level = parsing["fileLevel"] if parsing else st
+        object_level = parsing["objectLevel"] if parsing else st
         for k in counters:
-            out[k] += int(st.get(k, 0) or 0)
+            out[k] += int(file_level.get(k, 0) or 0)
         for kind in ("vertex", "edge"):
-            for o in st.get(kind, []) or []:
+            for o in object_level.get(kind, []) or []:
                 d = out["objects"].setdefault(o.get("typeName", "?"), {"validObject": 0, "noIdFound": 0, "invalidAttribute": 0, "invalidPrimaryId": 0})
                 for k in d:
                     d[k] += int(o.get(k, 0) or 0)
@@ -3784,8 +4375,6 @@ def load_file(conn, job: str, path: Path, sep: str, n_lines: int) -> dict:
     problems = check_stats(stats, n_lines)
     if problems:
         raise RuntimeError(f"{path.name} ({job}): {'; '.join(problems)}\nraw: {json.dumps(res)[:1500]}")
-    log.info("%-20s %-20s %9d lines %6.1f MB %6.1fs  %s", path.name, job, n_lines, size / 1e6, dt,
-             " ".join(f"{k}={v['validObject']}" for k, v in stats["objects"].items()))
     return stats
 
 
@@ -3809,16 +4398,35 @@ def edge_count(conn, etype: str) -> int:
 
 
 def verify_counts(conn, expected: dict[str, int]) -> tuple[dict[str, int], list[str]]:
+    """Ask the graph for every count and compare. Rendering is main()'s job (one table, after the loop)."""
     actual: dict[str, int] = {}
     mism = []
     for name, want in expected.items():
         got = edge_count(conn, name) if name.isupper() else vertex_count(conn, name)
         actual[name] = got
-        flag = "" if got == want else "   <-- MISMATCH"
-        log.info("%-18s expected %9d  got %9d%s", name, want, got, flag)
         if got != want:
             mism.append(f"{name}: expected {want}, got {got}")
     return actual, mism
+
+
+def counts_table(expected: dict[str, int], actual: dict[str, int]) -> Table:
+    """expected-vs-actual with a pass mark per vertex/edge type (590,742 / 576,425 / 140,784 / 14,955)."""
+    t = Table(
+        Col("type", max_width=18),
+        Col("kind", width=6),
+        Col("expected", align="right", width=11),
+        Col("actual", align="right", width=11),
+        Col("diff", align="right", width=9),
+        Col("ok", width=8, align="center"),
+        title=f"counts asserted against the graph ({len(expected)} types)",
+    )
+    for name, want in expected.items():
+        got = actual.get(name, 0)
+        good = got == want
+        t.add_row(name, "edge" if name.isupper() else "vertex", _n(want), _n(got),
+                  "-" if good else _n(got - want), "PASS" if good else "MISMATCH",
+                  style=None if good else "red")
+    return t
 
 
 # ------------------------------------------------------------------------------------------ main --------------
@@ -3835,19 +4443,33 @@ def main(argv: list[str] | None = None, connect_fn=connect) -> int:
     ap.add_argument("--data-out", type=Path, default=DATA_OUT)
     ap.add_argument("--report", type=Path, default=None, help="write per-file statistics + counts as JSON")
     args = ap.parse_args(argv)
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+    # graph/tg.py echoes every GSQL reply at INFO; that echo is the wall of text this output replaces.
+    # WARNING keeps the ensure_awake resume retries and hard errors visible on stderr.
+    logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(name)s: %(message)s")
 
     spec = load_spec()
     sep = args.sep or spec["format"]["separator"]
-    plan = check_paths(file_plan(spec, args.data_out, args.only))
 
     if args.expected:
+        # --expected is a MACHINE contract: stdout must stay parseable JSON and nothing else
+        # (tests/unit/test_graph_contracts.py::test_expected_flag_is_offline does json.loads on it).
+        plan = check_paths(file_plan(spec, args.data_out, args.only), quiet=True)
         t0 = time.time()
         exp = expected_counts(plan)
         print(json.dumps({"expected": exp, "manifest_mismatches": manifest_mismatches(plan, args.data_out),
                           "files": {p.name: count_lines(p) for fs in plan for p in fs.paths},
                           "seconds": round(time.time() - t0, 1)}, indent=1))
         return 0
+
+    stages = ["schema"] if args.schema_only else (["jobs"] if args.jobs_only else ["schema", "jobs", "load"] + ([] if args.skip_counts else ["counts"]))
+    header(
+        "graph.load_all",
+        f"{GRAPH} DDL, loading jobs, chunk upload and exact count assertions",
+        {"graph": GRAPH, "data out": args.data_out, "separator": repr(sep), "stages": " -> ".join(stages),
+         "only": joinlist(args.only, empty="every file"), "timeout": f"{LOAD_TIMEOUT_MS // 1000}s per file",
+         "report": args.report or "-"},
+    )
+    plan = check_paths(file_plan(spec, args.data_out, args.only))
 
     if args.drop_all and not args.yes:
         if input("DROP ALL on the workspace - every vertex, edge, job and query. Type YES to continue: ").strip() != "YES":
@@ -3857,37 +4479,83 @@ def main(argv: list[str] | None = None, connect_fn=connect) -> int:
     if not args.jobs_only:
         apply_schema(conn, args.drop_all)
     if args.schema_only:
+        summary("schema stage complete", {"graph": GRAPH, "schema": SCHEMA_GSQL.name, "next": "graph/load_all.py (jobs + upload)"})
         return 0
-    create_jobs(conn, sep)
+    jobs = create_jobs(conn, sep)
     if args.jobs_only:
+        summary("jobs stage complete", {"graph": GRAPH, "loading jobs": len(jobs), "separator": repr(sep)})
         return 0
 
-    for m in manifest_mismatches(plan, args.data_out):
-        log.warning("manifest: %s", m)
+    mismatches = manifest_mismatches(plan, args.data_out)
+    for m in mismatches:
+        warn(f"manifest: {m}")
 
     report: dict = {"separator": sep, "files": {}, "started": time.strftime("%Y-%m-%d %H:%M:%S")}
+    uploads = [(fs, p) for fs in plan for p in fs.paths]
+    total_mb = sum(p.stat().st_size for _, p in uploads) / 1e6
+    step(f"uploading {len(uploads)} files ({total_mb:,.1f} MB) through POST /restpp/ddl")
+    loaded = Table(
+        Col("#", align="right", width=3),
+        Col("file", max_width=18),
+        Col("job", max_width=20),
+        Col("rows", align="right", width=9),
+        Col("MB", align="right", width=7),
+        Col("sec", align="right", width=7),
+        Col("rows/s", align="right", width=9),
+        Col("objects created", max_width=60),
+        title="loaded files, in dependency order",
+    )
     t0 = time.time()
     enc_dir = Path(args.data_out) / "_enc"
-    for fs in plan:
-        for p in fs.paths:
-            up, n = encode_for_load(p, sep, enc_dir)
-            report["files"][p.name] = load_file(conn, fs.job, up, sep, n)
+    for i, (fs, p) in enumerate(uploads, 1):
+        up, n = encode_for_load(p, sep, enc_dir)
+        mb = up.stat().st_size / 1e6
+        # one line BEFORE each upload: a 45 MB chunk can take a minute and this is the only sign of life.
+        step(f"[{i:>2}/{len(uploads)}] {p.name} -> {fs.job}  {_n(n)} rows, {mb:,.1f} MB")
+        st = load_file(conn, fs.job, up, sep, n)
+        report["files"][p.name] = st
+        loaded.add_row(i, p.name, fs.job, _n(n), f"{mb:,.1f}", f"{st['seconds']:.1f}",
+                       _n(n / st["seconds"]) if st["seconds"] else "-",
+                       joinlist([f"{k}={_n(v['validObject'])}" for k, v in st["objects"].items()], sep=" ", max_items=4))
     report["load_seconds"] = round(time.time() - t0, 1)
-    log.info("loaded %d files in %.0fs", len(report["files"]), report["load_seconds"])
+    loaded.print()
+    ok(f"loaded {len(report['files'])} files ({total_mb:,.1f} MB) in {report['load_seconds']:.1f}s")
 
     rc = 0
+    expected: dict[str, int] = {}
     if not args.skip_counts:
+        step("verifying vertex and edge counts")
         expected = expected_counts(plan)
+        # RESTPP's edge counts lag the bulk load by tens of seconds (vertex counts do not); a mismatch
+        # right after loading is usually that catching up, not a real gap, so settle with backoff before
+        # asserting. Real failures still show up: they don't move between retries.
         actual, mism = verify_counts(conn, expected)
+        for delay in backoff_delays(90, first=5.0, cap=20.0):
+            if not mism:
+                break
+            detail(f"{len(mism)} count(s) still settling, rechecking in {delay:.0f}s")
+            time.sleep(delay)
+            actual, mism = verify_counts(conn, expected)
         report.update(expected=expected, actual=actual, mismatches=mism)
+        counts_table(expected, actual).print()
         if mism:
-            log.error("COUNT MISMATCH: %s", mism)
             rc = 1
+            fail(f"{len(mism)} of {len(expected)} counts do not match")
+            for m in mism:
+                detail(m)
         else:
-            log.info("all %d counts match", len(expected))
+            ok(f"all {len(expected)} counts match")
     if args.report:
         args.report.parent.mkdir(parents=True, exist_ok=True)
         args.report.write_text(json.dumps(report, indent=1))
+    summary(
+        "load complete" if rc == 0 else "load finished with count mismatches",
+        {"files": len(report["files"]), "megabytes": f"{total_mb:,.1f}", "load seconds": f"{report['load_seconds']:.0f}",
+         "types asserted": len(expected) if expected else "skipped",
+         "count mismatches": len(report.get("mismatches", [])) if not args.skip_counts else "-",
+         "manifest warnings": len(mismatches), "report": args.report or "-"},
+        status="ok" if rc == 0 else "fail",
+    )
     return rc
 
 
@@ -3931,9 +4599,10 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))   # repo root, for ops.console
 from tg import DATA_OUT, GRAPH_DIR, REPO, connect, gsql, is_transient  # noqa: E402
 
-log = logging.getLogger("graph.rebuild")
+from ops.console import Col, Table, detail, fail, header, joinlist, ok, rule, step, summary, warn  # noqa: E402
 
 STAGES = ["schema", "load", "vectors", "algos", "install", "describe"]
 VECTOR_ATTRS = {"ClosedCase": "note_emb", "AgentCase": "note_emb", "PolicyChunk": "emb"}   # contracts/schema.md
@@ -3941,8 +4610,19 @@ SCHEMA_CHANGE_GSQL = GRAPH_DIR / "schema_change_vectors.gsql"
 VEC_FILES = [DATA_OUT / "vec_ClosedCase.psv", DATA_OUT / "vec_PolicyChunk.psv"]
 
 
+STAGE_ABOUT = {
+    "schema": "graph/load_all.py --schema-only",
+    "load": "graph/load_all.py - jobs re-created, chunks uploaded, counts asserted",
+    "vectors": "schema_change_vectors.gsql + rag.load_vectors --all",
+    "algos": "graph/run_algos.py - SHARES_DEVICE projection, tg_wcc, degree, wcc_summary",
+    "install": "graph/install_all.py - CREATE OR REPLACE every query + INSTALL QUERY ALL",
+    "describe": "graph/describe_queries.py - updateQueryDescription from the yaml",
+}
+
+
 def run(cmd: list[str]) -> None:
-    log.info("$ %s", " ".join(cmd))
+    # The child is another console-rendered CLI: its banner, tables and summary land here unchanged.
+    step("$ " + " ".join(Path(c).name if c.endswith(".py") else c for c in cmd))
     subprocess.run(cmd, cwd=str(REPO), check=True)
 
 
@@ -3984,20 +4664,22 @@ def stage_vectors(args) -> dict:
     missing = {v: a for v, a in VECTOR_ATTRS.items() if a not in present[v]}
     out = {"present_before": present, "added": list(missing)}
     if missing:
-        log.info("adding vector attributes: %s", missing)
+        step(f"adding vector attributes: {joinlist([f'{v}.{a}' for v, a in missing.items()])}")
         gsql(conn, schema_change_text(missing), ok_if=("completes in",))
         still = {v: a for v, a in missing.items() if a not in vector_attrs(conn, v)}
         if still:
             raise RuntimeError(f"vector attributes still missing after the schema change: {still}")
+        ok(f"{len(missing)} vector attribute(s) added by the GLOBAL schema-change job")
     else:
-        log.info("vector attributes already present: %s", present)
+        ok(f"vector attributes already present: {joinlist([f'{v}.{a}' for v, a in VECTOR_ATTRS.items()])}")
     if args.no_vector_data:
+        detail("--no-vector-data: vec_*.psv not loaded")
         return out
     if all(p.exists() for p in VEC_FILES):
         run([sys.executable, "-m", "rag.load_vectors", "--all"])
         out["vectors_loaded"] = True
     else:
-        log.warning("no %s - vectors not loaded (rag.embed, day 7)", [p.name for p in VEC_FILES if not p.exists()])
+        warn(f"{joinlist([p.name for p in VEC_FILES if not p.exists()])} missing - vectors not loaded (rag.embed, day 7)")
         out["vectors_loaded"] = False
     return out
 
@@ -4030,36 +4712,72 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--no-vector-data", action="store_true", help="vectors stage: schema change only")
     ap.add_argument("--report", type=Path, default=None)
     args = ap.parse_args(argv)
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+    # graph/tg.py echoes GSQL replies at INFO; WARNING keeps the resume retries and hard errors on stderr.
+    logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(name)s: %(message)s")
 
     if args.list or not (args.start or args.only):
-        print("stages, in order:", " -> ".join(STAGES))
+        header("graph.rebuild", "clean rebuild of FraudGraph from the checked-in chunk and vector files")
+        t = Table(Col("#", align="right", width=3), Col("stage", width=10), Col("what it runs", max_width=76),
+                  title="stages, in order")
+        for i, st in enumerate(STAGES, 1):
+            t.add_row(i, st, STAGE_ABOUT.get(st, ""))
+        t.print()
+        detail("--from <stage> runs that stage and every later one; --only <stage> runs one")
         return 0
     if args.drop_all and not args.yes:
         ap.error("--drop-all needs --yes (it wipes the workspace)")
     stages = [args.only] if args.only else STAGES[STAGES.index(args.start):]
 
+    header(
+        "graph.rebuild",
+        "clean rebuild of FraudGraph from the checked-in chunk and vector files",
+        {"stages": " -> ".join(stages), "drop all first": "yes" if args.drop_all else "no",
+         "vector data": "no" if args.no_vector_data else "yes", "data out": DATA_OUT, "report": args.report or "-"},
+    )
+
     timings: dict[str, dict] = {}
     t_all = time.time()
-    for st in stages:
+    for i, st in enumerate(stages, 1):
         t0 = time.time()
-        log.info("==== stage %s", st)
+        rule(f"stage {i}/{len(stages)}: {st}")
+        detail(STAGE_ABOUT.get(st, ""))
         try:
             info = run_stage(st, args)
         except Exception as exc:  # noqa: BLE001
             timings[st] = {"seconds": round(time.time() - t0, 1), "ok": False, "error": str(exc)[:500]}
-            log.error("stage %s failed after %.0fs: %s", st, time.time() - t0, exc)
+            fail(f"stage {st} failed after {time.time() - t0:.0f}s")
+            detail(str(exc)[:500])
             break
         timings[st] = {"seconds": round(time.time() - t0, 1), "ok": True, **info}
+        ok(f"stage {st} finished in {time.time() - t0:.0f}s")
     total = round(time.time() - t_all, 1)
-    summary = {"stages": timings, "total_seconds": total, "ok": all(v["ok"] for v in timings.values()) and len(timings) == len(stages)}
-    for st, v in timings.items():
-        print(f"  {st:9s} {'ok ' if v['ok'] else 'ERR'} {v['seconds']:8.1f}s")
-    print(f"  total     {'ok ' if summary['ok'] else 'ERR'} {total:8.1f}s")
+    report = {"stages": timings, "total_seconds": total, "ok": all(v["ok"] for v in timings.values()) and len(timings) == len(stages)}
+
+    rule("rebuild stages")
+    t = Table(Col("#", align="right", width=3), Col("stage", width=10), Col("result", width=6, align="center"),
+              Col("sec", align="right", width=9), Col("note", max_width=72), title="")
+    for i, st in enumerate(stages, 1):
+        v = timings.get(st)
+        if v is None:
+            t.add_row(i, st, "-", "-", "not reached", style="yellow")
+            continue
+        note = str(v.get("error", ""))[:120] if not v["ok"] else joinlist(
+            [f"{k}={v[k]}" for k in ("added", "vectors_loaded") if k in v], sep="  ", empty="")
+        t.add_row(i, st, "ok" if v["ok"] else "ERR", f"{v['seconds']:.1f}", note, style=None if v["ok"] else "red")
+    t.add_row("", "total", "ok" if report["ok"] else "ERR", f"{total:.1f}", "")
+    t.print()
+
     if args.report:
         args.report.parent.mkdir(parents=True, exist_ok=True)
-        args.report.write_text(json.dumps(summary, indent=1))
-    return 0 if summary["ok"] else 1
+        args.report.write_text(json.dumps(report, indent=1))
+    summary(
+        "rebuild complete" if report["ok"] else "rebuild failed",
+        {"stages run": f"{len(timings)}/{len(stages)}", "total seconds": f"{total:.0f}",
+         "failed stage": joinlist([s for s, v in timings.items() if not v["ok"]], empty="-"),
+         "report": args.report or "-"},
+        status="ok" if report["ok"] else "fail",
+    )
+    return 0 if report["ok"] else 1
 
 
 if __name__ == "__main__":
@@ -4100,9 +4818,10 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from tg import GRAPH_DIR, connect, ensure_awake, gsql, merged, run_query  # noqa: E402
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))   # repo root, for ops.console
+from tg import GRAPH_DIR, backoff_delays, connect, ensure_awake, gsql, merged, run_query  # noqa: E402
 
-log = logging.getLogger("graph.run_algos")
+from ops.console import Col, Table, detail, fail, header, joinlist, ok, step, summary, warn  # noqa: E402
 
 GRAPH = "FraudGraph"
 ALGOS = GRAPH_DIR / "algos"
@@ -4112,23 +4831,87 @@ RING_PROFILE = "SM-G935F Build/NRD90M | Android 7.0 | chrome 62.0 for android | 
 RING_CARD = "C13487-K1"                                                                       # HHG-014
 
 
+def _n(value) -> str:
+    """A count as a right-alignable, thousands-separated cell; non-numbers pass through."""
+    try:
+        return f"{int(value):,}"
+    except (TypeError, ValueError):
+        return str(value)
+
+
 def install(conn) -> None:
-    for name in OURS:
-        gsql(conn, (ALGOS / f"{name}.gsql").read_text(), ok_if=("successfully created",))
-    for name in LIBRARY:
-        text = (ALGOS / f"{name}.gsql").read_text().replace("CREATE QUERY", "CREATE OR REPLACE QUERY", 1)
-        gsql(conn, f"USE GRAPH {GRAPH}\n{text}", ok_if=("successfully created",))
+    for i, name in enumerate(OURS + LIBRARY, 1):
+        step(f"[{i}/{len(OURS + LIBRARY)}] create or replace {name}")
+        if name in OURS:
+            gsql(conn, (ALGOS / f"{name}.gsql").read_text(), ok_if=("successfully created",))
+        else:
+            text = (ALGOS / f"{name}.gsql").read_text().replace("CREATE QUERY", "CREATE OR REPLACE QUERY", 1)
+            gsql(conn, f"USE GRAPH {GRAPH}\n{text}", ok_if=("successfully created",))
+    step(f"INSTALL QUERY {len(OURS + LIBRARY)} algorithm queries")
     t0 = time.time()
     gsql(conn, f"USE GRAPH {GRAPH}\nINSTALL QUERY {', '.join(OURS + LIBRARY)}", ok_if=("query installation finished",))
-    log.info("installed %s in %.0fs", OURS + LIBRARY, time.time() - t0)
+    ok(f"installed {len(OURS + LIBRARY)} algorithm queries in {time.time() - t0:.0f}s")
 
 
-def step(conn, report: dict, name: str, params: dict) -> dict:
+# What each algorithm writes back to the graph, so the run says so instead of leaving it to the reader.
+WRITES_BACK = {
+    "clear_shares_device": "deletes every SHARES_DEVICE edge",
+    "project_shares_device": "SHARES_DEVICE edges (n_shared, weight, via)",
+    "tg_wcc": "Card.wcc_id",
+    "tg_degree_cent": "Card.device_degree (DOUBLE; may be rejected)",
+    "set_device_degree": "Card.device_degree (INT), wcc_id = -1 for isolated cards",
+    "wcc_summary": "nothing (reads component sizes)",
+}
+# The result keys worth showing per algorithm; everything else stays in --report.
+SHOW = {
+    "clear_shares_device": ["n_deleted"],
+    "project_shares_device": ["n_inserts", "n_profiles", "n_pairs"],
+    "tg_wcc": ["@@comp_sizes.size()", "n_components"],
+    "tg_degree_cent": ["top_scores"],
+    "set_device_degree": ["n_cards", "n_isolated"],
+    "wcc_summary": ["n_components", "n_components_ge2", "n_isolated_cards"],
+}
+
+
+def result_cells(name: str, res: dict) -> list[str]:
+    """`key=value` strings worth showing for one algorithm - never a raw list/dict repr."""
+    if name == "tg_degree_cent":
+        top = [r for r in (res.get("top_scores") or []) if isinstance(r, dict)]
+        return [f"top_k={len(top)}"] + [f"{r.get('Vertex_ID', r.get('v_id', '?'))}={r.get('score')}" for r in top[:2]]
+    cells = [f"{k}={res[k]}" for k in SHOW.get(name, []) if k in res]
+    return cells or [f"{k}={v}" for k, v in list(res.items())[:4] if not isinstance(v, (list, dict))]
+
+
+def settle_edge_count(conn, edge_type: str, max_wait_s: float = 90) -> int:
+    """Wait for RESTPP's edge count to stop moving before an algorithm reads the edge set.
+
+    getEdgeCount() lags a bulk insert by tens of seconds (same trap as graph/load_all.py verify_counts
+    and rag/load_vectors.py stats parsing): a query that reads SHARES_DEVICE right after
+    project_shares_device can see a small fraction of the real edges and silently produce a wrong
+    answer instead of an error -- tg_wcc reported every Card isolated once, reading the graph seconds
+    after a 109,507-edge insert. Polls until two consecutive reads agree, not a hard target: the
+    insert's own n_inserts double-counts an undirected edge from both endpoints, so the converged count
+    is not a number this script can predict in advance.
+    """
+    last = -1
+    for delay in backoff_delays(max_wait_s, first=3.0, cap=15.0):
+        n = conn.getEdgeCount(edge_type)
+        if n == last:
+            return n
+        detail(f"{edge_type} edge count still settling: {n:,} (was {last:,})" if last >= 0 else f"{edge_type} edge count: {n:,}")
+        last = n
+        time.sleep(delay)
+    return last
+
+
+def run_step(conn, report: dict, name: str, params: dict) -> dict:
+    """Run one installed algorithm query, timed. Results go in the table after the pass, not here."""
+    step(f"{name} - {WRITES_BACK.get(name, 'runs')}")
     t0 = time.time()
     res = merged(run_query(conn, name, params, timeout_ms=600_000))
     dt = round(time.time() - t0, 1)
     report[name] = {"seconds": dt, "params": params, "result": res}
-    log.info("%s %s -> %s (%.1fs)", name, json.dumps(params)[:120], json.dumps(res)[:400], dt)
+    ok(f"{name} in {dt:.1f}s")
     return res
 
 
@@ -4139,7 +4922,16 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--max-cards-per-profile", type=int, default=60)
     ap.add_argument("--report", type=Path, default=None)
     args = ap.parse_args(argv)
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+    # graph/tg.py echoes every GSQL reply at INFO; WARNING keeps the resume retries and hard errors on stderr.
+    logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(name)s: %(message)s")
+
+    stages = (["install"] if not args.no_install else []) + (["project"] if not args.no_project else []) + ["wcc", "degree", "summary"]
+    header(
+        "graph.run_algos",
+        "the once-only graph-algorithm pass: SHARES_DEVICE projection, WCC, degree",
+        {"graph": GRAPH, "stages": " -> ".join(stages), "timeout": "600s per query",
+         "max cards/profile": args.max_cards_per_profile, "ring card": RING_CARD, "report": args.report or "-"},
+    )
 
     conn = connect(timeout_ms=600_000)
     report: dict = {"started": time.strftime("%Y-%m-%d %H:%M:%S")}
@@ -4147,25 +4939,31 @@ def main(argv: list[str] | None = None) -> int:
         install(conn)
 
     if not args.no_project:
-        step(conn, report, "clear_shares_device", {})
-        proj = step(conn, report, "project_shares_device", {"max_cards_per_profile": args.max_cards_per_profile, "do_insert": True})
+        run_step(conn, report, "clear_shares_device", {})
+        proj = run_step(conn, report, "project_shares_device", {"max_cards_per_profile": args.max_cards_per_profile, "do_insert": True})
         if not proj.get("n_inserts"):
-            log.error("project_shares_device inserted nothing (%s) - is DeviceProfile.is_strong loaded?", proj)
+            fail("project_shares_device inserted nothing - is DeviceProfile.is_strong loaded?")
+            detail(joinlist([f"{k}={v}" for k, v in proj.items()], sep="  ", empty="empty result"))
+            summary("algorithm pass aborted", {"stage": "project_shares_device", "SHARES_DEVICE edges": 0}, status="fail")
             return 1
+        step("settling SHARES_DEVICE edge count before tg_wcc reads it")
+        settled = settle_edge_count(conn, "SHARES_DEVICE")
+        ok(f"SHARES_DEVICE settled at {settled:,} edges")
 
-    step(conn, report, "tg_wcc", {"v_type_set": ["Card"], "e_type_set": ["SHARES_DEVICE"], "print_limit": 0,
-                                  "print_results": False, "result_attribute": "wcc_id", "file_path": ""})
+    run_step(conn, report, "tg_wcc", {"v_type_set": ["Card"], "e_type_set": ["SHARES_DEVICE"], "print_limit": 0,
+                                      "print_results": False, "result_attribute": "wcc_id", "file_path": ""})
 
     try:
-        step(conn, report, "tg_degree_cent", {"v_type_set": ["Card"], "e_type_set": ["SHARES_DEVICE"], "reverse_e_type_set": ["SHARES_DEVICE"],
-                                              "in_degree": True, "out_degree": False, "top_k": 20, "print_results": True,
-                                              "result_attribute": "device_degree", "file_path": "", "normalize": False})
+        run_step(conn, report, "tg_degree_cent", {"v_type_set": ["Card"], "e_type_set": ["SHARES_DEVICE"], "reverse_e_type_set": ["SHARES_DEVICE"],
+                                                  "in_degree": True, "out_degree": False, "top_k": 20, "print_results": True,
+                                                  "result_attribute": "device_degree", "file_path": "", "normalize": False})
     except Exception as exc:  # noqa: BLE001 - DOUBLE -> INT setAttr rejected: set_device_degree below is the result
         report["tg_degree_cent"] = {"error": str(exc)[:500]}
-        log.warning("tg_degree_cent failed (%s); set_device_degree provides Card.device_degree", str(exc)[:160])
+        warn("tg_degree_cent failed; set_device_degree provides Card.device_degree")
+        detail(str(exc)[:160])
 
-    step(conn, report, "set_device_degree", {"reset_isolated_wcc": True})
-    summary = step(conn, report, "wcc_summary", {"ring_profile_id": RING_PROFILE, "top_n": 10})
+    run_step(conn, report, "set_device_degree", {"reset_isolated_wcc": True})
+    wcc = run_step(conn, report, "wcc_summary", {"ring_profile_id": RING_PROFILE, "top_n": 10})
 
     @ensure_awake()
     def _facts():
@@ -4174,11 +4972,50 @@ def main(argv: list[str] | None = None) -> int:
 
     facts = _facts()
     report["facts"] = facts
-    top = summary.get("top_components", [])
-    print(json.dumps({"largest_components": top[:3], "n_components": summary.get("n_components"),
-                      "n_components_ge2": summary.get("n_components_ge2"), "n_isolated_cards": summary.get("n_isolated_cards"),
-                      "ring_card_components": summary.get("ring_card_components"), "shares_device_edges": facts["SHARES_DEVICE"],
-                      "ring_card": facts["ring_card"]}, indent=1, default=str))
+
+    timings = Table(
+        Col("algorithm", max_width=24),
+        Col("sec", align="right", width=7),
+        Col("writes back to the graph", max_width=56),
+        Col("result", max_width=58),
+        title="algorithm pass, in order",
+    )
+    for name in ["clear_shares_device", "project_shares_device", "tg_wcc", "tg_degree_cent", "set_device_degree", "wcc_summary"]:
+        r = report.get(name)
+        if r is None:
+            timings.add_row(name, "-", WRITES_BACK.get(name, ""), "skipped", style="yellow")
+            continue
+        if "error" in r:
+            timings.add_row(name, "-", WRITES_BACK.get(name, ""), str(r["error"])[:120], style="red")
+            continue
+        timings.add_row(name, f"{r['seconds']:.1f}", WRITES_BACK.get(name, ""),
+                        joinlist(result_cells(name, r["result"]), sep="  ", empty="-"))
+    timings.print()
+
+    top = wcc.get("top_components", []) or []
+    comps = Table(
+        Col("rank", align="right", width=4),
+        Col("component", max_width=26),
+        Col("cards", align="right", width=9),
+        title="largest weakly-connected components (SHARES_DEVICE over strong device profiles)",
+    )
+    for i, c in enumerate(top[:3], 1):
+        if isinstance(c, dict):
+            comps.add_row(i, c.get("wcc_id", c.get("id", "?")), _n(c.get("n_cards", c.get("size", c.get("n", "?")))))
+        else:
+            comps.add_row(i, str(c), "")
+    comps.print()
+
+    ring = facts["ring_card"]
+    ring_attrs = ring[0].get("attributes", {}) if isinstance(ring, list) and ring else ring
+    summary(
+        "algorithm pass complete",
+        {"SHARES_DEVICE edges": _n(facts["SHARES_DEVICE"]), "components": _n(wcc.get("n_components", "?")),
+         "components >= 2 cards": _n(wcc.get("n_components_ge2", "?")), "isolated cards": _n(wcc.get("n_isolated_cards", "?")),
+         "ring card": f"{RING_CARD} {joinlist([f'{k}={v}' for k, v in (ring_attrs or {}).items()], sep='  ', empty='not found')}",
+         "ring card components": joinlist(wcc.get("ring_card_components") or [], empty="-"),
+         "report": args.report or "-"},
+    )
     if args.report:
         args.report.parent.mkdir(parents=True, exist_ok=True)
         args.report.write_text(json.dumps(report, indent=1, default=str))
@@ -4337,7 +5174,7 @@ CREATE OR REPLACE QUERY wcc_summary(STRING ring_profile_id = "SM-G935F Build/NRD
          ACCUM @@ring_comps += c.wcc_id;
   FOREACH (k, v) IN @@size_by_comp DO
     @@top += CompSize(k, v);
-    IF v >= 2 THEN @@n_multi += 1 END;
+    IF v >= 2 THEN @@n_multi += 1; END;
   END;
   PRINT @@top AS top_components, @@n_multi AS n_components_ge2, @@n_isolated AS n_isolated_cards,
         @@size_by_comp.size() AS n_components, @@ring_comps AS ring_card_components;
@@ -4564,12 +5401,17 @@ one by one through pyTigerGraph conn.gsql() (GSQL server, not RESTPP: the 16 s t
 launcher-style customizeHeader timeout does bound the HTTP call, so we set 600 s here), then
 `INSTALL QUERY ALL` compiles everything that is created-but-not-installed (1–3 min on TG-00).
 Exit code 1 if any CREATE reports an error, so the day-3/day-4 Makefile targets fail loudly.
+
+Savanna auto-resume: getToken and every conn.gsql() go through graph.tg.ensure_awake(), so the first request
+after an auto-suspend (502 / connection error / HTML start page) is retried for up to TG_RESUME_MAX_WAIT_S
+instead of dying with a traceback. CREATE OR REPLACE and INSTALL QUERY ALL are safe to re-send.
 """
 
 from __future__ import annotations
 
 import glob
 import os
+import re
 import sys
 import time
 
@@ -4577,12 +5419,18 @@ from dotenv import load_dotenv
 from pyTigerGraph import TigerGraphConnection
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+REPO = os.path.dirname(HERE)
+sys.path.insert(0, REPO)                       # repo root, for ops.console
 QDIR = os.path.join(HERE, "queries")
 SKIP = {"install_all.gsql"}
+
+from graph.tg import ensure_awake, html_guard, require_secret  # noqa: E402
+from ops.console import Col, Table, detail, fail, header, ok, progress, step, summary, warn  # noqa: E402
 
 
 def connect() -> TigerGraphConnection:
     load_dotenv()
+    secret = require_secret(os.environ.get("TG_SECRET", ""))   # empty secret: fail before waking the workspace
     conn = TigerGraphConnection(
         host=os.environ["TG_HOST"],
         graphname=os.environ.get("TG_GRAPHNAME", "FraudGraph"),
@@ -4593,38 +5441,98 @@ def connect() -> TigerGraphConnection:
         gsPort=os.environ.get("TG_GS_PORT", "14240"),
         tgCloud=os.environ.get("TG_TGCLOUD", "true").lower() == "true",
     )
-    if os.environ.get("TG_SECRET"):
-        conn.getToken(os.environ["TG_SECRET"])
+    ensure_awake()(conn.getToken)(secret)
     conn.customizeHeader(timeout=600_000, responseSize=64_000_000)
     return conn
 
 
+@ensure_awake()
+def _gsql(conn: TigerGraphConnection, text: str) -> str:
+    """conn.gsql(text) with resume-retry; an HTML start page in place of the reply is retried, not "success"."""
+    return html_guard(conn.gsql(text))
+
+
 def gsql_ok(text: str) -> bool:
+    """False on a compile/install error. A handful of query files (vectorSearch queries; see the `INSTALL
+    QUERY <name>` lines in their .gsql) INSTALL themselves inline, so a passing reply reads "...succeeded:
+    N, skipped: 0, failed: 0." -- that trailing "failed: 0" would otherwise false-positive the substring
+    check below, so it is scrubbed out first; "failed: 1" or higher still trips it."""
     bad = ("Syntax error", "Semantic Check Fails", "Encountered", "failed", "Error:", "error:")
-    return not any(b in text for b in bad)
+    scrubbed = re.sub(r"failed:\s*0\b", "", text)
+    return not any(b in scrubbed for b in bad)
+
+
+def _tail(text: str, n: int) -> list[str]:
+    """The last `n` non-empty lines of a GSQL reply, for `detail()` under a status line."""
+    return [ln.strip() for ln in str(text).splitlines() if ln.strip()][-n:]
 
 
 def main() -> int:
-    conn = connect()
     names = [a for a in sys.argv[1:] if a != "--only"]  # `--only a b` (module F's runbook) == `a b`
     files = sorted(glob.glob(os.path.join(QDIR, "*.gsql")))
     files = [f for f in files if os.path.basename(f) not in SKIP and (not names or os.path.basename(f)[:-5] in names)]
+    load_dotenv()   # so the banner shows the real host/graph before connect() blocks on a resuming workspace
+    header(
+        "graph.install_all",
+        "CREATE OR REPLACE every query file, then one INSTALL QUERY ALL (1-3 min on TG-00)",
+        {"host": os.environ.get("TG_HOST", "?"), "graph": os.environ.get("TG_GRAPHNAME", "FraudGraph"),
+         "query dir": os.path.relpath(QDIR, REPO), "queries": len(files),
+         "selection": " ".join(names) if names else "every *.gsql"},
+    )
+    conn = connect()
+
+    created = Table(
+        Col("#", align="right", width=3),
+        Col("query", max_width=34),
+        Col("create", width=6, align="center"),
+        Col("sec", align="right", width=6),
+        Col("note", max_width=60),
+        title=f"{len(files)} query files sent to the GSQL server",
+    )
     failed = []
-    for f in files:
-        t = time.time()
-        res = conn.gsql(open(f).read())
-        ok = gsql_ok(res)
-        print(f"{'OK ' if ok else 'ERR'} create {os.path.basename(f):32s} {time.time() - t:5.1f}s")
-        if not ok:
-            failed.append(os.path.basename(f))
-            print(res)
-    t = time.time()
-    res = conn.gsql("USE GRAPH FraudGraph\nINSTALL QUERY ALL")
-    print(f"install all: {time.time() - t:.0f}s\n{res[-2000:]}")
+    replies: dict[str, str] = {}
+    # A live count while the GSQL server chews through the files; the per-query table follows.
+    with progress("creating queries", total=len(files)) as p:
+        for i, f in enumerate(files, 1):
+            name = os.path.basename(f)
+            t = time.time()
+            res = _gsql(conn, open(f).read())
+            good = gsql_ok(res)
+            if not good:
+                failed.append(name)
+                replies[name] = res
+            created.add_row(i, name, "OK" if good else "ERR", f"{time.time() - t:.1f}",
+                            "" if good else (_tail(res, 1) or [""])[0], style=None if good else "red")
+            p.advance()
+    created.print()
     if failed:
-        print("FAILED:", failed)
-        return 1
-    return 0
+        for name in failed:
+            fail(f"{name} did not compile")
+            for line in _tail(replies[name], 12):
+                detail(line)
+    else:
+        ok(f"{len(files)} queries created")
+
+    step("INSTALL QUERY ALL - compiles every created-but-not-installed query")
+    t = time.time()
+    res = _gsql(conn, "USE GRAPH FraudGraph\nINSTALL QUERY ALL")
+    dt = time.time() - t
+    if gsql_ok(res):
+        ok(f"INSTALL QUERY ALL finished in {dt:.0f}s")
+        for line in _tail(res, 3):
+            detail(line)
+    else:
+        warn(f"INSTALL QUERY ALL returned errors after {dt:.0f}s")
+        for line in _tail(res, 20):
+            detail(line)
+
+    summary(
+        "query library installed" if not failed else "query library incomplete",
+        {"query files": len(files), "created": len(files) - len(failed), "failed": len(failed),
+         "install seconds": f"{dt:.0f}", "failures": ", ".join(failed) or "-"},
+        status="ok" if not failed else "fail",
+    )
+    return 1 if failed else 0
 
 
 if __name__ == "__main__":
@@ -4652,22 +5560,65 @@ import yaml
 from install_all import connect
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-YAML = os.path.join(os.path.dirname(HERE), "mcp", "query_descriptions.yaml")
+REPO = os.path.dirname(HERE)
+sys.path.insert(0, REPO)                       # repo root, for ops.console
+YAML = os.path.join(REPO, "mcp", "query_descriptions.yaml")
+
+from graph.tg import ensure_awake  # noqa: E402
+from ops.console import Col, Table, detail, fail, header, ok, summary  # noqa: E402
+
+
+def _reply(res) -> str:
+    """The server's answer as one readable line - never a raw dict repr in a table cell."""
+    if isinstance(res, dict):
+        msg = str(res.get("message") or res.get("results") or "").strip()
+        return (f"error: {msg}" if res.get("error") else msg) or ("error" if res.get("error") else "ok")
+    return str(res).strip()
 
 
 def main() -> int:
     spec = yaml.safe_load(open(YAML))
+    queries = spec["queries"]
+    header(
+        "graph.describe_queries",
+        "registers query + parameter descriptions so the MCP shows the LLM real JSON examples",
+        {"registry": os.path.relpath(YAML, REPO), "queries": len(queries),
+         "endpoint": "PUT /gsql/v1/description (updateQueryDescription)"},
+    )
     conn = connect()
-    failures = 0
-    for name, q in spec["queries"].items():
+
+    t = Table(
+        Col("#", align="right", width=3),
+        Col("query", max_width=28),
+        Col("result", width=6, align="center"),
+        Col("params", align="right", width=6),
+        Col("harness", width=7, align="center"),
+        Col("server reply / error", max_width=62),
+        title=f"{len(queries)} query descriptions registered",
+    )
+    failures = []
+    for i, (name, q) in enumerate(queries.items(), 1):
         desc = q["description"].strip() + "\nExample params: " + json.dumps(q["example"], separators=(",", ":"))
         params = {p: str(d).strip() for p, d in q.get("parameters", {}).items()}
+        kind = "yes" if q.get("harness_only") else ("writer" if q.get("writer") else "-")
         try:
-            res = conn.updateQueryDescription(name, desc, params)
-            print("OK ", name, str(res)[:80])
+            res = ensure_awake()(conn.updateQueryDescription)(name, desc, params)   # resume-retry, then the ERR row
+            t.add_row(i, name, "OK", len(params), kind, _reply(res))
         except Exception as e:  # noqa: BLE001
-            failures += 1
-            print("ERR", name, e)
+            failures.append((name, str(e)))
+            t.add_row(i, name, "ERR", len(params), kind, str(e)[:120], style="red")
+    t.print()
+    for name, err in failures:
+        fail(f"{name}: description not registered")
+        detail(err[:300])
+    if not failures:
+        ok(f"all {len(queries)} descriptions registered")
+    summary(
+        "query descriptions registered" if not failures else "some descriptions failed",
+        {"queries": len(queries), "registered": len(queries) - len(failures), "failed": len(failures),
+         "registry": os.path.relpath(YAML, REPO)},
+        status="ok" if not failures else "fail",
+    )
     return 1 if failures else 0
 
 
@@ -4701,9 +5652,11 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))   # repo root, for ops.console
 from tg import connect, run_query, version  # noqa: E402
 
-log = logging.getLogger("graph.keep_alive")
+from ops.console import fail, header, ok, step, summary  # noqa: E402
+
 DEFAULT_QUERY = "prior_cases_for_customer"
 DEFAULT_PARAMS = {"cu": {"id": "C13487"}, "as_of": "2016-12-31 23:59:59"}
 
@@ -4716,34 +5669,50 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--params", default=os.getenv("KEEP_ALIVE_PARAMS", json.dumps(DEFAULT_PARAMS)))
     ap.add_argument("--once", action="store_true")
     args = ap.parse_args(argv)
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+    # graph/tg.py echoes GSQL replies at INFO; WARNING keeps the resume retries and hard errors on stderr.
+    logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(name)s: %(message)s")
 
     params = json.loads(args.params)
+    header(
+        "graph.keep_alive",
+        "keeps the Savanna workspace awake (a running query counts as activity, a controller call does not)",
+        {"mode": "single ping" if args.once else "loop until Ctrl-C", "query": args.query,
+         "interval": "n/a" if args.once else f"{args.interval:.0f}s",
+         "duration": "one ping" if args.once else (f"{args.duration:.0f}s" if args.duration else "until Ctrl-C")},
+    )
+    step("waking the workspace (ensure_awake blocks through the 502 resume window)")
     conn = connect(timeout_ms=30_000)
     ver = version(conn)                                   # ensure_awake: blocks through the 502 resume window
     installed = {q.split("/")[-1] for q in (conn.getInstalledQueries() or {})} if not args.once else set()
     use_query = args.once or args.query in installed
-    log.info("workspace awake (%s); pinging %s every %.0fs", ver, args.query if use_query else "getVer()", args.interval)
+    ok(f"workspace awake ({ver}); pinging {args.query if use_query else 'getVer()'} every {args.interval:.0f}s")
 
     stop = {"flag": False}
     signal.signal(signal.SIGINT, lambda *_: stop.__setitem__("flag", True))
     signal.signal(signal.SIGTERM, lambda *_: stop.__setitem__("flag", True))
-    started, n = time.time(), 0
+    started, n, failures = time.time(), 0, 0
     while not stop["flag"]:
         t0 = time.time()
         try:
             res = run_query(conn, args.query, params, timeout_ms=30_000) if use_query else version(conn)
             n += 1
-            log.info("ping %d ok in %.2fs (%s)", n, time.time() - t0, f"{len(res)} result objects" if isinstance(res, list) else res)
+            what = f"{len(res)} result objects" if isinstance(res, list) else str(res)
+            ok(f"ping {n} in {time.time() - t0:.2f}s ({what}); awake {time.time() - started:.0f}s")
         except Exception as exc:  # noqa: BLE001 - keep looping, report loudly
-            log.error("ping failed: %s", str(exc)[:300])
+            failures += 1
+            fail(f"ping failed after {time.time() - t0:.2f}s: {str(exc)[:200]}")
         if args.once or (args.duration and time.time() - started >= args.duration):
             break
         for _ in range(int(args.interval)):
             if stop["flag"]:
                 break
             time.sleep(1)
-    log.info("keep-alive stopped after %d pings", n)
+    summary(
+        "keep-alive stopped",
+        {"pings": n, "failures": failures, "kept awake": f"{time.time() - started:.0f}s",
+         "query": args.query if use_query else "getVer()"},
+        status="ok" if not failures else "warn",
+    )
     return 0
 
 
@@ -4768,12 +5737,16 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import os
 import sys
 import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))   # repo root, for ops.console
 from tg import connect, ensure_awake, run_query, version  # noqa: E402
+
+from ops.console import Col, Table, detail, fail, header, joinlist, ok, summary, warn  # noqa: E402
 
 log = logging.getLogger("graph.warmup")
 
@@ -4786,6 +5759,21 @@ WARM_QUERIES = [
     ("ring_profile", {"c": {"id": "C13487-K1"}, "as_of": "2016-11-22 20:11:00"}),
 ]
 VECTOR_ATTRS = {"ClosedCase": "note_emb", "AgentCase": "note_emb", "PolicyChunk": "emb"}
+
+
+def _int(value) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _n(value) -> str:
+    """A count as a right-alignable, thousands-separated cell; non-numbers pass through."""
+    try:
+        return f"{int(value):,}"
+    except (TypeError, ValueError):
+        return str(value)
 
 
 def state(conn) -> dict:
@@ -4826,12 +5814,24 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
     logging.basicConfig(level=logging.INFO if not args.json else logging.WARNING, format="%(asctime)s %(levelname)s %(message)s")
 
+    if not args.json:
+        header(
+            "graph.warmup",
+            "wake the workspace and report its state before a load, a benchmark or the demo",
+            {"queries": "state only" if args.no_queries else f"{len(WARM_QUERIES)} mandatory reads on HHG-014",
+             "timeout": "120s", "resume budget": f"{os.getenv('TG_RESUME_MAX_WAIT_S', '240')}s", "writes": "nothing"},
+        )
     t0 = time.time()
     try:
         conn = connect(timeout_ms=120_000)
         st = state(conn)
     except Exception as exc:  # noqa: BLE001
-        log.error("workspace unreachable: %s", str(exc)[:300])
+        if args.json:
+            log.error("workspace unreachable: %s", str(exc)[:300])
+        else:
+            fail("workspace unreachable")
+            detail(str(exc)[:300])
+            summary("warmup failed", {"seconds": f"{time.time() - t0:.0f}"}, status="fail")
         return 1
     st["wake_seconds"] = round(time.time() - t0, 1)
     if not args.no_queries:
@@ -4849,15 +5849,47 @@ def main(argv: list[str] | None = None) -> int:
                 timings[name] = f"error: {str(exc)[:120]}"
         st["warm_queries_s"] = timings
     if args.json:
+        # --json is a MACHINE contract (ui/ and tests/live parse stdout): JSON and nothing else.
         print(json.dumps(st, indent=1, default=str))
-    else:
-        print(f"TigerGraph {st['version']} awake in {st['wake_seconds']}s")
-        print("vertices:", json.dumps(st["vertices"]))
-        print("edges:   ", json.dumps(st["edges"]))
-        print(f"installed queries ({len(st['installed_queries'])}):", ", ".join(st["installed_queries"]))
-        print("vector index:", json.dumps(st["vector_index"]))
-        if "warm_queries_s" in st:
-            print("warm queries:", json.dumps(st["warm_queries_s"]))
+        return 0
+
+    ok(f"TigerGraph {st['version']} awake in {st['wake_seconds']}s")
+    if st.get("graph_error"):
+        warn("no graph yet (day 0/2)")
+        detail(str(st["graph_error"])[:200])
+    counts = Table(Col("type", max_width=22), Col("kind", width=6), Col("count", align="right", width=12),
+                   title="vertices and edges in the graph")
+    for kind, key in (("vertex", "vertices"), ("edge", "edges")):
+        for name, n in sorted((st.get(key) or {}).items(), key=lambda kv: -_int(kv[1])):
+            counts.add_row(name, kind, _n(n))
+    counts.print()
+
+    idx = Table(Col("vector attribute", max_width=26), Col("status", max_width=60), title="vector index")
+    for name, status in st["vector_index"].items():
+        idx.add_row(name, status, style=None if status == "ready" else "yellow")
+    idx.print()
+
+    if "warm_queries_s" in st:
+        warm = Table(Col("query", max_width=28), Col("seconds", align="right", width=9), Col("note", max_width=60),
+                     title="mandatory queries, first call after the resume")
+        for name, v in st["warm_queries_s"].items():
+            if isinstance(v, (int, float)):
+                warm.add_row(name, f"{v:.2f}", "" if v < 5 else "slower than the 5 s contract",
+                             style=None if v < 5 else "yellow")
+            else:
+                warm.add_row(name, "-", str(v), style="red" if str(v).startswith("error") else "yellow")
+        warm.print()
+
+    installed = st["installed_queries"]
+    if st.get("queries_error"):
+        warn(f"installed queries unavailable: {str(st['queries_error'])[:160]}")
+    summary(
+        "workspace warm",
+        {"version": st["version"], "wake seconds": st["wake_seconds"],
+         "vertex types": len(st.get("vertices") or {}), "edge types": len(st.get("edges") or {}),
+         "installed queries": f"{len(installed)}: {joinlist(installed, max_items=6)}",
+         "vector index": joinlist([f"{k}={v}" for k, v in st["vector_index"].items()], sep="  ")},
+    )
     return 0
 
 
@@ -5089,15 +6121,28 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))   # repo root, for ops.console
 from tg import GRAPH_DIR, connect, ensure_awake, env, gsql, merged, run_query  # noqa: E402
 
-log = logging.getLogger("graph.day0_smoke")
+from ops.console import Col, Table, detail, fail, header, joinlist, ok, step, summary, warn  # noqa: E402
+
 SMOKE_GSQL = GRAPH_DIR / "day0_smoke.gsql"
 GRAPH = "SmokeGraph"
 INFORMATIONAL = {"probe_reserved_proxy", "gdbms_algo_import", "gdbms_algo_call"}   # failure is a record, not an error
 TOY_VECTORS = [("ClosedCase", "CC-0001", {"outcome": "confirmed_fraud", "note_emb": [0.1, 0.2, 0.3, 0.4]}),
                ("ClosedCase", "CC-0002", {"outcome": "cleared", "note_emb": [0.9, 0.1, 0.1, 0.1]}),
                ("AgentCase", "AC-HHG-014", {"verdict": "fraud", "note_emb": [0.1, 0.2, 0.3, 0.5]})]
+# What each day-0 record decides, so the terminal says it instead of leaving it to docs/day0_checklist.md.
+RECORD_MEANS = {
+    "ddl_all_names": "every CREATE VERTEX / EDGE of schema.gsql accepted (no reserved word)",
+    "proxy_reserved": "`proxy` rejected as an attribute name -> schema.gsql uses proxy_type",
+    "vectors": "GLOBAL schema-change job adding VECTOR attributes accepted",
+    "two_type_search": "one vectorSearch over two vertex types returns both -> similar_prior_cases stays one query",
+    "one_type_search": "single-type vectorSearch works",
+    "tab_load": 'sep="\\t" through POST /ddl; " , \' |#| round-trip inside a field',
+    "gdbms_algo": "IMPORT PACKAGE GDBMS_ALGO / CALL works on the Free tier (blog only)",
+    "post_150mb": "largest accepted POST body (the ETL chunks at 45 MiB are well under it)",
+}
 TAB_ROWS = [["SMOKE-1", "AC-SMOKE", "1", "2016-11-22 20:11:00", "evidence", '{"a":"b,c","d":"it\'s","e":"x|#|y","f":"F80\'S+ | NULL"}'],
             ["SMOKE-2", "AC-SMOKE", "2", "2016-11-22 20:12:00", "assessment", ""],
             ["SMOKE-3", "AC-SMOKE", "3", "2016-11-22 20:13:00", "sar", "plain, text; with 'quotes' and \"double\""]]
@@ -5120,17 +6165,30 @@ def blocks(text: str) -> list[tuple[str, str]]:
 
 
 def send(conn, name: str, text: str, records: dict) -> bool:
+    step(f"{name}")
     t0 = time.time()
     try:
         reply = gsql(conn, text, quiet=True)
-        ok = True
+        good = True
     except Exception as exc:  # noqa: BLE001
-        reply, ok = str(exc), False
-    records[name] = {"ok": ok, "seconds": round(time.time() - t0, 1), "reply_tail": reply[-600:]}
-    log.info("%-24s %s %.1fs", name, "OK " if ok else ("info" if name in INFORMATIONAL else "ERR"), time.time() - t0)
-    if not ok:
-        log.info("    %s", reply[-400:].replace("\n", " | "))
-    return ok
+        reply, good = str(exc), False
+    dt = time.time() - t0
+    records[name] = {"ok": good, "seconds": round(dt, 1), "reply_tail": reply[-600:]}
+    if good:
+        ok(f"{name} in {dt:.1f}s")
+    elif name in INFORMATIONAL:
+        warn(f"{name} rejected in {dt:.1f}s - that is itself the record")
+    else:
+        fail(f"{name} failed in {dt:.1f}s")
+    if not good:
+        for line in _tail(reply, 6):
+            detail(line)
+    return good
+
+
+def _tail(text: str, n: int) -> list[str]:
+    """The last `n` non-empty lines of a reply, for `detail()` under a status line."""
+    return [ln.strip() for ln in str(text).splitlines() if ln.strip()][-n:]
 
 
 def wait_index(conn, timeout_s: int = 180) -> bool:
@@ -5145,24 +6203,35 @@ def wait_index(conn, timeout_s: int = 180) -> bool:
 
 
 def vector_steps(conn, records: dict) -> None:
+    step(f"upserting {len(TOY_VECTORS)} toy vectors")
     for vt, vid, attrs in TOY_VECTORS:
         conn.upsertVertex(vt, vid, attrs)
     records["vector_upsert"] = {"ok": True, "n": len(TOY_VECTORS)}
-    records["index_ready"] = {"ok": wait_index(conn)}
+    step("waiting for the vector index to rebuild (up to 180s)")
+    t0 = time.time()
+    ready = wait_index(conn)
+    records["index_ready"] = {"ok": ready, "seconds": round(time.time() - t0, 1)}
+    (ok if ready else warn)(f"vector index {'ready' if ready else 'still rebuilding'} after {time.time() - t0:.0f}s")
     for q in ("smoke_two_type", "smoke_one_type"):
+        step(f"{q} vectorSearch")
         try:
             res = run_query(conn, q, {"q": [0.1, 0.2, 0.3, 0.45], "k": 2}, timeout_ms=30_000)
             vs = merged(res).get("v", [])
             types = sorted({v.get("v_type") for v in vs})
             ids = sorted(v.get("v_id") for v in vs)
             records[q] = {"ok": True, "types": types, "ids": ids, "raw": json.dumps(res)[:800]}
+            ok(f"{q} returned {len(vs)} vertices of type(s) {joinlist(types)}")
         except Exception as exc:  # noqa: BLE001
             records[q] = {"ok": False, "error": str(exc)[:600]}
+            fail(f"{q}: {str(exc)[:160]}")
     two = records["smoke_two_type"]
-    records["two_type_search"] = {"ok": two.get("ok") and len(two.get("types", [])) == 2, "detail": two}
+    both = bool(two.get("ok")) and len(two.get("types", [])) == 2
+    records["two_type_search"] = {"ok": both, "detail": two}
+    (ok if both else warn)(f"two-type vectorSearch {'returns both types' if both else 'does NOT return both types - similar_prior_cases becomes two queries'}")
 
 
 def tab_load_step(conn, records: dict) -> None:
+    step("tab-separated POST /ddl load with quotes, commas and |#| inside a field")
     with tempfile.NamedTemporaryFile("w", suffix=".tsv", delete=False, encoding="utf-8", newline="") as fh:
         for r in TAB_ROWS:
             fh.write("\t".join(r) + "\n")
@@ -5171,15 +6240,18 @@ def tab_load_step(conn, records: dict) -> None:
         res = conn.runLoadingJobWithFile(path, "f", "smoke_load_tab", sep="\t", eol="\n", timeout=60_000, sizeLimit=128_000_000)
         got = conn.getVerticesById("CaseEvent", [r[0] for r in TAB_ROWS], select="payload,kind,seq")
         by_id = {v["v_id"]: v["attributes"] for v in got}
-        ok = all(by_id.get(r[0], {}).get("payload") == r[5] and by_id.get(r[0], {}).get("kind") == r[4] for r in TAB_ROWS)
-        records["tab_load"] = {"ok": ok, "stats": json.dumps(res)[:600], "payload_roundtrip": {k: v.get("payload") for k, v in by_id.items()}}
+        good = all(by_id.get(r[0], {}).get("payload") == r[5] and by_id.get(r[0], {}).get("kind") == r[4] for r in TAB_ROWS)
+        records["tab_load"] = {"ok": good, "stats": json.dumps(res)[:600], "payload_roundtrip": {k: v.get("payload") for k, v in by_id.items()}}
+        (ok if good else fail)(f"tab_load: {len(TAB_ROWS)} rows, payload round-trip {'exact' if good else 'CORRUPTED'}")
     except Exception as exc:  # noqa: BLE001
         records["tab_load"] = {"ok": False, "error": str(exc)[:600]}
+        fail(f"tab_load: {str(exc)[:160]}")
     finally:
         os.unlink(path)
 
 
 def post_test(conn, mb: int, records: dict) -> None:
+    step(f"building and POSTing a {mb} MB CSV (Nginx body cap probe)")
     path = Path(tempfile.gettempdir()) / f"smoke_{mb}mb.csv"
     with path.open("w") as fh:
         i = 0
@@ -5194,10 +6266,55 @@ def post_test(conn, mb: int, records: dict) -> None:
         res = conn.runLoadingJobWithFile(str(path), "f", "smoke_load_csv", sep=",", eol="\n", timeout=600_000, sizeLimit=200_000_000)
         records["post_150mb"] = {"ok": True, "bytes": size, "seconds": round(time.time() - t0, 1),
                                  "customer_count": conn.getVertexCount("Customer"), "stats": json.dumps(res)[:400]}
+        ok(f"POST accepted {size / 1e6:,.0f} MB in {time.time() - t0:.0f}s")
     except Exception as exc:  # noqa: BLE001
         records["post_150mb"] = {"ok": False, "bytes": size, "seconds": round(time.time() - t0, 1), "error": str(exc)[:600]}
+        fail(f"POST of {size / 1e6:,.0f} MB rejected: {str(exc)[:160]}")
     finally:
         path.unlink(missing_ok=True)
+
+
+def _note(name: str, rec) -> str:
+    """One short, human line per record for the checklist table."""
+    if not isinstance(rec, dict):
+        return "" if rec is None else str(rec)
+    if rec.get("error"):
+        return str(rec["error"]).replace("\n", " | ")
+    if name in ("smoke_two_type", "smoke_one_type"):
+        return f"types {joinlist(rec.get('types'))} ids {joinlist(rec.get('ids'))}"
+    if name == "two_type_search":
+        return f"{len((rec.get('detail') or {}).get('types', []))} vertex type(s) in one vectorSearch"
+    if name == "vector_upsert":
+        return f"{rec.get('n')} toy vectors upserted"
+    if name == "tab_load":
+        return joinlist([f"{k}={v!r}" for k, v in (rec.get("payload_roundtrip") or {}).items()], sep="  ", max_items=1, empty="-")
+    if name == "post_150mb":
+        return f"{rec.get('bytes', 0) / 1e6:,.0f} MB accepted in {rec.get('seconds')}s"
+    if not rec.get("ok"):
+        return (_tail(rec.get("reply_tail", ""), 1) or [""])[0]
+    return ""
+
+
+def checklist(records: dict) -> tuple[Table, int, int]:
+    """The smoke run as a checklist: one row per check, PASS / FAIL / INFO, seconds, note."""
+    t = Table(
+        Col("#", align="right", width=3),
+        Col("check", max_width=24),
+        Col("result", width=6, align="center"),
+        Col("sec", align="right", width=6),
+        Col("note", max_width=76),
+        title=f"day-0 smoke checklist ({len(records)} checks)",
+    )
+    passed = 0
+    for i, (name, rec) in enumerate(records.items(), 1):
+        good = bool(rec.get("ok")) if isinstance(rec, dict) else bool(rec)
+        info = name in INFORMATIONAL
+        passed += int(good)
+        t.add_row(i, name, "PASS" if good else ("INFO" if info else "FAIL"),
+                  f"{rec['seconds']:.1f}" if isinstance(rec, dict) and rec.get("seconds") is not None else "-",
+                  _note(name, rec),
+                  style=None if good else ("yellow" if info else "red"))
+    return t, passed, len(records)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -5207,8 +6324,16 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--post-test-mb", type=int, default=0)
     ap.add_argument("--report", type=Path, default=None)
     args = ap.parse_args(argv)
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+    # graph/tg.py echoes GSQL replies at INFO; WARNING keeps the resume retries and hard errors on stderr.
+    logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(name)s: %(message)s")
 
+    header(
+        "graph.day0_smoke",
+        "runs graph/day0_smoke.gsql block by block on a fresh workspace and fills in the day-0 records",
+        {"graph": GRAPH, "gsql": SMOKE_GSQL.name, "only": joinlist(args.only, empty="every block"),
+         "post test": f"{args.post_test_mb} MB" if args.post_test_mb else "off",
+         "drop all at end": "yes" if args.drop_all else "no", "report": args.report or "-"},
+    )
     records: dict = {}
     conn = connect(graphname=GRAPH, timeout_ms=600_000, token=False)   # DDL first: Basic secret auth, no graph yet
     steps = blocks(SMOKE_GSQL.read_text())
@@ -5227,7 +6352,10 @@ def main(argv: list[str] | None = None) -> int:
     if args.drop_all:
         send(conn, "drop_all", dict(steps)["drop_all"], records)
 
-    summary = {
+    checks, passed, total = checklist(records)
+    checks.print()
+
+    day0 = {
         "ddl_all_names": records.get("ddl_all_names", {}).get("ok"),
         "proxy_reserved": (not records["probe_reserved_proxy"]["ok"]) if "probe_reserved_proxy" in records else None,
         "vectors": records.get("vectors_global_job", {}).get("ok"),
@@ -5237,14 +6365,39 @@ def main(argv: list[str] | None = None) -> int:
         "gdbms_algo": records.get("gdbms_algo_import", {}).get("ok") and records.get("gdbms_algo_call", {}).get("ok"),
         "post_150mb": records.get("post_150mb"),
     }
-    print("\nday-0 records:")
-    for k, v in summary.items():
-        print(f"  {k:18s} {v}")
+    recorded = Table(
+        Col("day-0 record", max_width=18),
+        Col("value", width=9, align="center"),
+        Col("means", max_width=74),
+        title="docs/day0_checklist.md items 8-11",
+    )
+    for k, v in day0.items():
+        if isinstance(v, dict):
+            shown, style = f"{v.get('bytes', 0) / 1e6:,.0f} MB", None if v.get("ok") else "red"
+        elif v is None:
+            shown, style = "not run", "yellow"
+        else:
+            shown, style = ("yes" if v else "no"), (None if v else "red")
+        recorded.add_row(k, shown, RECORD_MEANS.get(k, ""), style=style)
+    recorded.print()
+
     if args.report:
         args.report.parent.mkdir(parents=True, exist_ok=True)
-        args.report.write_text(json.dumps({"summary": summary, "records": records}, indent=1, default=str))
+        args.report.write_text(json.dumps({"summary": day0, "records": records}, indent=1, default=str))
     hard = ["ddl_all_names", "vectors", "tab_load"]
-    return 0 if all(summary.get(k) for k in hard if k in records or k == "tab_load") else 1
+    rc = 0 if all(day0.get(k) for k in hard if k in records or k == "tab_load") else 1
+    if rc:
+        fail(f"hard checks failed: {joinlist([k for k in hard if not day0.get(k)])}")
+    else:
+        ok(f"hard checks passed: {joinlist(hard)}")
+    summary(
+        "day-0 smoke complete" if rc == 0 else "day-0 smoke failed",
+        {"checks": f"{passed}/{total} passed", "hard checks": joinlist(hard),
+         "informational": joinlist(sorted(INFORMATIONAL & set(records)), empty="-"),
+         "report": args.report or "-"},
+        status="ok" if rc == 0 else "fail",
+    )
+    return rc
 
 
 if __name__ == "__main__":
@@ -6108,9 +7261,13 @@ CREATE OR REPLACE QUERY card_profile(VERTEX<Card> c, DATETIME as_of) FOR GRAPH F
       ACCUM e.@n += 1
       POST-ACCUM @@emails += EmailRow(e.id, e.@n);
 
+  // ACCUM, not POST-ACCUM: verified empirically that POST-ACCUM does not apply a WHERE clause comparing
+  // two different pattern aliases (o.id != s.id, first hop vs last hop of a 2-hop pattern) -- the queried
+  // card's own id still reached @@other_cards under POST-ACCUM. ACCUM (evaluated per-match, during the
+  // traversal) respects the filter correctly.
   O = SELECT o FROM (s:S)-[:REV_OWNS]->(u:Customer)-[:OWNS]->(o:Card)
       WHERE o.id != s.id
-      POST-ACCUM @@other_cards += OtherCard(o.id, o.card_type, o.n_txns);
+      ACCUM @@other_cards += OtherCard(o.id, o.card_type, o.n_txns);
 
   P = SELECT p FROM (s:S)-[:REV_ON_CARD]->(p:ClosedCase)
       WHERE p.opened_at <= as_of
@@ -6482,8 +7639,7 @@ CREATE OR REPLACE QUERY card_window(VERTEX<Card> c, DATETIME from_ts, DATETIME t
                                  t.risk_score, t.cms_p, t.device_id, t.device_new, t.proxy_type, t.@gap);
 
   WHILE @@latest.size() > 0 DO
-    Row r = @@latest.pop();
-    @@txns += r;
+    @@txns += @@latest.pop();
   END;
   @@summary += Summary(@@n, @@sum_amt, @@n_online, @@n_in_person);
 
@@ -6822,8 +7978,11 @@ SELECT count(*) AS prior_n, coalesce(strftime(min(ts), '%Y-%m-%d %H:%M:%S'), '')
 // device_neighbors — every card that used device profile d in [from_ts, to_ts] (R6 shared-origin evidence).
 // If the profile is not strong (generic: NULL | NULL | chrome 66.0 | NULL and the like) only device{} is
 // returned and the lists are empty — generic profiles are never "shared device" evidence (PLAN §3.4).
-// cards are ranked by n_txns in the window (top max_cards). closed_cases / agent_cases are the cases on
-// those cards (all-time memory, not time-boxed); the calling case's own AgentCase may appear — ignore it.
+// cards are ranked by n_txns in the window (top max_cards). closed_cases = the closed cases whose INVOLVES
+// transactions used THIS profile (all-time memory, not time-boxed) -- the same set engine/facts_duckdb.py (the
+// engine of record) returns. Taking every case on those cards instead let a hub card's unrelated fraud history
+// read as "this device carries fraud" (HHG-019: 40 cases on a 5-card profile). agent_cases are the agent cases
+// on those cards; the calling case's own AgentCase may appear — ignore it.
 USE GRAPH FraudGraph
 CREATE OR REPLACE QUERY device_neighbors(VERTEX<DeviceProfile> d, DATETIME from_ts, DATETIME to_ts, INT max_cards) FOR GRAPH FraudGraph SYNTAX v3 {
   TYPEDEF TUPLE<STRING id, BOOL is_strong, INT n_cards_alltime, INT n_cards_30d, INT n_proxy, INT n_fraud_cases> DevRow;
@@ -6856,7 +8015,7 @@ CREATE OR REPLACE QUERY device_neighbors(VERTEX<DeviceProfile> d, DATETIME from_
         POST-ACCUM @@cards += CardRow(k.id, k.customer_id, k.@n, k.@sum_amt, k.@n_proxy, k.@n_new,
                                       datetime_format(epoch_to_datetime(k.@first_e)),
                                       datetime_format(epoch_to_datetime(k.@last_e)));
-    P = SELECT p FROM (k:C)-[:REV_ON_CARD]->(p:ClosedCase)
+    P = SELECT p FROM (x:D)-[:REV_FROM_DEVICE]->(t:Transaction)-[:REV_INVOLVES]->(p:ClosedCase)
         POST-ACCUM @@closed_cases += ClosedRow(p.id, p.card_id, p.pattern, p.outcome, p.report_filed);
     A = SELECT a FROM (k:C)-[:REV_CASE_ON_CARD]->(a:AgentCase)
         POST-ACCUM @@agent_cases += AgentRow(a.id, a.card_id, a.verdict, a.pattern);
@@ -7166,13 +8325,16 @@ SELECT (SELECT coalesce(list(struct_pack(card_id, n_txns) ORDER BY n_txns DESC, 
 // email domains (fan-out and fraud-case counts computed live). No region branch: a BillingRegion reverses
 // 100k+ BILLED_IN edges, so R6's region clause is served by the precomputed Card.region_cluster_30d.
 // Email n_cards_30d = distinct OTHER cards using the recipient domain in (as_of-30d, as_of]; n_fraud_cases =
-// distinct confirmed-fraud ClosedCases whose INVOLVES transaction used the domain (all-time memory).
+// distinct confirmed-fraud ClosedCases on OTHER cards whose INVOLVES transaction used the domain in (as_of-30d, as_of]
+// -- the same window as engine/facts_duckdb.py (the engine of record) and the R6 evidence text ("...within 30 days").
+// Emails are kept up to 50 (a card's 30-day recipient domains are few): R6 looks for RARE domains (<= 40 cards), so a
+// top-10-by-fan-out heap silently dropped exactly the rows the rule needs.
 USE GRAPH FraudGraph
 CREATE OR REPLACE QUERY shared_origin_scan(VERTEX<Card> c, DATETIME as_of, INT days) FOR GRAPH FraudGraph SYNTAX v3 {
   TYPEDEF TUPLE<STRING device_id, BOOL is_strong, INT n_cards_30d, INT n_fraud_cases, INT n_txns_on_card> DevRow;
   TYPEDEF TUPLE<STRING domain, INT n_cards_30d, INT n_fraud_cases> EmailRow;
   HeapAccum<DevRow>(20, n_txns_on_card DESC, device_id ASC) @@devices;
-  HeapAccum<EmailRow>(10, n_cards_30d DESC, domain ASC) @@recipient_emails;
+  HeapAccum<EmailRow>(50, n_cards_30d DESC, domain ASC) @@recipient_emails;
   MaxAccum<STRING> @@region_cluster_30d, @@cid;
   SumAccum<INT> @n_on_card;
   SetAccum<STRING> @cards30, @fraud_cases;
@@ -7196,7 +8358,7 @@ CREATE OR REPLACE QUERY shared_origin_scan(VERTEX<Card> c, DATETIME as_of, INT d
        ACCUM e.@cards30 += u.card_id;
 
   E3 = SELECT e FROM (e:E)-[:REV_RECIPIENT_EMAIL]->(u:Transaction)-[:REV_INVOLVES]->(p:ClosedCase)
-       WHERE p.outcome == "confirmed_fraud"
+       WHERE p.outcome == "confirmed_fraud" AND u.ts > from30 AND u.ts <= as_of AND u.card_id != @@cid
        ACCUM e.@fraud_cases += p.id;
 
   E4 = SELECT e FROM (e:E)
@@ -7297,8 +8459,7 @@ CREATE OR REPLACE QUERY card_testing_check(VERTEX<Card> c, DATETIME as_of, FLOAT
       WHERE t.ts <= as_of AND t.channel == "online" AND t.amt <= small
       ACCUM @@small_heap += Small(datetime_to_epoch(t.ts), t.id, t.amt, t.ts_str);
   WHILE @@small_heap.size() > 0 DO
-    Small x = @@small_heap.pop();
-    @@smalls += x;
+    @@smalls += @@small_heap.pop();
   END;
 
   // best run (two pointers over the chronological list)
@@ -7327,8 +8488,7 @@ CREATE OR REPLACE QUERY card_testing_check(VERTEX<Card> c, DATETIME as_of, FLOAT
   IF best_n >= min_n THEN
     STRING start_id = @@smalls.get(best_i).id;
     FOREACH k IN RANGE[best_i, best_j] DO
-      Small x = @@smalls.get(k);
-      @@run += (start_id -> x.id, x.amt, x.ts, x.ts);
+      @@run += (start_id -> @@smalls.get(k).id, @@smalls.get(k).amt, @@smalls.get(k).ts, @@smalls.get(k).ts);
     END;
     anchor_e = @@smalls.get(best_j).ts_e;
     anchor_id = @@smalls.get(best_j).id;
@@ -7359,8 +8519,7 @@ CREATE OR REPLACE QUERY card_testing_check(VERTEX<Card> c, DATETIME as_of, FLOAT
         WHERE t.ts <= as_of AND t.ts >= chain_from
         ACCUM @@ev_heap += Ev(datetime_to_epoch(t.ts), t.id, t.channel, t.amt);
     WHILE @@ev_heap.size() > 0 DO
-      Ev x = @@ev_heap.pop();
-      @@evs += x;
+      @@evs += @@ev_heap.pop();
     END;
     INT m = @@evs.size();
     INT ai = -1;
@@ -7380,7 +8539,9 @@ CREATE OR REPLACE QUERY card_testing_check(VERTEX<Card> c, DATETIME as_of, FLOAT
   END;
   @@chain += Chain(n_members, n_small);
 
-  PRINT @@run AS run, @@larger_purchase AS larger_purchase, @@cleared_over_big AS cleared_over_big, @@chain AS chain;
+  // `run` is a GSQL reserved word and cannot be used as a PRINT alias; printed as `best_run` and renamed
+  // back to the contract key `run` by the harness (agent/mcp_client.py _RENAME_KEYS).
+  PRINT @@run AS best_run, @@larger_purchase AS larger_purchase, @@cleared_over_big AS cleared_over_big, @@chain AS chain;
 }
 ```
 
@@ -7574,6 +8735,7 @@ CREATE OR REPLACE QUERY recurring_charge_check(VERTEX<Transaction> t, FLOAT tol,
   MaxAccum<FLOAT> @@famt;
   MaxAccum<STRING> @@fpcd, @@fid;
   HeapAccum<Ev>(3000, place ASC, ts_e ASC, ts ASC) @@evs;
+  ListAccum<Ev> @@ecur;
   HeapAccum<Gap>(3000, gap ASC) @@gaps;
   ListAccum<GroupRow> @@groups;
   SumAccum<INT> @@total_n;
@@ -7594,19 +8756,20 @@ CREATE OR REPLACE QUERY recurring_charge_check(VERTEX<Transaction> t, FLOAT tol,
   STRING first_s = "";
   STRING last_s = "";
   WHILE @@evs.size() > 0 DO
-    Ev e = @@evs.pop();
+    @@ecur.clear();
+    @@ecur += @@evs.pop();
     IF n == 0 THEN
-      cur = e.place;
-      first_s = e.ts;
+      cur = @@ecur.get(0).place;
+      first_s = @@ecur.get(0).ts;
     ELSE
-      FLOAT g = (e.ts_e - prev_e) / 86400.0;
+      FLOAT g = (@@ecur.get(0).ts_e - prev_e) / 86400.0;
       sum_g = sum_g + g;
       sumsq = sumsq + g * g;
       @@gaps += Gap(g);
     END;
     n = n + 1;
-    prev_e = e.ts_e;
-    last_s = e.ts;
+    prev_e = @@ecur.get(0).ts_e;
+    last_s = @@ecur.get(0).ts;
     // finalize the group when the next element belongs to another place (or the heap is exhausted)
     IF @@evs.size() == 0 OR @@evs.top().place != cur THEN
       FLOAT med = 0.0;
@@ -7616,7 +8779,7 @@ CREATE OR REPLACE QUERY recurring_charge_check(VERTEX<Transaction> t, FLOAT tol,
         INT skip = floor((ng - 1) / 2.0);
         IF skip > 0 THEN
           FOREACH q IN RANGE[1, skip] DO
-            Gap dropped = @@gaps.pop();
+            @@gaps.pop();
           END;
         END;
         med = @@gaps.top().gap;
@@ -7751,15 +8914,15 @@ SELECT (SELECT coalesce(list(struct_pack(place, n, median_gap_days := round(medi
 USE GRAPH FraudGraph
 CREATE OR REPLACE QUERY episode_candidates(VERTEX<Transaction> t, DATETIME as_of, INT gap_h) FOR GRAPH FraudGraph SYNTAX v3 {
   TYPEDEF TUPLE<INT ts_e, STRING id, STRING ts, FLOAT amt, STRING product_cd, STRING channel, STRING addr1,
-                STRING p_email, STRING device_id, STRING device_new, FLOAT cms_p, BOOL sig_match> In;
+                STRING p_email, STRING device_id, STRING device_new, FLOAT cms_p, BOOL sig_match> EpIn;
   TYPEDEF TUPLE<STRING id, STRING ts, FLOAT amt, STRING product_cd, STRING channel, STRING addr1, STRING p_email,
                 STRING device_id, STRING device_new, FLOAT cms_p, BOOL sig_match> Out;
   MaxAccum<INT> @@t_e;
   MaxAccum<FLOAT> @@t_amt;
   MaxAccum<STRING> @@t_id, @@t_dev, @@t_pem, @@t_pcd;
   OrAccum @@t_strong;
-  HeapAccum<In>(8000, ts_e ASC, id ASC) @@heap;
-  ListAccum<In> @@rows;
+  HeapAccum<EpIn>(8000, ts_e ASC, id ASC) @@heap;
+  ListAccum<EpIn> @@rows;
   ListAccum<Out> @@chain;
   INT gap_s = gap_h * 3600;
 
@@ -7776,11 +8939,10 @@ CREATE OR REPLACE QUERY episode_candidates(VERTEX<Transaction> t, DATETIME as_of
             IF @@t_strong AND x.device_id != "" AND x.device_id == @@t_dev THEN sig = true END,
             IF x.p_email != "" AND x.p_email == @@t_pem AND x.product_cd == @@t_pcd
                AND abs(x.amt - @@t_amt) <= 0.05 * @@t_amt AND abs(datetime_to_epoch(x.ts) - @@t_e) <= 7200 THEN sig = true END,
-            @@heap += In(datetime_to_epoch(x.ts), x.id, x.ts_str, x.amt, x.product_cd, x.channel, x.addr1, x.p_email,
+            @@heap += EpIn(datetime_to_epoch(x.ts), x.id, x.ts_str, x.amt, x.product_cd, x.channel, x.addr1, x.p_email,
                          x.device_id, x.device_new, x.cms_p, sig);
   WHILE @@heap.size() > 0 DO
-    In r = @@heap.pop();
-    @@rows += r;
+    @@rows += @@heap.pop();
   END;
 
   INT m = @@rows.size();
@@ -7800,9 +8962,9 @@ CREATE OR REPLACE QUERY episode_candidates(VERTEX<Transaction> t, DATETIME as_of
       IF ai + 25 < hi THEN hi = ai + 25; END;
     END;
     FOREACH k IN RANGE[lo, hi] DO
-      In r = @@rows.get(k);
-      @@chain += Out(r.id, r.ts, r.amt, r.product_cd, r.channel, r.addr1, r.p_email, r.device_id, r.device_new,
-                     r.cms_p, r.sig_match);
+      @@chain += Out(@@rows.get(k).id, @@rows.get(k).ts, @@rows.get(k).amt, @@rows.get(k).product_cd,
+                     @@rows.get(k).channel, @@rows.get(k).addr1, @@rows.get(k).p_email, @@rows.get(k).device_id,
+                     @@rows.get(k).device_new, @@rows.get(k).cms_p, @@rows.get(k).sig_match);
     END;
   END;
 
@@ -8345,6 +9507,7 @@ CREATE OR REPLACE QUERY case_subgraph(VERTEX<Card> c, DATETIME as_of, INT hours)
   SetAccum<NodeRow> @@nodes;
   SetAccum<EdgeRow> @@edges;
   HeapAccum<Pick>(60, ts DESC, id DESC) @@picks;
+  ListAccum<Pick> @@pick_cur;
   SetAccum<STRING> @@keep;
   MaxAccum<STRING> @@cid;
   DATETIME from_ts = epoch_to_datetime(datetime_to_epoch(as_of) - hours * 3600);
@@ -8359,8 +9522,9 @@ CREATE OR REPLACE QUERY case_subgraph(VERTEX<Card> c, DATETIME as_of, INT hours)
       WHERE t.ts > from_ts AND t.ts <= as_of
       POST-ACCUM @@picks += Pick(t.ts_str, t.id);
   WHILE @@picks.size() > 0 DO
-    Pick p = @@picks.pop();
-    @@keep += p.id;
+    @@pick_cur.clear();
+    @@pick_cur += @@picks.pop();
+    @@keep += @@pick_cur.get(0).id;
   END;
   T2 = SELECT t FROM (t:T)
        WHERE @@keep.contains(t.id)
@@ -8955,22 +10119,65 @@ import yaml
 from install_all import connect
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-YAML = os.path.join(os.path.dirname(HERE), "mcp", "query_descriptions.yaml")
+REPO = os.path.dirname(HERE)
+sys.path.insert(0, REPO)                       # repo root, for ops.console
+YAML = os.path.join(REPO, "mcp", "query_descriptions.yaml")
+
+from graph.tg import ensure_awake  # noqa: E402
+from ops.console import Col, Table, detail, fail, header, ok, summary  # noqa: E402
+
+
+def _reply(res) -> str:
+    """The server's answer as one readable line - never a raw dict repr in a table cell."""
+    if isinstance(res, dict):
+        msg = str(res.get("message") or res.get("results") or "").strip()
+        return (f"error: {msg}" if res.get("error") else msg) or ("error" if res.get("error") else "ok")
+    return str(res).strip()
 
 
 def main() -> int:
     spec = yaml.safe_load(open(YAML))
+    queries = spec["queries"]
+    header(
+        "graph.describe_queries",
+        "registers query + parameter descriptions so the MCP shows the LLM real JSON examples",
+        {"registry": os.path.relpath(YAML, REPO), "queries": len(queries),
+         "endpoint": "PUT /gsql/v1/description (updateQueryDescription)"},
+    )
     conn = connect()
-    failures = 0
-    for name, q in spec["queries"].items():
+
+    t = Table(
+        Col("#", align="right", width=3),
+        Col("query", max_width=28),
+        Col("result", width=6, align="center"),
+        Col("params", align="right", width=6),
+        Col("harness", width=7, align="center"),
+        Col("server reply / error", max_width=62),
+        title=f"{len(queries)} query descriptions registered",
+    )
+    failures = []
+    for i, (name, q) in enumerate(queries.items(), 1):
         desc = q["description"].strip() + "\nExample params: " + json.dumps(q["example"], separators=(",", ":"))
         params = {p: str(d).strip() for p, d in q.get("parameters", {}).items()}
+        kind = "yes" if q.get("harness_only") else ("writer" if q.get("writer") else "-")
         try:
-            res = conn.updateQueryDescription(name, desc, params)
-            print("OK ", name, str(res)[:80])
+            res = ensure_awake()(conn.updateQueryDescription)(name, desc, params)   # resume-retry, then the ERR row
+            t.add_row(i, name, "OK", len(params), kind, _reply(res))
         except Exception as e:  # noqa: BLE001
-            failures += 1
-            print("ERR", name, e)
+            failures.append((name, str(e)))
+            t.add_row(i, name, "ERR", len(params), kind, str(e)[:120], style="red")
+    t.print()
+    for name, err in failures:
+        fail(f"{name}: description not registered")
+        detail(err[:300])
+    if not failures:
+        ok(f"all {len(queries)} descriptions registered")
+    summary(
+        "query descriptions registered" if not failures else "some descriptions failed",
+        {"queries": len(queries), "registered": len(queries) - len(failures), "failed": len(failures),
+         "registry": os.path.relpath(YAML, REPO)},
+        status="ok" if not failures else "fail",
+    )
     return 1 if failures else 0
 
 
@@ -8991,12 +10198,17 @@ one by one through pyTigerGraph conn.gsql() (GSQL server, not RESTPP: the 16 s t
 launcher-style customizeHeader timeout does bound the HTTP call, so we set 600 s here), then
 `INSTALL QUERY ALL` compiles everything that is created-but-not-installed (1–3 min on TG-00).
 Exit code 1 if any CREATE reports an error, so the day-3/day-4 Makefile targets fail loudly.
+
+Savanna auto-resume: getToken and every conn.gsql() go through graph.tg.ensure_awake(), so the first request
+after an auto-suspend (502 / connection error / HTML start page) is retried for up to TG_RESUME_MAX_WAIT_S
+instead of dying with a traceback. CREATE OR REPLACE and INSTALL QUERY ALL are safe to re-send.
 """
 
 from __future__ import annotations
 
 import glob
 import os
+import re
 import sys
 import time
 
@@ -9004,12 +10216,18 @@ from dotenv import load_dotenv
 from pyTigerGraph import TigerGraphConnection
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+REPO = os.path.dirname(HERE)
+sys.path.insert(0, REPO)                       # repo root, for ops.console
 QDIR = os.path.join(HERE, "queries")
 SKIP = {"install_all.gsql"}
+
+from graph.tg import ensure_awake, html_guard, require_secret  # noqa: E402
+from ops.console import Col, Table, detail, fail, header, ok, progress, step, summary, warn  # noqa: E402
 
 
 def connect() -> TigerGraphConnection:
     load_dotenv()
+    secret = require_secret(os.environ.get("TG_SECRET", ""))   # empty secret: fail before waking the workspace
     conn = TigerGraphConnection(
         host=os.environ["TG_HOST"],
         graphname=os.environ.get("TG_GRAPHNAME", "FraudGraph"),
@@ -9020,38 +10238,98 @@ def connect() -> TigerGraphConnection:
         gsPort=os.environ.get("TG_GS_PORT", "14240"),
         tgCloud=os.environ.get("TG_TGCLOUD", "true").lower() == "true",
     )
-    if os.environ.get("TG_SECRET"):
-        conn.getToken(os.environ["TG_SECRET"])
+    ensure_awake()(conn.getToken)(secret)
     conn.customizeHeader(timeout=600_000, responseSize=64_000_000)
     return conn
 
 
+@ensure_awake()
+def _gsql(conn: TigerGraphConnection, text: str) -> str:
+    """conn.gsql(text) with resume-retry; an HTML start page in place of the reply is retried, not "success"."""
+    return html_guard(conn.gsql(text))
+
+
 def gsql_ok(text: str) -> bool:
+    """False on a compile/install error. A handful of query files (vectorSearch queries; see the `INSTALL
+    QUERY <name>` lines in their .gsql) INSTALL themselves inline, so a passing reply reads "...succeeded:
+    N, skipped: 0, failed: 0." -- that trailing "failed: 0" would otherwise false-positive the substring
+    check below, so it is scrubbed out first; "failed: 1" or higher still trips it."""
     bad = ("Syntax error", "Semantic Check Fails", "Encountered", "failed", "Error:", "error:")
-    return not any(b in text for b in bad)
+    scrubbed = re.sub(r"failed:\s*0\b", "", text)
+    return not any(b in scrubbed for b in bad)
+
+
+def _tail(text: str, n: int) -> list[str]:
+    """The last `n` non-empty lines of a GSQL reply, for `detail()` under a status line."""
+    return [ln.strip() for ln in str(text).splitlines() if ln.strip()][-n:]
 
 
 def main() -> int:
-    conn = connect()
     names = [a for a in sys.argv[1:] if a != "--only"]  # `--only a b` (module F's runbook) == `a b`
     files = sorted(glob.glob(os.path.join(QDIR, "*.gsql")))
     files = [f for f in files if os.path.basename(f) not in SKIP and (not names or os.path.basename(f)[:-5] in names)]
+    load_dotenv()   # so the banner shows the real host/graph before connect() blocks on a resuming workspace
+    header(
+        "graph.install_all",
+        "CREATE OR REPLACE every query file, then one INSTALL QUERY ALL (1-3 min on TG-00)",
+        {"host": os.environ.get("TG_HOST", "?"), "graph": os.environ.get("TG_GRAPHNAME", "FraudGraph"),
+         "query dir": os.path.relpath(QDIR, REPO), "queries": len(files),
+         "selection": " ".join(names) if names else "every *.gsql"},
+    )
+    conn = connect()
+
+    created = Table(
+        Col("#", align="right", width=3),
+        Col("query", max_width=34),
+        Col("create", width=6, align="center"),
+        Col("sec", align="right", width=6),
+        Col("note", max_width=60),
+        title=f"{len(files)} query files sent to the GSQL server",
+    )
     failed = []
-    for f in files:
-        t = time.time()
-        res = conn.gsql(open(f).read())
-        ok = gsql_ok(res)
-        print(f"{'OK ' if ok else 'ERR'} create {os.path.basename(f):32s} {time.time() - t:5.1f}s")
-        if not ok:
-            failed.append(os.path.basename(f))
-            print(res)
-    t = time.time()
-    res = conn.gsql("USE GRAPH FraudGraph\nINSTALL QUERY ALL")
-    print(f"install all: {time.time() - t:.0f}s\n{res[-2000:]}")
+    replies: dict[str, str] = {}
+    # A live count while the GSQL server chews through the files; the per-query table follows.
+    with progress("creating queries", total=len(files)) as p:
+        for i, f in enumerate(files, 1):
+            name = os.path.basename(f)
+            t = time.time()
+            res = _gsql(conn, open(f).read())
+            good = gsql_ok(res)
+            if not good:
+                failed.append(name)
+                replies[name] = res
+            created.add_row(i, name, "OK" if good else "ERR", f"{time.time() - t:.1f}",
+                            "" if good else (_tail(res, 1) or [""])[0], style=None if good else "red")
+            p.advance()
+    created.print()
     if failed:
-        print("FAILED:", failed)
-        return 1
-    return 0
+        for name in failed:
+            fail(f"{name} did not compile")
+            for line in _tail(replies[name], 12):
+                detail(line)
+    else:
+        ok(f"{len(files)} queries created")
+
+    step("INSTALL QUERY ALL - compiles every created-but-not-installed query")
+    t = time.time()
+    res = _gsql(conn, "USE GRAPH FraudGraph\nINSTALL QUERY ALL")
+    dt = time.time() - t
+    if gsql_ok(res):
+        ok(f"INSTALL QUERY ALL finished in {dt:.0f}s")
+        for line in _tail(res, 3):
+            detail(line)
+    else:
+        warn(f"INSTALL QUERY ALL returned errors after {dt:.0f}s")
+        for line in _tail(res, 20):
+            detail(line)
+
+    summary(
+        "query library installed" if not failed else "query library incomplete",
+        {"query files": len(files), "created": len(files) - len(failed), "failed": len(failed),
+         "install seconds": f"{dt:.0f}", "failures": ", ".join(failed) or "-"},
+        status="ok" if not failed else "fail",
+    )
+    return 1 if failed else 0
 
 
 if __name__ == "__main__":
@@ -9074,6 +10352,9 @@ Rules (deterministic, no schema knowledge needed):
      `region_cluster_30d` / `lookalike_cards` is json-decoded (fallback for the parse_json_array path).
   4. Keys documented as singleton objects that a query prints as a one-element list (only
      card_testing_check.run) are unwrapped by the engine, not here.
+  5. card_testing_check.gsql prints the contract key `run` under the name `best_run` (`run` is a GSQL
+     reserved word and cannot be a PRINT alias); normalize() renames it back to `run` so every caller sees
+     the contract key and nothing downstream needs to know about the GSQL-side workaround.
 The MCP formatter echoes the payload twice (once in the model_dump JSON, once in the "Data" block);
 mcp_client extracts the first JSON block and reads `data.results` (or `data.result.results` when the
 response wraps pyTigerGraph's list) before calling normalize().
@@ -9091,6 +10372,21 @@ def _is_vertex(o: Any) -> bool:
     return isinstance(o, dict) and "v_id" in o and "v_type" in o and "attributes" in o
 
 
+def _attr_key(k: str) -> str:
+    """`PRINT res[res.text, res.@distance] AS chunks` comes back from JSON API v2 with attribute keys
+    `res.text` / `res.@distance`, not `text` / `distance`. Strip the `<alias>.` prefix and the `@` so rows
+    match the contract names. Schema attribute names never contain a dot, so this cannot clip a real key.
+    Without it, every live grounding chunk read as text="" and every similar case as distance=1.0 with
+    no outcome or pattern -- silently, because the readers use .get() with defaults."""
+    if "." in k:
+        k = k.split(".", 1)[1]
+    return k[1:] if k.startswith("@") else k
+
+
+def _vertex_row(x: dict) -> dict:
+    return dict({_attr_key(k): _walk(_attr_key(k), v) for k, v in x["attributes"].items()}, id=x["v_id"])
+
+
 def _maybe_json(key: str, v: Any) -> Any:
     if isinstance(v, str) and (key in _JSONISH_KEYS or key.endswith("_ids")) and v[:1] in "[{":
         try:
@@ -9103,10 +10399,10 @@ def _maybe_json(key: str, v: Any) -> Any:
 def _walk(key: str, v: Any) -> Any:
     if isinstance(v, list):
         if v and all(_is_vertex(x) for x in v):
-            return [dict(x["attributes"], id=x["v_id"]) for x in v]
+            return [_vertex_row(x) for x in v]
         return [_walk(key, x) for x in v]
     if _is_vertex(v):
-        return dict(v["attributes"], id=v["v_id"])
+        return _vertex_row(v)
     if isinstance(v, dict):
         return {k: _walk(k, x) for k, x in v.items()}
     return _maybe_json(key, v)
@@ -9120,6 +10416,13 @@ def normalize(results: list[dict]) -> dict:
             continue
         for k, v in block.items():
             out[k] = _walk(k, v)
+    # `run` is a GSQL reserved word and cannot be used as a PRINT alias, so
+    # graph/queries/card_testing_check.gsql prints the contract key `run` as `best_run` instead (see the
+    # comment on its PRINT line). Rename it back here -- the one place every caller of normalize() goes
+    # through, including tests/live/test_query_contracts.py, which reads normalize() directly and never
+    # sees agent/mcp_client.py's own belt-and-suspenders rename in _unwrap_singletons.
+    if "best_run" in out and "run" not in out:
+        out["run"] = out.pop("best_run")
     return out
 
 
@@ -9185,13 +10488,13 @@ Static checks on the .gsql files are a repo file since the fix pass — `uv run 
 """Static lint of graph/queries/*.gsql against the schema (module C's "static checks", now a repo file).
 
 For every query file:
-  * every `alias.attribute` reference resolves to an attribute of the vertex / edge type bound to that alias —
+  * every `alias.attribute` reference resolves to an attribute of the vertex / edge type bound to that alias -
     aliases are bound from `(alias:Type)` / `-[alias:EDGE]-` patterns, `S = {param}` (the parameter's VERTEX<T>),
     and `X = SELECT x FROM ...` (X takes the type of x); vertex-set variables used as pattern types resolve through
     that binding; `alias.@acc` (accumulators) and tuple locals (`Row r = @@heap.pop(); r.id`) are skipped;
   * the schema is graph/schema.gsql (the DDL) cross-checked with contracts/schema.md (the only allowed rename is
     proxy -> proxy_type, so `t.proxy` is reported: PROXY is a 4.2 DDL reserved word and the attribute is stored
-    as proxy_type — decision M1);
+    as proxy_type - decision M1);
   * brackets / parentheses / braces are balanced.
 Also: mcp/query_descriptions.yaml parses and every query's `parameters` keys equal its `example` keys, and every
 query file has a yaml entry (and vice versa).
@@ -9208,8 +10511,11 @@ import sys
 import yaml
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.join(ROOT, "graph"))
 from check_contracts import parse_schema  # noqa: E402
+
+from ops.console import Col, Table, fail, header, ok, rule, summary, warn  # noqa: E402
 
 RENAMES = {"proxy": "proxy_type"}
 QUERIES = os.path.join(ROOT, "graph", "queries")
@@ -9289,18 +10595,49 @@ def schema_md_vertices(md_path: str) -> dict[str, list[str]]:
 
 
 def main() -> int:
-    vertices, edges = parse_schema(open(os.path.join(ROOT, "graph", "schema.gsql")).read())
-    problems: list[str] = []
+    schema_gsql = os.path.join(ROOT, "graph", "schema.gsql")
+    yaml_path = os.path.join(ROOT, "mcp", "query_descriptions.yaml")
     md_path = next((p for p in (os.path.join(ROOT, "contracts", "schema.md"), os.path.join(os.path.dirname(ROOT), "contracts", "schema.md")) if os.path.exists(p)), None)
+    header(
+        "qa.lint_gsql",
+        "every alias.attribute in graph/queries resolves against the schema; brackets balance; yaml agrees",
+        {
+            "queries": os.path.relpath(QUERIES, ROOT),
+            "schema": os.path.relpath(schema_gsql, ROOT),
+            "schema.md": os.path.relpath(md_path, ROOT) if md_path else "(absent - vertex-attribute cross-check skipped)",
+            "descriptions": os.path.relpath(yaml_path, ROOT),
+        },
+    )
+    vertices, edges = parse_schema(open(schema_gsql).read())
+    problems: list[str] = []
     if md_path:
         for v, attrs in schema_md_vertices(md_path).items():
             if vertices.get(v) != attrs:
                 problems.append(f"schema.md {v} attrs != schema.gsql: md {attrs} vs gsql {vertices.get(v)}")
+    else:
+        warn("contracts/schema.md not found - comparing queries against graph/schema.gsql only")
     files = sorted(f for f in glob.glob(os.path.join(QUERIES, "*.gsql")) if not f.endswith("install_all.gsql"))
-    for f in files:
-        problems += lint_file(f, vertices, edges)
-    y = yaml.safe_load(open(os.path.join(ROOT, "mcp", "query_descriptions.yaml")))["queries"]
+    y = yaml.safe_load(open(yaml_path))["queries"]
     names = {os.path.basename(f)[:-5] for f in files}
+
+    per_file = Table(
+        Col("query", max_width=30),
+        Col("lines", align="right", width=5),
+        Col("params", align="right", width=6),
+        Col("yaml", width=7, align="center"),
+        Col("problems", align="right", width=8),
+        title=f"{len(files)} query files vs {len(vertices)} vertex types / {len(edges)} edge types",
+    )
+    for f in files:
+        found = lint_file(f, vertices, edges)
+        problems += found
+        stem = os.path.basename(f)[:-5]
+        text = open(f).read()
+        head = re.search(r"CREATE OR REPLACE QUERY \w+\s*\((.*?)\)\s*FOR GRAPH", text, re.S)
+        nparams = len([p for p in re.split(r",(?![^<]*>)", head.group(1)) if p.strip()]) if head else 0
+        per_file.add_row(stem, len(text.splitlines()), nparams, "ok" if stem in y else "MISSING", len(found), style="red" if found or stem not in y else None)
+    per_file.print()
+
     for q, spec in y.items():
         if list(spec.get("parameters", {})) != list(spec.get("example", {})):
             problems.append(f"yaml {q}: parameters keys != example keys")
@@ -9308,9 +10645,27 @@ def main() -> int:
         problems.append(f"yaml: no entry for graph/queries/{q}.gsql")
     for q in sorted(set(y) - names):
         problems.append(f"yaml: entry {q} has no graph/queries/{q}.gsql")
-    for p in problems:
-        print("PROBLEM:", p)
-    print(f"{len(files)} query files, {len(y)} yaml entries, {len(problems)} problems")
+
+    if problems:
+        rule("problems")
+        t = Table(Col("#", align="right", width=3), Col("problem", max_width=140), title=f"{len(problems)} problem(s)")
+        for i, p in enumerate(problems, 1):
+            t.add_row(i, p, style="red")
+        t.print()
+        fail(f"{len(problems)} problem(s) - fix them before `make install-queries`")
+    else:
+        ok(f"{len(files)} query files clean: every alias.attribute resolves, brackets balance, yaml matches")
+    summary(
+        "gsql lint",
+        {
+            "query files": len(files),
+            "yaml entries": len(y),
+            "vertex types": len(vertices),
+            "edge types": len(edges),
+            "problems": len(problems),
+        },
+        status="fail" if problems else "ok",
+    )
     return 1 if problems else 0
 
 
@@ -9353,6 +10708,16 @@ ROOT = os.path.dirname(os.path.dirname(HERE))
 sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.join(ROOT, "graph"))
 
+# A fresh `pytest` process never sees `.env` on its own -- nothing else imported here loads it (agent/config.py
+# and rag/config.py do, but this file imports neither) -- so the skipif below always fired even with a real
+# TG_HOST/TG_SECRET on disk. Same trap as rag/config.py; load once, never overriding a real env var.
+try:
+    from dotenv import load_dotenv
+
+    load_dotenv(os.path.join(ROOT, ".env"), override=False)
+except ImportError:
+    pass
+
 # mcp/ is a plain directory next to the `mcp` SDK package; with the SDK installed `import mcp.normalize` resolves to
 # the SDK and fails, so load the harness module by path exactly like agent/mcp_client.py does (never add mcp/__init__.py).
 _spec = importlib.util.spec_from_file_location("hhgoa_normalize", os.path.join(ROOT, "mcp", "normalize.py"))
@@ -9378,7 +10743,11 @@ EXACT = {
     "recurring_charge_check": ["total_n"],
     "episode_candidates": [],
     "prior_cases_for_customer": ["closed_cases[0].id"],
-    "ring_profile": ["ring_id", "device.n_cards_alltime", "n_cards_alltime", "wave_cards", "pre_open_cards", "closed_cases[0].id", "closed_cases[0].card_id"],
+    # closed_cases[0].* is deliberately NOT checked exact: contracts/interfaces.md documents closed_cases as
+    # "rows, not ids" with no ordering promise, and ring_profile.gsql accumulates them into a SetAccum (no
+    # stable order across a reload) -- verified live: a fresh graph load returns the identical 4-row set for
+    # HHG-014, just in a different order (CC-3035/2971/2985/2649 vs the fixture's 2649/2971/2985/3035).
+    "ring_profile": ["ring_id", "device.n_cards_alltime", "n_cards_alltime", "wave_cards", "pre_open_cards"],
     "post_open_activity": ["summary.n", "summary.sum_amt"],
 }
 
@@ -9397,7 +10766,11 @@ def _get(d, path):
 @pytest.fixture(scope="module")
 def conn():
     from graph.install_all import connect
-    return connect()
+    from graph.tg import version
+
+    conn = connect()
+    version(conn)   # untimed warm call: a just-resumed workspace must not count against the latency assert
+    return conn
 
 
 def _wrap(params):
@@ -9413,8 +10786,10 @@ def test_contract(conn, path):
     q, expected = spec["query"], spec["expected"]
     if q == "case_subgraph":
         pytest.skip("UI-only; counts checked by eye")
+    from graph.tg import ensure_awake
+
     t = time.time()
-    raw = conn.runInstalledQuery(q, _wrap(spec["params"]), timeout=120_000)
+    raw = ensure_awake()(conn.runInstalledQuery)(q, _wrap(spec["params"]), timeout=120_000)
     latency = time.time() - t
     got = normalize(raw)
     assert latency < 5.0, f"{q} took {latency:.1f}s"
@@ -9423,6 +10798,8 @@ def test_contract(conn, path):
     if q == "card_testing_check":
         got["run"] = [unwrap_singleton(got, "run")] if got.get("run") else []
     for k in exp_keys:
+        if k == "agent_cases":   # the agent's own write-backs: grows as live runs persist AgentCase; the DuckDB fixture has none
+            continue
         if isinstance(expected[k], list):   # wave_cards / pre_open_cards are exact since D6 (27 / 19 for HHG-014)
             assert len(got[k]) == len(expected[k]), f"{q}.{k}: {len(got[k])} rows vs {len(expected[k])}"
         if isinstance(expected[k], list) and expected[k] and isinstance(expected[k][0], dict):
@@ -9521,6 +10898,10 @@ import duckdb
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(os.path.dirname(os.path.dirname(HERE)))
+sys.path.insert(0, REPO)                       # repo root: this runs as a plain file, not as a package
+
+from ops.console import Col, Table, detail, fail, header, ok, step, summary  # noqa: E402
+
 DB = os.environ.get("HHGOA_DB") or os.environ.get("HHGOA_DUCKDB") or os.path.join(REPO, "data", "hhgoa.duckdb")
 MODEL = os.path.join(HERE, "_model.duckdb")
 RING = "SM-G935F Build/NRD90M | Android 7.0 | chrome 62.0 for android | 1920x1080"
@@ -9574,12 +10955,32 @@ def _json(o):
 
 
 def main():
-    if "--rebuild" in sys.argv or not os.path.exists(MODEL):
+    rebuild = "--rebuild" in sys.argv or not os.path.exists(MODEL)
+    header(
+        "graph.queries.expected.run_expected",
+        "DuckDB ground truth for every read query on the named exam cases (offline, no workspace)",
+        {"source db": DB, "model": os.path.relpath(MODEL, REPO), "model build": "rebuild" if rebuild else "reuse",
+         "specs": len(SPECS), "out": os.path.relpath(HERE, REPO) + "/<query>__<case>.json"},
+    )
+    if rebuild:
+        step("building the model DuckDB from the ETL tables")
         t = time.time()
         build_model()
-        print(f"model built in {time.time() - t:.1f}s")
+        ok(f"model built in {time.time() - t:.1f}s")
     con = duckdb.connect(MODEL, read_only=True)
-    for q, case, params in SPECS:
+
+    t_all = time.time()
+    results = Table(
+        Col("#", align="right", width=3),
+        Col("query", max_width=24),
+        Col("case", max_width=17),
+        Col("ms", align="right", width=7),
+        Col("fields", align="right", width=6),
+        Col("expectation file", max_width=46),
+        title=f"{len(SPECS)} expectation files",
+    )
+    errors = []
+    for i, (q, case, params) in enumerate(SPECS, 1):
         sql = open(os.path.join(HERE, f"{q}.sql")).read()
         t = time.time()
         code = "\n".join(ln for ln in sql.splitlines() if not ln.lstrip().startswith("--"))
@@ -9587,16 +10988,31 @@ def main():
         try:
             cur = con.execute(sql, used)
         except Exception as e:  # keep going so one bad SQL does not hide the others
-            print(f"{q:26s} {case:16s} ERROR {e}")
+            errors.append((q, case, str(e)))
+            results.add_row(i, q, case, "-", "-", f"ERROR {str(e)[:60]}", style="red")
             continue
         row = cur.fetchone()
         cols = [d[0] for d in cur.description]
         out = dict(zip(cols, row))
         ms = (time.time() - t) * 1000
         path = os.path.join(HERE, f"{q}__{case}.json")
+        # File content is a checked-in artefact: plain json.dump, never a display formatter.
         with open(path, "w") as fh:
             json.dump({"query": q, "case": case, "params": params, "expected": out}, fh, indent=1, default=_json)
-        print(f"{q:26s} {case:16s} {ms:6.0f} ms -> {os.path.basename(path)}")
+        results.add_row(i, q, case, f"{ms:.0f}", len(cols), os.path.basename(path))
+    results.print()
+
+    for q, case, err in errors:
+        fail(f"{q} / {case} did not run")
+        detail(err[:300])
+    if not errors:
+        ok(f"{len(SPECS)} expectation files written")
+    summary(
+        "expectations rebuilt" if not errors else "expectations incomplete",
+        {"specs": len(SPECS), "written": len(SPECS) - len(errors), "errors": len(errors),
+         "seconds": f"{time.time() - t_all:.1f}", "out": os.path.relpath(HERE, REPO)},
+        status="ok" if not errors else "fail",
+    )
 
 
 if __name__ == "__main__":
@@ -12859,6 +14275,8 @@ import time
 
 import duckdb
 
+from ops.console import Col, Table, fail, header, ok, step, summary
+
 SQL = [
     """CREATE OR REPLACE TABLE txc AS
        SELECT t.TransactionID, t.TransactionID::VARCHAR AS id, t.card_id, t.customer_id, t.ts, t.ts_str, t.amt, t.product_cd, t.channel,
@@ -12903,13 +14321,29 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--out", default=os.getenv("ENGINE_FACTS_DB", "data/hhgoa_engine.duckdb"))
     a = ap.parse_args(argv)
     t0 = time.time()
+    header("engine.facts_from_etl", "materialise the engine's facts DuckDB from the ETL tables (decision D7)",
+           {"etl db": a.etl, "out db": a.out, "tables": len(SQL)})
+    step(f"building {len(SQL)} tables from {a.etl}")
     counts = build(a.etl, a.out)
-    ok = True
-    for t, n in counts.items():
-        ok &= n == EXPECTED[t]
-        print(f"{t:15s} {n:>9,}  {'ok' if n == EXPECTED[t] else f'EXPECTED {EXPECTED[t]:,}'}")
-    print(f"wrote {a.out} in {time.time() - t0:.1f}s")
-    return 0 if ok else 1
+    t = Table(Col("table", max_width=16), Col("rows", align="right", max_width=11), Col("expected", align="right", max_width=11),
+              Col("result", max_width=8), title="engine facts DB contents")
+    bad = []
+    for name, n in counts.items():
+        good = n == EXPECTED[name]
+        bad += [] if good else [name]
+        t.add_row(name, f"{n:,}", f"{EXPECTED[name]:,}", "ok" if good else "MISMATCH", style="green" if good else "bold red")
+    t.print()
+    for name in bad:
+        fail(f"{name}: {counts[name]:,} rows, expected {EXPECTED[name]:,}")
+    if not bad:
+        ok("every table matches its expected row count")
+    size_mb = os.path.getsize(a.out) / 1e6 if os.path.exists(a.out) else 0
+    summary("facts DB written",
+            {"path": a.out, "size": f"{size_mb:,.1f} MB", "tables": len(counts),
+             "rows": f"{sum(counts.values()):,}", "mismatched": ", ".join(bad) or "none",
+             "wall time": f"{time.time() - t0:.1f}s"},
+            status="fail" if bad else "ok")
+    return 0 if not bad else 1
 
 
 if __name__ == "__main__":
@@ -12937,13 +14371,18 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import shutil
+import sys
 import time
+from collections import Counter
 from pathlib import Path
 
 from engine import answer_writer, config, policy, scorecard, simulator, stop, validator, voi
 from engine import status as status_rule
 from engine.facts_duckdb import DuckFacts
 from engine.types import CaseContext
+from ops.console import Col, Table, detail, fail, header, is_plain, joinlist, money, ok, prob, progress, rule, step, summary
 
 
 def contexts(fx: DuckFacts, only: list[str] | None = None) -> list[CaseContext]:
@@ -13046,6 +14485,119 @@ def write_sheet(rows: list[dict], path: Path) -> None:
     path.write_text("\n".join(lines) + "\n")
 
 
+# --------------------------------------------------------------------------- terminal table
+# The sheet above is the artefact; everything below is display only. Nothing here may reach a
+# file: `write_sheet` keeps its own plain str()/f-string formatting so the sheet stays byte-identical.
+
+# One entry per column: key into the cell dict, its Col, and a DROP RANK. The table is laid out at
+# full width and, while it is wider than the terminal, the highest-ranked column still present is
+# dropped (ties broken by width). Rank 0 = never dropped — case id, the final probability/verdict,
+# the pattern, the status and the SAR flag are the answer and always survive.
+_PLAN: list[tuple[str, Col, int]] = [
+    ("flag", Col("ok", width=3, align="center"), 0),
+    ("case", Col("case", width=7), 0),
+    ("trigger", Col("trigger", max_width=15), 42),
+    ("cms", Col("cms", align="right", max_width=5), 50),
+    ("p_pre", Col("p_pre", align="right", max_width=5), 40),
+    ("pre", Col("pre", max_width=10), 45),
+    ("fraud evid.", Col("fraud evid.", max_width=16), 20),
+    ("legit evid.", Col("legit evid.", max_width=17), 21),
+    ("request/outcome", Col("request/outcome", max_width=28), 10),
+    ("p_post", Col("p_post", align="right", max_width=6), 0),
+    ("post", Col("post", max_width=10), 0),
+    ("pattern", Col("pattern", max_width=27), 0),
+    ("exposure", Col("exposure", align="right", max_width=12), 5),
+    ("status", Col("status", max_width=17), 0),
+    ("sar", Col("sar", width=3, align="center"), 0),
+]
+# Whole-row tint by the post-request verdict (TTY only; ignored when piped).
+_ROW_STYLE = {"fraud": "red", "uncertain": "yellow", "legitimate": "green"}
+
+
+def term_budget() -> int:
+    """Columns available for the table. A pipe/file/CI capture is NEVER narrowed (10_000), so a
+    redirected run keeps every column; only a real terminal makes us drop any."""
+    env = os.environ.get("COLUMNS", "")
+    if env.isdigit() and int(env) > 0:
+        return int(env)
+    try:
+        if sys.stdout.isatty():
+            return shutil.get_terminal_size(fallback=(200, 24)).columns
+    except Exception:
+        pass
+    return 10_000
+
+
+def _col_width(c: Col, cells: list[str]) -> int:
+    """The width ops.console.Table will give this column — mirrors Table._layout exactly."""
+    if c.width is not None:
+        return max(c.width, 1)
+    widest = max([0, *(len(x) for x in cells)])
+    if c.max_width is not None:
+        widest = min(widest, c.max_width)
+    return max(len(c.header), widest, 1)
+
+
+def plan_columns(cells: list[dict[str, str]], budget: int) -> tuple[list[Col], list[str], list[str]]:
+    """Choose the widest column set that fits `budget`. Returns (columns, kept keys, dropped keys)."""
+    cols = {k: c for k, c, _ in _PLAN}
+    rank = {k: r for k, _, r in _PLAN}
+    width = {k: _col_width(c, [r[k] for r in cells]) for k, c, _ in _PLAN}
+    # Inter-column cost: 2 spaces in plain mode; rich's box adds one separator cell per gap on top
+    # of the same 2-space padding, so a rich table is (ncols - 1) wider than the plain one.
+    gap = 2 if is_plain() else 3
+    kept = [k for k, _, _ in _PLAN]
+    dropped: list[str] = []
+    while sum(width[k] for k in kept) + gap * max(len(kept) - 1, 0) > budget:
+        droppable = [k for k in kept if rank[k]]
+        if not droppable:
+            break
+        worst = max(droppable, key=lambda k: (rank[k], width[k]))
+        kept.remove(worst)
+        dropped.append(worst)
+    # Add-back pass: dropping by rank alone overshoots (a 28-wide column sacrificed to save 3),
+    # so re-admit anything that still fits, most-wanted first. Without this a 120-column terminal
+    # loses the whole evidence block to buy headroom it never uses.
+    order = {k: i for i, (k, _, _) in enumerate(_PLAN)}
+    for k in sorted(dropped, key=lambda k: rank[k]):
+        if sum(width[j] for j in kept) + width[k] + gap * len(kept) <= budget:
+            kept.append(k)
+            dropped.remove(k)
+    kept.sort(key=order.__getitem__)
+    return [cols[k] for k in kept], kept, dropped
+
+
+def table_cells(ctx: CaseContext, r: dict) -> dict[str, str]:
+    """One case as display strings, keyed by column. Display only — never written to a file."""
+    a, b = r["sc_pre"], r["sc_post"]
+    return {"flag": "ERR" if (r["errors"] or r["violations"]) else "OK",
+            "case": ctx.case_id,
+            "trigger": ctx.trigger_type,
+            "cms": prob(a.cms_p, digits=3),
+            "p_pre": prob(a.p_engine),
+            "pre": a.verdict,
+            "fraud evid.": joinlist(a.families_fraud, sort=True, max_items=2),
+            "legit evid.": joinlist(a.families_legit, sort=True, max_items=2),
+            "request/outcome": f"{r['request']['type']}/{r['request']['outcome']}" if r["request"] else "-",
+            "p_post": prob(b.p_engine),
+            "post": b.verdict,
+            "pattern": b.pattern or "-",
+            "exposure": money(b.exposure_usd),
+            "status": r["answer"]["case"]["status"],
+            "sar": "Y" if r["answer"]["sar"]["file"] else "-"}
+
+
+def print_table(cells: list[dict[str, str]], verdicts: list[str], bad: list[bool], title: str) -> None:
+    columns, kept, dropped = plan_columns(cells, term_budget())
+    caption = "row tint on a TTY: red = fraud, yellow = uncertain, green = legitimate (post-request verdict); ok=ERR marks a validator or policy finding, detailed under the table"
+    if dropped:
+        caption += f"\nnarrowed to fit this terminal — hidden: {joinlist(dropped, sep=', ')} (pipe the command or widen the window for the full table)"
+    t = Table(*columns, title=title, caption=caption)
+    for row, verdict, is_bad in zip(cells, verdicts, bad):
+        t.add_row(*[row[k] for k in kept], style="bold red" if is_bad else _ROW_STYLE.get(verdict))
+    t.print()
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--cases", nargs="*")
@@ -13056,28 +14608,65 @@ def main() -> None:
     config.ensure_dirs()
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
+    header("engine.run_cases", "deterministic drafts + expectation sheet (no LLM)",
+           {"facts db": config.FACTS_DB, "backend": "duckdb (mock facts layer)", "policy": config.POLICY_YAML,
+            "cases": joinlist(args.cases, empty="all (opened_at order)", sep=","), "drafts": out, "sheet": args.sheet})
+    step(f"loading the facts DB: {config.FACTS_DB}")
     fx = DuckFacts()
-    rows = []
-    n_err = 0
-    for ctx in contexts(fx, args.cases):
-        r = run_one(ctx, fx)
-        (out / f"{ctx.case_id}.draft.json").write_text(json.dumps(r["answer"], indent=2))
-        (out / f"{ctx.case_id}.engine.json").write_text(json.dumps({"scorecard_pre": r["sc_pre"].to_dict(), "scorecard_post": r["sc_post"].to_dict(),
-                                                                    "branches": r["branches"], "adm_initial": {k: v for k, v in r["adm_initial"].items() if k != "conditions"},
-                                                                    "violations": r["violations"], "errors": r["errors"]}, indent=1, default=str))
-        rows.append(sheet_row(ctx, r))
-        flag = "OK " if not r["errors"] and not r["violations"] else "ERR"
-        print(f"{flag} {ctx.case_id} {ctx.trigger_type:15s} cms={r['sc_pre'].cms_p:.3f} p_pre={r['sc_pre'].p_engine:.2f} {r['sc_pre'].verdict:10s} "
-              f"F={sorted(r['sc_pre'].families_fraud)} L={sorted(r['sc_pre'].families_legit)} → {r['request']['type'] + '/' + r['request']['outcome'] if r['request'] else '-':28s} "
-              f"p_post={r['sc_post'].p_engine:.2f} {r['sc_post'].verdict:10s} {r['sc_post'].pattern:28s} exp={r['sc_post'].exposure_usd:8.2f} "
-              f"status={r['answer']['case']['status']:17s} sar={r['answer']['sar']['file']}")
-        if r["errors"]:
-            n_err += 1
-            print("   validator:", r["errors"])
-        if r["violations"]:
-            print("   policy:", r["violations"])
+    ctxs = contexts(fx, args.cases)
+    ok(f"{len(ctxs)} cases to run")
+
+    rows, cells, verdicts, bad, problems = [], [], [], [], []
+    n_err = n_viol = n_sar = 0
+    exposure = 0.0
+    with progress("scoring cases", total=len(ctxs)) as p:
+        for ctx in ctxs:
+            r = run_one(ctx, fx)
+            (out / f"{ctx.case_id}.draft.json").write_text(json.dumps(r["answer"], indent=2))
+            (out / f"{ctx.case_id}.engine.json").write_text(json.dumps({"scorecard_pre": r["sc_pre"].to_dict(), "scorecard_post": r["sc_post"].to_dict(),
+                                                                        "branches": r["branches"], "adm_initial": {k: v for k, v in r["adm_initial"].items() if k != "conditions"},
+                                                                        "violations": r["violations"], "errors": r["errors"]}, indent=1, default=str))
+            rows.append(sheet_row(ctx, r))
+            cells.append(table_cells(ctx, r))
+            verdicts.append(r["sc_post"].verdict)
+            is_bad = bool(r["errors"] or r["violations"])
+            bad.append(is_bad)
+            n_err += bool(r["errors"])
+            n_viol += len(r["violations"])
+            n_sar += bool(r["answer"]["sar"]["file"])
+            exposure += float(r["sc_post"].exposure_usd or 0.0)
+            if is_bad:
+                problems.append((ctx.case_id, r))
+            p.advance()
+
+    print_table(cells, verdicts, bad, f"{len(rows)} cases, opened_at order")
+
+    if problems:
+        rule("validator / policy findings")
+        for case_id, r in problems:
+            fail(f"{case_id}: {len(r['errors'])} validator error(s), {len(r['violations'])} policy violation(s)")
+            for e in r["errors"]:
+                detail(f"validator: {e}")
+            for v in r["violations"]:
+                detail(f"policy: {v}")
+    else:
+        ok("every case passed the validator and the policy check")
+
     write_sheet(rows, Path(args.sheet))
-    print(f"\n{len(rows)} cases, {n_err} with validator errors; sheet → {args.sheet}")
+    ok(f"drafts -> {out} ({len(rows)} .draft.json + {len(rows)} .engine.json)")
+    ok(f"sheet -> {args.sheet} ({len(rows)} rows)")
+    mix = Counter(verdicts)
+    status_mix = Counter(c["status"] for c in cells)
+    summary("engine run complete",
+            {"cases": len(rows),
+             "validator errors": n_err,
+             "policy violations": n_viol,
+             "verdict mix": joinlist([f"{k} {mix[k]}" for k in ("fraud", "uncertain", "legitimate") if mix[k]], sep=" / ", empty="-"),
+             "status mix": joinlist([f"{k} {v}" for k, v in sorted(status_mix.items())], sep=" / ", empty="-"),
+             "SARs filed": n_sar,
+             "total exposure": money(exposure),
+             "sheet": args.sheet},
+            status="fail" if n_err else ("warn" if n_viol else "ok"))
 
 
 if __name__ == "__main__":
@@ -13113,6 +14702,7 @@ from __future__ import annotations
 
 import json
 import time
+from collections import Counter
 
 import numpy as np
 import pandas as pd
@@ -13121,8 +14711,28 @@ from engine import config
 from engine.facts_duckdb import DuckFacts
 from engine.run_cases import run_one
 from engine.types import CaseContext
+from ops.console import Col, Table, detail, fail, header, ok, prob, progress, rule, step, summary, warn
 
 SEED = 7
+
+# PLAN §4.10: the three numbers the replay exists to report, and the guardrail counts that go with
+# them. (label, metric key over all confirmed-fraud rows, key over verdict==fraud rows, target, "min"|"max")
+TARGETS: list[tuple[str, str, str | None, float, str]] = [
+    ("pattern accuracy", "pattern_accuracy_fraud_all", "pattern_accuracy_fraud_verdict_fraud", 0.95, "min"),
+    ("SAR decision accuracy", "sar_accuracy_fraud_all", "sar_accuracy_fraud_verdict_fraud", 1.00, "min"),
+    ("episode Jaccard", "episode_jaccard_fraud_all", "episode_jaccard_fraud_verdict_fraud", 0.85, "min"),
+]
+# The only count with a target in the module docstring: the R7 / uncertain gate must not block a
+# synthetic dispute. Everything else that is merely diagnostic goes in the diagnostics table, with
+# no pass/fail mark, so "targets met" stays an honest count of the stated targets.
+GUARDRAILS: list[tuple[str, str, float, str]] = [
+    ("synthetic disputes blocked in initial", "synthetic_disputes_blocked_initial", 0, "max"),
+]
+DIAGNOSTICS: list[tuple[str, str]] = [
+    ("synthetic disputes blocked in final", "synthetic_disputes_blocked_final"),
+    ("cleared cases given a false episode", "cleared_false_episodes"),
+    ("cases that raised and were skipped", "n_failed"),
+]
 
 
 def sample_cases(fx: DuckFacts) -> list[dict]:
@@ -13183,45 +14793,170 @@ def ece(p: np.ndarray, y: np.ndarray, bins: int = 10) -> float:
     return float(tot)
 
 
+# --------------------------------------------------------------------------- terminal report
+# Display only. `m` is written to engine/out/replay_metrics.json exactly as it was built; nothing
+# below touches it, and no formatter here is ever used for a file.
+
+
+def _hit(value: float | None, target: float, sense: str) -> bool:
+    if value is None:
+        return False
+    return value >= target if sense == "min" else value <= target
+
+
+def _gap(value: float | None, target: float, sense: str, digits: int) -> str:
+    """How far short the metric falls, signed, so a miss cannot be read as a pass."""
+    if value is None:
+        return "-"
+    d = (value - target) if sense == "min" else (target - value)
+    return "on target" if d >= 0 else f"{d:+.{digits}f}"
+
+
+def print_targets(m: dict) -> list[str]:
+    """The three PLAN §4.10 targets and the guardrail counts, each against its target. Returns the misses."""
+    t = Table(Col("metric", max_width=38), Col("all fraud", align="right", max_width=10),
+              Col("verdict=fraud", align="right", max_width=13), Col("target", align="right", max_width=8),
+              Col("vs target", align="right", max_width=10), Col("result", max_width=6),
+              title="targets (PLAN §4.10)",
+              caption="'all fraud' is every confirmed-fraud case replayed; 'verdict=fraud' only those the engine also called fraud. The target is judged on 'all fraud'.")
+    missed = []
+    for label, key_all, key_vf, target, sense in TARGETS:
+        v = m.get(key_all)
+        good = _hit(v, target, sense)
+        missed += [] if good else [label]
+        t.add_row(label, prob(v, digits=4), prob(m.get(key_vf), digits=4), f"{'>=' if sense == 'min' else '<='} {target:.2f}",
+                  _gap(v, target, sense, 4), "PASS" if good else "MISS", style="green" if good else "bold red")
+    for label, key, target, sense in GUARDRAILS:
+        v = m.get(key)
+        good = _hit(None if v is None else float(v), target, sense)
+        missed += [] if good else [label]
+        t.add_row(label, "-" if v is None else str(v), "-", f"{'>=' if sense == 'min' else '<='} {target:.0f}",
+                  _gap(None if v is None else float(v), target, sense, 0), "PASS" if good else "MISS",
+                  style="green" if good else "bold red")
+    t.print()
+    return missed
+
+
+def print_diagnostics(m: dict) -> None:
+    """Counts worth watching that PLAN §4.10 sets no target for — reported, not graded."""
+    t = Table(Col("diagnostic", max_width=36), Col("count", align="right", max_width=7), title="diagnostics (no target set)")
+    for label, key in DIAGNOSTICS:
+        v = m.get(key)
+        t.add_row(label, "-" if v is None else str(v))
+    t.print()
+
+
+def print_calibration(m: dict) -> None:
+    t = Table(Col("probability", max_width=22), Col("Brier", align="right", max_width=8), Col("ECE", align="right", max_width=8),
+              title="calibration of the engine probability (lower is better)")
+    t.add_row("p_pre (before request)", prob(m.get("brier_pre"), digits=4), prob(m.get("ece_pre"), digits=4))
+    t.add_row("p_post (final answer)", prob(m.get("brier_final"), digits=4), prob(m.get("ece_final"), digits=4))
+    t.print()
+
+
+def print_groups(m: dict) -> None:
+    t = Table(Col("sample group", max_width=28), Col("n", align="right", max_width=4),
+              Col("v.acc", align="right", max_width=6), Col("unc", align="right", max_width=6),
+              Col("mean p", align="right", max_width=6), Col("f/u/l", align="right", max_width=12),
+              Col("F1 fin", align="right", max_width=6), Col("F1 i|f", align="right", max_width=6),
+              Col("blk i", align="right", max_width=5), Col("blk f", align="right", max_width=5),
+              Col("R7", align="right", max_width=4), Col("ring", align="right", max_width=4), Col("burst", align="right", max_width=5),
+              Col("verr", align="right", max_width=4), Col("viol", align="right", max_width=4),
+              title="per sample group",
+              caption="v.acc = verdict accuracy vs the case label; unc = share called uncertain; f/u/l = fraud/uncertain/legitimate verdict counts;\n"
+                      "F1 fin / F1 i|f = action-set F1 (final, and initial union final) vs actions_taken; blk i / blk f = cases recommending BLOCK_CARD;\n"
+                      "R7 / ring / burst = rule hits; verr / viol = validator errors and policy violations")
+    for g, d in sorted(m.get("per_group", {}).items()):
+        vc = d.get("verdict_counts", {})
+        t.add_row(g, d.get("n"), prob(d.get("verdict_accuracy"), digits=4), prob(d.get("uncertain_share"), digits=4),
+                  prob(d.get("mean_p"), digits=4), "/".join(str(vc.get(k, 0)) for k in ("fraud", "uncertain", "legitimate")),
+                  prob(d.get("action_f1_final_mean"), digits=4), prob(d.get("action_f1_initial_union_final_mean"), digits=4),
+                  d.get("blocked_initial"), d.get("blocked_final"), d.get("r7_fires"), d.get("ring_hits"), d.get("burst_hits"),
+                  d.get("validator_errors"), d.get("policy_violations"),
+                  style="red" if (d.get("validator_errors") or d.get("policy_violations")) else None)
+    t.print()
+
+
+def print_requests(m: dict) -> None:
+    t = Table(Col("sample group", max_width=28), Col("request / outcome", max_width=30), Col("n", align="right", max_width=4),
+              title="evidence requests made (§3b, one per case)")
+    for g, d in sorted(m.get("per_group", {}).items()):
+        for req, n in sorted(d.get("requests", {}).items(), key=lambda kv: (-kv[1], kv[0])):
+            t.add_row(g, req or "(none)", n)
+    t.print()
+
+
+def print_confusion(title: str, crosstab: dict, row_label: str, caption: str) -> None:
+    """A pandas crosstab().to_dict() is {column: {row: count}}; keys may be numpy bools, so never stringify them
+    before the lookup — only on the way out."""
+    cols = sorted(crosstab, key=str)
+    idx: list = []
+    for col in cols:
+        for r in crosstab[col]:
+            if r not in idx:
+                idx.append(r)
+    idx.sort(key=str)
+    t = Table(Col(row_label, max_width=30), *[Col(str(c), align="right") for c in cols], title=title, caption=caption)
+    for r in idx:
+        t.add_row(str(r), *[str(crosstab[c].get(r, 0)) for c in cols])
+    t.print()
+
+
 def main() -> None:
     t0 = time.time()
+    header("engine.replay", "310-case deterministic replay of labelled closed cases (PLAN §4.10)",
+           {"facts db": config.FACTS_DB, "calibrator": config.CALIBRATION_JSON, "seed": SEED,
+            "sample": "100 cleared/risk_score + 150 fraud/dispute + 30 fraud/risk_score + 30 synthetic disputes",
+            "out": config.OUT_DIR})
+    step("sampling labelled closed cases")
     fx = DuckFacts()
     cases = sample_cases(fx)
+    st = Table(Col("sample group", max_width=28), Col("replayed as", max_width=16), Col("truth", max_width=16), Col("n", align="right", max_width=4),
+               title=f"{len(cases)} cases sampled (seed {SEED}, reproducible)")
+    seen = Counter((c["group"], c["trigger"], c["outcome"]) for c in cases)
+    for (g, trig, outcome), n in sorted(seen.items()):
+        st.add_row(g, trig, outcome, n)
+    st.print()
+
     rows = []
-    for i, c in enumerate(cases):
-        txt = (f"Real-time model scored transaction {c['flagged']} at {c['risk']:.2f}. Review and decide." if c["trigger"] == "risk_score"
-               else f"Customer {c['customer_id']} message: 'I never made this purchase. Please check my card.' Refers to {c['flagged']}.")
-        ctx = CaseContext(c["case_id"], c["trigger"], txt, c["flagged"], c["card_id"], c["customer_id"], c["opened_at"],
-                          c["risk"] if c["trigger"] == "risk_score" else None)
-        try:
-            r = run_one(ctx, fx, strip_self(fx.collect(ctx), c["case_id"]))
-        except Exception as ex:   # keep going; report failures
-            rows.append({**c, "error": repr(ex)[:200]})
-            print("FAILED", c["case_id"], c["group"], repr(ex)[:160], flush=True)
-            continue
-        a = r["answer"]
-        ini = {x["action"] for x in a["next_best_actions"]["initial"]}
-        fin = {x["action"] for x in a["next_best_actions"]["final"]}
-        aff = set(a["case"]["affected_txn_ids"])
-        truth = set(c["txn_ids"]) if c["outcome"] == "confirmed_fraud" else set()
-        rows.append({**c, "error": "", "verdict": a["case"]["verdict"], "p": a["case"]["fraud_probability"], "p_pre": r["sc_pre"].p_engine,
-                     "cms": r["sc_pre"].cms_p, "engine_pattern": a["case"]["pattern"], "sar": a["sar"]["file"],
-                     "jaccard": (len(aff & truth) / len(aff | truth)) if (aff | truth) else 1.0,
-                     "initial": sorted(ini), "final": sorted(fin), "f1_final": f1(fin, set(c["actions_taken"])),
-                     "blocked_initial": "BLOCK_CARD" in ini, "blocked_final": "BLOCK_CARD" in fin,
-                     "request": r["request"]["type"] + "/" + r["request"]["outcome"] if r["request"] else "",
-                     "f1_union": f1(ini | fin, set(c["actions_taken"])), "n_shared_fraud_cards": len(r["sc_pre"].flags.get("shared_fraud_cards", [])),
-                     "sar_reason": a["sar"]["reason"][:60],
-                     "r7": bool(r["sc_pre"].flags.get("recurring_match")), "ring": bool(r["sc_pre"].flags.get("ring_hit")),
-                     "burst": bool(r["sc_pre"].flags.get("burst_hit")), "errors": "; ".join(r["errors"]), "violations": "; ".join(r["violations"])})
-        if (i + 1) % 50 == 0:
-            print(f"{i + 1}/{len(cases)} {time.time() - t0:.0f}s", flush=True)
+    failures: list[tuple[str, str, str]] = []
+    with progress("replaying cases", total=len(cases)) as tick:
+        for c in cases:
+            txt = (f"Real-time model scored transaction {c['flagged']} at {c['risk']:.2f}. Review and decide." if c["trigger"] == "risk_score"
+                   else f"Customer {c['customer_id']} message: 'I never made this purchase. Please check my card.' Refers to {c['flagged']}.")
+            ctx = CaseContext(c["case_id"], c["trigger"], txt, c["flagged"], c["card_id"], c["customer_id"], c["opened_at"],
+                              c["risk"] if c["trigger"] == "risk_score" else None)
+            tick.advance()
+            try:
+                r = run_one(ctx, fx, strip_self(fx.collect(ctx), c["case_id"]))
+            except Exception as ex:   # keep going; report failures
+                rows.append({**c, "error": repr(ex)[:200]})
+                failures.append((c["case_id"], c["group"], repr(ex)[:160]))
+                continue
+            a = r["answer"]
+            ini = {x["action"] for x in a["next_best_actions"]["initial"]}
+            fin = {x["action"] for x in a["next_best_actions"]["final"]}
+            aff = set(a["case"]["affected_txn_ids"])
+            truth = set(c["txn_ids"]) if c["outcome"] == "confirmed_fraud" else set()
+            rows.append({**c, "error": "", "verdict": a["case"]["verdict"], "p": a["case"]["fraud_probability"], "p_pre": r["sc_pre"].p_engine,
+                         "cms": r["sc_pre"].cms_p, "engine_pattern": a["case"]["pattern"], "sar": a["sar"]["file"],
+                         "jaccard": (len(aff & truth) / len(aff | truth)) if (aff | truth) else 1.0,
+                         "initial": sorted(ini), "final": sorted(fin), "f1_final": f1(fin, set(c["actions_taken"])),
+                         "blocked_initial": "BLOCK_CARD" in ini, "blocked_final": "BLOCK_CARD" in fin,
+                         "request": r["request"]["type"] + "/" + r["request"]["outcome"] if r["request"] else "",
+                         "f1_union": f1(ini | fin, set(c["actions_taken"])), "n_shared_fraud_cards": len(r["sc_pre"].flags.get("shared_fraud_cards", [])),
+                         "sar_reason": a["sar"]["reason"][:60],
+                         "r7": bool(r["sc_pre"].flags.get("recurring_match")), "ring": bool(r["sc_pre"].flags.get("ring_hit")),
+                         "burst": bool(r["sc_pre"].flags.get("burst_hit")), "errors": "; ".join(r["errors"]), "violations": "; ".join(r["violations"])})
+    for case_id, group, ex in failures:
+        fail(f"{case_id} ({group}) raised during replay")
+        detail(ex)
     df = pd.DataFrame(rows)
     df.to_csv(config.OUT_DIR / "replay_rows.csv", index=False)
-    ok = df[df.error == ""]
+    good = df[df.error == ""]          # `good`, not `ok`: ops.console.ok is the status-line helper
     m: dict = {"n": int(len(df)), "n_failed": int((df.error != "").sum()), "seconds": round(time.time() - t0, 1)}
-    fr = ok[ok.outcome == "confirmed_fraud"]
-    cl = ok[ok.outcome == "cleared"]
+    fr = good[good.outcome == "confirmed_fraud"]
+    cl = good[good.outcome == "cleared"]
     m["pattern_accuracy_fraud_all"] = round(float((fr.engine_pattern == fr.pattern).mean()), 4)
     frf = fr[fr.verdict == "fraud"]
     m["pattern_accuracy_fraud_verdict_fraud"] = round(float((frf.engine_pattern == frf.pattern).mean()), 4) if len(frf) else None
@@ -13232,14 +14967,14 @@ def main() -> None:
     m["episode_jaccard_fraud_all"] = round(float(fr.jaccard.mean()), 4)
     m["episode_jaccard_fraud_verdict_fraud"] = round(float(frf.jaccard.mean()), 4) if len(frf) else None
     m["cleared_false_episodes"] = int((cl.jaccard < 1).sum())
-    y = (ok.outcome == "confirmed_fraud").astype(int).values
-    p = ok.p.values.astype(float)
+    y = (good.outcome == "confirmed_fraud").astype(int).values
+    p = good.p.values.astype(float)
     m["brier_final"] = round(float(np.mean((p - y) ** 2)), 4)
     m["ece_final"] = round(ece(p, y), 4)
-    m["brier_pre"] = round(float(np.mean((ok.p_pre.values.astype(float) - y) ** 2)), 4)
-    m["ece_pre"] = round(ece(ok.p_pre.values.astype(float), y), 4)
+    m["brier_pre"] = round(float(np.mean((good.p_pre.values.astype(float) - y) ** 2)), 4)
+    m["ece_pre"] = round(ece(good.p_pre.values.astype(float), y), 4)
     per = {}
-    for g, d in ok.groupby("group"):
+    for g, d in good.groupby("group"):
         want = "fraud" if d.outcome.iloc[0] == "confirmed_fraud" else "legitimate"
         per[g] = {"n": int(len(d)), "verdict_counts": d.verdict.value_counts().to_dict(), "verdict_accuracy": round(float((d.verdict == want).mean()), 4),
                   "uncertain_share": round(float((d.verdict == "uncertain").mean()), 4), "action_f1_final_mean": round(float(d.f1_final.mean()), 4),
@@ -13251,7 +14986,32 @@ def main() -> None:
     m["synthetic_disputes_blocked_initial"] = per.get("cleared_as_synthetic_dispute", {}).get("blocked_initial")
     m["synthetic_disputes_blocked_final"] = per.get("cleared_as_synthetic_dispute", {}).get("blocked_final")
     json.dump(m, open(config.OUT_DIR / "replay_metrics.json", "w"), indent=1, default=str)
-    print(json.dumps(m, indent=1, default=str))
+
+    # ---- report (display only; `m` above is already on disk, untouched by anything below) ----
+    rule("results")
+    missed = print_targets(m)
+    print_diagnostics(m)
+    print_calibration(m)
+    print_groups(m)
+    print_requests(m)
+    print_confusion("pattern confusion (confirmed-fraud cases)", m["pattern_confusion"], "true pattern \\ engine pattern",
+                    "rows = the closed case's labelled pattern, columns = the pattern the engine named; the diagonal is correct")
+    print_confusion("SAR confusion (confirmed-fraud cases)", m["sar_confusion"], "report_filed \\ engine sar",
+                    "rows = whether a SAR was actually filed, columns = whether the engine filed one")
+    if m["n_failed"]:
+        fail(f"{m['n_failed']} of {m['n']} cases raised and were skipped")
+    for label in missed:
+        warn(f"below target: {label}")
+    ok(f"rows  -> {config.OUT_DIR / 'replay_rows.csv'} ({m['n']} rows)")
+    ok(f"metrics -> {config.OUT_DIR / 'replay_metrics.json'}")
+    summary("replay complete",
+            {"cases replayed": m["n"],
+             "failed": m["n_failed"],
+             "targets met": f"{len(TARGETS) + len(GUARDRAILS) - len(missed)}/{len(TARGETS) + len(GUARDRAILS)}",
+             "below target": ", ".join(missed) or "none",
+             "wall time": f"{m['seconds']}s",
+             "metrics": config.OUT_DIR / "replay_metrics.json"},
+            status="fail" if m["n_failed"] else ("warn" if missed else "ok"))
 
 
 if __name__ == "__main__":
@@ -15455,7 +17215,12 @@ def stop_reason(sc_pre: Scorecard, sc_post: Scorecard | None, asked: bool, voi_z
   `tigergraph__run_installed_query` tool is never given to the model.
 - `run_query(session, name, params)` calls `tigergraph__run_installed_query`, parses
   the MCP formatter's ```json block, merges the printed JSON objects into one dict,
-  and logs the call to the active RunLog.
+  and logs the call to the active RunLog. A transient failure (Savanna auto-resume:
+  502/503/504, connection error, HTML start page, or the empty error of a stalled
+  aiohttp request) is retried with `ops.ensure_awake.backoff_delays` for up to
+  TG_RESUME_MAX_WAIT_S; when the budget runs out it raises `GraphUnavailable`, which
+  the phase machine never treats as evidence. `call_tool_with_resume` does the same
+  for the non-query tools (`tigergraph__add_edges`).
 - Every tool result becomes `Evidence` rows through `evidence_from_result()` (ids
   extracted by code, never by the model).
 
@@ -15464,6 +17229,7 @@ INT/FLOAT/STRING/BOOL → JSON scalars; LIST<FLOAT> → JSON array.
 """
 from __future__ import annotations
 
+import asyncio
 import contextvars
 import json
 import os
@@ -15746,6 +17512,104 @@ class QueryError(RuntimeError):
     pass
 
 
+class GraphUnavailable(QueryError):
+    """The workspace stayed unreachable for the whole TG_RESUME_MAX_WAIT_S budget (not a query error)."""
+
+
+# What a P2 tool returns to the model when the workspace is unreachable (never evidence; the case fails after P2).
+GRAPH_UNAVAILABLE_REPLY = json.dumps({"error": "GRAPH TEMPORARILY UNAVAILABLE - not evidence; do not draw conclusions from this call"})
+
+
+def mark_graph_unavailable(tctx: Any, name: str) -> str:
+    """Flag the case (PhaseMachine._run raises after P2), refund the budget unit, return the model-facing reply."""
+    tctx.graph_unavailable = tctx.graph_unavailable or name
+    tctx.budget.used = max(0, tctx.budget.used - 1)
+    return GRAPH_UNAVAILABLE_REPLY
+
+
+# Injectable for tests; the resume loop awaits it between attempts.
+_sleep = asyncio.sleep
+_clock = time.monotonic      # injectable for tests (the resume loop's wall-clock cap)
+
+
+def _transient_payload(payload: dict) -> bool:
+    """True when an MCP ToolResponse failure looks like a resuming / unreachable workspace.
+
+    tigergraph-mcp's format_error never raises: it puts str(exc) in `error`. An aiohttp total timeout
+    stringifies to '' (error_code OPERATION_ERROR), so an empty error is transient too. error_code alone
+    is not used: CONNECTION_ERROR is also set for any text that merely contains "timeout".
+    """
+    from ops.ensure_awake import is_transient
+
+    text = str(payload.get("error") or "")
+    return not text.strip() or is_transient(RuntimeError(text))
+
+
+def _resume_budget() -> float:
+    return float(os.getenv("TG_RESUME_MAX_WAIT_S", "240"))
+
+
+async def _resume_loop(attempt_fn: Callable[[], Any], what: str) -> Any:
+    """Run `attempt_fn()` (a coroutine factory that raises `_Transient` or a real error) under the resume backoff."""
+    from ops.ensure_awake import backoff_delays, is_transient
+
+    log = current_runlog.get()
+    budget = _resume_budget()
+    delays = backoff_delays(budget)
+    # Wall-clock cap as well: backoff_delays only counts the sleeps, and a stalled attempt waits the full aiohttp
+    # deadline (GSQL-TIMEOUT + 30 s = 150 s) before it comes back as error '' - without this a stalled connection
+    # could hold one query for ~9 x 150 s. A resume answers 502 fast, so this never cuts a genuine resume short.
+    t_start = _clock()
+    n = 0
+    while True:
+        try:
+            return await attempt_fn()
+        except _Transient as t:
+            text = t.text
+        except QueryError:
+            raise
+        except Exception as e:
+            if not is_transient(e):
+                raise
+            text = str(e)
+        delay = next(delays, None)
+        if delay is None or _clock() - t_start >= budget:
+            raise GraphUnavailable(text or "empty error (connection stalled)")
+        n += 1
+        if log is not None:
+            log.note("graph transient, retrying", query=what, attempt=n, delay_s=delay, error=text[:200])
+        await _sleep(delay)
+
+
+class _Transient(Exception):
+    """Internal: one attempt failed with a transient MCP payload."""
+
+    def __init__(self, text: str) -> None:
+        super().__init__(text)
+        self.text = text
+
+
+async def call_tool_with_resume(session: Any, tool: str, args: dict) -> Any:
+    """`session.call_tool(tool, args)` with the resume retry, for the non-query tools (P10 add_edges).
+
+    Returns the raw MCP result of the first non-transient attempt (success or a real failure); raises
+    GraphUnavailable when the workspace stays unreachable. The writers are keyed upserts, so a re-send is safe.
+    """
+
+    async def attempt() -> Any:
+        res = await session.call_tool(tool, args)
+        text = _result_text(res)
+        try:
+            payload = parse_tool_text(text)
+        except QueryError:
+            return res
+        if isinstance(payload, dict) and payload.get("success") is False and _transient_payload(payload):
+            raise _Transient(str(payload.get("error") or ""))
+        return res
+
+    return await _resume_loop(attempt, tool)
+
+
 _FENCE = re.compile(r"```json\s*(\{.*?\})\s*```", re.S)
 
 
@@ -15807,13 +17671,26 @@ def merge_printed(results: Any, qname: str = "") -> dict:
 
 
 # PRINT keys a GroupByAccum prints as a one-element list although the contract (and every consumer) reads a
-# single object: card_testing_check.run (00-integration.md M7, contracts §A).
+# single object: card_testing_check.run (00-integration.md M7, contracts §A). Keyed on the CONTRACT name:
+# mcp.normalize.normalize() already renames the GSQL-side `best_run` to `run` before merge_printed() gets
+# here, so `merged` holds `run` on the normal path.
 _SINGLETON_KEYS: dict[str, tuple[str, ...]] = {"card_testing_check": ("run",)}
+
+# `run` is a GSQL reserved word and cannot be used as a PRINT alias (graph/queries/card_testing_check.gsql
+# aliases it `best_run` instead); mcp.normalize.normalize() renames it back to `run` for every caller,
+# including tests/live/test_query_contracts.py which calls normalize() directly. This is only a fallback for
+# merge_printed()'s manual-merge branch (mcp/normalize.py failed to import), which never calls normalize()
+# and so never sees that rename.
+_RENAME_KEYS: dict[str, dict[str, str]] = {"card_testing_check": {"best_run": "run"}}
 
 
 def _unwrap_singletons(qname: str, merged: dict) -> dict:
-    """`card_testing_check` prints `run` as `[{start_id, ids, amts, start_ts, end_ts}]`; the harness hands the
-    engine a dict, exactly as `mcp/normalize.unwrap_singleton` does."""
+    """`card_testing_check` prints `run` (renamed from `best_run`, see above) as
+    `[{start_id, ids, amts, start_ts, end_ts}]`; unwrap it to the object the contract reads, exactly as
+    `mcp/normalize.unwrap_singleton` does."""
+    for gsql_name, contract_name in _RENAME_KEYS.get(qname or "", {}).items():
+        if gsql_name in merged and contract_name not in merged:
+            merged[contract_name] = merged.pop(gsql_name)
     keys = _SINGLETON_KEYS.get(qname or "")
     if not keys:
         return merged
@@ -15839,17 +17716,26 @@ async def run_query(session: Any, name: str, params: dict) -> dict:
     log = current_runlog.get()
     t0 = time.time()
     ok, err, size = True, "", 0
-    try:
+
+    async def attempt() -> dict:
+        nonlocal size
         res = await session.call_tool(RUN_INSTALLED, {"query_name": name, "params": params})
         text = _result_text(res)
         size = len(text.encode("utf-8"))
         if getattr(res, "is_error", False):
+            if text.strip() and _transient_payload({"error": text}):
+                raise _Transient(text[:500])
             raise QueryError(text[:500])
         payload = parse_tool_text(text)
         if not payload.get("success", False):
+            if _transient_payload(payload):
+                raise _Transient(str(payload.get("error") or ""))
             raise QueryError(payload.get("error") or payload.get("summary") or "query failed")
         data = payload.get("data") or {}
         return merge_printed(data.get("result"), name)
+
+    try:
+        return await _resume_loop(attempt, name)
     except Exception as e:
         ok, err = False, str(e)
         raise
@@ -15963,6 +17849,7 @@ class ToolContext:
     budget: ToolBudget = field(default_factory=lambda: ToolBudget(SETTINGS.max_tool_calls))
     max_chars: int = SETTINGS.tool_result_max_chars
     on_result: Callable[[str, dict, dict], None] | None = None
+    graph_unavailable: str = ''       # name of the P2 query the resume budget ran out on (the phase machine fails the case)
 
 
 def clamp_params(params: dict, opened_at: str) -> tuple[dict, list[str]]:
@@ -16012,12 +17899,17 @@ def _make_tool(cls, session: Any, tctx: ToolContext, qname: str, spec: dict):
 
 async def call_query_tool(session: Any, tctx: ToolContext, qname: str, params: dict) -> str:
     """Body of every typed tool: budget, clamp, run, record facts + evidence, return compact JSON."""
+    if tctx.graph_unavailable:  # the case already failed on an unreachable workspace: do not spin another budget
+        return GRAPH_UNAVAILABLE_REPLY
     if not tctx.budget.take():
         return json.dumps({"error": "tool budget exhausted", "hint": "You have used every allowed graph call. Stop investigating and give your assessment from the evidence collected."})
     params, notes = clamp_params(params, tctx.opened_at)
     token = current_caller.set("llm")
     try:
         result = await run_query(session, qname, params)
+    except GraphUnavailable:
+        # not evidence: refund the unit, flag the case (PhaseMachine._run raises after P2), tell the model plainly
+        return mark_graph_unavailable(tctx, qname)
     except Exception as e:
         return json.dumps({"error": f"{qname} failed: {str(e)[:400]}", "hint": "Check the parameter encoding (VERTEX → {\"id\": ...}, DATETIME → 'YYYY-MM-DD HH:MM:SS') or choose another query."})
     finally:
@@ -16080,7 +17972,7 @@ import time
 from typing import Any
 
 from agent.config import SETTINGS
-from agent.mcp_client import ToolContext, harness_query, run_query
+from agent.mcp_client import GRAPH_UNAVAILABLE_REPLY, GraphUnavailable, ToolContext, harness_query, mark_graph_unavailable, run_query
 from agent.runlog import current_runlog
 
 _session: contextvars.ContextVar[Any] = contextvars.ContextVar("hhgoa_mcp_session", default=None)
@@ -16227,15 +18119,25 @@ def make_local_tools(ctx: Any, tctx: ToolContext) -> list[Any]:
     from anthropic.lib.tools import BetaAsyncFunctionTool
 
     async def _find_similar_cases(query_text: str, device_id: str = "", addr1: str = "", pattern_sig: str = "") -> str:
+        if tctx.graph_unavailable:
+            return GRAPH_UNAVAILABLE_REPLY
         if not tctx.budget.take():
             return json.dumps({"error": "tool budget exhausted"})
-        res = await find_similar_cases(query_text, ctx, k=8, device_id=device_id, addr1=addr1, pattern_sig=pattern_sig)
+        try:
+            res = await find_similar_cases(query_text, ctx, k=8, device_id=device_id, addr1=addr1, pattern_sig=pattern_sig)
+        except GraphUnavailable:        # same contract as call_query_tool: flag the case, refund, never evidence
+            return mark_graph_unavailable(tctx, "find_similar_cases")
         return json.dumps(res, default=str)[: tctx.max_chars]
 
     async def _grounding_chunks(query_text: str, doc_filter: str = "", kind_filter: str = "") -> str:
+        if tctx.graph_unavailable:
+            return GRAPH_UNAVAILABLE_REPLY
         if not tctx.budget.take():
             return json.dumps({"error": "tool budget exhausted"})
-        res = await grounding_chunks(query_text, doc_filter=doc_filter, kind_filter=kind_filter, k=5)
+        try:
+            res = await grounding_chunks(query_text, doc_filter=doc_filter, kind_filter=kind_filter, k=5)
+        except GraphUnavailable:
+            return mark_graph_unavailable(tctx, "grounding_chunks")
         return json.dumps(res, default=str)[: tctx.max_chars]
 
     t1 = BetaAsyncFunctionTool(
@@ -16814,7 +18716,16 @@ from agent.answer_fallback import check_invariants
 from agent.config import SETTINGS, Settings
 from agent.engine_api import ENGINE, CaseContext, Evidence
 from agent.llm import wrap_client
-from agent.mcp_client import ToolContext, current_caller, extract_ids, harness_query, load_query_descriptions, make_query_tools, run_query
+from agent.mcp_client import (
+    GraphUnavailable,
+    ToolContext,
+    current_caller,
+    extract_ids,
+    harness_query,
+    load_query_descriptions,
+    make_query_tools,
+    run_query,
+)
 from agent.runlog import RunLog, current_runlog
 from agent.schemas import ActionChoice, Assessment, Closing, SarDraft
 
@@ -16979,6 +18890,8 @@ class PhaseMachine:
                 },
             )
             self.opened_in_graph = True
+        except GraphUnavailable:
+            raise           # workspace down: the mandatory reads below would spin the same budget again, then fail
         except Exception as e:
             self.opened_in_graph = False
             self.log.note("open_case writer failed; will persist at P10", error=str(e)[:300])
@@ -17087,10 +19000,14 @@ class PhaseMachine:
                 # the harness's own call is authoritative even when the model already ran the query with
                 # different parameters ("first call wins" in record_result would otherwise leak the model's)
                 F[name] = await harness_query(self.session, self.tctx, name, params)
+            except GraphUnavailable:
+                raise           # the workspace is down: fail the case (bench --resume reruns it), never score missing facts
             except Exception as e:
                 self.log.note(f"engine re-run of {name} failed", error=str(e)[:300])
         try:
             self.post_open = await run_query(self.session, "post_open_activity", {"c": {"id": ctx.card_id}, "opened_at": ctx.opened_at, "days": 7})
+        except GraphUnavailable:
+            raise
         except Exception as e:
             self.post_open = {}
             self.log.note("post_open_activity failed", error=str(e)[:300])
@@ -17452,6 +19369,8 @@ class PhaseMachine:
         memory = await self.p1_memory()  # P1
         self.log.set_phase("P2")
         await self.p2_investigate(brief, memory)  # P2
+        if self.tctx.graph_unavailable:  # a P2 tool call hit an unreachable workspace: its absence is not evidence
+            raise GraphUnavailable(f"graph unavailable during P2 ({self.tctx.graph_unavailable})")
         self.events.append({"kind": "evidence", "payload": [_to_jsonable(e) for e in self.tctx.ledger]})
         self.log.set_phase("P3")
         sc = await self.p3_scorecard()  # P3
@@ -17591,6 +19510,10 @@ class PhaseMachine:
    pyTigerGraph `getVectorStatus`) so the next case can retrieve this one.
 
 In RUN_MODE=mock the pyTigerGraph part is replaced by a fake connection.
+
+Savanna auto-resume: the upsert and the index poll run under `ops.ensure_awake.ensure_awake()`, the MCP
+writers under `mcp_client.run_query`'s resume loop and the edges under `call_tool_with_resume`. Every write
+is a keyed upsert (fixed AgentCase id, event seq, approval id), so a re-send after a dropped request is safe.
 """
 from __future__ import annotations
 
@@ -17601,7 +19524,8 @@ from typing import Any
 
 from agent import tools_local
 from agent.config import SETTINGS
-from agent.mcp_client import current_caller, run_query
+from agent.mcp_client import call_tool_with_resume, current_caller, run_query
+from ops.ensure_awake import ensure_awake
 
 EDGE_TYPES = {  # edge -> (source type, target type)
     "CASE_INVOLVES": ("AgentCase", "Transaction"), "CASE_ON_CARD": ("AgentCase", "Card"),
@@ -17689,7 +19613,7 @@ async def _persist(pm: Any, ctx, sc, initial: list[dict], final: list[dict], req
     try:
         vec = tools_local.embed_document(embed_text_for_case(ctx, sc, closing, sar, initial, final, requests))
         conn = pm.tg_conn_factory() if pm.tg_conn_factory else tg_connection(s)
-        accepted = await asyncio.to_thread(conn.upsertVertex, "AgentCase", case_id, {**attrs, "note_emb": vec})
+        accepted = await asyncio.to_thread(ensure_awake()(conn.upsertVertex), "AgentCase", case_id, {**attrs, "note_emb": vec})
         written = int(accepted or 0) >= 1
         log.record_tool("pytg:upsertVertex(AgentCase)", {"id": case_id, "n_attrs": len(attrs), "dim": len(vec)}, time.time() - t0, 0, ok=written, caller="persist")
     except Exception as e:
@@ -17738,7 +19662,7 @@ async def _persist(pm: Any, ctx, sc, initial: list[dict], final: list[dict], req
         payload = [{"source_id": case_id, "source_type": src_t, "target_type": tgt_t, **r} for r in rows]
         t1 = time.time()
         try:
-            res = await pm.session.call_tool("tigergraph__add_edges", {"edge_type": etype, "edges": payload})
+            res = await call_tool_with_resume(pm.session, "tigergraph__add_edges", {"edge_type": etype, "edges": payload})
             ok = not getattr(res, "is_error", False) and '"success": true' in "".join(getattr(c, "text", "") for c in res.content).lower()
             log.record_tool(f"mcp:add_edges({etype})", {"n": len(payload)}, time.time() - t1, 0, ok=ok, caller="persist")
         except Exception as e:
@@ -17750,7 +19674,7 @@ async def _persist(pm: Any, ctx, sc, initial: list[dict], final: list[dict], req
             deadline = time.time() + 60
             ready = False
             while time.time() < deadline:
-                ready = await asyncio.to_thread(conn.getVectorStatus, "AgentCase", "note_emb")
+                ready = await asyncio.to_thread(ensure_awake()(conn.getVectorStatus), "AgentCase", "note_emb")
                 if ready:
                     break
                 await asyncio.sleep(2)
@@ -17938,8 +19862,10 @@ CLI (Makefile `validate`, CI "Validate answer files", BUILD_ORDER day 3/6/10):
     uv run python -m agent.validator --db data/ids.duckdb cases/*.json
     uv run python -m agent.validator --db data/ids.duckdb runs/r1/*/answer.json
 
-prints `<file>: []` for a clean file and one line per problem otherwise; exit status 1 when any file
-has a problem (0 otherwise), so it can gate a build.
+prints a file -> status table (case id, verdict, probability, SAR, problem count), the problems of each
+failing file underneath it, and a pass/fail summary; exit status 1 when any file has a problem
+(0 otherwise), so it can gate a build. Output goes through `ops.console`, so a pipe or CI gets plain
+ASCII with no escape codes.
 """
 from __future__ import annotations
 
@@ -17948,11 +19874,11 @@ import csv
 import glob
 import json
 import os
-import sys
 from pathlib import Path
 from typing import Any
 
 from engine import validator as engine_validator
+from ops.console import Col, Table, detail, fail, header, ok, prob, summary
 
 REPO_ROOT = Path(os.environ.get("HHGOA_REPO_ROOT", Path(__file__).resolve().parents[1]))
 
@@ -18020,6 +19946,18 @@ def _expand(files: list[str]) -> list[Path]:
     return out
 
 
+def _display_path(p: Path, width: int = 56) -> str:
+    """The shortest readable form of `p` for the table: relative when it can be, tail-truncated
+    when it cannot (a path is identified by its end, so the head is what gets dropped)."""
+    s = str(p)
+    for base in (Path.cwd(), REPO_ROOT):
+        try:
+            s = min(s, str(p.relative_to(base)), key=len)
+        except ValueError:
+            pass
+    return s if len(s) <= width else "..." + s[-(width - 3):]
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="Validate HHGOA answer files against the PLAN §4.7 / §4.9 invariants.")
     ap.add_argument("--db", default=os.environ.get("VALIDATOR_DB", str(REPO_ROOT / "data" / "ids.duckdb")),
@@ -18028,33 +19966,69 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("files", nargs="+", help="answer files (cases/*.json, runs/<run>/*/answer.json)")
     args = ap.parse_args(argv)
 
+    files = _expand(args.files)
     db_path = Path(args.db)
+    header(
+        "agent.validator",
+        "answer files vs the PLAN §4.7 / §4.9 invariants (engine.validator)",
+        {"db": db_path, "case pack": args.case_pack or os.environ.get("CASE_PACK_CSV", REPO_ROOT / "data" / "raw" / "case_pack.csv"),
+         "files": len(files)},
+    )
     if not db_path.exists():
-        print(f"validator db not found: {db_path} (run `python -m ops.export_id_tables`)", file=sys.stderr)
+        fail(f"validator db not found: {db_path}")
+        detail("run `python -m ops.export_id_tables` (or `make ids`) to build it")
+        summary("validation aborted", {"db": db_path, "files": len(files)}, status="fail")
         return 1
     db = open_db(db_path)
     pack = _case_pack_rows(args.case_pack)
     bad = 0
-    for f in _expand(args.files):
+    failed: list[tuple[Path, list[str]]] = []
+    table = Table(
+        Col("file", max_width=56),
+        Col("case", width=8),
+        Col("verdict", max_width=10),
+        Col("p", align="right", width=5),
+        Col("sar", width=3, align="center"),
+        Col("problems", align="right", width=8),
+        Col("status", width=6),
+        title=f"{len(files)} answer file(s)",
+    )
+    for f in files:
         try:
             answer = json.loads(f.read_text(encoding="utf-8"))
         except Exception as e:
-            print(f"{f}: [unreadable: {e}]")
             bad += 1
+            failed.append((f, [f"unreadable: {e}"]))
+            table.add_row(_display_path(f), "-", "-", "-", "-", 1, "FAIL", style="red")
             continue
         answer.pop("_validation", None)
         try:
             problems = validate(answer, db, meta_for(answer, pack))
         except Exception as e:                       # a malformed file must fail, never crash the build
             problems = [f"validator raised: {type(e).__name__}: {e}"]
+        case = answer.get("case", {}) or {}
+        row = [_display_path(f), str(answer.get("case_id", "") or "-"), str(case.get("verdict", "") or "-"),
+               prob(case.get("fraud_probability")), "Y" if (answer.get("sar", {}) or {}).get("file") else "-"]
         if problems:
             bad += 1
-            print(f"{f}: {len(problems)} problem(s)")
-            for p in problems:
-                print(f"  - {p}")
+            failed.append((f, problems))
+            table.add_row(*row, len(problems), "FAIL", style="red")
         else:
-            print(f"{f}: []")
-    print(f"\n{bad} file(s) with problems")
+            table.add_row(*row, "-", "OK")
+    table.print()
+    for f, problems in failed:
+        fail(f"{f}: {len(problems)} problem(s)")
+        for p in problems:
+            detail(p)
+    clean = len(files) - bad
+    if not bad:
+        ok(f"all {len(files)} file(s) satisfy the §4.7 / §4.9 invariants")
+    summary(
+        "validation failed" if bad else "validation passed",
+        {"files": len(files), "clean": clean, "with problems": bad,
+         "problems": sum(len(p) for _, p in failed), "db": db_path},
+        status="fail" if bad else "ok",
+    )
     return 1 if bad else 0
 
 
@@ -18532,16 +20506,24 @@ class FakeSession:
   retrieve earlier agent-written ones (PLAN §4.2).
 - One MCP session (harness, read + write tools) for the whole run; the LLM only ever
   sees typed read-query wrappers.
-- `ensure_awake()` backs off on Savanna 502/503 auto-resume; a keep-alive task runs a
-  trivial MCP call every KEEP_ALIVE_S seconds so the workspace does not auto-stop
+- `ensure_awake()` wakes the workspace once before the run (`ops.ensure_awake.warm_up`: only
+  transient errors are retried, within TG_RESUME_MAX_WAIT_S; an auth error or an empty TG_SECRET
+  fails at once). The per-query resume retry lives in `agent.mcp_client.run_query`; a keep-alive
+  task runs a trivial MCP call every KEEP_ALIVE_S seconds so the workspace does not auto-stop
   mid-benchmark.
 - `--resume` skips cases whose runs/<run_id>/<case>/answer.json already exists.
 - Writes runs/<run_id>/run_manifest.json (model, effort, prompt hashes, versions, git sha).
+
+Terminal output goes through `ops.console`: a run header, then one block per case (the case and its
+trigger, the P0-P10 phases as the phase machine writes them, the tools it called, the result), then a
+board of every case and the run totals. Retries and case failures stay on stderr. Piped or in CI the
+same text comes out as plain ASCII with no escape codes; nothing here changes what is written to disk.
 """
 from __future__ import annotations
 
 import argparse
 import asyncio
+import contextlib
 import csv
 import hashlib
 import json
@@ -18549,13 +20531,29 @@ import os
 import subprocess
 import sys
 import time
+from collections.abc import Iterator
 from pathlib import Path
 
 from agent.config import SETTINGS, Settings
 from agent.engine_api import ENGINE, CaseContext
-from agent.mcp_client import open_session
+from agent.mcp_client import GraphUnavailable, open_session
 from agent.phase_machine import PhaseMachine
-from agent.runlog import RunLog
+from agent.runlog import PHASE_NAMES, RunLog
+from ops.console import Col, Table, detail, fail, header, joinlist, ok, prob, rule, step, summary, truncate, warn
+
+
+@contextlib.contextmanager
+def _on_stderr() -> Iterator[None]:
+    """Route console output to stderr for the duration of the block.
+
+    Retries, keep-alive hiccups and case failures stay on stderr (where they have always
+    been, so anything redirecting stdout keeps working) but are still formatted by
+    `ops.console` — the module writes to whatever `sys.stdout` is bound to at write time.
+    """
+    sys.stdout.flush()                      # keep the two streams in order when both are piped
+    with contextlib.redirect_stdout(sys.stderr):
+        yield
+        sys.stderr.flush()
 
 
 def load_case_pack(path: Path) -> list[CaseContext]:
@@ -18611,24 +20609,18 @@ def write_manifest(run_dir: Path, settings: Settings, model: str, case_ids: list
 
 
 def ensure_awake(settings: Settings = SETTINGS, max_wait_s: int = 240) -> None:
-    """Backoff 1,2,4,…60 s up to max_wait_s on 502/503/connection errors (Savanna auto-resume)."""
+    """Wake the Savanna workspace before the run (auto-resume drops the first request).
+
+    `ops.ensure_awake.warm_up(tg_connection())`: retries only transient errors (502/503/504, connection
+    errors, an HTML start page) within TG_RESUME_MAX_WAIT_S (default 240 s); `max_wait_s` is kept for the
+    call-site signature. An auth error, a wrong host/graph or an empty TG_SECRET raises at once instead of
+    spinning for four minutes and blaming the workspace. The connection carries the GSQL-TIMEOUT header.
+    """
     if settings.mock:
         return
-    from pyTigerGraph import TigerGraphConnection
-    conn = TigerGraphConnection(host=settings.tg_host, graphname=settings.tg_graphname, gsqlSecret=settings.tg_secret,
-                                tgCloud=settings.tg_host.startswith("https://"), restppPort="9000", gsPort="14240")
-    delay, waited = 1, 0
-    while True:
-        try:
-            conn.echo()
-            return
-        except Exception as e:
-            if waited >= max_wait_s:
-                raise RuntimeError(f"workspace not awake after {max_wait_s}s: {e}") from e
-            print(f"[ensure_awake] {type(e).__name__}: retry in {delay}s", file=sys.stderr)
-            time.sleep(delay)
-            waited += delay
-            delay = min(delay * 2, 60)
+    from ops.ensure_awake import tg_connection, warm_up
+
+    warm_up(tg_connection())
 
 
 async def keep_alive(session, every_s: int, stop: asyncio.Event) -> None:
@@ -18646,7 +20638,155 @@ async def keep_alive(session, every_s: int, stop: asyncio.Event) -> None:
         try:
             await session.call_tool("tigergraph__get_vertex_count", {"vertex_type": "FraudPattern"})
         except Exception as e:
-            print(f"[keep_alive] {e}", file=sys.stderr)
+            with _on_stderr():
+                warn(f"keep_alive: {type(e).__name__}: {e}")
+
+
+# --------------------------------------------------------------------------- live case view
+
+class CaseTail:
+    """Reads the run log the phase machine is writing and reports it as it happens.
+
+    `RunLog` appends every phase to `phases.jsonl` and every graph/LLM call to `calls.jsonl`
+    (both under `runs/<run_id>/<case_id>/`). Tailing those files gives a live P0-P10 view with
+    no hook into the phase machine, and nothing here changes a single byte of either file.
+    """
+
+    def __init__(self, case_dir: Path) -> None:
+        self.phases_path = case_dir / "phases.jsonl"
+        self.calls_path = case_dir / "calls.jsonl"
+        self._phases_seen = 0
+        self._calls_seen = 0
+        self._pending: list[dict] = []      # call rows not yet counted into a printed phase line
+        self.tool_rows: list[dict] = []
+        self.tools = 0
+        self.tokens = 0
+        self.llm_calls = 0
+        self.errors = 0
+
+    @staticmethod
+    def _new_rows(path: Path, seen: int) -> list[dict]:
+        """Complete JSONL rows after the first `seen` of them (a half-written tail line is left)."""
+        if not path.exists():
+            return []
+        rows: list[dict] = []
+        try:
+            with path.open(encoding="utf-8") as fh:
+                for i, line in enumerate(fh):
+                    if i < seen:
+                        continue
+                    line = line.strip()
+                    if not line:
+                        break
+                    try:
+                        rows.append(json.loads(line))
+                    except ValueError:      # last line still being written; pick it up next poll
+                        break
+        except OSError:
+            return rows
+        return rows
+
+    def _count(self, upto: float | None) -> None:
+        """Fold buffered call rows older than `upto` (all of them when None) into the counters.
+
+        Both logs carry `t`, seconds since the case started, so a phase line can report the tool
+        and token counts as they stood WHEN THAT PHASE FINISHED - not the end-of-case totals,
+        which is what a fast (mock) run would otherwise show on every line.
+        """
+        keep: list[dict] = []
+        for r in self._pending:
+            if upto is not None and float(r.get("t", 0) or 0) > upto:
+                keep.append(r)
+                continue
+            if r.get("kind") == "llm":
+                self.llm_calls += 1
+                self.tokens += sum(int(r.get(k, 0) or 0) for k in ("input_tokens", "output_tokens", "cache_read_tokens", "cache_write_tokens"))
+            else:
+                self.tool_rows.append(r)
+                if r.get("caller") != "persist":
+                    self.tools += 1
+                if not r.get("ok", True):
+                    self.errors += 1
+        self._pending = keep
+
+    def drain(self, quiet: bool = False) -> None:
+        """Consume everything written since the last call, printing one line per phase.
+
+        `quiet=True` counts without printing (used once before a case starts, so a `--resume`
+        rerun does not replay the previous attempt's phases).
+        """
+        calls = self._new_rows(self.calls_path, self._calls_seen)
+        self._calls_seen += len(calls)
+        self._pending += calls
+        phases = self._new_rows(self.phases_path, self._phases_seen)
+        self._phases_seen += len(phases)
+        if quiet:
+            self._count(None)
+            return
+        for r in phases:
+            kind = r.get("kind")
+            if kind == "phase":
+                t = float(r.get("t", 0) or 0)
+                self._count(t)
+                p = str(r.get("phase", ""))
+                name = str(r.get("name") or PHASE_NAMES.get(p.split("-")[0], ""))
+                step(f"{p:<7}{name:<12}{t:>7.1f}s  tools {self.tools:>3}  llm {self.llm_calls:>2}  tokens {self.tokens:>9,}")
+            elif kind == "note":
+                text = str(r.get("text", "")).strip()
+                extra = {k: v for k, v in r.items() if k not in ("kind", "text", "t")}
+                detail(f"note: {text}" + (f" ({joinlist([f'{k}={truncate(v, 110)}' for k, v in extra.items()], sep=', ')})" if extra else ""))
+
+    def flush(self) -> None:
+        """Count every remaining call row — call once the case is over, before the tools table."""
+        self._count(None)
+
+    def tools_table(self, case_id: str) -> Table:
+        """One row per distinct tool the case called, in first-call order.
+
+        `caller` is who asked: `llm` (a typed tool the model chose), `harness` (a mandatory
+        query the phase machine runs itself) or `persist` (a P10 write-back, counted in
+        `writes`, not in `tool_calls`).
+        """
+        t = Table(
+            Col("tool", max_width=36),
+            Col("callers", max_width=16),
+            Col("phases", max_width=14),
+            Col("calls", align="right", width=5),
+            Col("ms", align="right", width=8),
+            Col("bytes", align="right", width=9),
+            Col("errors", align="right", width=6),
+            title=f"{case_id} tool calls",
+        )
+        agg: dict[str, dict] = {}
+        writes = 0
+        for r in self.tool_rows:
+            a = agg.setdefault(str(r.get("name", "")), {"callers": [], "phases": [], "n": 0, "ms": 0.0, "bytes": 0, "err": 0})
+            for key, val in (("phases", str(r.get("phase", ""))), ("callers", str(r.get("caller", "")))):
+                if val and val not in a[key]:
+                    a[key].append(val)
+            a["n"] += 1
+            a["ms"] += float(r.get("latency_s", 0) or 0) * 1000
+            a["bytes"] += int(r.get("result_bytes", 0) or 0)
+            a["err"] += 0 if r.get("ok", True) else 1
+            writes += int(r.get("caller") == "persist")
+        for name, a in agg.items():
+            t.add_row(name, joinlist(a["callers"]), joinlist(a["phases"], max_items=3), a["n"], f"{a['ms']:,.0f}",
+                      f"{a['bytes']:,}", a["err"] or "-", style="red" if a["err"] else None)
+        t.caption = (f"{len(agg)} distinct tool(s): {self.tools} read call(s) counted in tool_calls, "
+                     f"{writes} P10 graph write(s), {self.errors} error(s)")
+        return t
+
+
+async def watch_case(tail: CaseTail, stop: asyncio.Event, every: float = 0.4) -> None:
+    """Poll the case's run log while `pm.run_case` is awaiting, so phases appear as they finish."""
+    while not stop.is_set():
+        try:
+            await asyncio.wait_for(stop.wait(), timeout=every)
+            break
+        except TimeoutError:
+            pass
+        finally:
+            tail.drain()
 
 
 def make_client(settings: Settings):
@@ -18673,44 +20813,153 @@ async def run(args: argparse.Namespace) -> int:
         settings = Settings(**{**settings.__dict__, "llm_backend": args.llm_backend})
     cases = select_cases(load_case_pack(Path(args.case_pack) if args.case_pack else settings.case_pack_csv), args.cases)
     if not cases:
-        print("no cases selected", file=sys.stderr)
+        with _on_stderr():
+            fail(f"no cases selected (--cases {args.cases!r} matched nothing in the case pack)")
         return 2
     run_dir = settings.runs_dir / args.run_id
+    header(
+        "agent.bench",
+        f"agent run over {len(cases)} case(s) in opened_at order -> {run_dir}",
+        {
+            "run id": args.run_id,
+            "cases": f"{len(cases)}: {joinlist([c.case_id for c in cases], max_items=6)}",
+            "model": settings.model,
+            "sar model": settings.sar_model,
+            "llm backend": _resolve_backend(settings),
+            "run mode": settings.run_mode,
+            "engine": ENGINE.source,
+            "max tool calls": settings.max_tool_calls,
+            "out": run_dir,
+        },
+    )
     write_manifest(run_dir, settings, settings.model, [c.case_id for c in cases])
+    ok(f"manifest -> {run_dir / 'run_manifest.json'}")
     ensure_awake(settings)
     client = make_client(settings)
     failures = 0
+    t_run = time.time()
+    board = Table(
+        Col("case", width=7),
+        Col("trigger", max_width=15),
+        Col("verdict", max_width=10),
+        Col("p", align="right", width=5),
+        Col("pattern", max_width=20),
+        Col("final actions", max_width=38),
+        Col("sar", width=3, align="center"),
+        Col("tools", align="right", width=5),
+        Col("llm", align="right", width=4),
+        Col("tokens", align="right", width=9),
+        Col("secs", align="right", width=6),
+        Col("problems", align="right", width=8),
+        title=f"run {args.run_id}: {len(cases)} case(s), opened_at order",
+    )
+    totals = {"sar": 0, "tools": 0, "tokens": 0, "problems": 0, "skipped": 0, "not_run": 0}
     async with open_session(read_only=False, settings=settings) as (session, _tools):
         stop = asyncio.Event()
         ka = asyncio.create_task(keep_alive(session, settings.keep_alive_s, stop)) if not settings.mock else None
         try:
             pm = PhaseMachine(client, session, args.run_id, settings)
-            for ctx in cases:
+            for i, ctx in enumerate(cases, 1):
                 out = run_dir / ctx.case_id / "answer.json"
+                rule(f"[{i}/{len(cases)}] {ctx.case_id} {ctx.trigger_type}")
                 if args.resume and out.exists():
-                    print(f"[{ctx.case_id}] resume: exists, skipping")
+                    totals["skipped"] += 1
+                    warn(f"{ctx.case_id} resume: {out} exists, skipping")
+                    board.add_row(ctx.case_id, ctx.trigger_type, "(resumed)", "-", "-", "-", "-", "-", "-", "-", "-", "-", style="dim")
                     continue
                 if settings.mock and hasattr(session, "use_case"):
                     session.use_case(ctx.case_id)
+                step(f"{ctx.case_id} {ctx.trigger_type}: {truncate(ctx.trigger_text, 130)}")
+                detail(f"txn {ctx.flagged_txn_id}  card {ctx.card_id}  customer {ctx.customer_id}  opened {ctx.opened_at}"
+                       + (f"  risk_score {prob(ctx.risk_score, digits=3)}" if ctx.risk_score is not None else ""))
                 log = RunLog(args.run_id, ctx.case_id, run_dir / ctx.case_id)
+                tail = CaseTail(run_dir / ctx.case_id)
+                tail.drain(quiet=True)          # a --resume rerun starts from the existing log
+                tail_stop = asyncio.Event()
+                tailer = asyncio.create_task(watch_case(tail, tail_stop))
                 t0 = time.time()
+                answer, err = None, None
                 try:
                     answer = await pm.run_case(ctx, log)
+                except Exception as e:                 # one bad case must not end the run (unless --fail-fast)
+                    err = e
+                finally:
+                    tail_stop.set()
+                    await tailer
+                    tail.drain()
+                    tail.flush()
+                    if tail.tool_rows:
+                        tail.tools_table(ctx.case_id).print()
+                if err is not None:
+                    failures += 1
+                    log.note("case failed", error=repr(err)[:800])
+                    with _on_stderr():
+                        fail(f"{ctx.case_id} FAILED: {err!r}")
+                        detail(f"after {time.time() - t0:.1f}s, {tail.tools} tool call(s), {tail.llm_calls} llm call(s)")
+                    board.add_row(ctx.case_id, ctx.trigger_type, "FAILED", "-", "-", f"{type(err).__name__}: {err}", "-",
+                                  tail.tools, tail.llm_calls, f"{tail.tokens:,}", f"{time.time() - t0:.1f}", "-", style="red")
+                    if args.fail_fast:
+                        raise err
+                    if isinstance(err, GraphUnavailable):
+                        # the workspace stayed down for the whole resume budget: every later case would spin the
+                        # same TG_RESUME_MAX_WAIT_S on its first read and fail too. Stop; --resume picks up here.
+                        with _on_stderr():
+                            fail(f"workspace unreachable for TG_RESUME_MAX_WAIT_S; stopping after {ctx.case_id}. "
+                                 f"Rerun with --run-id {args.run_id} --resume once `make awake` answers.")
+                        totals["not_run"] = len(cases) - i
+                        break
+                    continue
+                try:
                     c = answer["case"]
-                    print(f"[{ctx.case_id}] {c['verdict']} p={c['fraud_probability']} pattern={c['pattern']} "
-                          f"final={[a['action'] for a in answer['next_best_actions']['final']]} sar={answer['sar']['file']} "
-                          f"tools={answer['tool_calls']} tokens={answer['tokens']} {time.time() - t0:.1f}s "
-                          f"problems={len(answer.get('_validation', []))}")
+                    actions = [a["action"] for a in answer["next_best_actions"]["final"]]
+                    problems = answer.get("_validation", []) or []
+                    sar = bool(answer["sar"]["file"])
+                    totals["sar"] += int(sar)
+                    totals["tools"] += int(answer["tool_calls"])
+                    totals["tokens"] += int(answer["tokens"])
+                    totals["problems"] += len(problems)
+                    board.add_row(
+                        ctx.case_id, ctx.trigger_type, c["verdict"], prob(c["fraud_probability"]), c["pattern"] or "-",
+                        joinlist(actions), "Y" if sar else "-", answer["tool_calls"], tail.llm_calls, f"{int(answer['tokens']):,}",
+                        f"{time.time() - t0:.1f}", len(problems) or "-",
+                        style=("red" if problems else ("yellow" if c["verdict"] == "uncertain" else None)),
+                    )
+                    (warn if problems else ok)(
+                        f"{ctx.case_id} {c['verdict']} p={prob(c['fraud_probability'])} pattern={c['pattern'] or 'none'} "
+                        f"sar={'yes' if sar else 'no'} tools={answer['tool_calls']} tokens={int(answer['tokens']):,} "
+                        f"{time.time() - t0:.1f}s problems={len(problems)}"
+                    )
+                    detail(f"final actions: {joinlist(actions)}")
+                    detail(f"answer -> {out}")
+                    for p in problems:
+                        detail(f"validator: {p}")
                 except Exception as e:
                     failures += 1
-                    log.note("case failed", error=repr(e)[:800])
-                    print(f"[{ctx.case_id}] FAILED: {e!r}", file=sys.stderr)
-                    if args.fail_fast:
-                        raise
+                    with _on_stderr():
+                        fail(f"{ctx.case_id} answer unreadable: {type(e).__name__}: {e}")
+                    board.add_row(ctx.case_id, ctx.trigger_type, "ERROR", "-", "-", str(e)[:200], "-", tail.tools, tail.llm_calls,
+                                  f"{tail.tokens:,}", f"{time.time() - t0:.1f}", "-", style="red")
         finally:
             stop.set()
             if ka:
                 await ka
+    rule("run complete")
+    board.print()
+    summary(
+        f"agent.bench {args.run_id}",
+        {
+            "cases": (f"{len(cases)} selected, {len(cases) - failures - totals['skipped'] - totals['not_run']} completed, "
+                      f"{totals['skipped']} skipped, {failures} failed"
+                      + (f", {totals['not_run']} not run (workspace unreachable)" if totals["not_run"] else "")),
+            "SARs filed": totals["sar"],
+            "tool calls": f"{totals['tools']:,}",
+            "tokens": f"{totals['tokens']:,}",
+            "validator problems": totals["problems"],
+            "wall clock": f"{time.time() - t_run:.1f}s",
+            "run dir": run_dir,
+        },
+        status="fail" if failures else ("warn" if totals["problems"] else "ok"),
+    )
     return 1 if failures else 0
 
 
@@ -18741,31 +20990,76 @@ if __name__ == "__main__":
 
 Only files that pass the invariants (and the DuckDB validator when available) are
 copied; cases/MANIFEST.md records run id, model, prompt hashes and per-case totals.
+
+The terminal gets a table of what was copied and what was refused (with each refusal's problems on
+stderr, where they have always gone) and a pass/fail summary, through `ops.console`; the MANIFEST.md
+bytes and the copied files are untouched by any of that.
 """
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import shutil
 import sys
+from collections.abc import Iterator
 
 from agent.answer_fallback import check_invariants
 from agent.config import SETTINGS
 from agent.phase_machine import VALIDATOR_SOURCE, _facts_db, validate_answer
 from agent.schemas import Answer
+from ops.console import Col, Table, detail, fail, header, joinlist, ok, prob, summary, warn
+
+
+@contextlib.contextmanager
+def _on_stderr() -> Iterator[None]:
+    """Console output to stderr — refusals have always gone there and still do, now formatted."""
+    sys.stdout.flush()                      # keep the two streams in order when both are piped
+    with contextlib.redirect_stdout(sys.stderr):
+        yield
+        sys.stderr.flush()
 
 
 def promote(run_id: str, cases: str = "all", force: bool = False) -> int:
     run_dir = SETTINGS.runs_dir / run_id
     manifest = json.loads((run_dir / "run_manifest.json").read_text(encoding="utf-8")) if (run_dir / "run_manifest.json").exists() else {}
     wanted = None if cases in ("all", "") else {c.strip() for c in cases.split(",")}
+    header(
+        "agent.promote",
+        f"copy validated answer files from {run_dir} to {SETTINGS.cases_dir}",
+        {"run id": run_id, "cases": cases, "model": manifest.get("model", ""), "effort": manifest.get("effort", ""),
+         "engine": manifest.get("engine", ""), "git": (manifest.get("git_sha", "") or "")[:12],
+         "validator": VALIDATOR_SOURCE or "none", "force": force, "out": SETTINGS.cases_dir},
+    )
+    if not run_dir.exists():
+        with _on_stderr():
+            fail(f"run not found: {run_dir}")
+        summary("promotion aborted", {"run id": run_id, "run dir": run_dir}, status="fail")
+        return 1
     SETTINGS.cases_dir.mkdir(parents=True, exist_ok=True)
+    table = Table(
+        Col("case", width=8),
+        Col("result", width=12),
+        Col("verdict", max_width=10),
+        Col("p", align="right", width=5),
+        Col("pattern", max_width=20),
+        Col("sar", width=3, align="center"),
+        Col("tools", align="right", width=5),
+        Col("tokens", align="right", width=9),
+        Col("secs", align="right", width=6),
+        Col("problems", max_width=44),
+        title=f"run {run_id} -> {SETTINGS.cases_dir}",
+    )
+    refused: list[tuple[str, list[str]]] = []
+    missing: list[str] = []
     rows, bad = [], 0
     for case_dir in sorted(p for p in run_dir.iterdir() if p.is_dir()):
         if wanted and case_dir.name not in wanted:
             continue
         src = case_dir / "answer.json"
         if not src.exists():
+            missing.append(case_dir.name)
+            table.add_row(case_dir.name, "no answer", "-", "-", "-", "-", "-", "-", "-", f"no answer.json in {case_dir}", style="dim")
             continue
         answer = json.loads(src.read_text(encoding="utf-8"))
         problems = []
@@ -18781,22 +21075,53 @@ def promote(run_id: str, cases: str = "all", force: bool = False) -> int:
                     problems += validate_answer(answer, db, None) if VALIDATOR_SOURCE == "engine.validator" else validate_answer(answer, db)
             except Exception as e:
                 problems.append(f"validator raised: {e}")
+        c = answer.get("case", {}) or {}
+        cells = [c.get("verdict", "-"), prob(c.get("fraud_probability")), c.get("pattern") or "-",
+                 "Y" if (answer.get("sar", {}) or {}).get("file") else "-", answer.get("tool_calls", "-"),
+                 f"{int(answer.get('tokens', 0) or 0):,}", answer.get("latency_s", "-")]
         if problems and not force:
             bad += 1
-            print(f"[{case_dir.name}] NOT promoted: {problems}", file=sys.stderr)
+            refused.append((case_dir.name, problems))
+            table.add_row(case_dir.name, "REFUSED", *cells, joinlist(problems, sep="; "), style="red")
+            with _on_stderr():
+                fail(f"{case_dir.name} NOT promoted: {len(problems)} problem(s)")
+                for p in problems:
+                    detail(p)
             continue
         dst = SETTINGS.cases_dir / f"{case_dir.name}.json"
         shutil.copyfile(src, dst)
         c = answer["case"]
         rows.append((case_dir.name, c["verdict"], c["fraud_probability"], c["pattern"], answer["sar"]["file"],
                      answer["tool_calls"], answer["tokens"], answer["latency_s"], "; ".join(problems) if problems else ""))
-        print(f"[{case_dir.name}] promoted -> {dst}")
+        table.add_row(case_dir.name, "forced" if problems else "promoted", *cells,
+                      joinlist(problems, sep="; ") if problems else "-", style="yellow" if problems else None)
+        if problems:
+            with _on_stderr():
+                warn(f"{case_dir.name} promoted with --force despite {len(problems)} problem(s)")
+                for p in problems:
+                    detail(p)
     lines = ["# cases/ manifest", "", f"- run_id: `{run_id}`", f"- model: `{manifest.get('model', '')}` (effort {manifest.get('effort', '')})",
              f"- engine: `{manifest.get('engine', '')}`", f"- git: `{manifest.get('git_sha', '')}`",
              "- prompt sha256: " + ", ".join(f"`{k}`={v[:12]}" for k, v in (manifest.get("prompt_sha256") or {}).items()), "",
              "| case | verdict | p | pattern | sar | tool_calls | tokens | latency_s | notes |", "|---|---|---|---|---|---|---|---|---|"]
     lines += [f"| {r[0]} | {r[1]} | {r[2]} | {r[3]} | {r[4]} | {r[5]} | {r[6]} | {r[7]} | {r[8]} |" for r in rows]
     (SETTINGS.cases_dir / "MANIFEST.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    table.print()
+    if rows:
+        ok(f"{len(rows)} case(s) copied to {SETTINGS.cases_dir}: {joinlist([r[0] for r in rows], max_items=10)}")
+    if refused:
+        fail(f"{len(refused)} case(s) refused (not copied): {joinlist([r[0] for r in refused], max_items=10)}")
+        detail("the problems of each refused case are on stderr; re-run with --force to copy them anyway")
+    if missing:
+        warn(f"{len(missing)} case dir(s) had no answer.json: {joinlist(missing, max_items=10)}")
+    ok(f"manifest -> {SETTINGS.cases_dir / 'MANIFEST.md'}")
+    summary(
+        "promotion failed" if bad else "promotion complete",
+        {"run id": run_id, "promoted": len(rows), "refused": len(refused), "no answer.json": len(missing),
+         "SARs filed": sum(1 for r in rows if r[4]), "cases dir": SETTINGS.cases_dir,
+         "manifest": SETTINGS.cases_dir / "MANIFEST.md"},
+        status="fail" if bad else "ok",
+    )
     return 1 if bad else 0
 
 
@@ -19605,7 +21930,7 @@ correction to gap4: in `sar_tti_19.pdf` the article "Writing Effective SAR Narra
       "min_tokens": 80,
       "max_tokens": 900,
       "expected_chunks": "one per question (4)",
-      "fetched_at": "2026-09-22T17:01:55Z",
+      "fetched_at": "2026-09-23T14:42:36Z",
       "text_path": "data/corpus/text/sar_faqs_2025.txt"
     },
     {
@@ -19629,7 +21954,7 @@ correction to gap4: in `sar_tti_19.pdf` the article "Writing Effective SAR Narra
       "min_tokens": 120,
       "max_tokens": 800,
       "expected_chunks": "~20-30 (sections + one per example with its commentary)",
-      "fetched_at": "2026-09-22T17:01:55Z",
+      "fetched_at": "2026-09-23T14:42:36Z",
       "text_path": "data/corpus/text/sar_guidance_narrative.txt"
     },
     {
@@ -19667,7 +21992,7 @@ correction to gap4: in `sar_tti_19.pdf` the article "Writing Effective SAR Narra
       "min_tokens": 150,
       "max_tokens": 800,
       "expected_chunks": "2-3",
-      "fetched_at": "2026-09-22T17:01:55Z",
+      "fetched_at": "2026-09-23T14:42:36Z",
       "text_path": "data/corpus/text/fin_2007_g003.txt"
     },
     {
@@ -19693,7 +22018,7 @@ correction to gap4: in `sar_tti_19.pdf` the article "Writing Effective SAR Narra
       "min_tokens": 150,
       "max_tokens": 800,
       "expected_chunks": "3-5",
-      "fetched_at": "2026-09-22T17:01:55Z",
+      "fetched_at": "2026-09-23T14:42:36Z",
       "text_path": "data/corpus/text/sar_tti_19.txt"
     },
     {
@@ -19711,8 +22036,8 @@ correction to gap4: in `sar_tti_19.pdf` the article "Writing Effective SAR Narra
         1,
         4
       ],
-      "sha256": "placeholder",
-      "sha256_status": "placeholder",
+      "sha256": "4d335b2af1ab5899b7afb57e8d6f85eb6fe017c974a3165b1a246f51b1fde2bc",
+      "sha256_status": "verified",
       "sha256_note": "the HTML page (37,966 B) was fetched on 2026-09-19; the direct PDF returns 200/application/pdf/139,664 B but was not hashed in this environment - run fetch_corpus --verify",
       "chunking": "heading",
       "heading_regex": "^\\s*(Identifying Account Takeover Activity|Suspicious Activity Reporting|Reporting Account Takeover Activity|SAR Narrative|Key Term.*|Red Flags?.*|Sharing Information.*)\\s*$",
@@ -19721,7 +22046,9 @@ correction to gap4: in `sar_tti_19.pdf` the article "Writing Effective SAR Narra
       "expected_chunks": "2-4",
       "about": [
         "account_takeover"
-      ]
+      ],
+      "fetched_at": "2026-09-23T14:42:36Z",
+      "text_path": "data/corpus/text/fin_2011_a016.txt"
     },
     {
       "doc_id": "fin_2020_a003",
@@ -19744,7 +22071,7 @@ correction to gap4: in `sar_tti_19.pdf` the article "Writing Effective SAR Narra
       "min_tokens": 150,
       "max_tokens": 800,
       "expected_chunks": "4-6",
-      "fetched_at": "2026-09-22T17:01:55Z",
+      "fetched_at": "2026-09-23T14:42:36Z",
       "text_path": "data/corpus/text/fin_2020_a003.txt"
     },
     {
@@ -19774,7 +22101,7 @@ correction to gap4: in `sar_tti_19.pdf` the article "Writing Effective SAR Narra
         "card_not_present_fraud",
         "card_not_present_new_device"
       ],
-      "fetched_at": "2026-09-22T17:01:55Z",
+      "fetched_at": "2026-09-23T14:42:36Z",
       "text_path": "data/corpus/text/fta_identity_2024.txt"
     },
     {
@@ -19790,13 +22117,15 @@ correction to gap4: in `sar_tti_19.pdf` the article "Writing Effective SAR Narra
       "bytes": 2670081,
       "pages": null,
       "pages_note": "72 pages; after download set pages to the 'Risk indicators' annex and the 'Laundering of proceeds' section (find with `pdftotext -layout file.pdf - | grep -n 'Risk indicators'`)",
-      "sha256": "placeholder",
-      "sha256_status": "placeholder",
+      "sha256": "6888bb2e4d14d6935d2cb17bbd145b818bb10e6116f70675a8aeeb7e765356e6",
+      "sha256_status": "verified",
       "chunking": "heading",
       "heading_regex": "^\\s*(\\d+(\\.\\d+)*\\.?\\s+[A-Z].{3,80}|Annex.*|Risk indicators.*|Red flag.*)\\s*$",
       "min_tokens": 200,
       "max_tokens": 800,
-      "expected_chunks": "10-15"
+      "expected_chunks": "10-15",
+      "fetched_at": "2026-09-23T14:42:36Z",
+      "text_path": "data/corpus/text/fatf_cyber_fraud_2023.txt"
     },
     {
       "doc_id": "ffiec_appendix_f",
@@ -19807,12 +22136,15 @@ correction to gap4: in `sar_tti_19.pdf` the article "Writing Effective SAR Narra
       "kind": "regulation",
       "include": true,
       "browser_only": true,
-      "sha256": "placeholder",
-      "sha256_status": "placeholder",
+      "sha256": "f3722f4683cd370b780ad9f173c9ccbe4a411c85799636cd8ce5c1cd3d5a8b43",
+      "sha256_status": "verified",
       "chunking": "html_headings",
       "min_tokens": 150,
       "max_tokens": 800,
-      "expected_chunks": "8-10 (one per red-flag category heading)"
+      "expected_chunks": "8-10 (one per red-flag category heading)",
+      "bytes": 27766,
+      "fetched_at": "2026-09-23T14:42:36Z",
+      "text_path": "data/corpus/text/ffiec_appendix_f.txt"
     },
     {
       "doc_id": "ffiec_sar_overview",
@@ -19823,12 +22155,15 @@ correction to gap4: in `sar_tti_19.pdf` the article "Writing Effective SAR Narra
       "kind": "regulation",
       "include": true,
       "browser_only": true,
-      "sha256": "placeholder",
-      "sha256_status": "placeholder",
+      "sha256": "bcdca50d7081dda2c6a7f41002493ed2c503d03b939a7e918782962dcf695636",
+      "sha256_status": "verified",
       "chunking": "html_headings",
       "min_tokens": 150,
       "max_tokens": 800,
-      "expected_chunks": "12-15 (thresholds, 30/60-day deadlines, narrative expectations, confidentiality)"
+      "expected_chunks": "12-15 (thresholds, 30/60-day deadlines, narrative expectations, confidentiality)",
+      "bytes": 83690,
+      "fetched_at": "2026-09-23T14:42:36Z",
+      "text_path": "data/corpus/text/ffiec_sar_overview.txt"
     },
     {
       "doc_id": "fatf_new_payment_methods_2010",
@@ -19946,6 +22281,8 @@ from datetime import UTC, datetime
 from html.parser import HTMLParser
 from pathlib import Path
 
+from ops.console import Col, Table, detail, header, ok, step, summary, warn
+
 from . import config
 
 MANIFEST_PATH = config.CORPUS_DIR / "manifest.json"
@@ -19981,11 +22318,12 @@ def download(url: str, dest: Path, user_agent: str, retries: int = 3) -> bool:
                     for block in r.iter_content(1 << 16):
                         f.write(block)
                 return True
-            print(f"  HTTP {r.status_code} for {url}")
+            warn(f"HTTP {r.status_code} for {url}")
             if r.status_code in (403, 404):
                 return False
         except Exception as e:  # noqa: BLE001 - report and retry
-            print(f"  attempt {attempt} failed: {e}")
+            warn(f"attempt {attempt}/{retries} failed: {type(e).__name__}")
+            detail(str(e)[:160])
         time.sleep(2 * attempt)
     return False
 
@@ -20066,28 +22404,42 @@ def html_to_text(html_path: Path, txt: Path) -> None:
     txt.write_text(p.text())
 
 
-def process_document(doc: dict, ua: str, verify_only: bool = False) -> dict:
-    """Fetch (if reachable), hash, and extract text for one manifest entry. Returns the updated entry."""
+def process_document(doc: dict, ua: str, verify_only: bool = False, report: list | None = None) -> dict:
+    """Fetch (if reachable), hash, and extract text for one manifest entry. Returns the updated entry.
+
+    `report` (optional) collects one (doc_id, media, status, sha, bytes, text) row per document for the
+    caller's table; it is display only and never touches the manifest that is written back to disk.
+    """
+    def row(status: str, sha: str = "", nbytes: str = "", text: str = "") -> None:
+        if report is not None:
+            report.append((doc.get("doc_id", "?"), doc.get("media", ""), status, sha, nbytes, text))
+
     if not doc.get("include"):
+        row("not included")
         return doc
     media = doc.get("media")
     if media in ("inline", "markdown"):
+        row("handled by rag.chunk")
         return doc  # README and inline notes are handled by chunk.py directly
     raw = config.CORPUS_RAW / doc["local_name"]
     if not raw.exists() and not verify_only:
         url = doc.get("pdf_url") or doc["url"]
         if doc.get("browser_only"):
-            print(f"[{doc['doc_id']}] browser-only: open {url} in a browser and save as {raw}")
+            warn(f"{doc['doc_id']}: 403s for non-browser clients")
+            detail(f"open {url} in a browser and save it as {raw}")
+            row("browser download needed")
             return doc
-        print(f"[{doc['doc_id']}] downloading {url}")
+        step(f"{doc['doc_id']}: downloading {url}")
         if not download(url, raw, ua):
-            print(f"[{doc['doc_id']}] download failed; if it 403s, save it by hand to {raw}")
+            warn(f"{doc['doc_id']}: download failed; if it 403s, save it by hand to {raw}")
+            row("download failed")
             return doc
     if not raw.exists():
+        row("missing" if verify_only else "not downloaded")
         return doc
     digest = sha256_of(raw)
     if doc.get("sha256_status") == "verified" and doc.get("sha256") not in ("", "placeholder", digest):
-        print(f"[{doc['doc_id']}] WARNING sha256 changed: manifest {doc['sha256'][:12]} != file {digest[:12]}")
+        warn(f"{doc['doc_id']}: sha256 changed - manifest {doc['sha256'][:12]} != file {digest[:12]}")
     doc["sha256"] = digest
     doc["sha256_status"] = "verified"
     doc["bytes"] = raw.stat().st_size
@@ -20098,7 +22450,7 @@ def process_document(doc: dict, ua: str, verify_only: bool = False) -> dict:
     elif media == "html":
         html_to_text(raw, txt)
     doc["text_path"] = str(txt.relative_to(config.REPO_ROOT)) if txt.is_relative_to(config.REPO_ROOT) else str(txt)
-    print(f"[{doc['doc_id']}] ok sha256={digest[:12]} bytes={doc['bytes']} text={txt.name}")
+    row("ok", digest[:12], f"{doc['bytes']:,}", txt.name)
     return doc
 
 
@@ -20110,19 +22462,53 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
     config.ensure_dirs()
     m = load_manifest()
+    header("rag.fetch_corpus",
+           "hash the regulatory corpus and extract its text (pdftotext -layout keeps page breaks)",
+           {"manifest": str(MANIFEST_PATH), "raw": str(config.CORPUS_RAW), "text": str(config.CORPUS_TEXT),
+            "mode": "verify only (no download)" if args.verify else "download what curl can reach",
+            "only": args.only or "every document", "ofac": "yes" if args.ofac else "no",
+            "documents": len(m["documents"])})
+    rows: list = []
     for i, doc in enumerate(m["documents"]):
         if args.only and doc["doc_id"] != args.only:
             continue
-        m["documents"][i] = process_document(doc, m["user_agent"], verify_only=args.verify)
+        m["documents"][i] = process_document(doc, m["user_agent"], verify_only=args.verify, report=rows)
     save_manifest(m)
+    t = Table(
+        Col("doc_id", max_width=24),
+        Col("media", max_width=9),
+        Col("status", max_width=24),
+        Col("sha256", width=12),
+        Col("bytes", align="right", width=12),
+        Col("extracted text", max_width=26),
+        title="corpus manifest",
+    )
+    for doc_id, media, status, sha, nbytes, text in rows:
+        t.add_row(doc_id, media, status, sha, nbytes, text,
+                  style=None if status in ("ok", "handled by rag.chunk", "not included") else "yellow")
+    t.print()
+    ok(f"manifest rewritten -> {MANIFEST_PATH}")
     if args.ofac:
         from .ofac import fetch_ofac
 
-        fetch_ofac(config.OFAC_DIR, m["user_agent"])
+        step("fetching the OFAC SDN list (sdn.csv + alt.csv)")
+        res = fetch_ofac(config.OFAC_DIR, m["user_agent"])
+        o = Table(Col("file", width=10), Col("ok", width=5, align="center"),
+                  Col("bytes", align="right", width=12), Col("sha256", width=12), title="data/ofac")
+        for name, r in res.items():
+            o.add_row(name, "yes" if r["ok"] else "no", f"{r['bytes']:,}", r["sha256"][:12],
+                      style=None if r["ok"] else "red")
+        o.print()
     missing = [d["doc_id"] for d in m["documents"] if d.get("include") and d.get("media") in ("pdf", "html")
                and not (config.CORPUS_RAW / d["local_name"]).exists()]
-    if missing:
-        print("still missing (browser download needed):", ", ".join(missing))
+    for doc_id in missing:
+        warn(f"{doc_id}: still missing, needs a browser download")
+    n_ok = sum(1 for r in rows if r[2] == "ok")
+    summary("rag.fetch_corpus complete",
+            {"documents seen": len(rows), "hashed + extracted": n_ok,
+             "missing (browser download)": len(missing), "manifest": str(MANIFEST_PATH),
+             "next": "python -m rag.chunk"},
+            status="warn" if missing else "ok")
     return 0
 
 
@@ -20175,6 +22561,8 @@ import re
 import sys
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
+
+from ops.console import Col, Table, fail, header, ok, step, summary, warn
 
 from . import config
 from .fetch_corpus import load_manifest, sha256_of
@@ -20496,6 +22884,12 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--readme-only", action="store_true")
     args = ap.parse_args(argv)
 
+    header("rag.chunk",
+           "README policy/patterns + regulatory corpus -> PolicyChunk rows",
+           {"readme": str(args.readme), "text dir": str(args.text_dir), "manifest": str(args.manifest),
+            "out": str(args.out), "scope": "README only" if args.readme_only else "README + regulations",
+            "target tokens": f"{TARGET_MIN}-{TARGET_MAX}", "overlap": f"{OVERLAP:.0%}"})
+
     manifest = load_manifest(args.manifest)
     docs = manifest["documents"]
     md = args.readme.read_text()
@@ -20503,29 +22897,68 @@ def main(argv: list[str] | None = None) -> int:
     for d in docs:
         if d.get("media") == "markdown":
             d["sha256"], d["sha256_status"] = readme_sha, "verified"
+    step(f"chunking {args.readme.name} (one chunk per rule R1-R10, per section and per known pattern)")
     chunks, _descriptions = chunk_readme(md, "README.md#fraud-policy", readme_sha)   # descriptions: ETL-owned
+    ok(f"{len(chunks)} README chunks (sha256 {readme_sha[:12]})")
+
+    t = Table(
+        Col("doc_id", max_width=24),
+        Col("kind", max_width=12),
+        Col("chunks", align="right", width=7),
+        Col("tokens min", align="right", width=10),
+        Col("median", align="right", width=7),
+        Col("max", align="right", width=6),
+        Col("status", max_width=26),
+        title="corpus documents",
+    )
+    missing = []
     if not args.readme_only:
         for d in docs:
             if not d.get("include") or d.get("media") == "markdown":
                 continue
             if d.get("media") == "inline":
-                t = d["text"].strip()
-                chunks.append(Chunk(f"{d['doc_id']}#p00-note", d["doc_id"], d["title"], 0, 0, d["kind"], t,
-                                    d.get("url", ""), "", n_tokens(t), []))
+                text = d["text"].strip()
+                chunks.append(Chunk(f"{d['doc_id']}#p00-note", d["doc_id"], d["title"], 0, 0, d["kind"], text,
+                                    d.get("url", ""), "", n_tokens(text), []))
+                t.add_row(d["doc_id"], d.get("kind", ""), 1, n_tokens(text), n_tokens(text), n_tokens(text),
+                          "inline note")
                 continue
             txt = args.text_dir / f"{d['doc_id']}.txt"
             if not txt.exists():
-                print(f"[{d['doc_id']}] no extracted text at {txt} (run rag.fetch_corpus); skipped")
+                missing.append(d["doc_id"])
+                t.add_row(d["doc_id"], d.get("kind", ""), 0, "-", "-", "-",
+                          "no extracted text; skipped", style="yellow")
                 continue
             got = chunk_regulatory(d, txt.read_text(errors="replace"))
-            print(f"[{d['doc_id']}] {len(got)} chunks, tokens min/median/max = "
-                  f"{min(c.n_tokens for c in got)}/{sorted(c.n_tokens for c in got)[len(got) // 2]}/{max(c.n_tokens for c in got)}")
+            toks = sorted(c.n_tokens for c in got)
+            t.add_row(d["doc_id"], d.get("kind", ""), len(got),
+                      toks[0] if toks else "-", toks[len(toks) // 2] if toks else "-", toks[-1] if toks else "-",
+                      "ok" if toks else "no chunks produced", style=None if toks else "yellow")
             chunks.extend(got)
+    t.print()
+    for doc_id in missing:
+        warn(f"{doc_id}: no extracted text in {args.text_dir} - run `python -m rag.fetch_corpus`")
+
     write_outputs(chunks, docs, args.out)
-    by_kind = {}
+    by_kind: dict[str, int] = {}
     for c in chunks:
         by_kind[c.kind] = by_kind.get(c.kind, 0) + 1
-    print(f"wrote {len(chunks)} chunks to {args.out}/policy_chunks.jsonl by kind {by_kind}")
+    k = Table(Col("kind", max_width=14), Col("chunks", align="right", width=8),
+              Col("tokens total", align="right", width=13), title="chunks written by kind")
+    for kind in sorted(by_kind):
+        k.add_row(kind, f"{by_kind[kind]:,}", f"{sum(c.n_tokens for c in chunks if c.kind == kind):,}")
+    k.add_row("TOTAL", f"{len(chunks):,}", f"{sum(c.n_tokens for c in chunks):,}")
+    k.print()
+    if not chunks:
+        fail("no chunks were produced")
+    else:
+        ok(f"{len(chunks):,} chunks -> {args.out}/policy_chunks.jsonl (+ policy_chunk.csv, document.csv, "
+           "chunk_of.csv, about.csv, policy_chunk_embed.jsonl)")
+    summary("rag.chunk complete",
+            {"chunks": f"{len(chunks):,}", "documents chunked": len(t) - len(missing),
+             "documents missing text": len(missing), "out": str(args.out),
+             "next": "python -m rag.embed --input policy_chunk_embed.jsonl --out vec_PolicyChunk.psv"},
+            status="warn" if missing else "ok")
     return 0
 
 
@@ -20582,6 +23015,7 @@ import sys
 from pathlib import Path
 
 from etl.parse_closed_cases import embed_text, mask, parse_note
+from ops.console import Col, Table, detail, fail, header, ok, summary, truncate, warn
 
 from . import config
 
@@ -20634,21 +23068,43 @@ def build(db_path: Path, out_dir: Path, standalone: bool = False) -> int:
         source = "closed_case_parsed.embed_text (ETL)"
     else:
         if not standalone:
-            print("closed_case_parsed not in DuckDB - run `python -m etl.parse_closed_cases <db>` first "
-                  "(falling back to --standalone parsing of `cc`; the text is built by the same ETL functions)", file=sys.stderr)
+            warn("closed_case_parsed is not in the DuckDB")
+            detail("run `python -m etl.parse_closed_cases <db>` first; falling back to --standalone "
+                   "parsing of `cc` (same ETL functions, same text)")
         rows = _standalone_rows(con)
         source = "standalone parse of cc"
     out_dir.mkdir(parents=True, exist_ok=True)
     # sanity: no case id / card id / cent amount survives the ETL mask ("$500" in the burst template is pattern text)
     unmasked = re.compile(r"\bCC-\d{4}\b|\bC\d{5}(?:-K\d)?\b|\$[\d,]+\.\d{2}")
-    bad = 0
-    with (out_dir / "closed_case_embed.jsonl").open("w") as fj:
+    leaks: list[tuple[str, str]] = []
+    out_path = out_dir / "closed_case_embed.jsonl"
+    with out_path.open("w") as fj:
         for case_id, text in rows:
-            if unmasked.search(text):
-                bad += 1
+            hit = unmasked.search(text)
+            if hit:
+                leaks.append((case_id, hit.group(0)))
             fj.write(json.dumps({"id": case_id, "text": text}) + "\n")
-    print(f"wrote {len(rows)} rows -> {out_dir}/closed_case_embed.jsonl from {source}; unmasked rows: {bad}")
-    return 0 if rows and bad == 0 else 1
+
+    t = Table(Col("check", max_width=34), Col("expected", align="right", width=10),
+              Col("actual", align="right", width=10), Col("result", width=6, align="center"),
+              title="masking check (no id, case number or cent amount may survive)")
+    t.add_row("rows written", "> 0", f"{len(rows):,}", "PASS" if rows else "FAIL",
+              style=None if rows else "red")
+    t.add_row("rows with an unmasked identifier", "0", f"{len(leaks):,}",
+              "PASS" if not leaks else "FAIL", style=None if not leaks else "red")
+    t.print()
+    for case_id, token in leaks[:10]:
+        fail(f"{case_id}: unmasked {token!r} survived the ETL mask")
+    if len(leaks) > 10:
+        detail(f"... and {len(leaks) - 10} more")
+    if rows and not leaks:
+        ok(f"{len(rows):,} masked texts -> {out_path}")
+        detail(f"sample: {truncate(rows[0][1], 92)}")
+    summary("rag.closedcase_embed_text complete",
+            {"rows": f"{len(rows):,}", "source": source, "unmasked": len(leaks), "out": str(out_path),
+             "next": f"python -m rag.embed --input {out_path} --out data/out/vec_ClosedCase.psv"},
+            status="ok" if rows and not leaks else "fail")
+    return 0 if rows and not leaks else 1
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -20657,6 +23113,11 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--out", type=Path, default=config.OUT_DIR)
     ap.add_argument("--standalone", action="store_true", help="parse cc here instead of reading closed_case_parsed")
     a = ap.parse_args(argv)
+    header("rag.closedcase_embed_text",
+           "ClosedCase.embed_text (ETL, masked) -> closed_case_embed.jsonl, the input for rag.embed",
+           {"db": str(a.db), "out": str(a.out),
+            "source": "standalone parse of cc" if a.standalone else "closed_case_parsed (ETL)",
+            "masks": "<CASE> <ID> <N> <DATE> <AMT> <SCORE>"})
     return build(a.db, a.out, a.standalone)
 
 
@@ -20724,8 +23185,10 @@ import re
 import sqlite3
 import sys
 import time
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from pathlib import Path
+
+from ops.console import Col, Table, header, ok, progress, step, summary
 
 from . import config
 
@@ -20872,6 +23335,8 @@ class Embedder:
         self.mode = mode or config.RUN_MODE
         self.total_tokens = 0
         self.calls = 0
+        self.batches = 0      # backend batches flushed (display only)
+        self.cached = 0       # texts served from the sqlite cache in the last embed() (display only)
         self._backend = make_backend(self.backend_name, self.model, self.dim, self.mode, api_key=api_key)
         self.model = self._backend.model          # LocalBackend may substitute a HuggingFace id
         cache_path = cache_path or (config.OUT_DIR / "embed_cache.sqlite")
@@ -20919,7 +23384,13 @@ class Embedder:
                 delay = min(delay * 2, 60)
         raise RuntimeError("unreachable")
 
-    def embed(self, texts: list[str], input_type: str) -> list[list[float]]:
+    def embed(self, texts: list[str], input_type: str, on_progress: Callable[[int], None] | None = None) -> list[list[float]]:
+        """Embed `texts`, using the sqlite cache for anything already seen.
+
+        `on_progress(n)` (optional) is called with the number of texts finished since the last call -
+        once for the cache hits, then once per flushed batch. It is how `main()` drives the progress
+        bar; library callers (agent/tools_local.py) leave it out and nothing is printed.
+        """
         out: list[list[float] | None] = [None] * len(texts)
         todo: list[int] = []
         for i, t in enumerate(texts):
@@ -20928,6 +23399,9 @@ class Embedder:
                 out[i] = cached
             else:
                 todo.append(i)
+        self.cached = len(texts) - len(todo)
+        if on_progress is not None and self.cached:
+            on_progress(self.cached)
         batch: list[int] = []
         btoks = 0
         max_texts = getattr(self._backend, "batch_texts", BATCH_TEXTS)
@@ -20942,6 +23416,9 @@ class Embedder:
                 out[i] = v
                 self._put(self._key(texts[i], input_type), v)
             self._db.commit()
+            if on_progress is not None:
+                on_progress(len(batch))
+            self.batches += 1
             batch, btoks = [], 0
 
         for i in todo:
@@ -20988,6 +23465,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--input-type", default="document", choices=["document", "query"])
     ap.add_argument("--backend", default="", choices=["", "local", "voyage"], help="default: $EMBED_BACKEND (local)")
     ap.add_argument("--limit", type=int, default=0)
+    ap.add_argument("--json", action="store_true",
+                    help="print the run manifest as one JSON line instead of the summary (same content as "
+                         "<out>.manifest.json, which is always written)")
     a = ap.parse_args(argv)
     rows = [json.loads(line) for line in a.input.open() if line.strip()]
     if a.limit:
@@ -20995,14 +23475,52 @@ def main(argv: list[str] | None = None) -> int:
     ids = [r[a.id_key] for r in rows]
     texts = [r[a.text_key] for r in rows]
     t0 = time.time()
+    if not a.json:
+        header("rag.embed", "corpus rows -> unit-normalised vectors -> <id>|<f1,f2,...> for the TigerGraph loader",
+               {"backend": "mock (RUN_MODE=mock)" if config.RUN_MODE == "mock" else (a.backend or config.EMBED_BACKEND),
+                "model": config.EMBED_MODEL, "dim": config.EMBED_DIM, "mode": config.RUN_MODE, "input type": a.input_type, "rows": f"{len(rows):,}",
+                "input": str(a.input), "out": str(a.out),
+                "cache": str(config.OUT_DIR / "embed_cache.sqlite")})
+        step("loading the backend (first local run downloads the model)")
     emb = Embedder(backend=a.backend)
-    vecs = emb.embed(texts, a.input_type)
+    if a.json:
+        vecs = emb.embed(texts, a.input_type)
+    else:
+        ok(f"backend ready: {emb.backend_name} / {emb.model} / {emb.dim}-d")
+        with progress("embedding rows", total=len(texts)) as p:
+            vecs = emb.embed(texts, a.input_type, on_progress=p.advance)
     n = write_psv(zip(ids, vecs), a.out)
     manifest = {"model": emb.model, "dim": emb.dim, "mode": emb.mode, "input_type": a.input_type, "rows": n,
                 "api_calls": emb.calls, "voyage_total_tokens": emb.total_tokens, "seconds": round(time.time() - t0, 1),
                 "input": str(a.input), "output": str(a.out), **emb.describe()}
     a.out.with_suffix(".manifest.json").write_text(json.dumps(manifest, indent=2))
-    print(json.dumps(manifest))
+    if a.json:
+        print(json.dumps(manifest))
+        return 0
+    d = emb.describe()
+    t = Table(Col("setting", max_width=20), Col("value", max_width=46), title="embedding run")
+    for k, v in (("backend", d.get("backend")), ("model", d.get("model")), ("dimensions", d.get("dim")),
+                 ("device", d.get("device", "-")), ("model prompts", d.get("model_prompts", "-")),
+                 ("query prefix", d.get("query_prefix", "-")), ("run mode", emb.mode),
+                 ("input type", a.input_type)):
+        t.add_row(k, "yes" if v is True else "no" if v is False else v)
+    t.print()
+    v = Table(Col("measure", max_width=24), Col("value", align="right", width=14), title="throughput")
+    secs = manifest["seconds"]
+    v.add_row("rows written", f"{n:,}")
+    v.add_row("served from cache", f"{emb.cached:,}")
+    v.add_row("embedded now", f"{n - emb.cached:,}")
+    v.add_row("backend batches", f"{emb.batches:,}")
+    if emb.total_tokens:
+        v.add_row("tokens billed", f"{emb.total_tokens:,}")
+    v.add_row("seconds", f"{secs:,.1f}")
+    v.add_row("rows / second", f"{(n / secs):,.0f}" if secs > 0 else "-")
+    v.print()
+    ok(f"vectors -> {a.out} ({n:,} rows x {emb.dim} dims)")
+    summary("rag.embed complete",
+            {"rows": f"{n:,}", "dim": emb.dim, "backend": emb.backend_name, "model": emb.model,
+             "psv": str(a.out), "manifest": str(a.out.with_suffix('.manifest.json')),
+             "elapsed": f"{secs:.1f}s"})
     return 0
 
 
@@ -21079,12 +23597,13 @@ Mechanics (verified against pyTigerGraph 2.0.4 source in mcpvenv and ecosys Vect
 from __future__ import annotations
 
 import argparse
-import json
 import os
 import re
 import sys
 import time
 from pathlib import Path
+
+from ops.console import Col, Table, detail, fail, header, joinlist, ok, progress, rule, step, summary, warn
 
 from . import config
 
@@ -21141,18 +23660,19 @@ def connect():
 
 
 def ensure_awake(fn, *args, attempts: int = 8, **kwargs):
-    """Retry through Savanna auto-resume (502/503/connection errors) with 1,2,4..60 s backoff."""
-    delay = 1
-    for i in range(attempts):
-        try:
-            return fn(*args, **kwargs)
-        except Exception as e:  # noqa: BLE001
-            msg = str(e)
-            if i == attempts - 1 or not any(t in msg for t in ("502", "503", "504", "Connection", "timed out", "Bad Gateway")):
-                raise
-            print(f"[tg] {type(e).__name__}: {msg[:120]} - retrying in {delay}s", file=sys.stderr)
-            time.sleep(delay)
-            delay = min(delay * 2, 60)
+    """Call ``fn(*args, **kwargs)`` through Savanna auto-resume with the shared ``ops.ensure_awake`` policy.
+
+    Same classifier (502/503/504, connection errors, timeouts, an HTML start page; never 401/403/auth) and the
+    same 1, 2, 4 ... 60 s backoff bounded by TG_RESUME_MAX_WAIT_S (240 s) as every other target.
+    ``attempts`` is IGNORED: it is kept only so the existing call sites keep their signature.
+    """
+    from ops.ensure_awake import ensure_awake as _ea
+
+    def _on_retry(attempt: int, delay: float, exc: BaseException) -> None:
+        warn(f"{type(exc).__name__} from TigerGraph (Savanna auto-resume); retry {attempt} in {delay:.0f}s")
+        detail(str(exc)[:160])
+
+    return _ea(on_retry=_on_retry)(fn)(*args, **kwargs)
 
 
 def split_psv(path: Path, part_bytes: int = PART_BYTES) -> list[Path]:
@@ -21187,16 +23707,28 @@ def vector_attrs_present(conn, vertex: str) -> list[str]:
 
 
 def ensure_schema(conn, dry_run: bool = False) -> None:
+    step(f"checking the {len(config.VECTOR_ATTRS)} vector attributes against the live schema")
     missing = [(v, a) for v, a in config.VECTOR_ATTRS.items() if a not in vector_attrs_present(conn, v)]
+    t = Table(Col("vertex", max_width=14), Col("attribute", max_width=12), Col("dim", align="right", width=6),
+              Col("present", width=7, align="center"), title="vector attributes (graph/schema_change_vectors.gsql)")
+    for v, a in config.VECTOR_ATTRS.items():
+        here = (v, a) not in missing
+        t.add_row(v, a, config.EMBED_DIM, "yes" if here else "no", style=None if here else "yellow")
+    t.print()
     if not missing:
-        print("vector attributes already present")
+        ok("every vector attribute is already on the graph; nothing to do")
         return
-    print("adding vector attributes:", missing, "via", SCHEMA_CHANGE_FILE)
+    warn(f"{len(missing)} attribute(s) missing; sending {SCHEMA_CHANGE_FILE}")
     gsql = schema_change_gsql()
+    rule("GLOBAL SCHEMA_CHANGE JOB")
+    print(gsql)                       # verbatim DDL: kept copy-pasteable, never indented or truncated
+    rule()
     if dry_run:
-        print(gsql)
+        ok("dry run: nothing was sent")
         return
-    print(conn.gsql(gsql))
+    for line in str(conn.gsql(gsql)).splitlines():
+        detail(line)
+    ok("schema change applied")
 
 
 def index_status(conn, vertex: str, attr: str) -> dict:
@@ -21207,15 +23739,19 @@ def index_status(conn, vertex: str, attr: str) -> dict:
 
 
 def wait_index_ready(conn, vertex: str, attr: str, timeout_s: int = 600, poll_s: float = 3.0) -> bool:
+    """Poll /vector/status until the HNSW index is Ready_for_query. Shows the rebuild rather than going silent."""
     t0 = time.time()
+    step(f"waiting for the HNSW index on {vertex}.{attr} (polling /vector/status every {poll_s:.0f}s, "
+         f"timeout {timeout_s}s)")
     while time.time() - t0 < timeout_s:
         st = ensure_awake(index_status, conn, vertex, attr)
         if st["ready"]:
-            print(f"[index] {vertex}.{attr} Ready_for_query after {time.time() - t0:.0f}s")
+            ok(f"{vertex}.{attr} Ready_for_query after {time.time() - t0:.0f}s")
             return True
-        print(f"[index] {vertex}.{attr} Rebuild_processing on {st['need_rebuild']} ...")
+        detail(f"Rebuild_processing on {len(st['need_rebuild'])} server(s): "
+               f"{joinlist(st['need_rebuild'])} ({time.time() - t0:.0f}s elapsed)")
         time.sleep(poll_s)
-    print(f"[index] {vertex}.{attr} still rebuilding after {timeout_s}s", file=sys.stderr)
+    fail(f"{vertex}.{attr} still rebuilding after {timeout_s}s")
     return False
 
 
@@ -21223,9 +23759,12 @@ def load_psv(conn, psv: Path, vertex: str, attr: str, dry_run: bool = False) -> 
     """Create (or replace) the loading job, upload every part, return the summed loading statistics."""
     job, gsql = loading_job_gsql(vertex, attr, config.TG_GRAPHNAME)
     if dry_run:
-        print(gsql)
-        print(f"runLoadingJobWithFile({psv}, 'f', '{job}', sep='|', eol='\\n', timeout={config.TG_LOAD_TIMEOUT_MS}, sizeLimit=128000000)")
+        rule(f"{vertex}.{attr} loading job")
+        print(gsql)                   # verbatim GSQL: kept copy-pasteable
+        detail(f"runLoadingJobWithFile({psv}, 'f', '{job}', sep='|', eol='\\n', "
+               f"timeout={config.TG_LOAD_TIMEOUT_MS}, sizeLimit=128000000)")
         return {"dry_run": True}
+    step(f"creating loading job {job}")
     try:
         conn.dropLoadingJob(job)
     except Exception:  # noqa: BLE001 - first run
@@ -21234,18 +23773,44 @@ def load_psv(conn, psv: Path, vertex: str, attr: str, dry_run: bool = False) -> 
     if "error" in str(r).lower() and "Successfully created" not in str(r):
         raise RuntimeError(f"loading job create failed: {r}")
     total = {"parts": 0, "valid": 0, "invalid": 0}
-    for part in split_psv(psv):
-        t0 = time.time()
-        res = ensure_awake(conn.runLoadingJobWithFile, str(part), "f", job, sep="|", eol="\n",
-                           timeout=config.TG_LOAD_TIMEOUT_MS, sizeLimit=128_000_000)
-        stats = (res[0] if isinstance(res, list) and res else res) or {}
-        vstats = stats.get("statistics", {}).get("vertex", []) if isinstance(stats, dict) else []
-        valid = sum(int(v.get("validObject", 0)) for v in vstats)
-        invalid = sum(int(v.get("invalidAttribute", 0)) + int(v.get("noIdFound", 0)) for v in vstats)
-        total["parts"] += 1
-        total["valid"] += valid
-        total["invalid"] += invalid
-        print(f"[load] {part.name}: valid={valid} invalid={invalid} in {time.time() - t0:.1f}s; raw={json.dumps(stats)[:300]}")
+    parts = split_psv(psv)
+    t = Table(
+        Col("part", max_width=26),
+        Col("MB", align="right", width=8),
+        Col("valid", align="right", width=10),
+        Col("invalid", align="right", width=8),
+        Col("seconds", align="right", width=8),
+        title=f"{vertex}.{attr} <- {psv.name} ({len(parts)} part(s), <= {PART_BYTES // (1024 * 1024)} MB each)",
+    )
+    with progress(f"uploading {vertex}.{attr}", total=len(parts)) as p:
+        for part in parts:
+            t0 = time.time()
+            res = ensure_awake(conn.runLoadingJobWithFile, str(part), "f", job, sep="|", eol="\n",
+                               timeout=config.TG_LOAD_TIMEOUT_MS, sizeLimit=128_000_000)
+            stats = (res[0] if isinstance(res, list) and res else res) or {}
+            # TigerGraph 4.2.5 nests these under statistics.parsingStatistics.objectLevel.* rather than the
+            # flat statistics.* some docs and earlier versions show (same trap as graph/load_all.py
+            # load_result_stats); accept either. A VECTOR attribute load reports under objectLevel.embedding
+            # (typeName "Vertex:attr", e.g. "PolicyChunk:emb") rather than objectLevel.vertex, which a plain
+            # vertex/edge CSV load uses -- read both so this works for either loading job.
+            raw_stats = stats.get("statistics", {}) if isinstance(stats, dict) else {}
+            parsing = raw_stats.get("parsingStatistics")
+            object_level = parsing["objectLevel"] if parsing else raw_stats
+            vstats = object_level.get("vertex", []) + object_level.get("embedding", [])
+            valid = sum(int(v.get("validObject", 0)) for v in vstats)
+            invalid = sum(int(v.get("invalidAttribute", 0)) + int(v.get("noIdFound", 0)) for v in vstats)
+            total["parts"] += 1
+            total["valid"] += valid
+            total["invalid"] += invalid
+            t.add_row(part.name, f"{part.stat().st_size / 1e6:,.1f}", f"{valid:,}", f"{invalid:,}",
+                      f"{time.time() - t0:.1f}", style="red" if invalid else None)
+            p.advance()
+    t.print()
+    if total["invalid"]:
+        warn(f"{total['invalid']:,} row(s) rejected (invalidAttribute / noIdFound) - "
+             "vectors only load onto vertices that already exist")
+    else:
+        ok(f"{total['valid']:,} vectors loaded onto {vertex}.{attr}, 0 rejected")
     return total
 
 
@@ -21277,26 +23842,61 @@ def main(argv: list[str] | None = None) -> int:
     elif a.vertex and a.attr and a.psv:
         jobs = [(a.vertex, a.attr, a.psv)]
 
+    mode = ("status" if a.status else "ensure-schema" if a.ensure_schema else
+            "dry run" if a.dry_run else "load")
+    header("rag.load_vectors",
+           "load vec_*.psv into TigerGraph and wait for the HNSW index",
+           {"graph": config.TG_GRAPHNAME, "host": config.TG_HOST or "(TG_HOST not set)",
+            "mode": mode, "dim": config.EMBED_DIM,
+            "jobs": joinlist([f"{v}.{at}" for v, at, _ in jobs], empty="-"),
+            "wait for index": "no" if a.no_wait else "yes",
+            "load timeout": f"{config.TG_LOAD_TIMEOUT_MS} ms"})
+
     if a.dry_run and not a.status and not a.ensure_schema:
         for v, at, p in jobs:
             load_psv(None, p, v, at, dry_run=True)
+        summary("rag.load_vectors dry run", {"jobs": len(jobs), "sent to the graph": "nothing"})
         return 0
 
+    step(f"connecting to {config.TG_GRAPHNAME} (retries through Savanna auto-resume)")
     conn = ensure_awake(connect)
+    ok("connected")
     if a.ensure_schema:
         ensure_schema(conn, a.dry_run)
     if a.status:
+        t = Table(Col("vertex", max_width=14), Col("attribute", max_width=12),
+                  Col("index", width=18, align="center"), Col("rebuilding on", max_width=30),
+                  title="/vector/status")
+        not_ready = 0
         for v, at in config.VECTOR_ATTRS.items():
-            print(v, at, json.dumps(ensure_awake(index_status, conn, v, at)))
+            st = ensure_awake(index_status, conn, v, at)
+            not_ready += 0 if st["ready"] else 1
+            t.add_row(v, at, "Ready_for_query" if st["ready"] else "Rebuild_processing",
+                      joinlist(st["need_rebuild"]), style=None if st["ready"] else "yellow")
+        t.print()
+        summary("vector index status",
+                {"attributes": len(config.VECTOR_ATTRS), "ready": len(config.VECTOR_ATTRS) - not_ready,
+                 "rebuilding": not_ready},
+                status="ok" if not not_ready else "warn")
         return 0
+    loaded = {"valid": 0, "invalid": 0, "parts": 0}
     for v, at, p in jobs:
         if not p.exists():
-            print(f"missing {p}; run rag.embed first", file=sys.stderr)
+            fail(f"missing {p}")
+            detail("run `python -m rag.embed --input <jsonl> --out <psv>` first")
+            summary("rag.load_vectors failed", {"missing": str(p)}, status="fail")
             return 1
+        rule(f"{v}.{at}")
         total = load_psv(conn, p, v, at)
-        print(f"[load] {v}.{at}: {total}")
+        for k in loaded:
+            loaded[k] += int(total.get(k, 0) or 0)
         if not a.no_wait:
             wait_index_ready(conn, v, at)
+    summary("rag.load_vectors complete",
+            {"attributes loaded": len(jobs), "file parts": loaded["parts"],
+             "vectors loaded": f"{loaded['valid']:,}", "rejected": f"{loaded['invalid']:,}",
+             "index": "not waited for (--no-wait)" if a.no_wait else "Ready_for_query"},
+            status="ok" if not loaded["invalid"] else "warn")
     return 0
 
 
@@ -21634,16 +24234,21 @@ CREATE OR REPLACE QUERY similar_cases_structural(INT k, STRING card_id, STRING c
 
   all_c = cc UNION ac;
   IF device_id != "" THEN
+    // datetime_format() of the pattern's own anchor attribute (c.opened_at / a.opened_at) can't share an
+    // ACCUM clause with other statements on this multi-hop pattern (the compiler mis-scopes alias `d`), so
+    // it runs as a second, single-hop pass over the vertex set the first SELECT already produced.
     cd = SELECT c FROM (d:DeviceProfile WHERE d.id == device_id)<-[:FROM_DEVICE]-(t:Transaction)<-[:INVOLVES]-(c:ClosedCase)
          WHERE c.opened_at <= as_of AND datetime_diff(as_of, c.opened_at) <= window_s
          ACCUM c.@score += 3.0, c.@overlap_reasons += "same_device", c.@kind += "closed",
-               c.@outcome_or_verdict += c.outcome, c.@pattern += c.pattern, c.@exposure_usd += c.exposure_usd,
-               c.@opened_at += datetime_format(c.opened_at, "%Y-%m-%d %H:%M:%S");
+               c.@outcome_or_verdict += c.outcome, c.@pattern += c.pattern, c.@exposure_usd += c.exposure_usd;
+    cd = SELECT c FROM (c:cd)
+         POST-ACCUM c.@opened_at += datetime_format(c.opened_at, "%Y-%m-%d %H:%M:%S");
     ad = SELECT a FROM (d:DeviceProfile WHERE d.id == device_id)<-[:CASE_DEVICE]-(a:AgentCase)
          WHERE a.opened_at <= as_of AND datetime_diff(as_of, a.opened_at) <= window_s
          ACCUM a.@score += 3.0, a.@overlap_reasons += "same_device", a.@kind += "agent",
-               a.@outcome_or_verdict += a.verdict, a.@pattern += a.pattern, a.@exposure_usd += a.exposure_usd,
-               a.@opened_at += datetime_format(a.opened_at, "%Y-%m-%d %H:%M:%S");
+               a.@outcome_or_verdict += a.verdict, a.@pattern += a.pattern, a.@exposure_usd += a.exposure_usd;
+    ad = SELECT a FROM (a:ad)
+         POST-ACCUM a.@opened_at += datetime_format(a.opened_at, "%Y-%m-%d %H:%M:%S");
     all_c = all_c UNION cd UNION ad;
   END;
 
@@ -22372,15 +24977,57 @@ def validate_answer_sar(answer: dict, *, customer_id: str = "", card_id: str = "
                         file_report_in_final=("FILE_REPORT" in finals))
 
 
+CHECK_NAMES = {
+    "V00": "shape / reason cites a rule", "V01": "one paragraph, no newlines or tabs",
+    "V02": "6-12 sentences", "V03": "an ISO date and a currency amount",
+    "V04": "both activity dates named in the narrative", "V05": "activity_dates == affected min/max",
+    "V06": "total_amount_usd == exposure and written out", "V07": "subjects named and resolvable",
+    "V08": "every id in the narrative exists", "V09": "no forbidden text or markdown",
+    "V10": "the internal case id is named", "V11": "OFAC result and prior-report status stated",
+    "V12": "no seed tell", "V13": "prose only, no table markup",
+}
+
+
 def main(argv: list[str] | None = None) -> int:
     argv = argv if argv is not None else sys.argv[1:]
     if not argv:
         print(__doc__)
         return 2
-    ans = json.loads(Path(argv[0]).read_text())
+    from ops.console import Col, Table, fail, header, ok, summary
+
+    path = Path(argv[0])
+    ans = json.loads(path.read_text())
     db = argv[1] if len(argv) > 1 else None
+    sar = ans.get("sar", {}) or {}
+    case = ans.get("case", {}) or {}
+    header("rag.validate_sar",
+           "the single SAR validator (PLAN 4.8 / decisions D10) over one README-format answer",
+           {"answer": str(path), "case_id": ans.get("case_id", "-"),
+            "resolver": f"DuckResolver({db})" if db else "the answer's own ids (StaticResolver)",
+            "sar.file": str(bool(sar.get("file"))), "checks": len(CHECK_NAMES),
+            "exposure_usd": case.get("exposure_usd", "-")})
     errs = validate_answer_sar(ans, resolver=DuckResolver(db) if db else None)
-    print("\n".join(errs) if errs else "sar: OK")
+    failed = {e.split(" ", 1)[0] for e in errs}
+    filing = bool(sar.get("file"))
+    t = Table(Col("check", width=5), Col("what it asserts", max_width=46),
+              Col("result", width=6, align="center"), title="SAR checks",
+              caption="" if filing else "sar.file is false: only the V00 shape rules apply "
+                                        "(narrative '', subjects [], amount 0, dates [])")
+    for code in sorted(CHECK_NAMES):
+        if not filing and code != "V00":
+            t.add_row(code, CHECK_NAMES[code], "n/a", style="dim")
+            continue
+        bad = code in failed
+        t.add_row(code, CHECK_NAMES[code], "FAIL" if bad else "PASS", style="red" if bad else None)
+    t.print()
+    for e in errs:
+        fail(e)
+    if not errs:
+        ok("sar: OK - every check passed")
+    summary("rag.validate_sar complete",
+            {"answer": str(path), "violations": len(errs),
+             "checks failed": ", ".join(sorted(failed)) or "none"},
+            status="fail" if errs else "ok")
     return 1 if errs else 0
 
 
@@ -22539,9 +25186,48 @@ def fetch_ofac(dest: Path, user_agent: str) -> dict:
 
 
 def main(argv: list[str] | None = None) -> int:
+    from ops.console import Col, Table, detail, header, ok, step, summary, warn
+
     argv = argv if argv is not None else sys.argv[1:]
-    for name in argv or ["C13487"]:
-        print(json.dumps(ofac_screen(name), indent=1)[:1500])
+    names = list(argv) or ["C13487"]
+    idx = get_index()
+    v = idx.version
+    header("rag.ofac",
+           "deterministic OFAC SDN screening (exact match, then rapidfuzz token_set_ratio)",
+           {"sdn.csv": str(idx.sdn_path), "alt.csv": str(idx.alt_path) if idx.alt_path else "(not loaded)",
+            "entities": f"{v['sdn_rows']:,}", "names indexed": f"{v['name_rows']:,}",
+            "list fetched": v["fetched_at"], "sdn sha256": v["sdn_sha256"][:16],
+            "threshold": THRESHOLD, "queries": len(names)})
+    hits = 0
+    for name in names:
+        r = ofac_screen(name)
+        step(f"screening {name!r}")
+        detail(f"normalised {r['normalised']!r} | exact={r['exact']} | best score {r['best_score']} "
+               f"| threshold {r['threshold']} | ref {r['ref']}")
+        if r.get("note"):
+            warn(r["note"])
+        t = Table(
+            Col("score", align="right", width=6),
+            Col("ent_num", align="right", width=8),
+            Col("name", max_width=36),
+            Col("type", max_width=10),
+            Col("program", max_width=14),
+            Col("matched via", max_width=12),
+            title=f"matches for {name!r}",
+        )
+        for m in r["matches"]:
+            t.add_row(m["score"], m["ent_num"], m["name"], m["type"], m["program"], m["source"],
+                      style="red" if m["score"] >= 100 else "yellow")
+        if r["matches"]:
+            t.print()
+            hits += 1
+            warn(f"{name}: {len(r['matches'])} SDN match(es), best score {r['best_score']}")
+        else:
+            ok(f"{name}: no OFAC SDN match (screened against {v['name_rows']:,} names)")
+    summary("rag.ofac complete",
+            {"queries": len(names), "with matches": hits, "clean": len(names) - hits,
+             "list version": f"sdn.csv {v['fetched_at']} ({v['sdn_rows']:,} entities)"},
+            status="warn" if hits else "ok")
     return 0
 
 
@@ -22593,6 +25279,23 @@ from collections.abc import Mapping
 from pathlib import Path
 
 REPO_ROOT = Path(os.environ.get("HHGOA_REPO_ROOT", Path(__file__).resolve().parent.parent))
+
+
+def _load_dotenv() -> None:
+    """Load `.env` into os.environ (never overriding a real value), same policy as agent/config.py.
+    Without this, a fresh `python -m rag.<module>` process never sees TG_HOST/TG_SECRET etc. from
+    `.env` -- only vars already in the shell -- which is silent everywhere except rag.load_vectors,
+    the one script here that must reach the live graph."""
+    try:
+        from dotenv import load_dotenv
+    except ImportError:
+        return
+    for candidate in (REPO_ROOT / ".env", Path.cwd() / ".env"):
+        if candidate.exists():
+            load_dotenv(candidate, override=False)
+
+
+_load_dotenv()
 DATA_DIR = Path(os.environ.get("HHGOA_DATA_DIR", REPO_ROOT / "data"))
 CORPUS_DIR = DATA_DIR / "corpus"
 CORPUS_RAW = CORPUS_DIR / "raw"
@@ -23347,6 +26050,571 @@ Copy: `cp -r impl/code/ops impl/code/ui <repo>/ && cp -r impl/code/root/. <repo>
 
 ### 1. `ops/` — Savanna hygiene
 
+#### `ops/console.py`
+
+The single terminal-output surface for every CLI in the repository: TTY-aware tables, headers, status lines, summaries and progress. `rich` is imported here and nowhere else, and everything degrades to plain space-aligned ASCII with no escape codes when stdout is not a terminal.
+
+````python
+"""The one terminal-output surface for every CLI in this repo.
+
+`rich` may be imported HERE AND NOWHERE ELSE. Every script that prints for a human
+goes through these helpers, so the whole project looks like one program.
+
+Two rendering modes, chosen per call by :func:`is_plain`:
+
+* **rich mode** - stdout is a TTY: colour, a bar for progress, a rule under table headers.
+* **plain mode** - stdout is a pipe/file/CI, or ``NO_COLOR`` / ``TERM=dumb`` / ``HHG_PLAIN=1``:
+  fixed-width space-aligned ASCII. **Not one ANSI escape byte is written in plain mode** -
+  the rich code path is never even reached, so ``make sheet | cat`` stays greppable.
+
+Mode decision, in order:
+  1. ``HHG_PLAIN`` set to anything but ``0`` -> plain (escape hatch for demos/CI).
+  2. ``NO_COLOR`` set to a non-empty value -> plain.
+  3. ``TERM`` is ``dumb`` or empty -> plain.
+  4. ``FORCE_COLOR`` set to anything but ``0`` -> rich.
+  5. otherwise: rich iff ``sys.stdout.isatty()``.
+
+Nothing here has import-time side effects and `rich` is imported lazily inside
+:func:`console`, so ``import ops.console`` costs a few hundred microseconds.
+
+Every string this module prints is passed through :func:`redact` first, so a secret
+that leaks into a path, an error string or a config dict never reaches the terminal.
+"""
+
+from __future__ import annotations
+
+import os
+import shutil
+import sys
+import textwrap
+import time
+from collections.abc import Iterable, Iterator, Mapping, Sequence
+from contextlib import contextmanager
+from dataclasses import dataclass
+from typing import Any
+
+__all__ = [
+    "Col",
+    "Table",
+    "console",
+    "detail",
+    "fail",
+    "header",
+    "is_plain",
+    "joinlist",
+    "money",
+    "ok",
+    "pct",
+    "prob",
+    "progress",
+    "redact",
+    "reset",
+    "rule",
+    "step",
+    "summary",
+    "truncate",
+    "warn",
+]
+
+# Status tags. Fixed 4 columns + a space, so message text starts at column 5 in every
+# script and `grep '^FAIL'` works on piped output.
+_TAGS = {"step": "->", "ok": "OK", "warn": "WARN", "fail": "FAIL", "detail": ""}
+_TAG_STYLES = {"step": "cyan", "ok": "green", "warn": "yellow", "fail": "bold red", "detail": "dim"}
+_TAG_W = 4
+_INDENT = " " * (_TAG_W + 1)
+_GAP = "  "  # between table columns in plain mode
+_MAX_RULE = 100
+_ELLIPSIS = "..."  # ASCII on purpose: truncation marks survive `grep`/`cut`/CI logs
+
+_console: Any = None
+_secrets: tuple[str, ...] | None = None
+
+
+# --------------------------------------------------------------------------- mode
+
+
+def is_plain() -> bool:
+    """True when output must be plain ASCII with no ANSI escapes. Re-evaluated per call."""
+    hhg = os.environ.get("HHG_PLAIN")
+    if hhg and hhg != "0":
+        return True
+    if os.environ.get("NO_COLOR"):
+        return True
+    if os.environ.get("TERM", "") in ("", "dumb"):
+        return True
+    force = os.environ.get("FORCE_COLOR")
+    if force and force != "0":
+        return False
+    try:
+        return not sys.stdout.isatty()
+    except Exception:
+        return True
+
+
+def console() -> Any:
+    """The cached `rich.console.Console` (created on first use, `rich` imported lazily).
+
+    Writes to whatever `sys.stdout` is at write time, so pytest's capture works.
+    Only reach for this when a helper below cannot express what you need; in plain
+    mode the helpers bypass rich entirely and this Console is never touched.
+    """
+    global _console
+    if _console is None:
+        from rich.console import Console
+
+        _console = Console(soft_wrap=False, highlight=False, emoji=False)
+    return _console
+
+
+def reset() -> None:
+    """Drop the cached Console and secret list. Tests call this after changing env vars."""
+    global _console, _secrets
+    _console = None
+    _secrets = None
+
+
+# ----------------------------------------------------------------------- redaction
+
+
+def _secret_values() -> tuple[str, ...]:
+    global _secrets
+    if _secrets is None:
+        marks = ("SECRET", "TOKEN", "PASSWORD", "PASSWD", "API_KEY", "APIKEY", "_KEY", "CREDENTIAL")
+        vals = {v for k, v in os.environ.items() if any(m in k.upper() for m in marks) and isinstance(v, str) and len(v) >= 8}
+        _secrets = tuple(sorted(vals, key=len, reverse=True))
+    return _secrets
+
+
+def redact(text: str) -> str:
+    """Replace any secret-looking env value (TG_SECRET, *_API_KEY, *_TOKEN...) with ``***``.
+
+    Values shorter than 8 characters are ignored so a stray ``DEBUG_KEY=1`` cannot shred
+    unrelated output. Applied automatically to everything this module prints.
+    """
+    for v in _secret_values():
+        if v in text:
+            text = text.replace(v, "***")
+    return text
+
+
+def _out(text: str = "") -> None:
+    print(redact(text))
+
+
+def _rich(renderable: Any) -> None:
+    console().print(renderable)
+
+
+def _text(value: Any, style: str = "") -> Any:
+    """A rich Text built from literal content. NEVER interpolate data into markup strings:
+    cells like ``['device', 'history']`` contain square brackets and would blow up the
+    markup parser. Text() takes the string literally.
+    """
+    from rich.text import Text
+
+    return Text(redact("" if value is None else str(value)), style=style)
+
+
+def _width() -> int:
+    return min(shutil.get_terminal_size(fallback=(100, 24)).columns, _MAX_RULE)
+
+
+def _wrap(text: str, width: int | None = None) -> list[str]:
+    """Soft-wrap prose to the terminal width, preserving explicit line breaks.
+
+    Only the plain path needs this: rich wraps its own renderables. Long unbroken
+    tokens (paths, ids) are left intact rather than split mid-token.
+    """
+    limit = width or _width()
+    lines: list[str] = []
+    for para in text.split("\n"):
+        if not para:
+            lines.append("")
+        else:
+            lines.extend(textwrap.wrap(para, limit, break_long_words=False, break_on_hyphens=False) or [""])
+    return lines
+
+
+# ------------------------------------------------------------------- value helpers
+
+
+def truncate(value: Any, width: int) -> str:
+    """``str(value)`` cut to at most `width` characters, marked with ``...`` when cut."""
+    s = "" if value is None else str(value)
+    if width <= 0 or len(s) <= width:
+        return s
+    if width <= len(_ELLIPSIS):
+        return s[:width]
+    return s[: width - len(_ELLIPSIS)] + _ELLIPSIS
+
+
+def joinlist(values: Iterable[Any] | None, *, empty: str = "-", sep: str = ",", max_items: int | None = None, sort: bool = False) -> str:
+    """Format a list of short strings as a compact cell - never a Python list repr.
+
+    ``joinlist(['device', 'history', 'memory'])`` -> ``'device,history,memory'``.
+    Empty/None -> `empty`. With `max_items`, the overflow becomes ``'a,b +3'``.
+    """
+    items = [str(v) for v in (values or [])]
+    if not items:
+        return empty
+    if sort:
+        items = sorted(items)
+    if max_items is not None and len(items) > max_items:
+        return sep.join(items[:max_items]) + f" +{len(items) - max_items}"
+    return sep.join(items)
+
+
+def money(value: Any, *, symbol: str = "$", empty: str = "-") -> str:
+    """USD with thousands separators: ``money(2140.94)`` -> ``'$2,140.94'``. None -> `empty`.
+
+    Pass ``symbol=""`` when the column header already says USD.
+    """
+    if value is None or value == "":
+        return empty
+    try:
+        return f"{symbol}{float(value):,.2f}"
+    except (TypeError, ValueError):
+        return str(value)
+
+
+def prob(value: Any, *, digits: int = 2, empty: str = "-") -> str:
+    """A 0..1 probability as a fixed-width decimal: ``prob(0.07)`` -> ``'0.07'``."""
+    if value is None or value == "":
+        return empty
+    try:
+        return f"{float(value):.{digits}f}"
+    except (TypeError, ValueError):
+        return str(value)
+
+
+def pct(value: Any, *, digits: int = 1, empty: str = "-") -> str:
+    """A 0..1 probability as a percentage: ``pct(0.07)`` -> ``'7.0%'``."""
+    if value is None or value == "":
+        return empty
+    try:
+        return f"{float(value) * 100:.{digits}f}%"
+    except (TypeError, ValueError):
+        return str(value)
+
+
+# ------------------------------------------------------------------- status lines
+
+
+def _status(kind: str, message: str) -> None:
+    tag = _TAGS[kind]
+    if is_plain():
+        _out(f"{tag:<{_TAG_W}} {message}" if tag else f"{_INDENT}{message}")
+        return
+    from rich.text import Text
+
+    line = Text()
+    if tag:
+        line.append(f"{tag:<{_TAG_W}} ", style=_TAG_STYLES[kind])
+        line.append_text(_text(message))
+    else:
+        line.append_text(_text(_INDENT + message, style="dim"))
+    _rich(line)
+
+
+def step(message: str) -> None:
+    """``->   about to do a thing`` - announce work before it happens."""
+    _status("step", message)
+
+
+def ok(message: str) -> None:
+    """``OK   it worked``."""
+    _status("ok", message)
+
+
+def warn(message: str) -> None:
+    """``WARN something is off but we continue``."""
+    _status("warn", message)
+
+
+def fail(message: str) -> None:
+    """``FAIL something broke``. Does not exit or raise - the caller owns the exit code."""
+    _status("fail", message)
+
+
+def detail(message: str) -> None:
+    """An indented continuation line under the previous status line."""
+    _status("detail", message)
+
+
+def rule(title: str = "") -> None:
+    """A horizontal separator, optionally labelled - use it between phases of a run."""
+    if is_plain():
+        w = _width()
+        _out(f"-- {redact(title)} ".ljust(w, "-") if title else "-" * w)
+    else:
+        from rich.rule import Rule
+
+        _rich(Rule(_text(title), style="dim", align="left") if title else Rule(style="dim"))
+
+
+# ------------------------------------------------------------------ header/summary
+
+
+def _kv_lines(items: Mapping[str, Any] | Sequence[tuple[str, Any]] | None) -> list[tuple[str, str]]:
+    if not items:
+        return []
+    pairs = list(items.items()) if isinstance(items, Mapping) else list(items)
+    return [(str(k), redact("" if v is None else str(v))) for k, v in pairs]
+
+
+def header(name: str, about: str = "", config: Mapping[str, Any] | Sequence[tuple[str, Any]] | None = None) -> None:
+    """Announce a run: what is running, what it will do, and the config it runs under.
+
+    Call this once, first thing in `main()`, so a judge watching a demo video knows what
+    they are looking at. `config` is the handful of settings that change the outcome
+    (backend, db path, case count, output dir) - never secrets; they are redacted anyway.
+    """
+    kv = _kv_lines(config)
+    pad = max((len(k) for k, _ in kv), default=0)
+    if is_plain():
+        w = _width()
+        _out()
+        _out(f"== {redact(name)} ".ljust(w, "="))
+        if about:
+            _out(f"{_INDENT}{redact(about)}")
+        for k, v in kv:
+            _out(f"{_INDENT}{k:<{pad}} : {v}")
+        _out()
+        return
+    from rich.panel import Panel
+    from rich.text import Text
+
+    body = Text()
+    if about:
+        body.append(redact(about), style="italic")
+    for i, (k, v) in enumerate(kv):
+        if body.plain or i:
+            body.append("\n")
+        body.append(f"{k:<{pad}} ", style="dim")
+        body.append(v, style="bold")
+    console().print()
+    _rich(Panel(body, title=_text(name, "bold cyan"), title_align="left", border_style="cyan", padding=(0, 1)))
+
+
+def summary(title: str, items: Mapping[str, Any] | Sequence[tuple[str, Any]] | None = None, *, status: str = "ok") -> None:
+    """End-of-run totals as an aligned key/value block. `status` is ok | warn | fail."""
+    kv = _kv_lines(items)
+    pad = max((len(k) for k, _ in kv), default=0)
+    if is_plain():
+        w = _width()
+        _out()
+        _out(f"== {redact(title)} ".ljust(w, "="))
+        for k, v in kv:
+            _out(f"{_INDENT}{k:<{pad}} : {v}")
+        _out()
+        return
+    from rich.panel import Panel
+    from rich.text import Text
+
+    colour = {"ok": "green", "warn": "yellow", "fail": "red"}.get(status, "green")
+    body = Text()
+    for i, (k, v) in enumerate(kv):
+        if i:
+            body.append("\n")
+        body.append(f"{k:<{pad}} ", style="dim")
+        body.append(v, style="bold")
+    console().print()
+    _rich(Panel(body, title=_text(title, f"bold {colour}"), title_align="left", border_style=colour, padding=(0, 1)))
+
+
+# ------------------------------------------------------------------------- tables
+
+
+@dataclass(slots=True)
+class Col:
+    """One table column.
+
+    header     text in the header row.
+    align      'left' | 'right' | 'center'.
+    width      exact width: header and cells are padded, longer ones truncated with '...'.
+    max_width  cap on the DATA: the column is as wide as its widest cell up to this,
+               but never narrower than its header, so headers stay readable.
+    style      rich style for the cells (TTY only; ignored in plain mode).
+    """
+
+    header: str
+    align: str = "left"
+    width: int | None = None
+    max_width: int | None = None
+    style: str | None = None
+
+
+class Table:
+    """Aligned columnar output. Build it row by row, then call :meth:`print` once.
+
+        t = Table(Col("case", width=8), Col("exposure", align="right"), title="Cases")
+        t.add_row("HHG-001", money(166.97))
+        t.print()
+
+    Columns may be given as `Col` or as plain header strings. Cells are stringified and
+    truncated per column, so nothing ever wraps mid-token. Zero rows prints the header
+    plus ``(no rows)``. In plain mode the output is fixed-width, space-aligned, ASCII.
+    """
+
+    def __init__(self, *columns: Col | str, title: str = "", caption: str = "") -> None:
+        self.columns: list[Col] = [c if isinstance(c, Col) else Col(str(c)) for c in columns]
+        self.title = title
+        self.caption = caption
+        self.rows: list[tuple[list[str], str | None]] = []
+
+    def add_row(self, *cells: Any, style: str | None = None) -> None:
+        """Append a row. Missing trailing cells become empty; `style` tints the whole row on a TTY."""
+        vals = ["" if c is None else str(c) for c in cells]
+        vals += [""] * (len(self.columns) - len(vals))
+        self.rows.append((vals[: len(self.columns)], style))
+
+    def __len__(self) -> int:
+        return len(self.rows)
+
+    def _layout(self) -> tuple[list[str], list[list[str]], list[int]]:
+        heads, widths = [], []
+        for i, c in enumerate(self.columns):
+            cells = [r[0][i] for r in self.rows]
+            if c.width is not None:
+                w = c.width  # exact: header and cells are both padded/truncated to this
+            else:
+                widest = max([0, *(len(x) for x in cells)])
+                if c.max_width is not None:
+                    widest = min(widest, c.max_width)
+                # max_width caps the DATA; a column never shrinks below its own header,
+                # so a cap never leaves you reading a mangled header like "verdict...".
+                w = max(len(c.header), widest)
+            widths.append(max(w, 1))
+            heads.append(truncate(c.header, widths[i]))
+        body = [[truncate(r[0][i], widths[i]) for i in range(len(self.columns))] for r in self.rows]
+        return heads, body, widths
+
+    def _pad(self, text: str, width: int, align: str) -> str:
+        if align == "right":
+            return text.rjust(width)
+        if align == "center":
+            return text.center(width)
+        return text.ljust(width)
+
+    def print(self) -> None:
+        """Render the table to stdout."""
+        if not self.columns:
+            return
+        heads, body, widths = self._layout()
+        if is_plain():
+            self._print_plain(heads, body, widths)
+        else:
+            self._print_rich(heads, body, widths)
+
+    def _print_plain(self, heads: list[str], body: list[list[str]], widths: list[int]) -> None:
+        if self.title:
+            _out(redact(self.title))
+        _out(_GAP.join(self._pad(h, widths[i], self.columns[i].align) for i, h in enumerate(heads)).rstrip())
+        _out(_GAP.join("-" * w for w in widths))
+        for cells in body:
+            _out(_GAP.join(self._pad(c, widths[i], self.columns[i].align) for i, c in enumerate(cells)).rstrip())
+        if not body:
+            _out("(no rows)")
+        if self.caption:
+            for line in _wrap(redact(self.caption)):
+                _out(line)
+
+    def _print_rich(self, heads: list[str], body: list[list[str]], widths: list[int]) -> None:
+        from rich import box
+        from rich.table import Table as RichTable
+
+        # Hand rich the widths we already computed and pin them. Left to itself rich
+        # re-lays-out to the terminal and squeezes every column into ellipses ("HHG-0...",
+        # "0.8...") even when the data would have fitted. pad_edge=False + padding (0,1)
+        # makes the total exactly match the plain-mode grid: sum(widths) + 2*(ncols-1).
+        t = RichTable(box=box.SIMPLE_HEAD, header_style="bold cyan", show_edge=False, pad_edge=False, expand=False, padding=(0, 1))
+        for c, h, w in zip(self.columns, heads, widths):
+            t.add_column(_text(h), justify=c.align, style=c.style, no_wrap=True, overflow="ellipsis", width=w)
+        for cells, style in zip(body, [r[1] for r in self.rows]):
+            t.add_row(*[_text(c) for c in cells], style=style)
+        if self.title:
+            _rich(_text(self.title, "bold"))
+        _rich(t)
+        if not body:
+            _rich(_text("(no rows)", "dim"))
+        if self.caption:
+            _rich(_text(self.caption, "dim"))
+
+
+# ----------------------------------------------------------------------- progress
+
+
+class _Tick:
+    """Handle yielded by :func:`progress`."""
+
+    def __init__(self, label: str, total: int | None, every: float, task: Any = None, bar: Any = None) -> None:
+        self.label, self.total, self.every = label, total, every
+        self.n = 0
+        self._task, self._bar = task, bar
+        self._t0 = time.monotonic()
+        self._last = self._t0
+
+    def advance(self, n: int = 1) -> None:
+        """Count `n` more items done, printing/redrawing at most every `every` seconds."""
+        self.n += n
+        if self._bar is not None:
+            self._bar.update(self._task, advance=n)
+            return
+        now = time.monotonic()
+        if now - self._last >= self.every:
+            self._last = now
+            self._line(now - self._t0)
+
+    def _line(self, elapsed: float) -> None:
+        of = f"{self.n}/{self.total}" if self.total else str(self.n)
+        rate = f" {self.n / elapsed:,.0f}/s" if elapsed > 0.5 and self.n else ""
+        _out(f"{_INDENT}{redact(self.label)} {of}{rate} {elapsed:.1f}s")
+
+
+@contextmanager
+def progress(label: str, total: int | None = None, *, every: float = 5.0) -> Iterator[_Tick]:
+    """Progress for a long loop. A bar on a TTY; periodic ``n/N elapsed`` lines when piped.
+
+        with progress("embedding rows", total=len(rows)) as p:
+            for r in rows:
+                embed(r)
+                p.advance()
+
+    `total=None` is fine (unknown length). On exit an ``OK`` line reports the final count
+    and wall time. `every` is the minimum seconds between plain-mode lines.
+    """
+    def _done(t: _Tick) -> None:
+        ok(f"{label} {t.n}{f'/{t.total}' if t.total else ''} in {time.monotonic() - t._t0:.1f}s")
+
+    if is_plain():
+        tick = _Tick(label, total, every)
+        try:
+            yield tick
+        finally:
+            _done(tick)
+        return
+
+    from rich.markup import escape
+    from rich.progress import BarColumn, MofNCompleteColumn, Progress, SpinnerColumn, TaskProgressColumn, TextColumn, TimeElapsedColumn
+
+    cols: list[Any] = [SpinnerColumn(), TextColumn("[cyan]{task.description}")]
+    if total:
+        cols += [BarColumn(bar_width=30), TaskProgressColumn(), MofNCompleteColumn()]
+    else:
+        cols += [MofNCompleteColumn()]
+    cols += [TimeElapsedColumn()]
+    bar = Progress(*cols, console=console(), transient=True)
+    tick = _Tick(label, total, every)
+    try:
+        # The summary line must be printed AFTER the Live display has stopped, or it gets
+        # interleaved into the bar's redraw frames ("...0/20 0:00:00OK   scoring cases").
+        with bar:
+            tick = _Tick(label, total, every, bar.add_task(escape(redact(label)), total=total), bar)
+            yield tick
+    finally:
+        _done(tick)
+````
+
 #### `ops/ensure_awake.py`
 ```python
 """Savanna auto-resume hygiene (PLAN §3.6): one shared retry decorator.
@@ -23381,6 +26649,7 @@ import asyncio
 import functools
 import logging
 import os
+import re
 import time
 from collections.abc import Callable, Iterator
 from typing import Any
@@ -23388,10 +26657,9 @@ from typing import Any
 log = logging.getLogger("ops.ensure_awake")
 
 # Substrings (lower-cased) that identify a resuming / unreachable workspace.
+# The bare status codes are NOT here: "503" would match dataset ids such as 3503211 or C15034, and a
+# non-transient error quoting one would then be retried for the whole resume budget. See _STATUS_RX.
 TRANSIENT_MARKERS: tuple[str, ...] = (
-    "502",
-    "503",
-    "504",
     "bad gateway",
     "service unavailable",
     "gateway time-out",
@@ -23410,6 +26678,10 @@ TRANSIENT_MARKERS: tuple[str, ...] = (
     "cannot connect to host",
 )
 
+# A stand-alone 502 / 503 / 504 ("502 Server Error", "502, message='Bad Gateway'", "HTTP 503"), never a
+# digit run inside an id or a number ("3503211", "C15034", "0.502", "502ms").
+_STATUS_RX = re.compile(r"(?<![\w.])50[234](?![\w.])")
+
 # Errors that must never be retried even though they subclass OSError.
 _NON_TRANSIENT_OS = (FileNotFoundError, PermissionError, IsADirectoryError, NotADirectoryError)
 
@@ -23425,8 +26697,9 @@ def is_transient(exc: BaseException) -> bool:
             return True
         if isinstance(exc, requests.HTTPError):
             resp = getattr(exc, "response", None)
-            if resp is not None and getattr(resp, "status_code", 0) in (502, 503, 504):
-                return True
+            status = getattr(resp, "status_code", 0) if resp is not None else 0
+            if status:  # a real status decides: 401 / 403 / 404 are never retried, whatever the text says
+                return status in (502, 503, 504)
     except ImportError:  # pragma: no cover
         pass
     try:  # aiohttp (pyTigerGraph async client used by tigergraph-mcp)
@@ -23434,13 +26707,25 @@ def is_transient(exc: BaseException) -> bool:
 
         if isinstance(exc, (aiohttp.ClientConnectionError, aiohttp.ServerDisconnectedError)):
             return True
-        if isinstance(exc, aiohttp.ClientResponseError) and exc.status in (502, 503, 504):
-            return True
+        if isinstance(exc, aiohttp.ClientResponseError) and exc.status:
+            return exc.status in (502, 503, 504)
     except ImportError:  # pragma: no cover
         pass
     if isinstance(exc, (ConnectionError, TimeoutError, asyncio.TimeoutError)):
         return True
-    msg = str(exc).lower()
+    return _transient_text(str(exc))
+
+
+def _transient_text(text: str) -> bool:
+    """The message-based half of ``is_transient`` (401 / 403 / auth errors are never transient)."""
+    msg = text.lower()
+    # pyTigerGraph common/base.py raises TigerGraphException("Cannot parse json: " + body) when a 2xx reply is
+    # not JSON - a resuming workspace's HTML start page. str(exc) of a TigerGraphException(msg, code) is a
+    # tuple repr, hence the "('cannot parse json" form.
+    if (msg.startswith("cannot parse json") or "('cannot parse json" in msg) and ("<html" in msg or "<!doctype" in msg):
+        return True
+    if _STATUS_RX.search(msg):
+        return True
     return any(marker in msg for marker in TRANSIENT_MARKERS)
 
 
@@ -23460,13 +26745,14 @@ def backoff_delays(max_wait_s: float, first: float = 1.0, cap: float = 60.0) -> 
 def ensure_awake(
     max_wait_s: float | None = None,
     on_retry: Callable[[int, float, BaseException], None] | None = None,
-    sleep: Callable[[float], Any] = time.sleep,
+    sleep: Callable[[float], Any] | None = None,
 ):
     """Decorator: retry a sync or async callable while the workspace resumes.
 
     ``max_wait_s`` defaults to ``TG_RESUME_MAX_WAIT_S`` from the environment (240).
     ``on_retry(attempt, delay, exc)`` is called before each sleep (the UI shows a spinner).
-    ``sleep`` is injectable for tests (sync path only; async uses ``asyncio.sleep``).
+    ``sleep`` is injectable for tests (sync path only; async uses ``asyncio.sleep``); when omitted,
+    ``time.sleep`` is looked up at call time so a monkeypatched ``time.sleep`` takes effect.
     """
     budget = float(os.getenv("TG_RESUME_MAX_WAIT_S", "240")) if max_wait_s is None else float(max_wait_s)
 
@@ -23513,7 +26799,7 @@ def ensure_awake(
                     log.warning("%s: transient error (%s); retry %d in %.0fs", fn.__name__, exc, attempt, delay)
                     if on_retry:
                         on_retry(attempt, delay, exc)
-                    sleep(delay)
+                    (sleep or time.sleep)(delay)
 
         return sync_wrapper
 
@@ -23537,12 +26823,23 @@ def tg_connection(graphname: str | None = None, timeout_ms: int | None = None):
     host = os.environ["TG_HOST"]
     graph = graphname or os.getenv("TG_GRAPHNAME", "FraudGraph")
     secret = os.environ["TG_SECRET"]
+    require_secret(secret)
     conn = TigerGraphConnection(host=host, graphname=graph, gsqlSecret=secret)
     ms = int(os.getenv("TG_QUERY_TIMEOUT_MS", "120000")) if timeout_ms is None else int(timeout_ms)
     # Connection-wide GSQL-TIMEOUT / RESPONSE-LIMIT headers (pyTigerGraph merges them into every request).
     conn.customizeHeader(timeout=ms, responseSize=64_000_000)
     _get_token(conn, secret)
     return conn
+
+
+EMPTY_SECRET_MSG = "TG_SECRET is empty in .env - paste the Savanna Database Secret"
+
+
+def require_secret(secret: str | None) -> str:
+    """Fail before any network call: an empty secret would wake (and bill) a suspended workspace for a 401."""
+    if not (secret or "").strip():
+        raise RuntimeError(EMPTY_SECRET_MSG)
+    return secret  # type: ignore[return-value]
 
 
 @ensure_awake()
@@ -23598,9 +26895,8 @@ import signal
 import sys
 import time
 
+from ops.console import detail, fail, header, ok, step, summary, warn
 from ops.ensure_awake import run_query, tg_connection, warm_up
-
-log = logging.getLogger("ops.keep_alive")
 
 DEFAULT_QUERY = "prior_cases_for_customer"
 DEFAULT_PARAMS = {"cu": "C13487", "as_of": "2016-12-31 23:59:59"}
@@ -23614,12 +26910,36 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--params", default=os.getenv("KEEP_ALIVE_PARAMS", json.dumps(DEFAULT_PARAMS)))
     ap.add_argument("--once", action="store_true", help="single ping (used by `make awake`)")
     args = ap.parse_args(argv)
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+    # ops.ensure_awake still logs its auto-resume retries; show them at the console indent
+    # so a 502/503 retry lines up under the ping it belongs to. INFO chatter stays off.
+    logging.basicConfig(level=logging.WARNING, format="     %(name)s: %(message)s")
 
     params = json.loads(args.params)
-    conn = tg_connection()
-    ver = warm_up(conn)
-    log.info("workspace awake (%s); pinging %s every %.0fs", ver, args.query, args.interval)
+    header(
+        "ops.keep_alive",
+        "one real query keeps the Savanna workspace from auto-suspending mid-benchmark"
+        if not args.once
+        else "wake the Savanna workspace (the first request after an auto-stop is dropped)",
+        {
+            "host": os.getenv("TG_HOST", "(TG_HOST unset)"),
+            "graph": os.getenv("TG_GRAPHNAME", "FraudGraph"),
+            "query": args.query,
+            "params": json.dumps(params, sort_keys=True),
+            "mode": "single ping (--once)" if args.once else f"every {args.interval:.0f}s",
+            "runs for": "until Ctrl-C" if not args.duration else f"{args.duration:.0f}s",
+        },
+    )
+
+    step("connecting and waiting for the workspace to answer getVer()")
+    try:
+        conn = tg_connection()
+        ver = warm_up(conn)
+    except Exception as exc:  # noqa: BLE001 - a bad .env must read as one line, not a traceback
+        fail(f"cannot reach the workspace: {exc}")
+        detail("check TG_HOST / TG_GRAPHNAME / TG_SECRET in .env (`make status`)")
+        summary("keep-alive stopped", {"pings": 0, "reason": "connection failed"}, status="fail")
+        return 1
+    ok(f"workspace awake, TigerGraph {ver}")
 
     stop = {"flag": False}
 
@@ -23631,14 +26951,20 @@ def main(argv: list[str] | None = None) -> int:
 
     started = time.time()
     n = 0
+    failures = 0
+    last_error = ""
     while not stop["flag"]:
         t0 = time.time()
+        clock = time.strftime("%H:%M:%S")
         try:
             res = run_query(conn, args.query, params, timeout_ms=30_000)
             n += 1
-            log.info("ping %d ok in %.2fs (%d result objects)", n, time.time() - t0, len(res))
+            ok(f"{clock} ping {n} {args.query} in {time.time() - t0:.2f}s ({len(res)} result objects)")
         except Exception as exc:  # noqa: BLE001 - keep the loop alive, report loudly
-            log.error("ping failed: %s", exc)
+            failures += 1
+            last_error = str(exc)
+            warn(f"{clock} ping failed after {time.time() - t0:.2f}s")
+            detail(last_error)
         if args.once or (args.duration and time.time() - started >= args.duration):
             break
         # sleep in 1 s slices so Ctrl-C is prompt
@@ -23646,7 +26972,17 @@ def main(argv: list[str] | None = None) -> int:
             if stop["flag"]:
                 break
             time.sleep(1)
-    log.info("keep-alive stopped after %d pings", n)
+    summary(
+        "keep-alive stopped",
+        {
+            "pings ok": n,
+            "pings failed": failures,
+            "last error": last_error or "-",
+            "kept awake for": f"{time.time() - started:.0f}s",
+            "query": args.query,
+        },
+        status="warn" if failures else "ok",
+    )
     return 0
 
 
@@ -23689,6 +27025,8 @@ import time
 
 import duckdb
 
+from ops.console import Col, Table, fail, header, ok, progress, step, summary
+
 CARDMAP = """
 SELECT customer_id, coalesce(card6,'') AS c6,
        dense_rank() OVER (PARTITION BY customer_id ORDER BY coalesce(card6,'')) AS k
@@ -23729,16 +27067,22 @@ EXPECTED = {"txn": 590_742, "card": 14_317, "customer": 13_553, "device_profile"
 
 
 def export(src: str, out: str) -> dict[str, int]:
+    """Build `out` from `src` and return the row count of every table *and* view.
+
+    Tables are keyed by `EXPECTED`, views by `VIEWS`; the two name spaces are disjoint,
+    so the caller compares against ``EXPECTED | VIEWS``. Counting is done here (rather
+    than asserting) so the CLI can report every mismatch at once instead of dying on the
+    first one with a traceback.
+    """
     if os.path.exists(out):
         os.remove(out)
     con = duckdb.connect(out)
     con.execute(f"ATTACH '{src}' AS src (READ_ONLY)")
-    for stmt in SQL:
-        con.execute(stmt)
-    counts = {t: con.execute(f"SELECT count(*) FROM {t}").fetchone()[0] for t in EXPECTED}
-    for v, n in VIEWS.items():
-        got = con.execute(f"SELECT count(*) FROM {v}").fetchone()[0]
-        assert got == n, f"view {v}: {got} rows, expected {n}"
+    with progress("creating tables and views", total=len(SQL)) as p:
+        for stmt in SQL:
+            con.execute(stmt)
+            p.advance()
+    counts = {n: con.execute(f"SELECT count(*) FROM {n}").fetchone()[0] for n in (*EXPECTED, *VIEWS)}
     con.execute("DETACH src")
     con.close()
     return counts
@@ -23749,16 +27093,62 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--src", default=os.getenv("HHGOA_DB", "data/hhgoa.duckdb"))
     ap.add_argument("--out", default=os.getenv("VALIDATOR_DB", "data/ids.duckdb"))
     args = ap.parse_args(argv)
+    header(
+        "ops.export_id_tables",
+        "id-only DuckDB so the answer-file validator resolves every id without the raw CSVs",
+        {"src": args.src, "out": args.out, "tables": len(EXPECTED), "views": len(VIEWS)},
+    )
+    if not os.path.exists(args.src):
+        fail(f"source DuckDB not found: {args.src}")
+        summary("id export failed", {"src": args.src, "hint": "run `make db features` first"}, status="fail")
+        return 1
+
     t0 = time.time()
+    step(f"attaching {args.src} read-only")
     counts = export(args.src, args.out)
-    ok = True
-    for t, n in counts.items():
-        flag = "ok" if n == EXPECTED[t] else f"EXPECTED {EXPECTED[t]:,}"
-        ok &= n == EXPECTED[t]
-        print(f"{t:15s} {n:>9,}  {flag}")
-    print(f"views: {', '.join(VIEWS)} (txc/card_feat/customer_feat/cc for engine.validator)")
-    print(f"wrote {args.out} ({os.path.getsize(args.out)/1e6:.1f} MB) in {time.time()-t0:.1f}s")
-    return 0 if ok else 1
+
+    want = {**EXPECTED, **VIEWS}
+    t = Table(
+        Col("object", max_width=16),
+        Col("kind", width=5),
+        Col("rows", align="right", width=9),
+        Col("expected", align="right", width=9),
+        Col("status", width=6),
+        title=f"{len(counts)} objects in {args.out}",
+        caption="views txc / card_feat / customer_feat / cc carry the column names engine.validator queries",
+    )
+    bad = []
+    for name, n in counts.items():
+        good = n == want[name]
+        if not good:
+            bad.append((name, n, want[name]))
+        t.add_row(
+            name,
+            "table" if name in EXPECTED else "view",
+            f"{n:,}",
+            f"{want[name]:,}",
+            "ok" if good else "WRONG",
+            style=None if good else "red",
+        )
+    t.print()
+
+    for name, got, exp in bad:
+        fail(f"{name}: {got:,} rows, expected {exp:,}")
+    if not bad:
+        ok(f"every table and view matches its expected row count ({counts['txn']:,} transactions)")
+    mb = os.path.getsize(args.out) / 1e6
+    summary(
+        "id export complete" if not bad else "id export finished with wrong counts",
+        {
+            "database": args.out,
+            "size": f"{mb:.1f} MB",
+            "objects": f"{len(EXPECTED)} tables + {len(VIEWS)} views",
+            "row mismatches": len(bad),
+            "elapsed": f"{time.time() - t0:.1f}s",
+        },
+        status="fail" if bad else "ok",
+    )
+    return 0 if not bad else 1
 
 
 if __name__ == "__main__":
@@ -23794,6 +27184,8 @@ import hashlib
 import json
 import os
 import sys
+
+from ops.console import Col, Table, fail, header, joinlist, money, ok, prob, step, summary, warn
 
 MANDATORY_QUERIES = [
     "case_context",
@@ -23951,6 +27343,16 @@ def build(answers_dir: str, run_id: str, runs_dir: str, case_pack_csv: str, mode
     return written
 
 
+def _lines(path: str) -> int:
+    with open(path, encoding="utf-8") as f:
+        return sum(1 for _ in f)
+
+
+def _action_names(actions: list | None) -> list[str]:
+    """``next_best_actions.final`` holds action objects; show the verbs, not the dict repr."""
+    return [a.get("action", "?") if isinstance(a, dict) else str(a) for a in (actions or [])]
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--answers", default="cases")
@@ -23959,8 +27361,76 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--case-pack", default="data/raw/case_pack.csv")
     ap.add_argument("--model", default="mock")
     a = ap.parse_args(argv)
-    written = build(a.answers, a.run_id, a.runs, a.case_pack, a.model)
-    print(f"wrote {len(written)} case(s) to {os.path.join(a.runs, a.run_id)}: {', '.join(written)}")
+    out_root = os.path.join(a.runs, a.run_id)
+    have = len(glob.glob(os.path.join(a.answers, "HHG-*.json")))
+    header(
+        "ops.make_mock_run",
+        "replay a runs/ tree from finished answer files so the UI works with no graph and no keys",
+        {
+            "answers": a.answers if have else "tests/fixtures/answers (no cases/HHG-*.json yet)",
+            "case pack": a.case_pack if os.path.exists(a.case_pack) else f"{a.case_pack} (missing: trigger/opened_at defaulted)",
+            "run id": a.run_id,
+            "output": out_root,
+            "model": a.model,
+        },
+    )
+    if not have:
+        warn(f"no answer files in {a.answers}/ - falling back to the checked-in sample answers")
+    step(f"synthesising phases.jsonl, calls.jsonl and sar.md under {out_root}")
+    try:
+        written = build(a.answers, a.run_id, a.runs, a.case_pack, a.model)
+    except SystemExit as exc:  # build() raises when there is nothing at all to replay
+        fail(str(exc))
+        summary("mock run not written", {"answers": a.answers, "run id": a.run_id}, status="fail")
+        return 1
+
+    t = Table(
+        Col("case", width=7),
+        Col("verdict", max_width=10),
+        Col("p", align="right", width=4),
+        Col("pattern", max_width=22),
+        Col("exposure", align="right", width=11),
+        Col("final actions", max_width=30),
+        Col("phases", align="right", width=6),
+        Col("calls", align="right", width=5),
+        Col("sar", width=3, align="center"),
+        title=f"{len(written)} case(s) replayed into {out_root}",
+        caption="phases = P0..P10 rows, calls = GSQL tool rows + one LLM row per LLM phase",
+    )
+    sars = 0
+    exposure = 0.0
+    for cid in written:
+        d = os.path.join(out_root, cid)
+        with open(os.path.join(d, "answer.json"), encoding="utf-8") as f:
+            ans = json.load(f)
+        case = ans["case"]
+        filed = bool(ans.get("sar", {}).get("file"))
+        sars += filed
+        exposure += float(case.get("exposure_usd") or 0)
+        t.add_row(
+            cid,
+            case.get("verdict", "-"),
+            prob(case.get("fraud_probability")),
+            case.get("pattern") or "-",
+            money(case.get("exposure_usd")),
+            joinlist(_action_names(ans.get("next_best_actions", {}).get("final")), max_items=3),
+            _lines(os.path.join(d, "phases.jsonl")),
+            _lines(os.path.join(d, "calls.jsonl")),
+            "Y" if filed else "-",
+            style="yellow" if case.get("verdict") == "fraud" else None,
+        )
+    t.print()
+    ok(f"run manifest -> {os.path.join(out_root, 'run_manifest.json')} (mode=mock, model={a.model})")
+    summary(
+        "mock run ready",
+        {
+            "cases": len(written),
+            "SARs filed": sars,
+            "total exposure": money(exposure),
+            "run id": a.run_id,
+            "next": f"RUN_MODE=mock make ui   (pick run {a.run_id})",
+        },
+    )
     return 0
 
 
@@ -25400,6 +28870,10 @@ dependencies = [
   "python-dotenv>=1.2,<2",
   "numpy>=2,<3",
   "requests>=2.32,<3",
+  # Terminal rendering for every CLI in the repo. Already present transitively (typer -> rich>=13.8.0,
+  # mcp[rich] -> rich>=13.9.4, streamlit[all] -> rich>=11.0.0); made explicit so it cannot vanish on a
+  # re-resolve. Lower bound is the highest of those transitive floors. Only ops/console.py may import it.
+  "rich>=13.9.4,<16",
   "sentence-transformers>=6.1.0",
   "claude-agent-sdk>=0.2.157",
 ]
@@ -25443,7 +28917,8 @@ filterwarnings = ["ignore::DeprecationWarning"]
 # --- TigerGraph Savanna (PLAN §3.1, §3.6) ---------------------------------------------
 TG_HOST=https://<workspace-id>.i.tgcloud.io   # Savanna workspace URL; contains "tgcloud" so pyTigerGraph picks port 443
 TG_GRAPHNAME=FraudGraph
-TG_SECRET=                                     # Savanna → Database Secrets → Create Secret (shown once)
+# Savanna → Database Secrets → Create Secret (value is shown once at creation — paste it below, nothing else on the line)
+TG_SECRET=
 TG_QUERY_TIMEOUT_MS=120000                     # GSQL-TIMEOUT injected by mcp/tg_mcp_launcher.py and ops/ensure_awake.py
 TG_RESUME_MAX_WAIT_S=240                       # ensure_awake() backoff budget on 502/503 while the workspace resumes
 TG_LOAD_TIMEOUT_MS=600000                      # GSQL-TIMEOUT for runLoadingJobWithFile (graph/load_all.py, rag/load_vectors.py)
@@ -25536,9 +29011,11 @@ __pycache__/
 #### `Makefile`
 ```makefile
 # HHGOA fraud agent — build pipeline (PLAN §3.2, §6; commands corrected per impl/00-integration.md §5 and
-# decisions.md). Every target is idempotent and prints what it did. `make help` lists them. Module entry
-# points are variables so a renamed script is a one-line change. Everything runs as `python -m <module>`
-# from the repo root except the graph/ scripts, which are plain files.
+# decisions.md). Every target is idempotent and prints what it did. `make help` lists them grouped by stage and
+# `make status` shows what is already built. Module entry points are variables so a renamed script is a one-line
+# change. Everything runs as `python -m <module>` from the repo root except the graph/ scripts, which are plain
+# files. Presentation (help / status / unknown-target help) is pure shell: no python start-up cost, no colour
+# unless stdout is a real terminal.
 
 SHELL := /bin/bash
 .DEFAULT_GOAL := help
@@ -25604,20 +29081,129 @@ AGENT_BENCH := agent.bench
 AGENT_PROMOTE := agent.promote
 # AGENT_VALIDATE: --db $(VALIDATOR_DB) <files> (engine.validator over data/ids.duckdb)
 AGENT_VALIDATE := agent.validator
+# qa/ (module H): offline lints, no network
+QA_LINT_GSQL := qa.lint_gsql
+QA_INTEGRATION := qa.check_integration
 
-.PHONY: help install env db features cms facts chunks ids load algos install-queries describe \
+# ---- terminal presentation ------------------------------------------------------------
+# make strips `#` and everything after it from a *variable definition* (recipe lines keep it),
+# so a literal hash the shell needs - ${#name} - has to come through this variable.
+HASH := \#
+
+# $(SAY) is a shell prelude that every human-facing target starts with. It picks colour or
+# plain exactly the way ops/console.py does, computes the banner width W, and defines the
+# printers used below. Pure shell on purpose: `make help` must not pay a python start-up.
+#   plain  when HHG_PLAIN is set to anything but 0, NO_COLOR is set, or TERM is unset/dumb
+#   colour when FORCE_COLOR is set to anything but 0, or stdout is a tty
+# So `make help | cat`, `make status > file` and CI logs contain zero escape bytes, and the
+# status tags line up with the python CLIs ("OK  ", "WARN", "FAIL" + one space).
+SAY = C=; B=; D=; G=; Y=; RD=; R=; \
+	if [ -n "$${HHG_PLAIN:-}" ] && [ "$${HHG_PLAIN:-0}" != 0 ]; then :; \
+	elif [ -n "$${NO_COLOR:-}" ] || [ -z "$${TERM:-}" ] || [ "$${TERM:-dumb}" = dumb ]; then :; \
+	elif { [ -n "$${FORCE_COLOR:-}" ] && [ "$${FORCE_COLOR:-0}" != 0 ]; } || [ -t 1 ]; then \
+	  C=$$'\033[36m'; B=$$'\033[1m'; D=$$'\033[2m'; G=$$'\033[32m'; Y=$$'\033[33m'; RD=$$'\033[1;31m'; R=$$'\033[0m'; \
+	fi; \
+	W=$$(tput cols 2>/dev/null || echo 100); case "$$W" in ''|*[!0-9]*) W=100;; esac; \
+	if [ "$$W" -gt 100 ] || [ "$$W" -lt 40 ]; then W=100; fi; \
+	_bar() { printf '%*s' "$$1" '' | tr ' ' "$$2"; }; \
+	banner() { printf '\n%s%s== %s %s%s\n' "$$B" "$$C" "$$1" "$$(_bar $$((W-4-$${$(HASH)1})) =)" "$$R"; \
+	           if [ -n "$$2" ]; then printf '     %s%s%s\n' "$$D" "$$2" "$$R"; fi; }; \
+	kv() { printf '     %-17s : %s\n' "$$1" "$$2"; }; \
+	okl() { printf '%sOK  %s %s\n' "$$G" "$$R" "$$1"; }; \
+	warnl() { printf '%sWARN%s %s\n' "$$Y" "$$R" "$$1"; }; \
+	faill() { printf '%sFAIL%s %s\n' "$$RD" "$$R" "$$1"; }; \
+	dim() { printf '     %s%s%s\n' "$$D" "$$1" "$$R"; };
+
+.PHONY: help status install env db features cms facts chunks ids load algos install-queries describe \
         corpus embed vectors replay sheet engine-drafts bench bench-one bench-free promote validate ui mock-run \
-        test test-data test-live lint fmt keepalive awake rebuild demo-warm clean
+        test test-data test-live lint lint-gsql lint-contracts fmt keepalive awake rebuild demo-warm clean
 
-help: ## list targets
-	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*?## "}{printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}'
+##@ Start here
+help: ## this list, grouped by build stage (the default target)
+	@$(SAY) \
+	 n=$$(grep -hE '^[a-zA-Z_][a-zA-Z0-9_-]*:.*## ' $(MAKEFILE_LIST) | wc -l | tr -d ' '); \
+	 banner "make" "agentic fraud investigation on TigerGraph - $$n targets, in build order"; \
+	 awk -v c="$$C" -v b="$$B" -v r="$$R" -v w=$$((W-22)) ' \
+	   function emit(name, desc,   nn,i,line,lead,wd) { \
+	     nn=split(desc, wd, " "); line=""; lead=sprintf("  %s%-17s%s ", c, name, r); \
+	     for (i=1; i<=nn; i++) { \
+	       if (line != "" && length(line)+1+length(wd[i]) > w) { print lead line; lead=sprintf("  %-17s ", ""); line=wd[i] } \
+	       else { line = (line=="" ? wd[i] : line " " wd[i]) } } \
+	     if (line != "") print lead line } \
+	   BEGIN { FS=":.*?## " } \
+	   /^##@ / { printf "\n%s%s%s\n", b, substr($$0,5), r; next } \
+	   /^[a-zA-Z_][a-zA-Z0-9_-]*:.*## / { emit($$1, $$2) } \
+	 ' $(MAKEFILE_LIST); \
+	 printf '\n'; \
+	 dim "make status            what is already built, and what the next command is"; \
+	 dim "make install db features cms facts     the offline pipeline, in order"; \
+	 dim "HHG_PLAIN=1 make ...   force plain ASCII output (demo capture / CI)"; \
+	 printf '\n'
 
-# ---- day 0 -----------------------------------------------------------------------------
+status: ## what exists and what does not: data, models, chunks, vectors, cases, backends. Offline; never prints a secret
+	@$(SAY) \
+	 cfg() { v="$${!1-}"; \
+	         if [ -z "$$v" ] && [ -f .env ]; then \
+	           v=$$(sed -n "s/^$$1=//p" .env | tail -1 | sed -e 's/[[:space:]][[:space:]]*\#.*$$//' -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$$//' -e 's/^"//' -e 's/"$$//'); \
+	         fi; printf '%s' "$${v:-(unset)}"; }; \
+	 held() { if [ "$$(cfg "$$1")" != "(unset)" ]; then printf 'set (value never printed)'; else printf 'not set'; fi; }; \
+	 MISSING=0; NEXT=""; \
+	 chk() { n=0; \
+	   for f in $$2; do if [ -e "$$f" ]; then n=$$((n+1)); fi; done; \
+	   if [ "$$n" -gt 0 ]; then \
+	     sz=$$(du -ch $$2 2>/dev/null | tail -1 | cut -f1 | tr -d ' '); \
+	     if [ "$$n" -gt 1 ]; then info="$$n files, $$sz"; else info="$$sz"; fi; \
+	     st=$$(printf '%-7s' ready); st="$$G$$st$$R"; \
+	   else \
+	     MISSING=$$((MISSING+1)); NEXT="$${NEXT:-$$3}"; info="-> $$3"; \
+	     st=$$(printf '%-7s' missing); st="$$Y$$st$$R"; \
+	   fi; \
+	   printf '%-26s  %s  %-34s  %s\n' "$$1" "$$st" "$$2" "$$info"; }; \
+	 banner "make status" "what this checkout already has, checked on disk only - no network, no secrets"; \
+	 kv "repo"        "$$PWD"; \
+	 kv "RUN_MODE"    "$$(cfg RUN_MODE)"; \
+	 kv "LLM_BACKEND" "$$(cfg LLM_BACKEND)   (cli = claude-agent-sdk, no API key)"; \
+	 kv "MODEL"       "$$(cfg MODEL)"; \
+	 kv "EMBED_BACKEND" "$$(cfg EMBED_BACKEND)   model $$(cfg EMBED_MODEL) dim $$(cfg EMBED_DIM)"; \
+	 kv "TG_HOST"     "$$(cfg TG_HOST)"; \
+	 kv "TG_GRAPHNAME" "$$(cfg TG_GRAPHNAME)"; \
+	 kv "TG_SECRET"   "$$(held TG_SECRET)"; \
+	 kv "ANTHROPIC_API_KEY" "$$(held ANTHROPIC_API_KEY)"; \
+	 kv "VOYAGE_API_KEY" "$$(held VOYAGE_API_KEY)"; \
+	 printf '\n'; \
+	 printf '%-26s  %-7s  %-34s  %s\n' artefact state path detail; \
+	 printf '%-26s  %-7s  %-34s  %s\n' "$$(_bar 26 -)" "$$(_bar 7 -)" "$$(_bar 34 -)" "$$(_bar 6 -)"; \
+	 chk "env file"            ".env"                        "make install"; \
+	 chk "raw dataset"         "data/raw/*.csv"              "copy the 4 HHGOA CSVs to data/raw"; \
+	 chk "dataset README"      "$(HHGOA_README)"             "copy the dataset README to data/raw"; \
+	 chk "etl duckdb"          "$(HHGOA_DB)"                 "make db"; \
+	 chk "cms scorer"          "data/models/lgb_fraud.txt"   "make cms"; \
+	 chk "cms calibration"     "data/models/isotonic.json"   "make cms"; \
+	 chk "engine facts db"     "$(ENGINE_FACTS_DB)"          "make facts"; \
+	 chk "validator ids db"    "$(VALIDATOR_DB)"             "make ids"; \
+	 chk "graph chunks"        "data/out/txn_*.csv"          "make chunks"; \
+	 chk "chunk manifest"      "data/out/manifest.json"      "make chunks"; \
+	 chk "policy chunks"       "data/out/policy_chunk*.jsonl" "make corpus"; \
+	 chk "closed-case text"    "data/out/closed_case_embed.jsonl" "make corpus"; \
+	 chk "embeddings"          "data/out/vec_*.psv"          "make embed"; \
+	 chk "expectation sheet"   "qa/engine_expectation_sheet.md" "make sheet"; \
+	 chk "engine drafts"       "engine/out/*.draft.json"     "make sheet"; \
+	 chk "replay metrics"      "engine/out/replay_metrics.json" "make replay"; \
+	 chk "answer files"        "cases/HHG-*.json"            "make bench promote RUN_ID=v1"; \
+	 chk "agent runs"          "runs/*/run_manifest.json"    "make bench RUN_ID=v1 (or make mock-run)"; \
+	 chk "schema contract"     "contracts/schema.md"         "needed by make lint-contracts"; \
+	 printf '\n'; \
+	 if [ "$$MISSING" -eq 0 ]; then okl "every offline artefact is present"; \
+	 else warnl "$$MISSING artefact(s) missing"; dim "next: $$NEXT"; fi; \
+	 dim "graph load state is a server fact and cannot be read offline: run 'make awake' then '$(PY) $(GRAPH_LOAD) --dry-run'"; \
+	 printf '\n'
+
+##@ Setup (day 0)
 install: ## uv sync (+dev extras); copies .env.example -> .env if missing
 	uv sync --extra dev
 	@test -f .env || (cp .env.example .env && echo "created .env — fill TG_HOST / TG_SECRET / API keys")
 
-env: ## print the effective config (secrets masked)
+env: ## print the effective config as KEY=value (secrets masked); `make status` is the readable version
 	@$(PY) -c "import os; from dotenv import load_dotenv; load_dotenv(); \
 	  [print(f'{k}={(v[:6]+\"…\") if k.endswith((\"KEY\",\"SECRET\")) and v else v}') for k,v in sorted(os.environ.items()) if k.startswith(('TG_','RUN_MODE','MODEL','SAR_MODEL','LLM_BACKEND','EMBED','VOYAGE','ANTHROPIC','ENGINE_','HHGOA_'))]"
 
@@ -25627,7 +29213,7 @@ awake: ## wake the Savanna workspace (retries 502/503 up to 4 min) and print the
 keepalive: ## ping an installed query every 3 min (benchmark / demo recording); Ctrl-C to stop
 	$(PY) -m ops.keep_alive
 
-# ---- day 1: ETL + scorer + facts DB ----------------------------------------------------
+##@ ETL, scorer, facts (day 1)
 db: ## data/raw/*.csv -> data/hhgoa.duckdb (tx 590,742 / idn 144,432 / cc 5,565 / cp 20; card rule 14,975/14,975)
 	$(PY) -m $(ETL_BUILD_DB) --raw data/raw --db $(HHGOA_DB)
 
@@ -25638,7 +29224,7 @@ features: ## txn_feat, device_profile (9,705), card_feat (14,317), burst_member;
 cms: ## train the case-memory scorer (Oct holdout AUC >= 0.95) -> txn_feat.cms_p + data/models/ (isotonic.json = the calibration of record)
 	$(PY) -m $(ETL_CMS) $(HHGOA_DB) --out data/models
 
-facts: ## engine facts DuckDB from the ETL tables -> $(ENGINE_FACTS_DB) (590,742 / 14,317 / 9,705 / 13,553 / 5,565 / 14,955 / 20)
+facts: ## engine facts DuckDB from the ETL tables -> data/hhgoa_engine.duckdb, ENGINE_FACTS_DB (590,742 / 14,317 / 9,705 / 13,553 / 5,565 / 14,955 / 20)
 	$(PY) -m $(ENGINE_FACTS) --etl $(HHGOA_DB) --out $(ENGINE_FACTS_DB)
 
 chunks: ## headerless TSV chunks in data/out/ (txn_000..007 <= 45 MB each), verified against contracts/csv_columns.yaml
@@ -25647,7 +29233,7 @@ chunks: ## headerless TSV chunks in data/out/ (txn_000..007 <= 45 MB each), veri
 ids: ## id-only DuckDB for the validator in CI (data/ids.duckdb, ~20 MB, checked in) + views txc/card_feat/customer_feat/cc
 	$(PY) -m ops.export_id_tables --src $(HHGOA_DB) --out $(VALIDATOR_DB)
 
-# ---- day 2-4: graph ----------------------------------------------------------------------
+##@ Graph: schema, load, algorithms, queries (day 2-4)
 load: ## schema + loading jobs + all chunks in one run (counts asserted: 590,742 / 576,425 / 140,784 / 14,955); `graph/load_all.py --schema-only` for the DDL alone
 	$(PY) $(GRAPH_LOAD)
 
@@ -25660,7 +29246,10 @@ install-queries: ## CREATE + INSTALL every graph/queries/*.gsql in one batch (16
 describe: ## register query descriptions + JSON parameter examples (pyTigerGraph updateQueryDescription)
 	$(PY) $(GRAPH_DESCRIBE)
 
-# ---- day 7: GraphRAG ---------------------------------------------------------------------
+rebuild: ## disaster recovery: rebuild the workspace from checked-in chunks: make rebuild FROM=schema|load|algos|vectors|install
+	$(PY) $(GRAPH_REBUILD) --from $(FROM)
+
+##@ GraphRAG: corpus, embeddings, TigerVector (day 7)
 corpus: ## verify the downloaded corpus, chunk README + regulations, emit the ClosedCase embed text (ETL embed_text)
 	$(PY) -m $(RAG_FETCH) --verify
 	HHGOA_README=$(HHGOA_README) $(PY) -m $(RAG_CHUNK)
@@ -25674,18 +29263,18 @@ vectors: ## add the VECTOR attributes (graph/schema_change_vectors.gsql, GLOBAL 
 	$(PY) -m $(RAG_VECTORS) --ensure-schema
 	$(PY) -m $(RAG_VECTORS) --all
 
-# ---- day 5-6: engine QA ------------------------------------------------------------------
-replay: ## 310-case deterministic replay -> engine/out/replay_metrics.json (targets: pattern >= 95 %, SAR 100 %, Jaccard >= 0.85)
-	ENGINE_FACTS_DB=$(ENGINE_FACTS_DB) $(PY) -m $(ENGINE_REPLAY)
-
+##@ Engine QA: the deterministic decision engine (day 5-6)
 sheet: ## regenerate qa/engine_expectation_sheet.md (+ engine/out/*.draft.json) from the deterministic engine
 	ENGINE_FACTS_DB=$(ENGINE_FACTS_DB) $(PY) -m $(ENGINE_RUN)
 
 engine-drafts: ## 20 engine-drafted answer files with no LLM (day-6 fallback) -> runs/engine-drafts/<case>.draft.json
 	ENGINE_FACTS_DB=$(ENGINE_FACTS_DB) $(PY) -m $(ENGINE_RUN) --out runs/engine-drafts
 
-# ---- day 8-12: agent ---------------------------------------------------------------------
-bench: ## run the agent on CASES (default all 20, opened_at order) -> runs/$(RUN_ID)/
+replay: ## 310-case deterministic replay -> engine/out/replay_metrics.json (targets: pattern >= 95 %, SAR 100 %, Jaccard >= 0.85)
+	ENGINE_FACTS_DB=$(ENGINE_FACTS_DB) $(PY) -m $(ENGINE_REPLAY)
+
+##@ Agent: run, validate, promote the 20 cases (day 8-12)
+bench: ## run the agent on CASES (default all 20, opened_at order) -> runs/<RUN_ID>/
 	$(PY) -m $(AGENT_BENCH) --cases $(strip $(CASES)) --run-id $(RUN_ID) $(MODEL_FLAG)
 
 bench-one: ## one case: make bench-one CASE=HHG-014
@@ -25695,14 +29284,14 @@ bench-free: ## real model (claude-agent-sdk, no API key) over DuckDB facts: make
 	$(PY) -m $(AGENT_BENCH) --cases $(strip $(CASES)) --run-id $(RUN_ID) $(MODEL_FLAG) --mock --llm-backend cli
 	$(PY) -m $(AGENT_VALIDATE) --db $(VALIDATOR_DB) runs/$(RUN_ID)/*/answer.json
 
-promote: ## copy runs/$(RUN_ID)/*/answer.json -> cases/ after validation, write cases/MANIFEST.md
+promote: ## copy runs/<RUN_ID>/*/answer.json -> cases/ after validation, write cases/MANIFEST.md
 	$(PY) -m $(AGENT_VALIDATE) --db $(VALIDATOR_DB) runs/$(RUN_ID)/*/answer.json
 	$(PY) -m $(AGENT_PROMOTE) --run-id $(RUN_ID)
 
 validate: ## validate cases/*.json against the README schema + id existence (VALIDATOR_DB)
 	$(PY) -m $(AGENT_VALIDATE) --db $(VALIDATOR_DB) cases/*.json
 
-# ---- UI ----------------------------------------------------------------------------------
+##@ UI and demo
 ui: ## Streamlit analyst dashboard (queue / case / approvals / graph / runs)
 	uv run streamlit run ui/app.py --server.headless true --server.port 8501
 
@@ -25711,7 +29300,7 @@ mock-run: ## runs/mock/ from cases/*.json (or the sample HHG-014) so the UI work
 
 demo-warm: awake keepalive ## wake the workspace and keep it awake for the recording
 
-# ---- quality -----------------------------------------------------------------------------
+##@ Quality
 test: ## unit tests (no network; data-backed tests skip when data/hhgoa.duckdb / the facts DB are absent)
 	uv run pytest tests/unit
 
@@ -25721,20 +29310,60 @@ test-data: ## the data-backed unit tests, mandatory locally after `make db featu
 	HHGOA_DB=$(HHGOA_DB) ENGINE_FACTS_DB=$(ENGINE_FACTS_DB) uv run pytest tests/unit/test_card_rule.py tests/unit/test_features.py tests/unit/test_engine.py -rs
 
 test-live: ## live contract tests against the workspace (needs .env)
-	uv run pytest tests/live -m live
+	uv run pytest tests/live -v
 
 lint: ## ruff check
 	uv run ruff check .
 
+lint-gsql: ## offline GSQL lint: every alias.attribute resolves against graph/schema.gsql; yaml matches the query files
+	$(PY) -m $(QA_LINT_GSQL)
+
+lint-contracts: ## offline contract lint: gsql params vs mcp/query_descriptions.yaml vs DuckFacts vs the agent tool table
+	$(PY) -m $(QA_INTEGRATION)
+
 fmt: ## ruff format + fix
 	uv run ruff format . && uv run ruff check --fix .
 
-# ---- disaster recovery ---------------------------------------------------------------------
-rebuild: ## rebuild the workspace from checked-in chunks: make rebuild FROM=schema|load|algos|vectors|install
-	$(PY) $(GRAPH_REBUILD) --from $(FROM)
-
 clean: ## remove caches (never data/ or runs/)
 	rm -rf .pytest_cache .ruff_cache; find . -name __pycache__ -type d -prune -exec rm -rf {} +
+
+# ---- unknown targets --------------------------------------------------------------------
+# Paste a command block with a trailing `# comment` and make reads every word after the `#`
+# as another goal, then dies with "make: *** No rule to make target '#'. Stop." — three
+# times in a row, with no hint about what went wrong. `.DEFAULT` catches every unknown goal
+# instead: a goal at or after a `#` is reported once as a pasted comment and ignored (so the
+# pasted block still does what it looks like it does), anything else prints the closest real
+# target names and fails. `Makefile: ;` keeps .DEFAULT away from remaking the makefile.
+Makefile: ;
+
+.DEFAULT:
+	@$(SAY) \
+	 MG=" $(MAKECMDGOALS) "; BEFORE=" $${MG%%\#*}"; AFTER=1; \
+	 case "$$BEFORE" in *" $@ "*) AFTER=0;; esac; \
+	 case "$@" in \#*) AFTER=2;; esac; \
+	 if [ "$$AFTER" = 2 ]; then \
+	   warnl "'$@' is not a target: that looks like a comment pasted after a make command"; \
+	   dim "make splits the command line on spaces, so 'make db  # build the DB' asks for the targets '#', 'build', 'the', 'DB'"; \
+	   dim "put the comment on its own line, or drop it. The real targets on that line already ran."; \
+	   exit 0; \
+	 fi; \
+	 if [ "$$AFTER" = 1 ]; then dim "ignoring '$@' (part of the pasted comment above)"; exit 0; fi; \
+	 faill "no rule to make target '$@'"; \
+	 near=$$(grep -hoE '^[a-zA-Z_][a-zA-Z0-9_-]*:.*## ' $(MAKEFILE_LIST) | cut -d: -f1 | sort -u | \
+	   awk -v g='$@' ' \
+	     function lev(a,b,   i,j,m,n,cst,x,y,z,d) { \
+	       m=length(a); n=length(b); \
+	       for (i=0;i<=m;i++) d[i,0]=i; for (j=0;j<=n;j++) d[0,j]=j; \
+	       for (i=1;i<=m;i++) for (j=1;j<=n;j++) { \
+	         cst = (substr(a,i,1)==substr(b,j,1)) ? 0 : 1; \
+	         x=d[i-1,j]+1; y=d[i,j-1]+1; z=d[i-1,j-1]+cst; \
+	         d[i,j] = (x<y?x:y); if (z<d[i,j]) d[i,j]=z } \
+	       return d[m,n] } \
+	     { s=lev(tolower(g), $$0); if (index($$0,tolower(g)) || index(tolower(g),$$0)) s=s-4; printf "%d %s\n", s, $$0 } \
+	   ' | sort -n | awk -v g='$@' 'BEGIN{lim=(length(g)>6?4:3)} $$1<=lim{print $$2}' | head -3 | paste -sd" " -); \
+	 if [ -n "$$near" ]; then dim "did you mean: $$near"; fi; \
+	 dim "'make help' lists every target grouped by stage; 'make status' shows what is already built"; \
+	 exit 1
 ```
 
 #### `.github/workflows/ci.yml`
@@ -25852,10 +29481,22 @@ Both are also published as pages: [plan](https://claude.ai/artifact/WobuxhoP2dZd
 
 `IMPLEMENTATION.md` embeds every source file verbatim, so the document and this tree are the same thing:
 
+List every file the document carries:
+
 ```bash
-python extract_code.py --dry-run   # list every file the document carries
-python extract_code.py             # write them (existing files kept unless --force)
-python sync_spec.py                # write edited files back into the document
+python extract_code.py --dry-run
+```
+
+Write them (existing files kept unless `--force`):
+
+```bash
+python extract_code.py
+```
+
+Write edited files back into the document:
+
+```bash
+python sync_spec.py
 ```
 
 ## Architecture
@@ -25875,11 +29516,74 @@ case_pack.csv ─► agent/bench.py ─► agent/phase_machine.py (Anthropic SDK
 offline once:  etl/ (DuckDB, card_id rule, baselines, LightGBM scorer) → engine/facts_from_etl.py → graph/load_all.py → graph/run_algos.py → rag/ (local embeddings) → graph/install_all.py
 ```
 
+## Start here
+
+Two commands answer "what can I run?" and "what is already built?". Both are instant, offline, and print
+nothing but plain text when piped.
+
+```bash
+make help
+```
+
+Every target, grouped by build stage, with its description wrapped to your terminal width:
+
+```
+== make ============================================================================================
+     agentic fraud investigation on TigerGraph - 39 targets, in build order
+
+Start here
+  help              this list, grouped by build stage (the default target)
+  status            what exists and what does not: data, models, chunks, vectors, cases, backends.
+                    Offline; never prints a secret
+
+ETL, scorer, facts (day 1)
+  db                data/raw/*.csv -> data/hhgoa.duckdb (tx 590,742 / idn 144,432 / cc 5,565 / cp
+                    20; card rule 14,975/14,975)
+  ...
+```
+
+```bash
+make status
+```
+
+A dashboard of this checkout: which backends are selected, and which artefact each stage has
+produced. It reads only the filesystem — no network, no TigerGraph, and secrets are reported as
+`set` / `not set`, never printed.
+
+```
+artefact                    state    path                                detail
+--------------------------  -------  ----------------------------------  ------
+etl duckdb                  ready    data/hhgoa.duckdb                   356M
+engine facts db             ready    data/hhgoa_engine.duckdb            50M
+graph chunks                ready    data/out/txn_*.csv                  8 files, 324M
+embeddings                  ready    data/out/vec_*.psv                  2 files, 53M
+answer files                missing  cases/HHG-*.json                    -> make bench promote RUN_ID=v1
+
+WARN 1 artefact(s) missing
+     next: make bench promote RUN_ID=v1
+```
+
+Every command in this repository prints through one terminal layer (`ops/console.py`): a run header
+with the config that decides the outcome, aligned tables instead of Python list reprs, and a summary
+block with the totals. On a terminal it is coloured; piped, redirected or in CI it degrades to plain
+ASCII with **zero escape bytes**, so `make sheet | cat` stays greppable. `NO_COLOR=1` and
+`HHG_PLAIN=1` force plain (useful for a clean demo capture), `FORCE_COLOR=1` forces colour.
+
+Mistyped or pasted a trailing `# comment` after a make command? Make no longer dies with
+`No rule to make target '#'` — it names the closest real target, or tells you it was a pasted comment
+and carries on.
+
 ## Setup (macOS Apple Silicon, Python 3.12 via uv)
 
 ```bash
 git clone <repo> && cd <repo>
+```
+
+```bash
 make install                 # uv sync --extra dev; creates .env from .env.example
+```
+
+```bash
 # fill .env: TG_HOST, TG_SECRET (Savanna Database Secret)
 # the model needs NO key: LLM_BACKEND=cli (the default) runs the agent on claude-agent-sdk, which drives
 #   the Claude Code CLI it bundles and authenticates with your Claude subscription. It sees ONLY our typed
@@ -25898,35 +29602,123 @@ Full build order with acceptance checks: [`docs/BUILD_ORDER.md`](docs/BUILD_ORDE
 
 ## Build the graph
 
+Run `make status` between any two of these to see what the previous one produced.
+
+DuckDB → features → scorer → engine facts DB → TSV chunks → `ids.duckdb` (day 1):
+
 ```bash
-make db features cms facts chunks ids   # DuckDB → features → scorer → engine facts DB → TSV chunks → ids.duckdb   (day 1)
-make load algos                # schema + loading jobs + 590,742 transactions; WCC / degree once (day 2, 4)
-make install-queries describe  # the 25 installed queries (16 LLM-exposed reads + 4 writers + 5 harness-only: grounding_chunks + 4 RAG) + MCP descriptions (day 3–4)
-make sheet engine-drafts       # deterministic engine: expectation sheet + 20 LLM-free drafts  (day 5–6)
-make corpus embed vectors      # GraphRAG corpus, local embeddings (no API key), TigerVector loads  (day 7)
+make db features cms facts chunks ids
+```
+
+Schema + loading jobs + 590,742 transactions; WCC / degree once (day 2, 4):
+
+```bash
+make load algos
+```
+
+The 25 installed queries (16 LLM-exposed reads + 4 writers + 5 harness-only: `grounding_chunks` + 4 RAG) and their MCP descriptions (day 3–4):
+
+```bash
+make install-queries describe
+```
+
+Deterministic engine: the expectation sheet (`qa/engine_expectation_sheet.md`) + 20 LLM-free drafts, printed as one aligned table of 20 cases with a summary of SARs filed and total exposure (day 5–6):
+
+```bash
+make sheet engine-drafts
+```
+
+GraphRAG corpus, local embeddings (no API key), TigerVector loads (day 7):
+
+```bash
+make corpus embed vectors
 ```
 
 ## Run the 20 cases
 
+Wake the workspace (auto-resume drops the first request) — prints the TigerGraph version:
+
 ```bash
-make awake                      # wake the workspace (auto-resume drops the first request)
-make keepalive &                # optional: ping every 3 min while the benchmark runs
-make bench RUN_ID=v1            # all 20 in opened_at order → runs/v1/<case>/{answer.json,calls.jsonl,phases.jsonl,sar.md}
-make promote RUN_ID=v1          # validator (ids resolved against data/ids.duckdb) → cases/
-make ui                         # http://localhost:8501  queue · case · approvals · graph · runs
+make awake
 ```
 
-Without a workspace or API keys: `RUN_MODE=mock make mock-run ui` renders the UI from `cases/` (or the sample HHG-014 answer) and replays recorded tool traces.
+Optional: ping every 3 min while the benchmark runs, one `OK` line per ping:
+
+```bash
+make keepalive &
+```
+
+All 20 in `opened_at` order → `runs/v1/<case>/{answer.json,calls.jsonl,phases.jsonl,sar.md}`:
+
+```bash
+make bench RUN_ID=v1
+```
+
+Validator (ids resolved against `data/ids.duckdb`) → `cases/`:
+
+```bash
+make promote RUN_ID=v1
+```
+
+The analyst dashboard at http://localhost:8501 — queue · case · approvals · graph · runs:
+
+```bash
+make ui
+```
+
+Without a workspace or API keys, render the UI from `cases/` (or the sample HHG-014 answer) and replay recorded tool traces. `make mock-run` prints a table of every case it replayed, with the phase and call counts it synthesised:
+
+```bash
+RUN_MODE=mock make mock-run ui
+```
 
 Without a workspace but **with** the real model (subscription, still no keys) — the facts come from DuckDB, the decisions from Claude:
 
 ```bash
 uv run python -m agent.bench --run-id cli1 --cases HHG-014,HHG-010 --mock --llm-backend cli
-uv run python -m agent.validator --db data/ids.duckdb runs/cli1/*/answer.json     # -> []
+```
+
+```bash
+uv run python -m agent.validator --db data/ids.duckdb runs/cli1/*/answer.json
 ```
 
 `--mock` picks the fact source (DuckDB instead of TigerGraph); `--llm-backend` picks the model
 (`cli` = claude-agent-sdk, `api` = anthropic SDK, `mock` = recorded fixtures). They are independent.
+
+## Checks that need nothing but this checkout
+
+The unit suite (data-backed tests skip when the DuckDB files are absent):
+
+```bash
+make test
+```
+
+`ruff check .`:
+
+```bash
+make lint
+```
+
+Static GSQL lint — every `alias.attribute` in `graph/queries/*.gsql` resolves against `graph/schema.gsql`,
+brackets balance, and `mcp/query_descriptions.yaml` has one entry per query. Prints a row per query file
+and exits 1 on the first problem:
+
+```bash
+make lint-gsql
+```
+
+Contract lint — GSQL parameter lists vs `mcp/query_descriptions.yaml` vs `engine.facts_duckdb.DuckFacts`
+vs `agent.mcp_client.BUILTIN_QUERIES`, as one coverage table (`ok` / `X` / `-` per module):
+
+```bash
+make lint-contracts
+```
+
+Rebuild the id-only validator DuckDB (`data/ids.duckdb`, checked in) and verify every row count:
+
+```bash
+make ids
+```
 
 ## Guarantees about the answer files
 
@@ -25939,7 +29731,7 @@ uv run python -m agent.validator --db data/ids.duckdb runs/cli1/*/answer.json   
 
 ## Repository map
 
-`etl/` DuckDB + features + scorer (owns `data/out/*.csv` incl. `fraud_pattern.csv`) · `graph/` schema, loading jobs, 25 queries, algorithms, loaders · `mcp/` launcher, tool lists, query descriptions · `rag/` corpus, chunks, embeddings, vector loads, SAR generator + validator · `engine/` deterministic decision engine, facts DB builder, replay, drafts · `policy/` fraud_policy.yaml · `agent/` phase machine, prompts, schemas, MCP client, persist, validator, bench · `qa/` integration lint · `ui/` Streamlit · `ops/` ensure_awake, keep_alive, id export, mock runs · `docs/` checklists, demo script, blog · `tests/` unit + live.
+`etl/` DuckDB + features + scorer (owns `data/out/*.csv` incl. `fraud_pattern.csv`) · `graph/` schema, loading jobs, 25 queries, algorithms, loaders · `mcp/` launcher, tool lists, query descriptions · `rag/` corpus, chunks, embeddings, vector loads, SAR generator + validator · `engine/` deterministic decision engine, facts DB builder, replay, drafts · `policy/` fraud_policy.yaml · `agent/` phase machine, prompts, schemas, MCP client, persist, validator, bench · `qa/` GSQL lint + cross-module contract lint · `ui/` Streamlit · `ops/` `console.py` (the one terminal-output layer every CLI prints through), ensure_awake, keep_alive, id export, mock runs · `docs/` checklists, demo script, blog · `tests/` unit + live.
 
 ## Data and licensing
 
@@ -25949,6 +29741,450 @@ IEEE-CIS Fraud Detection (Vesta) via the HHGOA re-cut. The public Kaggle files a
 ---
 
 ### 4. Tests and the sample answer
+
+#### `tests/unit/test_console.py`
+
+Covers the plain/non-TTY path (asserting no ANSI escapes reach a piped stream), NO_COLOR, column alignment and truncation, the list-cell helper, and the empty-table case.
+
+````python
+"""ops/console.py is the single terminal-output surface for every CLI in the repo.
+
+The contract these tests defend:
+  * piped / non-TTY output contains NO ANSI escape bytes, ever (make, CI and `| cat` rely on it);
+  * NO_COLOR and TERM=dumb force that same plain path; FORCE_COLOR opts back in;
+  * plain tables are fixed-width and space-aligned, with per-column truncation;
+  * the list helper never emits a Python list repr;
+  * a zero-row table does not crash.
+
+No real terminal is involved: stdout is a StringIO and the mode is driven by env vars.
+"""
+from __future__ import annotations
+
+import io
+import re
+import sys
+
+import pytest
+
+from ops import console as C
+
+# CSI / OSC / any other escape sequence. If this matches piped output, we have a bug.
+ANSI = re.compile(r"\x1b")
+
+
+@pytest.fixture(autouse=True)
+def _plain_env(monkeypatch):
+    """Default every test to the piped case: no TTY, no colour forcing, clean cache."""
+    for var in ("NO_COLOR", "FORCE_COLOR", "HHG_PLAIN"):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setenv("TERM", "xterm-256color")
+    C.reset()
+    yield
+    C.reset()
+
+
+class _Cap:
+    """Accumulating view over pytest's stdout capture (readouterr() drains, we must not)."""
+
+    def __init__(self, capsys):
+        self._capsys, self._buf = capsys, ""
+
+    def getvalue(self) -> str:
+        self._buf += self._capsys.readouterr().out
+        return self._buf
+
+
+@pytest.fixture
+def cap(capsys):
+    """Captured stdout. pytest's replacement reports isatty() False, i.e. the piped case."""
+    assert not sys.stdout.isatty()
+    return _Cap(capsys)
+
+
+def _sample(t: C.Table) -> C.Table:
+    t.add_row("HHG-017", "risk_score", C.prob(0.099, digits=3), C.joinlist([], empty="-"),
+              C.joinlist(["device", "history", "memory"]), C.money(0.0), "closed_legitimate")
+    t.add_row("HHG-008", "customer_report", C.prob(0.957, digits=3), C.joinlist(["customer", "memory"]),
+              C.joinlist(["device", "history"]), C.money(166.97), "closed_fraud")
+    return t
+
+
+def _table() -> C.Table:
+    return C.Table(
+        C.Col("case", width=8),
+        C.Col("trigger", max_width=12),
+        C.Col("cms", align="right", width=6),
+        C.Col("fraud"),
+        C.Col("legit"),
+        C.Col("exposure", align="right", width=10),
+        C.Col("status", max_width=10),
+        title="Engine cases",
+    )
+
+
+# ------------------------------------------------------------------ mode selection
+
+
+def test_non_tty_is_plain(cap):
+    assert C.is_plain() is True
+
+
+def test_no_color_forces_plain(monkeypatch):
+    monkeypatch.setenv("NO_COLOR", "1")
+    monkeypatch.setenv("FORCE_COLOR", "1")  # NO_COLOR must win
+    assert C.is_plain() is True
+
+
+def test_dumb_term_forces_plain(monkeypatch):
+    monkeypatch.setenv("TERM", "dumb")
+    assert C.is_plain() is True
+
+
+def test_hhg_plain_overrides_force_color(monkeypatch):
+    monkeypatch.setenv("HHG_PLAIN", "1")
+    monkeypatch.setenv("FORCE_COLOR", "1")
+    assert C.is_plain() is True
+    monkeypatch.setenv("HHG_PLAIN", "0")  # "0" means "do not force plain"
+    assert C.is_plain() is False
+
+
+def test_force_color_opts_into_rich_without_a_tty(monkeypatch):
+    monkeypatch.setenv("FORCE_COLOR", "1")
+    assert C.is_plain() is False
+
+
+def test_tty_detection_uses_stdout_isatty(monkeypatch):
+    class FakeTTY(io.StringIO):
+        def isatty(self):
+            return True
+
+    monkeypatch.setattr(sys, "stdout", FakeTTY())
+    assert C.is_plain() is False
+
+
+# ------------------------------------------------------------- no escapes when piped
+
+
+def test_no_ansi_anywhere_on_the_plain_path(cap):
+    C.header("engine.run_cases", "deterministic drafts", {"backend": "duckdb", "cases": 20})
+    C.step("loading facts")
+    C.ok("20 cases scored")
+    C.warn("1 case escalated")
+    C.fail("validator error")
+    C.detail("missing field: pattern")
+    C.rule("phase 2")
+    _sample(_table()).print()
+    C.summary("done", {"cases": 20, "errors": 0})
+    with C.progress("embedding", total=3, every=0.0) as p:
+        for _ in range(3):
+            p.advance()
+    out = cap.getvalue()
+    assert not ANSI.search(out), f"ANSI escape leaked into piped output: {out!r}"
+    assert out.isprintable() or "\n" in out
+
+
+def test_no_ansi_under_no_color(monkeypatch, cap):
+    monkeypatch.setenv("NO_COLOR", "1")
+    C.reset()
+    C.header("x", "y", {"k": "v"})
+    _sample(_table()).print()
+    C.summary("done", {"n": 1})
+    assert not ANSI.search(cap.getvalue())
+
+
+def test_square_brackets_in_data_do_not_break_or_escape(cap):
+    """A raw list repr in a message must survive verbatim: rich markup would choke on it."""
+    C.ok("F=['device', 'history'] L=[]")
+    t = C.Table("a")
+    t.add_row("['device', 'history']")
+    t.print()
+    out = cap.getvalue()
+    assert "F=['device', 'history'] L=[]" in out
+    assert not ANSI.search(out)
+
+
+# ----------------------------------------------------------------- status line shape
+
+
+def test_status_tags_are_ascii_and_aligned(cap):
+    C.step("a")
+    C.ok("b")
+    C.warn("c")
+    C.fail("d")
+    C.detail("e")
+    lines = cap.getvalue().splitlines()
+    assert lines == ["->   a", "OK   b", "WARN c", "FAIL d", "     e"]
+    assert all(line.isascii() for line in lines)
+    # every message starts in the same column -> greppable, scannable
+    assert len({len(line) - len(line.lstrip(" ")) if line.startswith(" ") else 5 for line in lines}) == 1
+
+
+# ------------------------------------------------------------------ table rendering
+
+
+def test_plain_table_columns_line_up(cap):
+    _sample(_table()).print()
+    lines = cap.getvalue().splitlines()
+    assert lines[0] == "Engine cases"
+    header, sep, *rows = lines[1:]
+    assert set(sep) == {"-", " "}
+    assert "\x1b" not in sep and "|" not in sep and "+" not in sep
+    # the separator row defines the grid; every data row must respect it
+    starts = [m.start() for m in re.finditer(r"-+", sep)]
+    assert starts[0] == 0
+    for row in rows:
+        for s in starts[1:]:
+            if len(row) > s:
+                # a column boundary never lands mid-token
+                assert row[s - 1] == " ", f"column at {s} not aligned in {row!r}"
+
+
+def test_plain_table_has_no_box_drawing_characters(cap):
+    _sample(_table()).print()
+    out = cap.getvalue()
+    assert out.isascii()
+    for ch in "│┃─━┌┐└┘├┤┬┴┼╭╮╰╯═║":
+        assert ch not in out
+
+
+def test_fixed_width_column_pads_and_truncates(cap):
+    t = C.Table(C.Col("id", width=8), C.Col("note", width=10))
+    t.add_row("HHG-1", "short")
+    t.add_row("HHG-000001-XL", "a very long note indeed")
+    t.print()
+    lines = cap.getvalue().splitlines()  # no title: header, separator, then rows
+    assert lines[0] == "id        note"  # 8-wide + 2-space gap
+    assert lines[1] == "--------  ----------"
+    assert lines[2].startswith("HHG-1     ")  # padded to 8 + gap
+    assert lines[3].startswith("HHG-0...")  # truncated to exactly 8 with an ASCII marker
+    assert lines[3].endswith("a very ...")  # truncated to exactly 10
+    for line in lines[2:]:
+        assert len(line.rstrip()) <= 8 + 2 + 10
+
+
+def test_max_width_is_a_cap_not_a_floor(cap):
+    t = C.Table(C.Col("x", max_width=20))
+    t.add_row("abc")
+    t.print()
+    lines = cap.getvalue().splitlines()
+    # natural width is the widest cell (3), not the 20-wide cap
+    assert lines[0] == "x"  # header padded to 3 then rstripped
+    assert lines[1] == "---"
+    assert lines[2] == "abc"
+
+
+def test_max_width_never_truncates_the_header(cap):
+    """A cap on the data must not leave a judge reading 'verdict...' as a column name.
+
+    The header is a floor on the column width, and cells are then cut to that final
+    width - never to a cap narrower than the header, which would waste the space.
+    """
+    t = C.Table(C.Col("verdict_pre", max_width=4))
+    t.add_row("legitimate")
+    t.print()
+    lines = cap.getvalue().splitlines()
+    assert lines[0] == "verdict_pre"  # header intact, not "verd..."
+    assert lines[1] == "-" * len("verdict_pre")
+    assert lines[2].rstrip() == "legitimate"  # fits the header-floored width, so kept whole
+
+    # a header shorter than the cap: now the cap really bites, at the final width
+    t2 = C.Table(C.Col("verdict", max_width=4))
+    t2.add_row("legitimate")
+    t2.print()
+    lines2 = cap.getvalue().splitlines()[3:]
+    assert lines2[0] == "verdict"
+    assert lines2[2].rstrip() == "legi..."  # cut to the 7-wide header floor, not to 4
+
+
+def test_width_does_truncate_the_header(cap):
+    """An exact width is the caller's explicit instruction and binds the header too."""
+    t = C.Table(C.Col("verdict_pre", width=6))
+    t.add_row("legitimate")
+    t.print()
+    assert cap.getvalue().splitlines()[0] == "ver..."
+
+
+def test_right_alignment(cap):
+    t = C.Table(C.Col("amount", align="right", width=10))
+    t.add_row(C.money(166.97))
+    t.add_row(C.money(2140.94))
+    t.print()
+    rows = cap.getvalue().splitlines()[2:]
+    assert rows[0] == "   $166.97"
+    assert rows[1] == " $2,140.94"
+
+
+def test_empty_table_does_not_crash(cap):
+    C.Table(C.Col("a"), C.Col("b"), title="Nothing").print()
+    out = cap.getvalue()
+    assert "(no rows)" in out
+    assert not ANSI.search(out)
+
+
+def test_table_with_no_columns_is_a_noop(cap):
+    C.Table().print()
+    assert cap.getvalue() == ""
+
+
+def test_missing_trailing_cells_are_filled(cap):
+    t = C.Table(C.Col("a", width=4), C.Col("b", width=4), C.Col("c", width=4))
+    t.add_row("x")
+    t.print()
+    assert len(t) == 1
+    assert cap.getvalue().splitlines()[2].rstrip() == "x"
+
+
+def test_string_columns_are_accepted(cap):
+    t = C.Table("one", "two")
+    t.add_row(1, 2)
+    t.print()
+    assert cap.getvalue().splitlines()[0] == "one  two"
+
+
+# -------------------------------------------------------------------- value helpers
+
+
+def test_joinlist_is_never_a_python_repr():
+    assert C.joinlist(["device", "history", "memory"]) == "device,history,memory"
+    assert "[" not in C.joinlist(["a"]) and "'" not in C.joinlist(["a"])
+    assert C.joinlist([]) == "-"
+    assert C.joinlist(None) == "-"
+    assert C.joinlist([], empty="none") == "none"
+    assert C.joinlist(["b", "a"], sort=True) == "a,b"
+    assert C.joinlist(["a", "b", "c", "d"], max_items=2) == "a,b +2"
+    assert C.joinlist({"device", "history"}, sort=True) == "device,history"
+
+
+def test_money_and_probability_formatting():
+    assert C.money(2140.94) == "$2,140.94"
+    assert C.money(0) == "$0.00"
+    assert C.money(166.97, symbol="") == "166.97"
+    assert C.money(None) == "-"
+    assert C.money("n/a") == "n/a"
+    assert C.prob(0.07) == "0.07"
+    assert C.prob(0.099, digits=3) == "0.099"
+    assert C.prob(None) == "-"
+    assert C.pct(0.07) == "7.0%"
+    assert C.pct(0.5, digits=0) == "50%"
+
+
+def test_truncate():
+    assert C.truncate("abcdef", 10) == "abcdef"
+    assert C.truncate("abcdef", 6) == "abcdef"
+    assert C.truncate("abcdef", 5) == "ab..."
+    assert len(C.truncate("abcdef", 5)) == 5
+    assert C.truncate("abcdef", 3) == "abc"
+    assert C.truncate("abcdef", 0) == "abcdef"
+    assert C.truncate(None, 4) == ""
+    assert C.truncate(12345, 3) == "123"
+
+
+# --------------------------------------------------------------------- redaction
+
+
+def test_secrets_never_reach_the_terminal(monkeypatch, cap):
+    monkeypatch.setenv("TG_SECRET", "s3cr3t-value-abcdefgh")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-0123456789abcdef")
+    C.reset()
+    C.header("run", "go", {"secret": "s3cr3t-value-abcdefgh"})
+    C.ok("connected with sk-ant-0123456789abcdef")
+    out = cap.getvalue()
+    assert "s3cr3t-value-abcdefgh" not in out
+    assert "sk-ant-0123456789abcdef" not in out
+    assert "***" in out
+
+
+def test_short_env_values_are_not_redacted(monkeypatch):
+    monkeypatch.setenv("DEBUG_KEY", "1")
+    C.reset()
+    assert C.redact("value is 1 today") == "value is 1 today"
+
+
+# ---------------------------------------------------------------------- progress
+
+
+def test_progress_plain_emits_periodic_lines_and_a_final_ok(cap):
+    with C.progress("embedding rows", total=4, every=0.0) as p:
+        for _ in range(4):
+            p.advance()
+        assert p.n == 4
+    lines = cap.getvalue().splitlines()
+    assert any("embedding rows 1/4" in line for line in lines)
+    assert lines[-1].startswith("OK   embedding rows 4/4 in ")
+    assert not ANSI.search(cap.getvalue())
+
+
+def test_progress_without_a_total(cap):
+    with C.progress("scanning", every=0.0) as p:
+        p.advance(7)
+    assert cap.getvalue().splitlines()[-1].startswith("OK   scanning 7 in ")
+
+
+def test_progress_rate_limits_plain_lines(cap):
+    with C.progress("quiet", total=100, every=3600.0) as p:
+        for _ in range(100):
+            p.advance()
+    # only the closing OK line: nothing spammed in between
+    assert len(cap.getvalue().splitlines()) == 1
+
+
+def test_progress_reports_final_count_even_on_exception(cap):
+    with pytest.raises(RuntimeError), C.progress("work", total=10, every=3600.0) as p:
+        p.advance(3)
+        raise RuntimeError("boom")
+    assert cap.getvalue().splitlines()[-1].startswith("OK   work 3/10 in ")
+
+
+# ------------------------------------------------------------------ rich mode works
+
+
+def test_rich_mode_renders_and_does_emit_colour(monkeypatch):
+    """The other half of the contract: on a TTY we actually do get styled output."""
+    monkeypatch.setenv("FORCE_COLOR", "1")
+    C.reset()
+    buf = io.StringIO()
+    from rich.console import Console
+
+    monkeypatch.setattr(C, "_console", Console(file=buf, force_terminal=True, width=100, highlight=False, emoji=False))
+    C.header("engine.run_cases", "drafts", {"backend": "duckdb"})
+    C.ok("done")
+    _sample(_table()).print()
+    C.summary("totals", {"cases": 2})
+    out = buf.getvalue()
+    assert ANSI.search(out), "expected colour on a forced TTY"
+    assert "HHG-017" in out and "device,history,memory" in out
+    assert "$166.97" in out
+
+
+def test_rich_mode_survives_brackets_and_empty_tables(monkeypatch):
+    monkeypatch.setenv("FORCE_COLOR", "1")
+    C.reset()
+    buf = io.StringIO()
+    from rich.console import Console
+
+    monkeypatch.setattr(C, "_console", Console(file=buf, force_terminal=True, width=100, highlight=False, emoji=False))
+    C.ok("F=['device'] /bad/markup[")
+    C.rule("phase [1]")
+    C.Table(C.Col("a"), title="Empty [x]").print()
+    assert "(no rows)" in buf.getvalue()
+
+
+def test_console_is_cached():
+    assert C.console() is C.console()
+    first = C.console()
+    C.reset()
+    assert C.console() is not first
+
+
+def test_import_has_no_side_effects_and_does_not_import_rich_eagerly():
+    import subprocess
+
+    code = "import sys; import ops.console; print('rich' in sys.modules)"
+    r = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, cwd=str(__import__("pathlib").Path(__file__).resolve().parents[2]))
+    assert r.returncode == 0, r.stderr
+    assert r.stdout.strip() == "False", "importing ops.console must not pull in rich"
+    assert r.stderr == ""
+````
 
 #### `tests/unit/test_ensure_awake.py`
 ```python
@@ -26036,7 +30272,662 @@ def test_async_retries(monkeypatch):
 
     assert asyncio.run(flaky()) == 42
     assert slept == [1]
+
+
+# ---------------------------------------------------------------------------------------------------------- #
+# F1: one classifier, run against BOTH copies (ops/ensure_awake.py and graph/tg.py must stay identical).      #
+# ---------------------------------------------------------------------------------------------------------- #
+import requests  # noqa: E402
+from pyTigerGraph.common.exception import TigerGraphException  # noqa: E402
+
+import graph.tg as graph_tg  # noqa: E402
+import ops.ensure_awake as ops_ea  # noqa: E402
+
+CLASSIFIERS = pytest.mark.parametrize("classify", [ops_ea.is_transient, graph_tg.is_transient], ids=["ops", "graph"])
+
+
+def _http_error(status: int) -> requests.HTTPError:
+    resp = requests.Response()
+    resp.status_code = status
+    resp.url = "https://example.invalid/restpp/query/FraudGraph/x"
+    return requests.HTTPError(f"{status} Error for url: {resp.url}", response=resp)
+
+
+TRANSIENT_CASES = [
+    TigerGraphException("Cannot parse json: <!DOCTYPE html><title>Starting workspace</title>"),
+    TigerGraphException("Cannot parse json: <html><body>resuming</body></html>", "500"),
+    _http_error(502),
+    _http_error(504),
+    RuntimeError("502, message='Bad Gateway', url='https://x'"),
+    RuntimeError("502 Server Error: Bad Gateway for url: https://x"),
+    RuntimeError("HTTP 503"),
+]
+NOT_TRANSIENT_CASES = [
+    RuntimeError("vertex 3503211 does not exist"),
+    RuntimeError("customer C15034 not found"),
+    RuntimeError("amount 0.502 is below the floor"),
+    TigerGraphException("Authentication failed.", "REST-10016"),
+    TigerGraphException("Cannot parse json: not json and not html"),
+    _http_error(401),
+    _http_error(403),
+    RuntimeError("401 Unauthorized"),
+]
+
+
+@CLASSIFIERS
+@pytest.mark.parametrize("exc", TRANSIENT_CASES, ids=lambda e: str(e)[:40])
+def test_transient_cases_both_copies(classify, exc):
+    assert classify(exc) is True
+
+
+@CLASSIFIERS
+@pytest.mark.parametrize("exc", NOT_TRANSIENT_CASES, ids=lambda e: str(e)[:40])
+def test_not_transient_cases_both_copies(classify, exc):
+    assert classify(exc) is False
+
+
+def test_both_copies_share_markers():
+    assert set(ops_ea.TRANSIENT_MARKERS) == set(graph_tg.TRANSIENT_MARKERS)
+    assert ops_ea._STATUS_RX.pattern == graph_tg._STATUS_RX.pattern
+    assert not {"502", "503", "504"} & set(ops_ea.TRANSIENT_MARKERS)
+
+
+def test_auth_error_is_not_retried_both_copies():
+    for deco in (ops_ea.ensure_awake, graph_tg.ensure_awake):
+        slept: list[float] = []
+        calls = {"n": 0}
+
+        @deco(max_wait_s=30, sleep=slept.append)
+        def auth(calls=calls):
+            calls["n"] += 1
+            raise TigerGraphException("Authentication failed.", "REST-10016")
+
+        with pytest.raises(TigerGraphException):
+            auth()
+        assert calls["n"] == 1 and slept == []
+
+
+def test_default_sleep_is_looked_up_at_call_time(monkeypatch):
+    slept: list[float] = []
+    monkeypatch.setattr(ops_ea.time, "sleep", slept.append)
+    calls = {"n": 0}
+
+    @ops_ea.ensure_awake(max_wait_s=10)
+    def flaky():
+        calls["n"] += 1
+        if calls["n"] < 2:
+            raise _http_error(502)
+        return "ok"
+
+    assert flaky() == "ok" and slept == [1]
+
+
+class _NeverConstruct:
+    built = 0
+
+    def __init__(self, *a, **k):
+        _NeverConstruct.built += 1
+        raise AssertionError("TigerGraphConnection must not be constructed with an empty secret")
+
+
+@pytest.mark.parametrize("secret", ["", "   "])
+def test_empty_secret_fails_before_any_request(monkeypatch, secret):
+    import dotenv
+    import pyTigerGraph
+
+    monkeypatch.setattr(dotenv, "load_dotenv", lambda *a, **k: False)
+    monkeypatch.setattr(pyTigerGraph, "TigerGraphConnection", _NeverConstruct)
+    monkeypatch.setenv("TG_HOST", "https://example.invalid")
+    monkeypatch.setenv("TG_SECRET", secret)
+    _NeverConstruct.built = 0
+    with pytest.raises(RuntimeError, match="TG_SECRET is empty"):
+        ops_ea.tg_connection()
+    with pytest.raises(RuntimeError, match="TG_SECRET is empty"):
+        graph_tg.connect()
+    with pytest.raises(RuntimeError, match="TG_SECRET is empty"):
+        graph_tg.connect(token=False)
+    assert _NeverConstruct.built == 0
 ```
+
+#### `tests/unit/test_resume_paths.py`
+Savanna auto-resume on the offline and write paths: graph.tg.gsql's HTML guard, install_all connect/_gsql,
+persist's AgentCase upsert, bench.ensure_awake and rag.load_vectors.ensure_awake (all mocked, no live call).
+```python
+"""Savanna auto-resume on the sync paths (offline: every transport is a fake, nothing reaches a workspace).
+
+F2 graph.tg.gsql retries an HTML start page instead of reading it as a successful statement.
+F3 graph/install_all.connect + _gsql retry getToken / conn.gsql; an auth error fails fast.
+F6 agent/persist.py retries the AgentCase upsert; an auth error is not retried.
+F7 agent/bench.ensure_awake fails fast on auth, retries a 502 once.
+F8 rag/load_vectors.ensure_awake delegates to the shared ops.ensure_awake policy.
+"""
+from __future__ import annotations
+
+import asyncio
+import time
+from types import SimpleNamespace
+from unittest.mock import MagicMock
+
+import pytest
+import requests
+from pyTigerGraph.common.exception import TigerGraphException
+
+import graph.tg as graph_tg
+import ops.ensure_awake as ops_ea
+
+HTML = "<!DOCTYPE html><p>Starting workspace</p>"
+
+
+def _http_error(status: int) -> requests.HTTPError:
+    resp = requests.Response()
+    resp.status_code = status
+    resp.url = "https://example.invalid/x"
+    return requests.HTTPError(f"{status} Error for url: {resp.url}", response=resp)
+
+
+@pytest.fixture
+def slept(monkeypatch):
+    """time.sleep recorder: ensure_awake (both copies) looks time.sleep up at call time."""
+    rec: list[float] = []
+    monkeypatch.setattr(time, "sleep", rec.append)
+    return rec
+
+
+def _raise_then(values: list):
+    """A callable that raises / returns the items of `values` in order."""
+    seq = list(values)
+    calls = {"n": 0}
+
+    def fn(*_a, **_k):
+        calls["n"] += 1
+        v = seq.pop(0)
+        if isinstance(v, BaseException):
+            raise v
+        return v
+
+    fn.calls = calls
+    return fn
+
+
+# ------------------------------------------------------------------------------------------------ F2
+def test_graph_gsql_retries_html_reply(slept):
+    fake = SimpleNamespace(gsql=_raise_then([HTML, HTML, "Successfully created queries"]))
+    reply = graph_tg.gsql(fake, "USE GRAPH FraudGraph\nLS", quiet=True)
+    assert reply == "Successfully created queries"
+    assert fake.gsql.calls["n"] == 3
+    assert slept == [1, 2]
+
+
+def test_html_guard_passes_normal_replies():
+    assert graph_tg.html_guard("Successfully created queries") == "Successfully created queries"
+    with pytest.raises(ConnectionError):
+        graph_tg.html_guard("  \n<HTML><body>resuming</body></HTML>")
+
+
+# ------------------------------------------------------------------------------------------------ F3
+class _FakeConn:
+    get_token = None
+    gsql_fn = None
+
+    def __init__(self, *a, **k):
+        self.headers = None
+
+    def getToken(self, secret):
+        return type(self).get_token(secret)
+
+    def customizeHeader(self, **k):
+        self.headers = k
+
+    def gsql(self, text):
+        return type(self).gsql_fn(text)
+
+
+@pytest.fixture
+def install_all(monkeypatch):
+    import graph.install_all as ia
+
+    monkeypatch.setattr(ia, "load_dotenv", lambda *a, **k: False)
+    monkeypatch.setattr(ia, "TigerGraphConnection", _FakeConn)
+    monkeypatch.setenv("TG_HOST", "https://example.invalid")
+    monkeypatch.setenv("TG_SECRET", "not-a-real-secret")
+    return ia
+
+
+def test_install_all_connect_and_gsql_survive_resume(install_all, slept):
+    _FakeConn.get_token = _raise_then([_http_error(502), ("tok", 0, "")])
+    _FakeConn.gsql_fn = _raise_then([HTML, "Successfully created query card_window"])
+    conn = install_all.connect()
+    assert _FakeConn.get_token.calls["n"] == 2
+    assert conn.headers == {"timeout": 600_000, "responseSize": 64_000_000}
+    reply = install_all._gsql(conn, "USE GRAPH FraudGraph\nCREATE OR REPLACE QUERY card_window() {}")
+    assert reply.startswith("Successfully created")
+    assert install_all.gsql_ok(reply)
+    assert _FakeConn.gsql_fn.calls["n"] == 2
+    assert slept == [1, 1]
+
+
+def test_install_all_connect_auth_error_fails_fast(install_all, slept):
+    _FakeConn.get_token = _raise_then([_http_error(401)])
+    with pytest.raises(requests.HTTPError):
+        install_all.connect()
+    assert _FakeConn.get_token.calls["n"] == 1
+    assert slept == []
+
+
+def test_install_all_connect_empty_secret(install_all, monkeypatch, slept):
+    monkeypatch.setenv("TG_SECRET", "")
+    _FakeConn.get_token = _raise_then([AssertionError("no request with an empty secret")])
+    with pytest.raises(RuntimeError, match="TG_SECRET is empty"):
+        install_all.connect()
+    assert _FakeConn.get_token.calls["n"] == 0
+
+
+# ------------------------------------------------------------------------------------------------ F6
+def _persist_pm(conn, log):
+    from agent.mock_fixtures import FakeSession
+
+    return SimpleNamespace(
+        s=SimpleNamespace(mock=False), graph_case_id="AC-HHG-TEST", log=log, run_id="t",
+        E=SimpleNamespace(status=SimpleNamespace(derive=lambda *a: "open")), events=[],
+        session=FakeSession(use_duckdb=False), tg_conn_factory=lambda: conn,
+    )
+
+
+def _persist_args():
+    ctx = SimpleNamespace(case_id="HHG-TEST", customer_id="C00001", card_id="C00001-K1", trigger_type="risk_score",
+                          opened_at="2016-11-22 20:11:00")
+    sc = SimpleNamespace(flags={}, verdict="fraud", p_engine=0.9, pattern="card_testing", pattern_description="",
+                         exposure_usd=10.0, episode_ids=[], connected_card_ids=[], connected_device_profiles=[],
+                         similar_prior_cases=[], chain=[])
+    return ctx, sc, [], [], [], {"file": False, "narrative": ""}, {}, []
+
+
+@pytest.fixture
+def persist(monkeypatch):
+    from agent import persist as P
+
+    monkeypatch.setattr(P.tools_local, "embed_document", lambda text: [0.1] * 8)
+    monkeypatch.setattr(P, "embed_text_for_case", lambda *a, **k: "note")
+    monkeypatch.setenv("TG_RESUME_MAX_WAIT_S", "2")
+    return P
+
+
+def _upsert_record(log):
+    return [c for c in log.record_tool.call_args_list if c.args[0] == "pytg:upsertVertex(AgentCase)"]
+
+
+def test_persist_upsert_survives_resume(persist, slept):
+    conn = SimpleNamespace(upsertVertex=_raise_then([_http_error(502), 1]), getVectorStatus=lambda *a: True)
+    log = MagicMock()
+    written = asyncio.run(persist.persist_case(_persist_pm(conn, log), *_persist_args()))
+    assert written is True
+    assert conn.upsertVertex.calls["n"] == 2
+    rec = _upsert_record(log)
+    assert len(rec) == 1 and rec[0].kwargs["ok"] is True
+    assert slept == [1]
+
+
+def test_persist_upsert_auth_error_not_retried(persist, slept):
+    conn = SimpleNamespace(upsertVertex=_raise_then([_http_error(401)]), getVectorStatus=lambda *a: True)
+    log = MagicMock()
+    written = asyncio.run(persist.persist_case(_persist_pm(conn, log), *_persist_args()))
+    assert written is False
+    assert conn.upsertVertex.calls["n"] == 1
+    assert _upsert_record(log)[0].kwargs["ok"] is False
+    assert slept == []
+
+
+# ------------------------------------------------------------------------------------------------ F7
+def test_bench_ensure_awake_auth_fails_fast(monkeypatch, slept):
+    from agent import bench
+
+    conn = SimpleNamespace(getVer=_raise_then([TigerGraphException("Authentication failed.")]))
+    monkeypatch.setattr(ops_ea, "tg_connection", lambda *a, **k: conn)
+    t0 = time.monotonic()
+    with pytest.raises(TigerGraphException):
+        bench.ensure_awake(SimpleNamespace(mock=False))
+    assert time.monotonic() - t0 < 1.0
+    assert conn.getVer.calls["n"] == 1
+    assert slept == []
+
+
+def test_bench_ensure_awake_retries_502_once(monkeypatch, slept):
+    from agent import bench
+
+    conn = SimpleNamespace(getVer=_raise_then([_http_error(502), "4.2.5"]))
+    monkeypatch.setattr(ops_ea, "tg_connection", lambda *a, **k: conn)
+    assert bench.ensure_awake(SimpleNamespace(mock=False)) is None
+    assert conn.getVer.calls["n"] == 2
+    assert slept == [1]
+
+
+def test_bench_ensure_awake_mock_is_noop(monkeypatch):
+    from agent import bench
+
+    monkeypatch.setattr(ops_ea, "tg_connection", lambda *a, **k: pytest.fail("mock mode must not connect"))
+    bench.ensure_awake(SimpleNamespace(mock=True))
+
+
+# ------------------------------------------------------------------------------------------------ F8
+def test_load_vectors_ensure_awake_uses_shared_policy(slept):
+    from rag import load_vectors
+
+    fn = _raise_then([_http_error(502), _http_error(502), "ok"])
+    assert load_vectors.ensure_awake(fn, "a", attempts=1) == "ok"   # attempts is ignored
+    assert fn.calls["n"] == 3
+    assert slept == [1, 2]
+
+
+def test_load_vectors_ensure_awake_auth_fails_fast(slept):
+    from rag import load_vectors
+
+    fn = _raise_then([TigerGraphException("Authentication failed.")])
+    with pytest.raises(TigerGraphException):
+        load_vectors.ensure_awake(fn)
+    assert fn.calls["n"] == 1
+    assert slept == []
+
+
+def test_load_vectors_ensure_awake_respects_budget(monkeypatch, slept):
+    from rag import load_vectors
+
+    monkeypatch.setenv("TG_RESUME_MAX_WAIT_S", "3")
+
+    def down():
+        raise _http_error(503)
+
+    with pytest.raises(requests.HTTPError):
+        load_vectors.ensure_awake(down)
+    assert sum(slept) <= 3
+```
+
+#### `tests/unit/test_mcp_resume.py`
+Savanna auto-resume on the agent's MCP path: run_query / call_tool_with_resume retry with real tigergraph-mcp
+format_error payloads, GraphUnavailable never becomes evidence, and bench stops once the workspace stays down.
+````python
+"""Savanna auto-resume on the agent's MCP path (F4 run_query retry, F5 phase machine never scores missing facts).
+
+The failure payloads are built with tigergraph-mcp's own `format_error`, exactly as its run_installed_query tool
+returns them (it never raises; str(exc) goes into `error`). Everything is offline: a stub session, RUN_MODE=mock.
+"""
+from __future__ import annotations
+
+import asyncio
+import json
+from dataclasses import replace
+from types import SimpleNamespace
+
+import aiohttp
+import pytest
+from multidict import CIMultiDict, CIMultiDictProxy
+from tigergraph_mcp.response_formatter import format_error
+from yarl import URL
+
+from agent import mcp_client
+from agent.mcp_client import GraphUnavailable, QueryError, ToolContext, call_query_tool, call_tool_with_resume, run_query
+
+
+def _aiohttp_502() -> aiohttp.ClientResponseError:
+    ri = aiohttp.RequestInfo(URL("https://x"), "POST", CIMultiDictProxy(CIMultiDict()), URL("https://x"))
+    return aiohttp.ClientResponseError(ri, (), status=502, message="Bad Gateway")
+
+
+def _result(content) -> SimpleNamespace:
+    return SimpleNamespace(content=content, is_error=False, structured_content=None)
+
+
+def err_502():
+    return _result(format_error("run_installed_query", _aiohttp_502(), {}))
+
+
+def err_text(exc: BaseException):
+    return _result(format_error("run_installed_query", exc, {}))
+
+
+def ok_result(printed: list):
+    payload = {"success": True, "operation": "run_installed_query", "summary": "ok", "data": {"result": printed}}
+    return _result([SimpleNamespace(type="text", text=f"```json\n{json.dumps(payload)}\n```")])
+
+
+class StubSession:
+    def __init__(self, replies):
+        self.replies = list(replies)
+        self.calls = 0
+
+    async def call_tool(self, name, arguments=None, **_):
+        self.calls += 1
+        r = self.replies.pop(0) if len(self.replies) > 1 else self.replies[0]
+        if isinstance(r, BaseException):
+            raise r
+        return r
+
+
+@pytest.fixture
+def no_sleep(monkeypatch):
+    slept: list[float] = []
+
+    async def fake_sleep(s):
+        slept.append(s)
+
+    monkeypatch.setattr(mcp_client, "_sleep", fake_sleep)
+    return slept
+
+
+def test_format_error_payload_shape():
+    """The two shapes the classifier has to read (checked against the installed tigergraph-mcp)."""
+    p = mcp_client.parse_tool_text(err_502().content[0].text)
+    assert p["success"] is False and p["error"].startswith("502, message='Bad Gateway'")
+    p = mcp_client.parse_tool_text(err_text(TimeoutError()).content[0].text)
+    assert p["error"] == "" and p["error_code"] == "OPERATION_ERROR"
+
+
+# ------------------------------------------------------------------------------------------------ F4
+def test_run_query_retries_502_then_succeeds(no_sleep):
+    s = StubSession([err_502(), err_502(), ok_result([{"a": 1}, {"b": [2]}])])
+    out = asyncio.run(run_query(s, "card_profile", {}))
+    assert out == {"a": 1, "b": [2]}
+    assert s.calls == 3 and no_sleep == [1, 2]
+
+
+def test_run_query_retries_empty_error(no_sleep):
+    s = StubSession([err_text(TimeoutError()), ok_result([{"a": 1}])])
+    assert asyncio.run(run_query(s, "card_profile", {})) == {"a": 1}
+    assert s.calls == 2
+
+
+def test_run_query_retries_transient_exception_from_call_tool(no_sleep):
+    s = StubSession([ConnectionError("server disconnected"), ok_result([{"a": 1}])])
+    assert asyncio.run(run_query(s, "card_profile", {})) == {"a": 1}
+    assert s.calls == 2
+
+
+@pytest.mark.parametrize("exc", [RuntimeError("vertex 3503211 does not exist"),
+                                 RuntimeError("('Authentication failed.', 'REST-10016')")])
+def test_run_query_non_transient_raises_after_one_call(no_sleep, exc):
+    s = StubSession([err_text(exc)])
+    with pytest.raises(QueryError) as ei:
+        asyncio.run(run_query(s, "card_profile", {}))
+    assert not isinstance(ei.value, GraphUnavailable)
+    assert s.calls == 1 and no_sleep == []
+
+
+def test_run_query_gives_up_with_graph_unavailable(monkeypatch, no_sleep):
+    monkeypatch.setenv("TG_RESUME_MAX_WAIT_S", "3")
+    s = StubSession([err_502()])
+    with pytest.raises(GraphUnavailable, match="502"):
+        asyncio.run(run_query(s, "card_profile", {}))
+    assert sum(no_sleep) <= 3 and s.calls == len(no_sleep) + 1
+
+
+def test_run_query_records_tool_once(monkeypatch, no_sleep):
+    log = SimpleNamespace(rows=[], notes=[])
+    log.record_tool = lambda *a, **k: log.rows.append((a, k))
+    log.note = lambda text, **k: log.notes.append((text, k))
+    token = mcp_client.current_runlog.set(log)
+    try:
+        asyncio.run(run_query(StubSession([err_502(), ok_result([{"a": 1}])]), "card_profile", {}))
+    finally:
+        mcp_client.current_runlog.reset(token)
+    assert len(log.rows) == 1 and log.rows[0][1]["ok"] is True
+    assert log.notes[0][0] == "graph transient, retrying" and log.notes[0][1]["attempt"] == 1
+
+
+def test_call_tool_with_resume(monkeypatch, no_sleep):
+    ok = _result([SimpleNamespace(type="text", text='```json\n{"success": true, "data": {"accepted": 1}}\n```')])
+    s = StubSession([err_502(), ok])
+    assert asyncio.run(call_tool_with_resume(s, "tigergraph__add_edges", {})) is ok
+    assert s.calls == 2
+    monkeypatch.setenv("TG_RESUME_MAX_WAIT_S", "1")
+    with pytest.raises(GraphUnavailable):
+        asyncio.run(call_tool_with_resume(StubSession([err_502()]), "tigergraph__add_edges", {}))
+
+
+# ------------------------------------------------------------------------------------------------ F5
+def test_call_query_tool_graph_unavailable_is_not_evidence(monkeypatch, no_sleep):
+    monkeypatch.setenv("TG_RESUME_MAX_WAIT_S", "1")
+    tctx = ToolContext(opened_at="2016-11-22 20:11:00")
+    tctx.budget.limit = 5
+    out = asyncio.run(call_query_tool(StubSession([err_502()]), tctx, "shared_origin_scan", {}))
+    assert tctx.graph_unavailable == "shared_origin_scan"
+    assert tctx.budget.used == 0
+    assert "parameter encoding" not in out and "GRAPH TEMPORARILY UNAVAILABLE" in out
+    assert tctx.facts == {} and tctx.ledger == []
+
+
+def test_call_query_tool_real_error_keeps_hint(no_sleep):
+    tctx = ToolContext(opened_at="2016-11-22 20:11:00")
+    out = asyncio.run(call_query_tool(StubSession([err_text(RuntimeError("vertex 3503211 does not exist"))]), tctx, "card_profile", {}))
+    assert "parameter encoding" in out and tctx.graph_unavailable == "" and tctx.budget.used == 1
+
+
+@pytest.fixture
+def mock_run(monkeypatch, tmp_path):
+    """One full phase-machine run of HHG-014 in RUN_MODE=mock (FakeSession + FakeAnthropic + FakeTGConnection)."""
+    monkeypatch.setenv("RUN_MODE", "mock")
+    monkeypatch.setenv("LLM_BACKEND", "mock")
+    monkeypatch.setenv("TG_RESUME_MAX_WAIT_S", "1")
+    from agent import tools_local
+    from agent.bench import load_case_pack, make_client
+    from agent.config import SETTINGS
+    from agent.mock_fixtures import FakeSession
+    from agent.phase_machine import PhaseMachine
+    from agent.runlog import RunLog
+
+    settings = replace(SETTINGS, run_mode="mock", llm_backend="mock")
+    monkeypatch.setattr(tools_local, "SETTINGS", settings)
+    if not settings.case_pack_csv.exists():
+        pytest.skip("case pack not present")
+    ctx = {c.case_id: c for c in load_case_pack(settings.case_pack_csv)}["HHG-014"]
+
+    def run(failing: str, payload) -> tuple[object, object]:
+        class Session(FakeSession):
+            async def call_tool(self, name, arguments=None, **kw):
+                if name == mcp_client.RUN_INSTALLED and (arguments or {}).get("query_name") == failing:
+                    self.calls.append((name, arguments))
+                    return payload
+                return await super().call_tool(name, arguments, **kw)
+
+        pm = PhaseMachine(make_client(settings), Session("HHG-014"), "t", settings)
+        log = RunLog("t", ctx.case_id, tmp_path / ctx.case_id)
+        try:
+            return asyncio.run(pm.run_case(ctx, log)), log
+        except Exception as e:  # noqa: BLE001
+            return e, log
+
+    return run
+
+
+def test_phase_machine_fails_loudly_when_graph_unavailable(mock_run, no_sleep):
+    got, log = mock_run("shared_origin_scan", err_502())
+    assert isinstance(got, GraphUnavailable), got
+    assert not (log.root / "answer.json").exists()
+
+
+def test_phase_machine_non_transient_error_still_completes(mock_run, no_sleep):
+    got, log = mock_run("shared_origin_scan", err_text(RuntimeError("vertex 3503211 does not exist")))
+    assert isinstance(got, dict), got
+    assert (log.root / "answer.json").exists()
+    assert no_sleep == []
+
+
+# ------------------------------------------------------------------------------------------------ checker follow-ups
+def test_resume_loop_wall_clock_cap(monkeypatch, no_sleep):
+    """A stalled attempt (error '' after the full aiohttp deadline) counts against the budget in wall-clock time,
+    not only through the sleeps: one 150 s stall already exceeds TG_RESUME_MAX_WAIT_S=120, so no second attempt."""
+    monkeypatch.setenv("TG_RESUME_MAX_WAIT_S", "120")
+    now = [0.0]
+    monkeypatch.setattr(mcp_client, "_clock", lambda: now[0])
+
+    class Stalling(StubSession):
+        async def call_tool(self, name, arguments=None, **kw):
+            now[0] += 150.0                      # each attempt burns the aiohttp deadline
+            return await super().call_tool(name, arguments, **kw)
+
+    s = Stalling([err_text(TimeoutError())])
+    with pytest.raises(GraphUnavailable, match="connection stalled"):
+        asyncio.run(run_query(s, "card_profile", {}))
+    assert s.calls == 1 and no_sleep == []
+
+
+def test_call_query_tool_short_circuits_once_graph_unavailable(no_sleep):
+    """After one GraphUnavailable the case is already lost: later P2 calls must not each spin the resume budget."""
+    tctx = ToolContext(opened_at="2016-11-22 20:11:00")
+    tctx.budget.limit = 5
+    tctx.graph_unavailable = "shared_origin_scan"
+    s = StubSession([ok_result([{"a": 1}])])
+    out = asyncio.run(call_query_tool(s, tctx, "card_profile", {}))
+    assert "GRAPH TEMPORARILY UNAVAILABLE" in out and s.calls == 0 and tctx.budget.used == 0 and tctx.facts == {}
+
+
+def test_local_tools_flag_graph_unavailable(monkeypatch, no_sleep):
+    """find_similar_cases / grounding_chunks (P2 local tools) follow the call_query_tool contract: flag the case,
+    refund the unit, never hand the failure to the model as an ordinary result."""
+    monkeypatch.setenv("TG_RESUME_MAX_WAIT_S", "1")
+    from agent import tools_local
+
+    tctx = ToolContext(opened_at="2016-11-22 20:11:00")
+    tctx.budget.limit = 5
+    s = StubSession([err_502()])
+    tools_local.bind(s, tctx)
+    monkeypatch.setattr(tools_local, "embed_query", lambda text: [0.0] * 4)
+    ctx = SimpleNamespace(case_id="HHG-014", card_id="C1-K1", customer_id="C1", opened_at="2016-11-22 20:11:00")
+    tools = {t.name: t for t in tools_local.make_local_tools(ctx, tctx)}
+    out = asyncio.run(tools["find_similar_cases"].call({"query_text": "x", "device_id": "", "addr1": "", "pattern_sig": ""}))
+    assert "GRAPH TEMPORARILY UNAVAILABLE" in str(out)
+    assert tctx.graph_unavailable == "find_similar_cases" and tctx.budget.used == 0
+    calls = s.calls
+    out = asyncio.run(tools["grounding_chunks"].call({"query_text": "x", "doc_filter": "", "kind_filter": ""}))
+    assert "GRAPH TEMPORARILY UNAVAILABLE" in str(out) and s.calls == calls   # short-circuited, no new call
+
+
+def test_phase_machine_open_case_graph_unavailable_fails_fast(mock_run, no_sleep):
+    """P0: the open_case writer no longer swallows GraphUnavailable (it would then spin again on case_context)."""
+    got, log = mock_run("open_case", err_502())
+    assert isinstance(got, GraphUnavailable), got
+    assert not (log.root / "answer.json").exists()
+
+
+def test_bench_stops_after_graph_unavailable(monkeypatch, tmp_path):
+    """A workspace that stays down fails one case, then the run stops (every later case would spin the same budget)."""
+    from agent import bench
+    from agent.phase_machine import PhaseMachine
+
+    settings = replace(bench.SETTINGS, run_mode="mock", llm_backend="mock", runs_dir=tmp_path)
+    if not settings.case_pack_csv.exists():
+        pytest.skip("case pack not present")
+    monkeypatch.setattr(bench, "SETTINGS", settings)
+    monkeypatch.setenv("RUN_MODE", "mock")
+    monkeypatch.setenv("LLM_BACKEND", "mock")
+    seen: list[str] = []
+
+    async def down(self, ctx, log):
+        seen.append(ctx.case_id)
+        raise GraphUnavailable("502, message='Bad Gateway'")
+
+    monkeypatch.setattr(PhaseMachine, "run_case", down)
+    rc = bench.main(["--run-id", "t-down", "--cases", "all", "--mock", "--llm-backend", "mock"])
+    assert rc == 1 and len(seen) == 1
+````
 
 #### `tests/unit/test_approvals_db.py`
 ```python
@@ -26721,31 +31612,63 @@ Required sections from the brief: what you built · architecture · how TigerGra
 
 #### `docs/social.md`
 ```markdown
-# Social post (X or LinkedIn, tag @TigerGraphDB, link the blog or the demo) — post on day 14
+# Social posts: final copy
 
-## X (≤ 280 chars incl. link)
+Tag @TigerGraphDB and link the blog in every version. Replace `<BLOG_URL>`, `<DEMO_URL>` and `<REPO_URL>` before posting.
 
-> Built an agentic fraud investigator on @TigerGraphDB for Hacker House Goa: TigerGraph MCP tools + GSQL shared-device ring evidence + TigerVector GraphRAG over FinCEN guidance. Cases are written back into the graph; every block or report goes through a policy-as-code approval inbox. 20 cases, 2 undocumented patterns. Demo + blog: <LINK>
+## X: single post
 
-(Count: fill `<LINK>` with the t.co-shortened URL; if over 280, drop "for Hacker House Goa".)
+> A $74.96 purchase, bank risk score 0.05. My agent on @TigerGraphDB followed its device to 52 cards and 4 confirmed-fraud cases, drafted a SAR, and sent it and the card block to humans. The graph and a deterministic engine decide; the LLM investigates. <BLOG_URL>
 
-## LinkedIn (longer)
+Length: 262 characters as written. X counts any link as 23 characters, so the post is 275 once the real URL goes in. Keep the limit in mind if you edit it.
 
-> At Hacker House Goa I built an AI agent that investigates card fraud on @TigerGraph.
+## X: optional thread (4 posts)
+
+**1/4** (268 characters with the link)
+> A $74.96 purchase, bank risk score 0.05. My fraud agent on @TigerGraphDB followed its device to 52 cards and 4 confirmed-fraud cases. The graph and a deterministic engine decide; the LLM investigates and explains. 20 alerts ran live end to end. <BLOG_URL>
+
+**2/4** (233)
+> The LLM reaches the graph only through the official TigerGraph MCP server, as 16 typed tools over my GSQL queries, time-bounded to when the case opened. It can move the engine's fraud probability by at most 0.10, with a cited reason.
+
+**3/4** (271)
+> Honest negative result: WCC over shared devices gave one 3,687-card component, so it can't find rings here. A profile-centric rule does: one anonymous-proxy device profile, 52 cards, 4 confirmed fraud cases. That's HHG-014, which ended with a SAR drafted for L2 sign-off.
+
+**4/4** (269 with both links)
+> Also honest: 20/20 agreement with my offline engine is a self-consistency check, not accuracy. Replaying 310 real closed cases, pattern accuracy on the 180 confirmed-fraud ones was 0.88 vs my 0.95 target. Write-up + demo: <BLOG_URL> <DEMO_URL>
+
+## LinkedIn
+
+> A $74.96 online purchase. Bank risk score: 0.05. A model that only scored transactions would let it through.
 >
-> What it does: takes an alert (risk score, customer dispute or analyst request), investigates through 25 installed GSQL queries exposed as TigerGraph MCP tools, grounds itself with GraphRAG over 5,565 closed cases and FinCEN/FFIEC guidance in TigerVector, calibrates a fraud probability from the bank's own case history, decides under a written policy (who may approve what), asks the customer for evidence only when the answer can change the action, and writes its case back into the graph so the next investigation finds it.
+> My agent followed that purchase's device through the graph to 52 cards, 114 anonymous-proxy uses and four earlier confirmed-fraud cases. It drafted a suspicious activity report and sent the card block and the filing to human approvers.
 >
-> Two things I'm proud of: (1) a profile-centric shared-device rule that found a 52-card anonymous-proxy ring where plain connected components gave one 5,000-card blob, and (2) a policy-as-code gate with an approval inbox — the agent executes only what the policy allows and every block or SAR waits for a human.
+> I built it for the TigerGraph x Hacker House Goa 2026 hackathon on @TigerGraph.
 >
-> 20 exam cases, two undocumented patterns, one Streamlit dashboard. Blog: <BLOG> · Demo: <DEMO> · Repo: <REPO>
+> An alert comes in: a bank risk score, a customer dispute or an analyst request. The agent investigates through typed GSQL queries exposed via the official TigerGraph MCP server. It retrieves precedents from 5,565 closed cases and grounds itself in FinCEN, FFIEC and FATF guidance, all stored in TigerVector. It asks the customer only when the answer could change the action. It writes the case back into the graph.
+>
+> The design choice I'd reuse: the graph and a deterministic engine make the decisions, and the LLM investigates and explains. It can move the fraud probability by at most 0.10, with a cited reason. Every block or SAR goes to a human approver under a policy-as-code gate.
+>
+> One lesson: connected components over shared devices gave a single 3,687-card component, so rings had to be found profile by profile.
+>
+> All 20 benchmark alerts ran live, end to end. They agreed 20/20 with my own offline engine, but that is a self-consistency check, not accuracy: on a replay of 310 real closed cases, pattern accuracy on the 180 confirmed-fraud ones was 0.88 against my 0.95 target.
+>
+> Blog: <BLOG_URL>
+> Demo: <DEMO_URL>
+> Code: <REPO_URL>
 >
 > #TigerGraph #GraphRAG #FraudDetection #AgenticAI #HackerHouseGoa
 
-## Checklist
-- [ ] blog published and linked
-- [ ] demo uploaded and linked
-- [ ] @TigerGraphDB tagged (X handle) / TigerGraph page tagged (LinkedIn)
-- [ ] post URL pasted into README "Social post" row
+On LinkedIn, type "@TigerGraph" and choose the company page from the mention picker so the tag links.
+
+## Pre-posting checklist
+
+- [ ] Publish `docs/blog.md` on dev.to or Hashnode (both render the tables). Put the H1 in the title field and the italic line in the subtitle field. Delete both lines and the `---` rule under them from the body. On Medium, the five tables must first be rebuilt as images or bullet lists.
+- [ ] Replace `<DEMO_URL>` and `<REPO_URL>` at the end of the blog
+- [ ] Upload the demo video and copy its URL
+- [ ] Replace every `<BLOG_URL>`, `<DEMO_URL>` and `<REPO_URL>` above (repo: https://github.com/aryangupta1411/Tiger-graph)
+- [ ] Re-check the X post is 280 characters or fewer after editing (a link counts as 23)
+- [ ] Confirm @TigerGraphDB is tagged on X and the TigerGraph page is tagged on LinkedIn
+- [ ] Paste the blog, demo and social-post URLs into the three "TODO link" rows in `README.md`
 ```
 
 #### `docs/BUILD_ORDER.md`

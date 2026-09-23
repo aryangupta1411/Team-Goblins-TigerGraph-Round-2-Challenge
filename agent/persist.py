@@ -11,6 +11,10 @@
    pyTigerGraph `getVectorStatus`) so the next case can retrieve this one.
 
 In RUN_MODE=mock the pyTigerGraph part is replaced by a fake connection.
+
+Savanna auto-resume: the upsert and the index poll run under `ops.ensure_awake.ensure_awake()`, the MCP
+writers under `mcp_client.run_query`'s resume loop and the edges under `call_tool_with_resume`. Every write
+is a keyed upsert (fixed AgentCase id, event seq, approval id), so a re-send after a dropped request is safe.
 """
 from __future__ import annotations
 
@@ -21,7 +25,8 @@ from typing import Any
 
 from agent import tools_local
 from agent.config import SETTINGS
-from agent.mcp_client import current_caller, run_query
+from agent.mcp_client import call_tool_with_resume, current_caller, run_query
+from ops.ensure_awake import ensure_awake
 
 EDGE_TYPES = {  # edge -> (source type, target type)
     "CASE_INVOLVES": ("AgentCase", "Transaction"), "CASE_ON_CARD": ("AgentCase", "Card"),
@@ -109,7 +114,7 @@ async def _persist(pm: Any, ctx, sc, initial: list[dict], final: list[dict], req
     try:
         vec = tools_local.embed_document(embed_text_for_case(ctx, sc, closing, sar, initial, final, requests))
         conn = pm.tg_conn_factory() if pm.tg_conn_factory else tg_connection(s)
-        accepted = await asyncio.to_thread(conn.upsertVertex, "AgentCase", case_id, {**attrs, "note_emb": vec})
+        accepted = await asyncio.to_thread(ensure_awake()(conn.upsertVertex), "AgentCase", case_id, {**attrs, "note_emb": vec})
         written = int(accepted or 0) >= 1
         log.record_tool("pytg:upsertVertex(AgentCase)", {"id": case_id, "n_attrs": len(attrs), "dim": len(vec)}, time.time() - t0, 0, ok=written, caller="persist")
     except Exception as e:
@@ -158,7 +163,7 @@ async def _persist(pm: Any, ctx, sc, initial: list[dict], final: list[dict], req
         payload = [{"source_id": case_id, "source_type": src_t, "target_type": tgt_t, **r} for r in rows]
         t1 = time.time()
         try:
-            res = await pm.session.call_tool("tigergraph__add_edges", {"edge_type": etype, "edges": payload})
+            res = await call_tool_with_resume(pm.session, "tigergraph__add_edges", {"edge_type": etype, "edges": payload})
             ok = not getattr(res, "is_error", False) and '"success": true' in "".join(getattr(c, "text", "") for c in res.content).lower()
             log.record_tool(f"mcp:add_edges({etype})", {"n": len(payload)}, time.time() - t1, 0, ok=ok, caller="persist")
         except Exception as e:
@@ -170,7 +175,7 @@ async def _persist(pm: Any, ctx, sc, initial: list[dict], final: list[dict], req
             deadline = time.time() + 60
             ready = False
             while time.time() < deadline:
-                ready = await asyncio.to_thread(conn.getVectorStatus, "AgentCase", "note_emb")
+                ready = await asyncio.to_thread(ensure_awake()(conn.getVectorStatus), "AgentCase", "note_emb")
                 if ready:
                     break
                 await asyncio.sleep(2)

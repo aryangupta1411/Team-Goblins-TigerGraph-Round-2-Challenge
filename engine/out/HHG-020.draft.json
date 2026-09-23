@@ -138,5 +138,5 @@
   "stop_reason": "Policy \u00a76 test 2: the assumed customer confirmation settled the question. Probability 0.01 with 2 families also meets \u00a76 test 1.",
   "tool_calls": 15,
   "tokens": 0,
-  "latency_s": 0.05
+  "latency_s": 0.04
 }

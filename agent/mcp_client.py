@@ -9,7 +9,12 @@
   `tigergraph__run_installed_query` tool is never given to the model.
 - `run_query(session, name, params)` calls `tigergraph__run_installed_query`, parses
   the MCP formatter's ```json block, merges the printed JSON objects into one dict,
-  and logs the call to the active RunLog.
+  and logs the call to the active RunLog. A transient failure (Savanna auto-resume:
+  502/503/504, connection error, HTML start page, or the empty error of a stalled
+  aiohttp request) is retried with `ops.ensure_awake.backoff_delays` for up to
+  TG_RESUME_MAX_WAIT_S; when the budget runs out it raises `GraphUnavailable`, which
+  the phase machine never treats as evidence. `call_tool_with_resume` does the same
+  for the non-query tools (`tigergraph__add_edges`).
 - Every tool result becomes `Evidence` rows through `evidence_from_result()` (ids
   extracted by code, never by the model).
 
@@ -18,6 +23,7 @@ INT/FLOAT/STRING/BOOL → JSON scalars; LIST<FLOAT> → JSON array.
 """
 from __future__ import annotations
 
+import asyncio
 import contextvars
 import json
 import os
@@ -300,6 +306,104 @@ class QueryError(RuntimeError):
     pass
 
 
+class GraphUnavailable(QueryError):
+    """The workspace stayed unreachable for the whole TG_RESUME_MAX_WAIT_S budget (not a query error)."""
+
+
+# What a P2 tool returns to the model when the workspace is unreachable (never evidence; the case fails after P2).
+GRAPH_UNAVAILABLE_REPLY = json.dumps({"error": "GRAPH TEMPORARILY UNAVAILABLE - not evidence; do not draw conclusions from this call"})
+
+
+def mark_graph_unavailable(tctx: Any, name: str) -> str:
+    """Flag the case (PhaseMachine._run raises after P2), refund the budget unit, return the model-facing reply."""
+    tctx.graph_unavailable = tctx.graph_unavailable or name
+    tctx.budget.used = max(0, tctx.budget.used - 1)
+    return GRAPH_UNAVAILABLE_REPLY
+
+
+# Injectable for tests; the resume loop awaits it between attempts.
+_sleep = asyncio.sleep
+_clock = time.monotonic      # injectable for tests (the resume loop's wall-clock cap)
+
+
+def _transient_payload(payload: dict) -> bool:
+    """True when an MCP ToolResponse failure looks like a resuming / unreachable workspace.
+
+    tigergraph-mcp's format_error never raises: it puts str(exc) in `error`. An aiohttp total timeout
+    stringifies to '' (error_code OPERATION_ERROR), so an empty error is transient too. error_code alone
+    is not used: CONNECTION_ERROR is also set for any text that merely contains "timeout".
+    """
+    from ops.ensure_awake import is_transient
+
+    text = str(payload.get("error") or "")
+    return not text.strip() or is_transient(RuntimeError(text))
+
+
+def _resume_budget() -> float:
+    return float(os.getenv("TG_RESUME_MAX_WAIT_S", "240"))
+
+
+async def _resume_loop(attempt_fn: Callable[[], Any], what: str) -> Any:
+    """Run `attempt_fn()` (a coroutine factory that raises `_Transient` or a real error) under the resume backoff."""
+    from ops.ensure_awake import backoff_delays, is_transient
+
+    log = current_runlog.get()
+    budget = _resume_budget()
+    delays = backoff_delays(budget)
+    # Wall-clock cap as well: backoff_delays only counts the sleeps, and a stalled attempt waits the full aiohttp
+    # deadline (GSQL-TIMEOUT + 30 s = 150 s) before it comes back as error '' - without this a stalled connection
+    # could hold one query for ~9 x 150 s. A resume answers 502 fast, so this never cuts a genuine resume short.
+    t_start = _clock()
+    n = 0
+    while True:
+        try:
+            return await attempt_fn()
+        except _Transient as t:
+            text = t.text
+        except QueryError:
+            raise
+        except Exception as e:
+            if not is_transient(e):
+                raise
+            text = str(e)
+        delay = next(delays, None)
+        if delay is None or _clock() - t_start >= budget:
+            raise GraphUnavailable(text or "empty error (connection stalled)")
+        n += 1
+        if log is not None:
+            log.note("graph transient, retrying", query=what, attempt=n, delay_s=delay, error=text[:200])
+        await _sleep(delay)
+
+
+class _Transient(Exception):
+    """Internal: one attempt failed with a transient MCP payload."""
+
+    def __init__(self, text: str) -> None:
+        super().__init__(text)
+        self.text = text
+
+
+async def call_tool_with_resume(session: Any, tool: str, args: dict) -> Any:
+    """`session.call_tool(tool, args)` with the resume retry, for the non-query tools (P10 add_edges).
+
+    Returns the raw MCP result of the first non-transient attempt (success or a real failure); raises
+    GraphUnavailable when the workspace stays unreachable. The writers are keyed upserts, so a re-send is safe.
+    """
+
+    async def attempt() -> Any:
+        res = await session.call_tool(tool, args)
+        text = _result_text(res)
+        try:
+            payload = parse_tool_text(text)
+        except QueryError:
+            return res
+        if isinstance(payload, dict) and payload.get("success") is False and _transient_payload(payload):
+            raise _Transient(str(payload.get("error") or ""))
+        return res
+
+    return await _resume_loop(attempt, tool)
+
+
 _FENCE = re.compile(r"```json\s*(\{.*?\})\s*```", re.S)
 
 
@@ -361,13 +465,26 @@ def merge_printed(results: Any, qname: str = "") -> dict:
 
 
 # PRINT keys a GroupByAccum prints as a one-element list although the contract (and every consumer) reads a
-# single object: card_testing_check.run (00-integration.md M7, contracts §A).
+# single object: card_testing_check.run (00-integration.md M7, contracts §A). Keyed on the CONTRACT name:
+# mcp.normalize.normalize() already renames the GSQL-side `best_run` to `run` before merge_printed() gets
+# here, so `merged` holds `run` on the normal path.
 _SINGLETON_KEYS: dict[str, tuple[str, ...]] = {"card_testing_check": ("run",)}
+
+# `run` is a GSQL reserved word and cannot be used as a PRINT alias (graph/queries/card_testing_check.gsql
+# aliases it `best_run` instead); mcp.normalize.normalize() renames it back to `run` for every caller,
+# including tests/live/test_query_contracts.py which calls normalize() directly. This is only a fallback for
+# merge_printed()'s manual-merge branch (mcp/normalize.py failed to import), which never calls normalize()
+# and so never sees that rename.
+_RENAME_KEYS: dict[str, dict[str, str]] = {"card_testing_check": {"best_run": "run"}}
 
 
 def _unwrap_singletons(qname: str, merged: dict) -> dict:
-    """`card_testing_check` prints `run` as `[{start_id, ids, amts, start_ts, end_ts}]`; the harness hands the
-    engine a dict, exactly as `mcp/normalize.unwrap_singleton` does."""
+    """`card_testing_check` prints `run` (renamed from `best_run`, see above) as
+    `[{start_id, ids, amts, start_ts, end_ts}]`; unwrap it to the object the contract reads, exactly as
+    `mcp/normalize.unwrap_singleton` does."""
+    for gsql_name, contract_name in _RENAME_KEYS.get(qname or "", {}).items():
+        if gsql_name in merged and contract_name not in merged:
+            merged[contract_name] = merged.pop(gsql_name)
     keys = _SINGLETON_KEYS.get(qname or "")
     if not keys:
         return merged
@@ -393,17 +510,26 @@ async def run_query(session: Any, name: str, params: dict) -> dict:
     log = current_runlog.get()
     t0 = time.time()
     ok, err, size = True, "", 0
-    try:
+
+    async def attempt() -> dict:
+        nonlocal size
         res = await session.call_tool(RUN_INSTALLED, {"query_name": name, "params": params})
         text = _result_text(res)
         size = len(text.encode("utf-8"))
         if getattr(res, "is_error", False):
+            if text.strip() and _transient_payload({"error": text}):
+                raise _Transient(text[:500])
             raise QueryError(text[:500])
         payload = parse_tool_text(text)
         if not payload.get("success", False):
+            if _transient_payload(payload):
+                raise _Transient(str(payload.get("error") or ""))
             raise QueryError(payload.get("error") or payload.get("summary") or "query failed")
         data = payload.get("data") or {}
         return merge_printed(data.get("result"), name)
+
+    try:
+        return await _resume_loop(attempt, name)
     except Exception as e:
         ok, err = False, str(e)
         raise
@@ -517,6 +643,7 @@ class ToolContext:
     budget: ToolBudget = field(default_factory=lambda: ToolBudget(SETTINGS.max_tool_calls))
     max_chars: int = SETTINGS.tool_result_max_chars
     on_result: Callable[[str, dict, dict], None] | None = None
+    graph_unavailable: str = ''       # name of the P2 query the resume budget ran out on (the phase machine fails the case)
 
 
 def clamp_params(params: dict, opened_at: str) -> tuple[dict, list[str]]:
@@ -566,12 +693,17 @@ def _make_tool(cls, session: Any, tctx: ToolContext, qname: str, spec: dict):
 
 async def call_query_tool(session: Any, tctx: ToolContext, qname: str, params: dict) -> str:
     """Body of every typed tool: budget, clamp, run, record facts + evidence, return compact JSON."""
+    if tctx.graph_unavailable:  # the case already failed on an unreachable workspace: do not spin another budget
+        return GRAPH_UNAVAILABLE_REPLY
     if not tctx.budget.take():
         return json.dumps({"error": "tool budget exhausted", "hint": "You have used every allowed graph call. Stop investigating and give your assessment from the evidence collected."})
     params, notes = clamp_params(params, tctx.opened_at)
     token = current_caller.set("llm")
     try:
         result = await run_query(session, qname, params)
+    except GraphUnavailable:
+        # not evidence: refund the unit, flag the case (PhaseMachine._run raises after P2), tell the model plainly
+        return mark_graph_unavailable(tctx, qname)
     except Exception as e:
         return json.dumps({"error": f"{qname} failed: {str(e)[:400]}", "hint": "Check the parameter encoding (VERTEX → {\"id\": ...}, DATETIME → 'YYYY-MM-DD HH:MM:SS') or choose another query."})
     finally:

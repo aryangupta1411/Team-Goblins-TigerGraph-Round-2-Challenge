@@ -18,7 +18,7 @@ CREATE OR REPLACE QUERY wcc_summary(STRING ring_profile_id = "SM-G935F Build/NRD
          ACCUM @@ring_comps += c.wcc_id;
   FOREACH (k, v) IN @@size_by_comp DO
     @@top += CompSize(k, v);
-    IF v >= 2 THEN @@n_multi += 1 END;
+    IF v >= 2 THEN @@n_multi += 1; END;
   END;
   PRINT @@top AS top_components, @@n_multi AS n_components_ge2, @@n_isolated AS n_isolated_cards,
         @@size_by_comp.size() AS n_components, @@ring_comps AS ring_card_components;

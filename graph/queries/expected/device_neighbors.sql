@@ -9,6 +9,12 @@ WITH dev AS (SELECT * FROM g_dev WHERE id = $d),
 SELECT
   (SELECT struct_pack(id, is_strong, n_cards_alltime, n_cards_30d, n_proxy, n_fraud_cases) FROM dev) AS device,
   (SELECT coalesce(list(struct_pack(card_id, customer_id, n_txns, sum_amt, n_proxy, n_new, first_ts, last_ts) ORDER BY n_txns DESC, card_id), []) FROM cards) AS cards,
-  (SELECT coalesce(list(struct_pack(id, card_id, pattern, outcome, report_filed) ORDER BY id), []) FROM (SELECT * FROM g_cc WHERE card_id IN (SELECT card_id FROM w) ORDER BY id LIMIT 60)) AS closed_cases,
+  -- closed cases whose INVOLVES transactions used THIS profile, all-time (engine/facts_duckdb.py, the engine of record,
+  -- and graph/queries/device_neighbors.gsql). Not every case on the neighbour cards: that let a hub card's unrelated
+  -- fraud history read as "this device carries fraud".
+  (SELECT coalesce(list(struct_pack(id, card_id, pattern, outcome, report_filed) ORDER BY id), []) FROM (
+     SELECT * FROM g_cc WHERE (SELECT s FROM strong)
+       AND id IN (SELECT x.case_id FROM g_cc_txn x JOIN g_txn t ON t.id = x.txn_id WHERE t.device_id = $d)
+     ORDER BY id LIMIT 60)) AS closed_cases,
   [] AS agent_cases,
   (SELECT count(DISTINCT card_id) FROM w) AS _n_cards_in_window;

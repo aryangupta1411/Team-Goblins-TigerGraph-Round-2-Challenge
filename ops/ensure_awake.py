@@ -30,6 +30,7 @@ import asyncio
 import functools
 import logging
 import os
+import re
 import time
 from collections.abc import Callable, Iterator
 from typing import Any
@@ -37,10 +38,9 @@ from typing import Any
 log = logging.getLogger("ops.ensure_awake")
 
 # Substrings (lower-cased) that identify a resuming / unreachable workspace.
+# The bare status codes are NOT here: "503" would match dataset ids such as 3503211 or C15034, and a
+# non-transient error quoting one would then be retried for the whole resume budget. See _STATUS_RX.
 TRANSIENT_MARKERS: tuple[str, ...] = (
-    "502",
-    "503",
-    "504",
     "bad gateway",
     "service unavailable",
     "gateway time-out",
@@ -59,6 +59,10 @@ TRANSIENT_MARKERS: tuple[str, ...] = (
     "cannot connect to host",
 )
 
+# A stand-alone 502 / 503 / 504 ("502 Server Error", "502, message='Bad Gateway'", "HTTP 503"), never a
+# digit run inside an id or a number ("3503211", "C15034", "0.502", "502ms").
+_STATUS_RX = re.compile(r"(?<![\w.])50[234](?![\w.])")
+
 # Errors that must never be retried even though they subclass OSError.
 _NON_TRANSIENT_OS = (FileNotFoundError, PermissionError, IsADirectoryError, NotADirectoryError)
 
@@ -74,8 +78,9 @@ def is_transient(exc: BaseException) -> bool:
             return True
         if isinstance(exc, requests.HTTPError):
             resp = getattr(exc, "response", None)
-            if resp is not None and getattr(resp, "status_code", 0) in (502, 503, 504):
-                return True
+            status = getattr(resp, "status_code", 0) if resp is not None else 0
+            if status:  # a real status decides: 401 / 403 / 404 are never retried, whatever the text says
+                return status in (502, 503, 504)
     except ImportError:  # pragma: no cover
         pass
     try:  # aiohttp (pyTigerGraph async client used by tigergraph-mcp)
@@ -83,13 +88,25 @@ def is_transient(exc: BaseException) -> bool:
 
         if isinstance(exc, (aiohttp.ClientConnectionError, aiohttp.ServerDisconnectedError)):
             return True
-        if isinstance(exc, aiohttp.ClientResponseError) and exc.status in (502, 503, 504):
-            return True
+        if isinstance(exc, aiohttp.ClientResponseError) and exc.status:
+            return exc.status in (502, 503, 504)
     except ImportError:  # pragma: no cover
         pass
     if isinstance(exc, (ConnectionError, TimeoutError, asyncio.TimeoutError)):
         return True
-    msg = str(exc).lower()
+    return _transient_text(str(exc))
+
+
+def _transient_text(text: str) -> bool:
+    """The message-based half of ``is_transient`` (401 / 403 / auth errors are never transient)."""
+    msg = text.lower()
+    # pyTigerGraph common/base.py raises TigerGraphException("Cannot parse json: " + body) when a 2xx reply is
+    # not JSON - a resuming workspace's HTML start page. str(exc) of a TigerGraphException(msg, code) is a
+    # tuple repr, hence the "('cannot parse json" form.
+    if (msg.startswith("cannot parse json") or "('cannot parse json" in msg) and ("<html" in msg or "<!doctype" in msg):
+        return True
+    if _STATUS_RX.search(msg):
+        return True
     return any(marker in msg for marker in TRANSIENT_MARKERS)
 
 
@@ -109,13 +126,14 @@ def backoff_delays(max_wait_s: float, first: float = 1.0, cap: float = 60.0) -> 
 def ensure_awake(
     max_wait_s: float | None = None,
     on_retry: Callable[[int, float, BaseException], None] | None = None,
-    sleep: Callable[[float], Any] = time.sleep,
+    sleep: Callable[[float], Any] | None = None,
 ):
     """Decorator: retry a sync or async callable while the workspace resumes.
 
     ``max_wait_s`` defaults to ``TG_RESUME_MAX_WAIT_S`` from the environment (240).
     ``on_retry(attempt, delay, exc)`` is called before each sleep (the UI shows a spinner).
-    ``sleep`` is injectable for tests (sync path only; async uses ``asyncio.sleep``).
+    ``sleep`` is injectable for tests (sync path only; async uses ``asyncio.sleep``); when omitted,
+    ``time.sleep`` is looked up at call time so a monkeypatched ``time.sleep`` takes effect.
     """
     budget = float(os.getenv("TG_RESUME_MAX_WAIT_S", "240")) if max_wait_s is None else float(max_wait_s)
 
@@ -162,7 +180,7 @@ def ensure_awake(
                     log.warning("%s: transient error (%s); retry %d in %.0fs", fn.__name__, exc, attempt, delay)
                     if on_retry:
                         on_retry(attempt, delay, exc)
-                    sleep(delay)
+                    (sleep or time.sleep)(delay)
 
         return sync_wrapper
 
@@ -186,12 +204,23 @@ def tg_connection(graphname: str | None = None, timeout_ms: int | None = None):
     host = os.environ["TG_HOST"]
     graph = graphname or os.getenv("TG_GRAPHNAME", "FraudGraph")
     secret = os.environ["TG_SECRET"]
+    require_secret(secret)
     conn = TigerGraphConnection(host=host, graphname=graph, gsqlSecret=secret)
     ms = int(os.getenv("TG_QUERY_TIMEOUT_MS", "120000")) if timeout_ms is None else int(timeout_ms)
     # Connection-wide GSQL-TIMEOUT / RESPONSE-LIMIT headers (pyTigerGraph merges them into every request).
     conn.customizeHeader(timeout=ms, responseSize=64_000_000)
     _get_token(conn, secret)
     return conn
+
+
+EMPTY_SECRET_MSG = "TG_SECRET is empty in .env - paste the Savanna Database Secret"
+
+
+def require_secret(secret: str | None) -> str:
+    """Fail before any network call: an empty secret would wake (and bill) a suspended workspace for a 401."""
+    if not (secret or "").strip():
+        raise RuntimeError(EMPTY_SECRET_MSG)
+    return secret  # type: ignore[return-value]
 
 
 @ensure_awake()

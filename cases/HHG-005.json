@@ -1,0 +1,147 @@
+{
+  "case_id": "HHG-005",
+  "case": {
+    "status": "closed_legitimate",
+    "verdict": "legitimate",
+    "fraud_probability": 0.04,
+    "pattern": "none",
+    "pattern_description": "",
+    "affected_txn_ids": [],
+    "first_suspicious_txn_id": "",
+    "connected_card_ids": [],
+    "connected_device_profiles": [],
+    "exposure_usd": 0.0,
+    "evidence": [
+      {
+        "claim": "Case-memory calibration (cms_p) scores the flagged transaction at 0.026 (cal_p 0.0346), far below the raw risk_score of 0.54, indicating the calibrated model does not see this as fraud.",
+        "source": "graph",
+        "ref": "query:case_context(t=3523199, as_of=2016-12-08 03:38:37)",
+        "entity_ids": [
+          "3523199"
+        ]
+      },
+      {
+        "claim": "Transaction 3523199 ($100.07) sits inside the card's baseline: prior median amount $117.01 and prior maximum $1,104.08 across 92 prior transactions, on product code R which the card has used before.",
+        "source": "graph",
+        "ref": "query:card_profile(c=C02923-K1, as_of=2016-12-08 03:38:37)",
+        "entity_ids": [
+          "3523199",
+          "C02923-K1"
+        ]
+      },
+      {
+        "claim": "Billing region 330.0 is the card's modal region with 85 prior transactions over 49 days and hint=home; this online purchase falls in the customer's home region, not a novel one.",
+        "source": "graph",
+        "ref": "query:region_history(c=C02923-K1, addr1=330.0, as_of=2016-12-07 21:38:36)",
+        "entity_ids": [
+          "3523199",
+          "C02923-K1"
+        ]
+      },
+      {
+        "claim": "The device profile iOS Device | iOS 9.3.5 | mobile safari 9.0 | 1024x768 is New to this card (device_history prior_n=1, first_ts=2016-12-07 21:38:37) but is generic, not strong (112 cards all-time, 98 in 30 days, over the 60-card strong-profile cap), so it carries no shared-origin weight.",
+        "source": "graph",
+        "ref": "query:device_history(c=C02923-K1, d=iOS Device | iOS 9.3.5 | mobile safari 9.0 | 1024x768, as_of=2016-12-08 03:38:37)",
+        "entity_ids": [
+          "iOS Device | iOS 9.3.5 | mobile safari 9.0 | 1024x768",
+          "C02923-K1"
+        ]
+      },
+      {
+        "claim": "card_testing_check, under_threshold_burst and episode_candidates each return a single-member result (chain n_members=1, n_small=0; 0 bursts; 1-row chain), ruling out card-testing, the just-under-$500 burst, and any multi-transaction episode around txn 3523199.",
+        "source": "graph",
+        "ref": "query:card_testing_check(c=C02923-K1, as_of=2016-12-08 03:38:37, small=5, window_min=60, min_n=3, big=100, lookahead_h=48)",
+        "entity_ids": [
+          "3523199"
+        ]
+      },
+      {
+        "claim": "shared_origin_scan and ring_profile show the flagged device is not strong and the card's only strong/shared profile is a different device (Windows | Windows 7 | firefox 57.0 | 1680x1050, 28 cards all-time) which this transaction did not touch (ring_hit=false).",
+        "source": "graph",
+        "ref": "query:shared_origin_scan(c=C02923-K1, as_of=2016-12-08 03:38:37, days=30)",
+        "entity_ids": [
+          "iOS Device | iOS 9.3.5 | mobile safari 9.0 | 1024x768",
+          "Windows | Windows 7 | firefox 57.0 | 1680x1050"
+        ]
+      },
+      {
+        "claim": "The card has 3 prior confirmed-fraud cases (CC-2400, CC-2717, CC-2857), all account_takeover, most recently opened 2016-09-01, roughly three months before this transaction and sharing no method (device/region/channel) with it.",
+        "source": "graph",
+        "ref": "query:prior_cases_for_customer(cu=C02923, as_of=2016-12-08 03:38:37)",
+        "entity_ids": [
+          "CC-2857",
+          "CC-2717",
+          "CC-2400",
+          "C02923-K1"
+        ]
+      },
+      {
+        "claim": "Assumed reply: customer confirmed the purchase from a new phone/device and recognises the $100.07 charge",
+        "source": "customer",
+        "ref": "evidence_request:1",
+        "entity_ids": [
+          "3523199"
+        ]
+      }
+    ],
+    "similar_prior_cases": [
+      "CC-2403",
+      "CC-4000",
+      "CC-2091"
+    ],
+    "summary": "Case HHG-005 on card C02923-K1 is closed as legitimate at a probability of 0.04 (pattern: none) after the customer confirmed transaction 3523199, a $100.07 online purchase in product R on 2016-12-07. The episode is the single transaction 3523199, exposure $0.00 (no block, so nothing carried against the customer). Decisive evidence: the history family showed the amount sits well inside the card's baseline (median $117.01, max $1,104.08) in the card's modal home region 330.0, and the calibrated case-memory score (cms_p 0.026) sharply contradicted the raw risk_score of 0.54; the device family confirmed the New iOS profile is a generic, non-strong device (112 cards all-time) with no card-testing, burst, or shared-origin signal. A customer_validation request was asked because this was a single weak signal (risk_score alone) under R1; the assumed reply was a confirmation that the purchase and new phone were the customer's own, satisfying R3 and settling the case (customer family). Similar cleared same-region cases CC-2403, CC-4000 and CC-2091 supported the legitimate reading, while the card's three prior confirmed account_takeover cases (CC-2400, CC-2717, CC-2857) were considered but did not share method or timing with this isolated purchase. The alternative reading — treating the New device and prior account-takeover history as decisive and denying the transaction — would have triggered R2 (BLOCK_CARD, CREATE_CASE) had the customer instead denied it; that did not occur. Recommended route: auto — CREATE_CASE, ALLOW_TRANSACTION, CLOSE_NO_FRAUD, no L1/L2 approval needed.",
+    "written_to_graph": true,
+    "graph_case_id": "AC-HHG-005"
+  },
+  "evidence_requests": [
+    {
+      "type": "customer_validation",
+      "asked_after_step": 21,
+      "assumed_response": "ASSUMED (simulated): customer confirmed the purchase from a new phone/device and recognises the $100.07 charge"
+    }
+  ],
+  "next_best_actions": {
+    "initial": [
+      {
+        "action": "CREATE_CASE",
+        "route": "auto",
+        "reason": "3a: evidence is requested (customer_validation) on this risk-score alert, so a case is opened even though probability 0.04 is low."
+      },
+      {
+        "action": "VERIFY_WITH_CUSTOMER",
+        "route": "auto",
+        "reason": "R1: single evidence signal (risk_score alone, family=history) and probability 0.04 < 0.70, so verify the New device with the customer before any block; the device profile is generic/New and legitimacy-leaning per case_context and device_history."
+      }
+    ],
+    "final": [
+      {
+        "action": "CREATE_CASE",
+        "route": "auto",
+        "reason": "3a: a case was already opened for the customer_validation request and is retained to record the confirmation."
+      },
+      {
+        "action": "ALLOW_TRANSACTION",
+        "route": "auto",
+        "reason": "R3: customer confirmed the transaction as their own, so the $100.07 charge is allowed to stand."
+      },
+      {
+        "action": "CLOSE_NO_FRAUD",
+        "route": "auto",
+        "reason": "R3: customer confirmed; combined with the legitimate verdict (p=0.04, history evidence: baseline amount and home region) the case closes with no fraud found."
+      }
+    ],
+    "what_changed": "The assumed customer validation reply (confirm) moved the probability from 0.04 to 0.04 and the verdict to legitimate, adding ALLOW_TRANSACTION, CLOSE_NO_FRAUD, removing VERIFY_WITH_CUSTOMER. Counterfactual: had the customer denied the purchase, R2 would have applied: BLOCK_CARD (L1) and CREATE_CASE."
+  },
+  "sar": {
+    "file": false,
+    "reason": "3a not met: verdict legitimate (fraud not confirmed or strongly suspected), exposure $0.00; no report",
+    "narrative": "",
+    "subjects": [],
+    "total_amount_usd": 0,
+    "activity_dates": []
+  },
+  "stop_reason": "Policy §6 test 2 fired: the assumed customer confirmation settled the single-signal question raised under R1. This is reinforced by §6 test 1, since probability 0.04 was already supported by two independent evidence families (history and device) before the confirmation arrived.",
+  "tool_calls": 21,
+  "tokens": 244121,
+  "latency_s": 139.1
+}

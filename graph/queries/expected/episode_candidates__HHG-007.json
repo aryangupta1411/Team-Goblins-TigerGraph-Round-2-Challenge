@@ -18,7 +18,7 @@
     "p_email": "",
     "device_id": "",
     "device_new": "",
-    "cms_p": 0.010174,
+    "cms_p": 0.009456,
     "sig_match": false
    },
    {
@@ -31,7 +31,7 @@
     "p_email": "",
     "device_id": "",
     "device_new": "",
-    "cms_p": 0.008721,
+    "cms_p": 0.005516,
     "sig_match": false
    },
    {
@@ -44,7 +44,7 @@
     "p_email": "gmail.com",
     "device_id": "",
     "device_new": "",
-    "cms_p": 0.001043,
+    "cms_p": 0.00134,
     "sig_match": false
    },
    {
@@ -57,7 +57,7 @@
     "p_email": "yahoo.com",
     "device_id": "",
     "device_new": "",
-    "cms_p": 0.007649,
+    "cms_p": 0.007626,
     "sig_match": false
    },
    {
@@ -70,7 +70,7 @@
     "p_email": "gmail.com",
     "device_id": "",
     "device_new": "",
-    "cms_p": 0.001152,
+    "cms_p": 0.001329,
     "sig_match": false
    },
    {
@@ -83,7 +83,7 @@
     "p_email": "gmail.com",
     "device_id": "MacOS | Mac OS X 10_11_6 | safari generic | 2560x1600",
     "device_new": "Found",
-    "cms_p": 0.005538,
+    "cms_p": 0.007307,
     "sig_match": false
    },
    {
@@ -96,7 +96,7 @@
     "p_email": "yahoo.com",
     "device_id": "",
     "device_new": "",
-    "cms_p": 0.003598,
+    "cms_p": 0.00481,
     "sig_match": false
    },
    {
@@ -109,7 +109,7 @@
     "p_email": "",
     "device_id": "",
     "device_new": "",
-    "cms_p": 0.056788,
+    "cms_p": 0.048932,
     "sig_match": false
    },
    {
@@ -122,7 +122,7 @@
     "p_email": "gmail.com",
     "device_id": "MacOS | Mac OS X 10_11_6 | safari generic | 2560x1600",
     "device_new": "New",
-    "cms_p": 0.004603,
+    "cms_p": 0.006311,
     "sig_match": false
    },
    {
@@ -135,7 +135,7 @@
     "p_email": "",
     "device_id": "",
     "device_new": "",
-    "cms_p": 0.004022,
+    "cms_p": 0.00581,
     "sig_match": false
    },
    {
@@ -148,7 +148,7 @@
     "p_email": "yahoo.com",
     "device_id": "",
     "device_new": "",
-    "cms_p": 0.001481,
+    "cms_p": 0.001639,
     "sig_match": false
    },
    {
@@ -161,7 +161,7 @@
     "p_email": "gmail.com",
     "device_id": "",
     "device_new": "",
-    "cms_p": 0.011386,
+    "cms_p": 0.008689,
     "sig_match": false
    },
    {
@@ -174,7 +174,7 @@
     "p_email": "gmail.com",
     "device_id": "",
     "device_new": "",
-    "cms_p": 0.006827,
+    "cms_p": 0.014805,
     "sig_match": false
    },
    {
@@ -187,7 +187,7 @@
     "p_email": "",
     "device_id": "",
     "device_new": "",
-    "cms_p": 0.001916,
+    "cms_p": 0.002249,
     "sig_match": false
    },
    {
@@ -200,7 +200,7 @@
     "p_email": "gmail.com",
     "device_id": "",
     "device_new": "",
-    "cms_p": 0.001798,
+    "cms_p": 0.00163,
     "sig_match": false
    },
    {
@@ -213,7 +213,7 @@
     "p_email": "anonymous.com",
     "device_id": "",
     "device_new": "",
-    "cms_p": 0.001405,
+    "cms_p": 0.002287,
     "sig_match": false
    },
    {
@@ -226,7 +226,7 @@
     "p_email": "anonymous.com",
     "device_id": "",
     "device_new": "",
-    "cms_p": 0.001241,
+    "cms_p": 0.001847,
     "sig_match": false
    },
    {
@@ -239,7 +239,7 @@
     "p_email": "",
     "device_id": "",
     "device_new": "",
-    "cms_p": 0.001719,
+    "cms_p": 0.001378,
     "sig_match": false
    },
    {
@@ -252,7 +252,7 @@
     "p_email": "gmail.com",
     "device_id": "MacOS | Mac OS X 10_11_6 | safari generic | 2560x1600",
     "device_new": "Found",
-    "cms_p": 0.001993,
+    "cms_p": 0.003132,
     "sig_match": false
    },
    {
@@ -265,7 +265,7 @@
     "p_email": "hotmail.com",
     "device_id": "",
     "device_new": "",
-    "cms_p": 0.001732,
+    "cms_p": 0.002121,
     "sig_match": false
    },
    {
@@ -278,7 +278,7 @@
     "p_email": "yahoo.com",
     "device_id": "",
     "device_new": "",
-    "cms_p": 0.122535,
+    "cms_p": 0.133671,
     "sig_match": false
    },
    {
@@ -291,7 +291,7 @@
     "p_email": "gmail.com",
     "device_id": "",
     "device_new": "",
-    "cms_p": 0.003866,
+    "cms_p": 0.003576,
     "sig_match": false
    },
    {
@@ -304,7 +304,7 @@
     "p_email": "gmail.com",
     "device_id": "",
     "device_new": "",
-    "cms_p": 0.003927,
+    "cms_p": 0.003379,
     "sig_match": false
    },
    {
@@ -317,7 +317,7 @@
     "p_email": "gmail.com",
     "device_id": "",
     "device_new": "",
-    "cms_p": 0.002419,
+    "cms_p": 0.002799,
     "sig_match": false
    },
    {
@@ -330,7 +330,7 @@
     "p_email": "",
     "device_id": "",
     "device_new": "",
-    "cms_p": 0.001679,
+    "cms_p": 0.001875,
     "sig_match": false
    },
    {
@@ -343,7 +343,7 @@
     "p_email": "gmail.com",
     "device_id": "",
     "device_new": "",
-    "cms_p": 0.007314,
+    "cms_p": 0.006861,
     "sig_match": false
    },
    {
@@ -356,7 +356,7 @@
     "p_email": "verizon.net",
     "device_id": "",
     "device_new": "",
-    "cms_p": 0.002086,
+    "cms_p": 0.002722,
     "sig_match": false
    },
    {
@@ -369,7 +369,7 @@
     "p_email": "gmail.com",
     "device_id": "",
     "device_new": "",
-    "cms_p": 0.004414,
+    "cms_p": 0.003202,
     "sig_match": false
    },
    {
@@ -382,7 +382,7 @@
     "p_email": "anonymous.com",
     "device_id": "Windows | NULL | chrome generic | NULL",
     "device_new": "New",
-    "cms_p": 0.00258,
+    "cms_p": 0.003398,
     "sig_match": false
    },
    {
@@ -395,7 +395,7 @@
     "p_email": "aol.com",
     "device_id": "",
     "device_new": "",
-    "cms_p": 0.000901,
+    "cms_p": 0.001101,
     "sig_match": false
    },
    {
@@ -408,7 +408,7 @@
     "p_email": "yahoo.com",
     "device_id": "",
     "device_new": "",
-    "cms_p": 0.010582,
+    "cms_p": 0.006552,
     "sig_match": false
    },
    {
@@ -421,7 +421,7 @@
     "p_email": "hotmail.com",
     "device_id": "",
     "device_new": "",
-    "cms_p": 0.001352,
+    "cms_p": 0.001914,
     "sig_match": false
    },
    {
@@ -434,7 +434,7 @@
     "p_email": "",
     "device_id": "",
     "device_new": "",
-    "cms_p": 0.007209,
+    "cms_p": 0.009751,
     "sig_match": false
    },
    {
@@ -447,7 +447,7 @@
     "p_email": "rocketmail.com",
     "device_id": "",
     "device_new": "",
-    "cms_p": 0.002243,
+    "cms_p": 0.00234,
     "sig_match": false
    },
    {
@@ -460,7 +460,7 @@
     "p_email": "gmail.com",
     "device_id": "",
     "device_new": "",
-    "cms_p": 0.82453,
+    "cms_p": 0.847265,
     "sig_match": false
    },
    {
@@ -473,7 +473,7 @@
     "p_email": "yahoo.com",
     "device_id": "",
     "device_new": "",
-    "cms_p": 0.004011,
+    "cms_p": 0.004593,
     "sig_match": false
    },
    {
@@ -486,7 +486,7 @@
     "p_email": "gmail.com",
     "device_id": "",
     "device_new": "",
-    "cms_p": 0.00587,
+    "cms_p": 0.00702,
     "sig_match": false
    },
    {
@@ -499,7 +499,7 @@
     "p_email": "",
     "device_id": "",
     "device_new": "",
-    "cms_p": 0.002025,
+    "cms_p": 0.002522,
     "sig_match": false
    },
    {
@@ -512,7 +512,7 @@
     "p_email": "",
     "device_id": "",
     "device_new": "",
-    "cms_p": 0.007184,
+    "cms_p": 0.007963,
     "sig_match": false
    },
    {
@@ -525,7 +525,7 @@
     "p_email": "",
     "device_id": "",
     "device_new": "",
-    "cms_p": 0.001853,
+    "cms_p": 0.003122,
     "sig_match": false
    },
    {
@@ -538,7 +538,7 @@
     "p_email": "gmail.com",
     "device_id": "",
     "device_new": "",
-    "cms_p": 0.005715,
+    "cms_p": 0.007507,
     "sig_match": false
    },
    {
@@ -551,7 +551,7 @@
     "p_email": "yahoo.com",
     "device_id": "",
     "device_new": "",
-    "cms_p": 0.002664,
+    "cms_p": 0.002808,
     "sig_match": false
    },
    {
@@ -564,7 +564,7 @@
     "p_email": "hotmail.com",
     "device_id": "",
     "device_new": "",
-    "cms_p": 0.001123,
+    "cms_p": 0.00144,
     "sig_match": false
    },
    {
@@ -577,7 +577,7 @@
     "p_email": "gmail.com",
     "device_id": "",
     "device_new": "",
-    "cms_p": 0.002899,
+    "cms_p": 0.003376,
     "sig_match": false
    },
    {
@@ -590,7 +590,7 @@
     "p_email": "gmail.com",
     "device_id": "",
     "device_new": "",
-    "cms_p": 0.003552,
+    "cms_p": 0.006036,
     "sig_match": false
    },
    {
@@ -603,7 +603,7 @@
     "p_email": "gmail.com",
     "device_id": "",
     "device_new": "",
-    "cms_p": 0.018014,
+    "cms_p": 0.015102,
     "sig_match": false
    },
    {
@@ -616,7 +616,7 @@
     "p_email": "gmail.com",
     "device_id": "",
     "device_new": "",
-    "cms_p": 0.000956,
+    "cms_p": 0.001232,
     "sig_match": false
    },
    {
@@ -629,7 +629,7 @@
     "p_email": "gmail.com",
     "device_id": "",
     "device_new": "",
-    "cms_p": 0.002074,
+    "cms_p": 0.001829,
     "sig_match": false
    },
    {
@@ -642,7 +642,7 @@
     "p_email": "gmail.com",
     "device_id": "",
     "device_new": "",
-    "cms_p": 0.004896,
+    "cms_p": 0.00443,
     "sig_match": false
    },
    {
@@ -655,7 +655,7 @@
     "p_email": "ymail.com",
     "device_id": "",
     "device_new": "",
-    "cms_p": 0.026929,
+    "cms_p": 0.029868,
     "sig_match": false
    },
    {
@@ -668,7 +668,7 @@
     "p_email": "yahoo.com",
     "device_id": "",
     "device_new": "",
-    "cms_p": 0.011073,
+    "cms_p": 0.012485,
     "sig_match": false
    },
    {
@@ -681,7 +681,7 @@
     "p_email": "att.net",
     "device_id": "",
     "device_new": "",
-    "cms_p": 0.002076,
+    "cms_p": 0.002039,
     "sig_match": false
    },
    {
@@ -694,7 +694,7 @@
     "p_email": "yahoo.com",
     "device_id": "",
     "device_new": "",
-    "cms_p": 0.012411,
+    "cms_p": 0.015808,
     "sig_match": false
    },
    {
@@ -707,7 +707,7 @@
     "p_email": "gmail.com",
     "device_id": "",
     "device_new": "",
-    "cms_p": 0.062072,
+    "cms_p": 0.067204,
     "sig_match": false
    },
    {
@@ -720,7 +720,7 @@
     "p_email": "gmail.com",
     "device_id": "",
     "device_new": "",
-    "cms_p": 0.002921,
+    "cms_p": 0.003016,
     "sig_match": false
    },
    {
@@ -733,7 +733,7 @@
     "p_email": "yahoo.com",
     "device_id": "",
     "device_new": "",
-    "cms_p": 0.001367,
+    "cms_p": 0.001921,
     "sig_match": false
    },
    {
@@ -746,7 +746,7 @@
     "p_email": "yahoo.com",
     "device_id": "",
     "device_new": "",
-    "cms_p": 0.028875,
+    "cms_p": 0.027347,
     "sig_match": false
    },
    {
@@ -759,7 +759,7 @@
     "p_email": "hotmail.com",
     "device_id": "",
     "device_new": "",
-    "cms_p": 0.006124,
+    "cms_p": 0.005286,
     "sig_match": false
    },
    {
@@ -772,7 +772,7 @@
     "p_email": "gmail.com",
     "device_id": "",
     "device_new": "",
-    "cms_p": 0.005415,
+    "cms_p": 0.006008,
     "sig_match": false
    },
    {
@@ -785,7 +785,7 @@
     "p_email": "yahoo.com",
     "device_id": "",
     "device_new": "",
-    "cms_p": 0.804522,
+    "cms_p": 0.720911,
     "sig_match": false
    },
    {
@@ -798,7 +798,7 @@
     "p_email": "gmail.com",
     "device_id": "",
     "device_new": "",
-    "cms_p": 0.864024,
+    "cms_p": 0.849065,
     "sig_match": true
    },
    {
@@ -811,7 +811,7 @@
     "p_email": "",
     "device_id": "",
     "device_new": "",
-    "cms_p": 0.003394,
+    "cms_p": 0.003192,
     "sig_match": false
    },
    {
@@ -824,7 +824,7 @@
     "p_email": "gmail.com",
     "device_id": "",
     "device_new": "",
-    "cms_p": 0.008534,
+    "cms_p": 0.010027,
     "sig_match": false
    },
    {
@@ -837,7 +837,7 @@
     "p_email": "",
     "device_id": "",
     "device_new": "",
-    "cms_p": 0.003106,
+    "cms_p": 0.003516,
     "sig_match": false
    }
   ],

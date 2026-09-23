@@ -27,7 +27,7 @@ import time
 from typing import Any
 
 from agent.config import SETTINGS
-from agent.mcp_client import ToolContext, harness_query, run_query
+from agent.mcp_client import GRAPH_UNAVAILABLE_REPLY, GraphUnavailable, ToolContext, harness_query, mark_graph_unavailable, run_query
 from agent.runlog import current_runlog
 
 _session: contextvars.ContextVar[Any] = contextvars.ContextVar("hhgoa_mcp_session", default=None)
@@ -174,15 +174,25 @@ def make_local_tools(ctx: Any, tctx: ToolContext) -> list[Any]:
     from anthropic.lib.tools import BetaAsyncFunctionTool
 
     async def _find_similar_cases(query_text: str, device_id: str = "", addr1: str = "", pattern_sig: str = "") -> str:
+        if tctx.graph_unavailable:
+            return GRAPH_UNAVAILABLE_REPLY
         if not tctx.budget.take():
             return json.dumps({"error": "tool budget exhausted"})
-        res = await find_similar_cases(query_text, ctx, k=8, device_id=device_id, addr1=addr1, pattern_sig=pattern_sig)
+        try:
+            res = await find_similar_cases(query_text, ctx, k=8, device_id=device_id, addr1=addr1, pattern_sig=pattern_sig)
+        except GraphUnavailable:        # same contract as call_query_tool: flag the case, refund, never evidence
+            return mark_graph_unavailable(tctx, "find_similar_cases")
         return json.dumps(res, default=str)[: tctx.max_chars]
 
     async def _grounding_chunks(query_text: str, doc_filter: str = "", kind_filter: str = "") -> str:
+        if tctx.graph_unavailable:
+            return GRAPH_UNAVAILABLE_REPLY
         if not tctx.budget.take():
             return json.dumps({"error": "tool budget exhausted"})
-        res = await grounding_chunks(query_text, doc_filter=doc_filter, kind_filter=kind_filter, k=5)
+        try:
+            res = await grounding_chunks(query_text, doc_filter=doc_filter, kind_filter=kind_filter, k=5)
+        except GraphUnavailable:
+            return mark_graph_unavailable(tctx, "grounding_chunks")
         return json.dumps(res, default=str)[: tctx.max_chars]
 
     t1 = BetaAsyncFunctionTool(

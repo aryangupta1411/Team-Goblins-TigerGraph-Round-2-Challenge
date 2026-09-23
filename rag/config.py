@@ -14,6 +14,23 @@ from collections.abc import Mapping
 from pathlib import Path
 
 REPO_ROOT = Path(os.environ.get("HHGOA_REPO_ROOT", Path(__file__).resolve().parent.parent))
+
+
+def _load_dotenv() -> None:
+    """Load `.env` into os.environ (never overriding a real value), same policy as agent/config.py.
+    Without this, a fresh `python -m rag.<module>` process never sees TG_HOST/TG_SECRET etc. from
+    `.env` -- only vars already in the shell -- which is silent everywhere except rag.load_vectors,
+    the one script here that must reach the live graph."""
+    try:
+        from dotenv import load_dotenv
+    except ImportError:
+        return
+    for candidate in (REPO_ROOT / ".env", Path.cwd() / ".env"):
+        if candidate.exists():
+            load_dotenv(candidate, override=False)
+
+
+_load_dotenv()
 DATA_DIR = Path(os.environ.get("HHGOA_DATA_DIR", REPO_ROOT / "data"))
 CORPUS_DIR = DATA_DIR / "corpus"
 CORPUS_RAW = CORPUS_DIR / "raw"

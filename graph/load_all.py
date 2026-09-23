@@ -50,7 +50,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))   # repo root, for ops.console
 from check_contracts import FILE_TO_JOB, RAG_COLUMNS, _strip_comments  # noqa: E402
 from check_contracts import YAML as CSV_YAML  # noqa: E402
-from tg import DATA_OUT, GRAPH_DIR, connect, ensure_awake, gsql, is_transient  # noqa: E402
+from tg import DATA_OUT, GRAPH_DIR, backoff_delays, connect, ensure_awake, gsql, is_transient  # noqa: E402
 
 from ops.console import Col, Table, detail, fail, header, joinlist, ok, step, summary, warn  # noqa: E402
 
@@ -280,7 +280,8 @@ def create_jobs(conn, sep: str = "\t") -> list[str]:
     names = job_names(text)
     step(f"re-creating {len(names)} loading jobs (separator {sep!r})")
     for job in names:
-        gsql(conn, f"USE GRAPH {GRAPH}\nDROP JOB {job}", ok_if=("does not exist", "dropped"), quiet=True)
+        gsql(conn, f"USE GRAPH {GRAPH}\nDROP JOB {job}",
+             ok_if=("does not exist", "dropped", "could not be found"), quiet=True)
     reply = gsql(conn, text, ok_if=("successfully created loading jobs",))
     created = {n.strip() for m in re.findall(r"Successfully created loading jobs: \[(.*?)\]", reply) for n in m.split(",")}
     missing = [n for n in names if n not in created]
@@ -291,16 +292,24 @@ def create_jobs(conn, sep: str = "\t") -> list[str]:
 
 
 def load_result_stats(res) -> dict:
-    """Flatten the /ddl reply (a list of {sourceFileName, statistics}) into one dict of counters."""
+    """Flatten the /ddl reply (a list of {sourceFileName, statistics}) into one dict of counters.
+
+    TigerGraph 4.2.5's REST++ nests the counters under statistics.parsingStatistics.{fileLevel,objectLevel}
+    rather than the flat statistics.{validLine,vertex,...} shape some docs and earlier versions show; accept
+    either so this keeps working across versions.
+    """
     counters = ("validLine", "rejectLine", "failedConditionLine", "notEnoughToken", "invalidJson", "oversizeToken")
     out: dict = {k: 0 for k in counters}
     out["objects"] = {}
     for it in res if isinstance(res, list) else [res]:
         st = it.get("statistics", {}) if isinstance(it, dict) else {}
+        parsing = st.get("parsingStatistics")
+        file_level = parsing["fileLevel"] if parsing else st
+        object_level = parsing["objectLevel"] if parsing else st
         for k in counters:
-            out[k] += int(st.get(k, 0) or 0)
+            out[k] += int(file_level.get(k, 0) or 0)
         for kind in ("vertex", "edge"):
-            for o in st.get(kind, []) or []:
+            for o in object_level.get(kind, []) or []:
                 d = out["objects"].setdefault(o.get("typeName", "?"), {"validObject": 0, "noIdFound": 0, "invalidAttribute": 0, "invalidPrimaryId": 0})
                 for k in d:
                     d[k] += int(o.get(k, 0) or 0)
@@ -488,7 +497,16 @@ def main(argv: list[str] | None = None, connect_fn=connect) -> int:
     if not args.skip_counts:
         step("verifying vertex and edge counts")
         expected = expected_counts(plan)
+        # RESTPP's edge counts lag the bulk load by tens of seconds (vertex counts do not); a mismatch
+        # right after loading is usually that catching up, not a real gap, so settle with backoff before
+        # asserting. Real failures still show up: they don't move between retries.
         actual, mism = verify_counts(conn, expected)
+        for delay in backoff_delays(90, first=5.0, cap=20.0):
+            if not mism:
+                break
+            detail(f"{len(mism)} count(s) still settling, rechecking in {delay:.0f}s")
+            time.sleep(delay)
+            actual, mism = verify_counts(conn, expected)
         report.update(expected=expected, actual=actual, mismatches=mism)
         counts_table(expected, actual).print()
         if mism:

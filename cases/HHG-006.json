@@ -1,0 +1,161 @@
+{
+  "case_id": "HHG-006",
+  "case": {
+    "status": "escalated",
+    "verdict": "fraud",
+    "fraud_probability": 0.9,
+    "pattern": "undocumented",
+    "pattern_description": "Under-threshold burst: 4 online purchases each between $450 and $499.99 ($1,906.07 in total) inside 30 minutes on a card with almost no online history, split across 2 New device profiles and 2 purchaser email domains. Amounts sit just under a $500 authorisation threshold. 12 other cards show the identical shape within 30 days (C00466-K1, C01890-K1, C02265-K1, C03633-K1, C05423-K1, C05766-K1, C05851-K1, C06208-K1, C06881-K1, C10751-K1, C10990-K1, C12641-K2); five closed cases with this shape were confirmed as undocumented fraud and reported.",
+    "affected_txn_ids": [
+      "3476602",
+      "3476633",
+      "3476665",
+      "3476682"
+    ],
+    "first_suspicious_txn_id": "3476602",
+    "connected_card_ids": [],
+    "connected_device_profiles": [],
+    "exposure_usd": 1906.07,
+    "evidence": [
+      {
+        "claim": "Customer C07297 denies making the $482.12 purchase 3476682, stating 'I never made this $482.12 purchase.'",
+        "source": "customer",
+        "ref": "trigger",
+        "entity_ids": [
+          "3476682",
+          "C07297"
+        ]
+      },
+      {
+        "claim": "under_threshold_burst on card C07297-K1 groups transactions 3476602 ($478.95), 3476633 ($456.96), 3476665 ($488.04) and 3476682 ($482.12) into one burst (burst_id C07297-K1#3476602) spanning 2016-11-21 20:00:00 to 20:30:00, across two device profiles and two email domains.",
+        "source": "graph",
+        "ref": "query:under_threshold_burst(c=C07297-K1, as_of=2016-11-22 02:30:00)",
+        "entity_ids": [
+          "3476602",
+          "3476633",
+          "3476665",
+          "3476682"
+        ]
+      },
+      {
+        "claim": "card_profile shows C07297-K1 has only 6 online transactions out of 261 total (last30: n_online=4), meaning this burst constitutes nearly all of the card's ever-recorded online activity.",
+        "source": "graph",
+        "ref": "query:card_profile(c=C07297-K1, as_of=2016-11-22 02:30:00)",
+        "entity_ids": [
+          "C07297-K1"
+        ]
+      },
+      {
+        "claim": "find_similar_cases returned four closed cases overlapping on the same device profile that were all confirmed fraud: CC-5111 and CC-3368 and CC-3624 (card_not_present_new_device) and CC-1960 (account_takeover).",
+        "source": "graph",
+        "ref": "query:find_similar_cases(device_id=Trident/7.0 | Windows 7 | ie 11.0 for desktop | 1920x1080, card_id=C07297-K1, customer_id=C07297, addr1=264.0, as_of=2016-11-22 02:30:00)",
+        "entity_ids": [
+          "CC-5111",
+          "CC-3368",
+          "CC-3624",
+          "CC-1960"
+        ]
+      },
+      {
+        "claim": "recurring_charge_check on transaction 3476682 found only total_n=1 matching group (median_gap_days=0), far below the R7 gate's n≥5 requirement, so the recurring-charge exception does not apply.",
+        "source": "graph",
+        "ref": "query:recurring_charge_check(t=3476682, tol=0.01, as_of=2016-11-22 02:30:00)",
+        "entity_ids": [
+          "3476682"
+        ]
+      },
+      {
+        "claim": "case_context reports cms_p=0.012555 (calibrated ~0.0117) on transaction 3476682, a low memory-based score that on its own would look legitimate, though the real-time risk_score was 0.25.",
+        "source": "graph",
+        "ref": "query:case_context(t=3476682, as_of=2016-11-22 02:30:00)",
+        "entity_ids": [
+          "3476682"
+        ]
+      },
+      {
+        "claim": "device_history shows the Trident/IE desktop profile was first seen on card C07297-K1 on 2016-07-12 with prior_n=3 uses before the flagged transaction, so despite the per-transaction 'New' flag it is not a brand-new device to this account.",
+        "source": "graph",
+        "ref": "query:device_history(c=C07297-K1, d=Trident/7.0 | Windows 7 | ie 11.0 for desktop | 1920x1080, as_of=2016-11-22 02:30:00)",
+        "entity_ids": [
+          "C07297-K1",
+          "Trident/7.0 | Windows 7 | ie 11.0 for desktop | 1920x1080"
+        ]
+      }
+    ],
+    "similar_prior_cases": [
+      "CC-5111",
+      "CC-3368",
+      "CC-3624",
+      "CC-1960"
+    ],
+    "summary": "Verdict: fraud at probability 0.90. The pattern is an undocumented just-under-$500 online burst: four purchases of $478.95, $456.96, $488.04 and the flagged $482.12 (transactions 3476602, 3476633, 3476665, 3476682) placed within 30 minutes on 2016-11-21 across two new device profiles and two email domains, for total exposure $1,906.07. The decisive evidence was the customer's denial (customer family, floors probability at 0.55) combined with the graph-confirmed burst shape and the card's near-total in-person history — 255 of 261 transactions in-person versus only six online ever (history family); case memory of four same-device confirmed-fraud precedents (CC-5111, CC-3368, CC-3624, CC-1960) and 12 lookalike cards with the identical shape reinforced the read, against a lone legitimacy signal (low cms_p, memory family) that the floor overrides. No evidence request was needed or asked; recurring_charge_check was run and ruled out the R7 recurring-charge reading (only 1 matching prior charge, far short of the n≥5 gate), so the alternative \"recurring pattern, not fraud\" explanation does not hold here. The bank should create the case, block card C07297-K1 (L1, exposure ≤ $2,500), file a SAR (L2, exposure > $1,000 and undocumented coordinated pattern), and escalate to an analyst (auto) to review the 12 lookalike cards for the same burst shape. Stop reason: policy §6 test 1 fired — probability 0.90 is at or above the 0.85 fraud threshold with two independent evidence families (customer denial and card/burst history), and no further evidence request could change the action set, so the initial recommendation stands as final with nothing changed.",
+    "written_to_graph": true,
+    "graph_case_id": "AC-HHG-006"
+  },
+  "evidence_requests": [],
+  "next_best_actions": {
+    "initial": [
+      {
+        "action": "CREATE_CASE",
+        "route": "auto",
+        "reason": "3a: exposure $1,906.07 > $1,000 and undocumented pattern; R2: customer denied transaction 3476682."
+      },
+      {
+        "action": "BLOCK_CARD",
+        "route": "L1",
+        "reason": "R2: customer denied; exposure $1,906.07 ≤ $2,500."
+      },
+      {
+        "action": "FILE_REPORT",
+        "route": "L2",
+        "reason": "3a/R9: fraud strongly suspected, exposure $1,906.07 > $1,000, and the just-under-$500 burst is an undocumented pattern shared with 12 other cards."
+      },
+      {
+        "action": "ESCALATE_TO_ANALYST",
+        "route": "auto",
+        "reason": "R9: coordinated/repeated abuse across customers — 12 lookalike cards show the identical under-threshold burst shape, warranting analyst review of the wider pattern."
+      }
+    ],
+    "final": [
+      {
+        "action": "CREATE_CASE",
+        "route": "auto",
+        "reason": "3a: exposure $1,906.07 > $1,000 and undocumented pattern; R2: customer denied transaction 3476682."
+      },
+      {
+        "action": "BLOCK_CARD",
+        "route": "L1",
+        "reason": "R2: customer denied; exposure $1,906.07 ≤ $2,500."
+      },
+      {
+        "action": "FILE_REPORT",
+        "route": "L2",
+        "reason": "3a/R9: fraud strongly suspected, exposure $1,906.07 > $1,000, and the just-under-$500 burst is an undocumented pattern shared with 12 other cards."
+      },
+      {
+        "action": "ESCALATE_TO_ANALYST",
+        "route": "auto",
+        "reason": "R9: coordinated/repeated abuse across customers — 12 lookalike cards show the identical under-threshold burst shape, warranting analyst review of the wider pattern."
+      }
+    ],
+    "what_changed": "nothing"
+  },
+  "sar": {
+    "file": true,
+    "reason": "3a / R9: undocumented coordinated pattern (Under-threshold burst)",
+    "narrative": "This report is filed by the issuing bank regarding an undocumented coordinated fraud pattern identified on card C07297-K1 (debit, mastercard) held by customer C07297, tracked internally as case AC-HHG-006 (alert HHG-006), opened 2016-11-22. On 2016-11-21 at 20:00 UTC, an online purchase of $478.95 (product code C) posted to billing region 264.0 using device profile Trident/7.0 | Windows 7 | ie 11.0 for desktop | 1920x1080, flagged as a new device, with purchaser email domain gmail.com. On 2016-11-21 at 20:10 UTC, an online purchase of $456.96 (product code C) posted to billing region 476.0 using device profile iOS Device | iOS 11.2.1 | mobile safari 11.0 | 2208x1242, also flagged new, with purchaser email domain yahoo.com. On 2016-11-21 at 20:24 UTC, a further online purchase of $488.04 (product code C) posted to billing region 476.0 on the same iOS device profile and yahoo.com email. On 2016-11-21 at 20:30 UTC, a fourth online purchase of $482.12 (product code C) posted to billing region 264.0 on the Trident device profile and gmail.com email; the customer disputed this transaction, stating she never made it. The four transactions total $1,906.07 and occurred within thirty minutes of one another, each amount sitting just under a $500 authorization threshold, split across two device profiles and two purchaser email domains. This activity is unusual for the cardholder, whose 261-transaction history since 2016-07-05 is overwhelmingly conducted in person (255 of 261 transactions) in billing region 264.0, with a median transaction amount of $58.98 and only six prior online transactions on two previously known devices; a same-day cluster of four online purchases near the $500 mark on newly flagged device profiles has no precedent on this account. Twelve other cards were found to show the identical under-threshold burst shape within the same thirty-day window, and five closed cases with this same shape have previously been confirmed as fraud and reported, indicating a coordinated pattern affecting multiple customers rather than activity isolated to this account. No prior SAR or case exists on this card, and OFAC/SDN screening returned no match for any subject. The bank opened case AC-HHG-006, blocked card C07297-K1, and is escalating the broader under-threshold burst pattern to an analyst for review across the twelve identified cards; this report documents total exposure of $1,906.07 across the four transactions described above.",
+    "subjects": [
+      "C07297",
+      "C07297-K1"
+    ],
+    "total_amount_usd": 1906.07,
+    "activity_dates": [
+      "2016-11-21",
+      "2016-11-21"
+    ]
+  },
+  "stop_reason": "Policy §6 test 1: fraud probability 0.90 is at or above 0.85 with 2 independent evidence families (customer, history); the customer-denial floor plus the confirmed under-threshold burst and case-memory precedents already settle the verdict, so no evidence request could change the action set and the initial recommendation is final.",
+  "tool_calls": 23,
+  "tokens": 301462,
+  "latency_s": 167.1
+}

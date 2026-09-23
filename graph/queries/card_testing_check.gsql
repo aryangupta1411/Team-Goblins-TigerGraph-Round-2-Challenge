@@ -33,8 +33,7 @@ CREATE OR REPLACE QUERY card_testing_check(VERTEX<Card> c, DATETIME as_of, FLOAT
       WHERE t.ts <= as_of AND t.channel == "online" AND t.amt <= small
       ACCUM @@small_heap += Small(datetime_to_epoch(t.ts), t.id, t.amt, t.ts_str);
   WHILE @@small_heap.size() > 0 DO
-    Small x = @@small_heap.pop();
-    @@smalls += x;
+    @@smalls += @@small_heap.pop();
   END;
 
   // best run (two pointers over the chronological list)
@@ -63,8 +62,7 @@ CREATE OR REPLACE QUERY card_testing_check(VERTEX<Card> c, DATETIME as_of, FLOAT
   IF best_n >= min_n THEN
     STRING start_id = @@smalls.get(best_i).id;
     FOREACH k IN RANGE[best_i, best_j] DO
-      Small x = @@smalls.get(k);
-      @@run += (start_id -> x.id, x.amt, x.ts, x.ts);
+      @@run += (start_id -> @@smalls.get(k).id, @@smalls.get(k).amt, @@smalls.get(k).ts, @@smalls.get(k).ts);
     END;
     anchor_e = @@smalls.get(best_j).ts_e;
     anchor_id = @@smalls.get(best_j).id;
@@ -95,8 +93,7 @@ CREATE OR REPLACE QUERY card_testing_check(VERTEX<Card> c, DATETIME as_of, FLOAT
         WHERE t.ts <= as_of AND t.ts >= chain_from
         ACCUM @@ev_heap += Ev(datetime_to_epoch(t.ts), t.id, t.channel, t.amt);
     WHILE @@ev_heap.size() > 0 DO
-      Ev x = @@ev_heap.pop();
-      @@evs += x;
+      @@evs += @@ev_heap.pop();
     END;
     INT m = @@evs.size();
     INT ai = -1;
@@ -116,5 +113,7 @@ CREATE OR REPLACE QUERY card_testing_check(VERTEX<Card> c, DATETIME as_of, FLOAT
   END;
   @@chain += Chain(n_members, n_small);
 
-  PRINT @@run AS run, @@larger_purchase AS larger_purchase, @@cleared_over_big AS cleared_over_big, @@chain AS chain;
+  // `run` is a GSQL reserved word and cannot be used as a PRINT alias; printed as `best_run` and renamed
+  // back to the contract key `run` by the harness (agent/mcp_client.py _RENAME_KEYS).
+  PRINT @@run AS best_run, @@larger_purchase AS larger_purchase, @@cleared_over_big AS cleared_over_big, @@chain AS chain;
 }

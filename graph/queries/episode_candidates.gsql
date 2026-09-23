@@ -9,15 +9,15 @@
 USE GRAPH FraudGraph
 CREATE OR REPLACE QUERY episode_candidates(VERTEX<Transaction> t, DATETIME as_of, INT gap_h) FOR GRAPH FraudGraph SYNTAX v3 {
   TYPEDEF TUPLE<INT ts_e, STRING id, STRING ts, FLOAT amt, STRING product_cd, STRING channel, STRING addr1,
-                STRING p_email, STRING device_id, STRING device_new, FLOAT cms_p, BOOL sig_match> In;
+                STRING p_email, STRING device_id, STRING device_new, FLOAT cms_p, BOOL sig_match> EpIn;
   TYPEDEF TUPLE<STRING id, STRING ts, FLOAT amt, STRING product_cd, STRING channel, STRING addr1, STRING p_email,
                 STRING device_id, STRING device_new, FLOAT cms_p, BOOL sig_match> Out;
   MaxAccum<INT> @@t_e;
   MaxAccum<FLOAT> @@t_amt;
   MaxAccum<STRING> @@t_id, @@t_dev, @@t_pem, @@t_pcd;
   OrAccum @@t_strong;
-  HeapAccum<In>(8000, ts_e ASC, id ASC) @@heap;
-  ListAccum<In> @@rows;
+  HeapAccum<EpIn>(8000, ts_e ASC, id ASC) @@heap;
+  ListAccum<EpIn> @@rows;
   ListAccum<Out> @@chain;
   INT gap_s = gap_h * 3600;
 
@@ -34,11 +34,10 @@ CREATE OR REPLACE QUERY episode_candidates(VERTEX<Transaction> t, DATETIME as_of
             IF @@t_strong AND x.device_id != "" AND x.device_id == @@t_dev THEN sig = true END,
             IF x.p_email != "" AND x.p_email == @@t_pem AND x.product_cd == @@t_pcd
                AND abs(x.amt - @@t_amt) <= 0.05 * @@t_amt AND abs(datetime_to_epoch(x.ts) - @@t_e) <= 7200 THEN sig = true END,
-            @@heap += In(datetime_to_epoch(x.ts), x.id, x.ts_str, x.amt, x.product_cd, x.channel, x.addr1, x.p_email,
+            @@heap += EpIn(datetime_to_epoch(x.ts), x.id, x.ts_str, x.amt, x.product_cd, x.channel, x.addr1, x.p_email,
                          x.device_id, x.device_new, x.cms_p, sig);
   WHILE @@heap.size() > 0 DO
-    In r = @@heap.pop();
-    @@rows += r;
+    @@rows += @@heap.pop();
   END;
 
   INT m = @@rows.size();
@@ -58,9 +57,9 @@ CREATE OR REPLACE QUERY episode_candidates(VERTEX<Transaction> t, DATETIME as_of
       IF ai + 25 < hi THEN hi = ai + 25; END;
     END;
     FOREACH k IN RANGE[lo, hi] DO
-      In r = @@rows.get(k);
-      @@chain += Out(r.id, r.ts, r.amt, r.product_cd, r.channel, r.addr1, r.p_email, r.device_id, r.device_new,
-                     r.cms_p, r.sig_match);
+      @@chain += Out(@@rows.get(k).id, @@rows.get(k).ts, @@rows.get(k).amt, @@rows.get(k).product_cd,
+                     @@rows.get(k).channel, @@rows.get(k).addr1, @@rows.get(k).p_email, @@rows.get(k).device_id,
+                     @@rows.get(k).device_new, @@rows.get(k).cms_p, @@rows.get(k).sig_match);
     END;
   END;
 

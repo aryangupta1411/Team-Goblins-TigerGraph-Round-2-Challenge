@@ -11,6 +11,9 @@ Rules (deterministic, no schema knowledge needed):
      `region_cluster_30d` / `lookalike_cards` is json-decoded (fallback for the parse_json_array path).
   4. Keys documented as singleton objects that a query prints as a one-element list (only
      card_testing_check.run) are unwrapped by the engine, not here.
+  5. card_testing_check.gsql prints the contract key `run` under the name `best_run` (`run` is a GSQL
+     reserved word and cannot be a PRINT alias); normalize() renames it back to `run` so every caller sees
+     the contract key and nothing downstream needs to know about the GSQL-side workaround.
 The MCP formatter echoes the payload twice (once in the model_dump JSON, once in the "Data" block);
 mcp_client extracts the first JSON block and reads `data.results` (or `data.result.results` when the
 response wraps pyTigerGraph's list) before calling normalize().
@@ -28,6 +31,21 @@ def _is_vertex(o: Any) -> bool:
     return isinstance(o, dict) and "v_id" in o and "v_type" in o and "attributes" in o
 
 
+def _attr_key(k: str) -> str:
+    """`PRINT res[res.text, res.@distance] AS chunks` comes back from JSON API v2 with attribute keys
+    `res.text` / `res.@distance`, not `text` / `distance`. Strip the `<alias>.` prefix and the `@` so rows
+    match the contract names. Schema attribute names never contain a dot, so this cannot clip a real key.
+    Without it, every live grounding chunk read as text="" and every similar case as distance=1.0 with
+    no outcome or pattern -- silently, because the readers use .get() with defaults."""
+    if "." in k:
+        k = k.split(".", 1)[1]
+    return k[1:] if k.startswith("@") else k
+
+
+def _vertex_row(x: dict) -> dict:
+    return dict({_attr_key(k): _walk(_attr_key(k), v) for k, v in x["attributes"].items()}, id=x["v_id"])
+
+
 def _maybe_json(key: str, v: Any) -> Any:
     if isinstance(v, str) and (key in _JSONISH_KEYS or key.endswith("_ids")) and v[:1] in "[{":
         try:
@@ -40,10 +58,10 @@ def _maybe_json(key: str, v: Any) -> Any:
 def _walk(key: str, v: Any) -> Any:
     if isinstance(v, list):
         if v and all(_is_vertex(x) for x in v):
-            return [dict(x["attributes"], id=x["v_id"]) for x in v]
+            return [_vertex_row(x) for x in v]
         return [_walk(key, x) for x in v]
     if _is_vertex(v):
-        return dict(v["attributes"], id=v["v_id"])
+        return _vertex_row(v)
     if isinstance(v, dict):
         return {k: _walk(k, x) for k, x in v.items()}
     return _maybe_json(key, v)
@@ -57,6 +75,13 @@ def normalize(results: list[dict]) -> dict:
             continue
         for k, v in block.items():
             out[k] = _walk(k, v)
+    # `run` is a GSQL reserved word and cannot be used as a PRINT alias, so
+    # graph/queries/card_testing_check.gsql prints the contract key `run` as `best_run` instead (see the
+    # comment on its PRINT line). Rename it back here -- the one place every caller of normalize() goes
+    # through, including tests/live/test_query_contracts.py, which reads normalize() directly and never
+    # sees agent/mcp_client.py's own belt-and-suspenders rename in _unwrap_singletons.
+    if "best_run" in out and "run" not in out:
+        out["run"] = out.pop("best_run")
     return out
 
 

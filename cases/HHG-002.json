@@ -1,0 +1,144 @@
+{
+  "case_id": "HHG-002",
+  "case": {
+    "status": "closed_fraud",
+    "verdict": "fraud",
+    "fraud_probability": 0.92,
+    "pattern": "card_not_present_fraud",
+    "pattern_description": "",
+    "affected_txn_ids": [
+      "3478782"
+    ],
+    "first_suspicious_txn_id": "3478782",
+    "connected_card_ids": [],
+    "connected_device_profiles": [],
+    "exposure_usd": 292.36,
+    "evidence": [
+      {
+        "claim": "The flagged transaction is $292.36, 2.4x the card's prior maximum of $121.32 and about 6.2x its prior median of $47.29 across 35 prior transactions.",
+        "source": "graph",
+        "ref": "query:case_context(t=3478782, as_of=2016-11-22 23:27:07)",
+        "entity_ids": [
+          "3478782",
+          "C11891-K1"
+        ]
+      },
+      {
+        "claim": "This card has one prior confirmed-fraud case, CC-4160, same pattern card_not_present_fraud, closed 2016-09-30 with $90.54 exposure, less than two months before this alert.",
+        "source": "graph",
+        "ref": "query:prior_cases_for_customer(cu=C11891, as_of=2016-11-22 23:27:07)",
+        "entity_ids": [
+          "CC-4160",
+          "C11891-K1"
+        ]
+      },
+      {
+        "claim": "The case-memory calibrated score (cms_p) on transaction 3478782 is 0.6595 (blended cal_p 0.7533), close to the real-time risk_score of 0.79.",
+        "source": "graph",
+        "ref": "query:case_context(t=3478782, as_of=2016-11-22 23:27:07)",
+        "entity_ids": [
+          "3478782"
+        ]
+      },
+      {
+        "claim": "The transaction is isolated: card_window over the 72 hours before opened_at and episode_candidates with a 48h gap both return only this single transaction, with a 16-day gap (dormant_days=16) since the card's prior activity.",
+        "source": "graph",
+        "ref": "query:card_window(c=C11891-K1, from_ts=2016-11-19 17:27:07, to_ts=2016-11-22 23:27:07)",
+        "entity_ids": [
+          "3478782",
+          "C11891-K1"
+        ]
+      },
+      {
+        "claim": "No card-testing chain and no under-threshold burst were found on this card (card_testing_check chain n_members=1/n_small=0; under_threshold_burst returned zero bursts), ruling out those patterns.",
+        "source": "graph",
+        "ref": "query:card_testing_check(c=C11891-K1, as_of=2016-11-22 23:27:07); query:under_threshold_burst(c=C11891-K1, as_of=2016-11-22 23:27:07)",
+        "entity_ids": [
+          "C11891-K1"
+        ]
+      },
+      {
+        "claim": "The transaction has no identity record (device_id empty, has_identity=false), so the device is unknown rather than new, and ring_profile/shared_origin_scan show no strong shared device profile or ring tied to this card.",
+        "source": "graph",
+        "ref": "query:case_context(t=3478782, as_of=2016-11-22 23:27:07); query:ring_profile(c=C11891-K1, as_of=2016-11-22 23:27:07)",
+        "entity_ids": [
+          "3478782",
+          "C11891-K1"
+        ]
+      },
+      {
+        "claim": "The purchaser/recipient email domain hotmail.com has been used 7 times before on this card (prior_pem=7), so it is not a first-time counterparty even though the card's usual domain is anonymous.com.",
+        "source": "graph",
+        "ref": "query:case_context(t=3478782, as_of=2016-11-22 23:27:07)",
+        "entity_ids": [
+          "3478782"
+        ]
+      },
+      {
+        "claim": "Assumed reply: customer states they did not make these purchases and still has the card",
+        "source": "customer",
+        "ref": "evidence_request:1",
+        "entity_ids": [
+          "3478782"
+        ]
+      }
+    ],
+    "similar_prior_cases": [
+      "CC-4160"
+    ],
+    "summary": "Verdict: fraud at probability 0.92, pattern card_not_present_fraud. The episode is a single online transaction, 3478782, $292.36 on card C11891-K1, giving exposure of $292.36. Decisive evidence spans three families: history (the amount is 2.4x the card's prior maximum of $121.32 and roughly 6.2x its median, arriving after a 16-day dormant gap with no other activity in the surrounding window), memory (a prior confirmed-fraud case on this same card, CC-4160, same card_not_present_fraud pattern, closed 2016-09-30, plus a case-memory score of 0.66/calibrated 0.75 alongside the real-time risk score of 0.79), and customer (a simulated customer_validation reply in which the cardholder denies making the purchase and still holds the card). We asked for customer validation because probability sat at 0.80, in the fraud band but below the 0.85 stop-high threshold, and assumed a denial per the simulation. The bank should now create/keep the case open and have a team lead block the card (L1, exposure ≤ $2,500 under R2); no SAR filing is triggered since there is no shared device, region cluster, or exposure over $1,000. An alternative reading is possible if the denial is inaccurate: no device or ring corroboration exists (no strong shared profile, no card-testing chain, no burst), so if the customer instead confirms the charge, R3 applies and the case closes as no-fraud instead.",
+    "written_to_graph": true,
+    "graph_case_id": "AC-HHG-002"
+  },
+  "evidence_requests": [
+    {
+      "type": "customer_validation",
+      "asked_after_step": 17,
+      "assumed_response": "ASSUMED (simulated): customer states they did not make these purchases and still has the card"
+    }
+  ],
+  "next_best_actions": {
+    "initial": [
+      {
+        "action": "CREATE_CASE",
+        "route": "auto",
+        "reason": "3a: fraud probability 0.80 ≥ 0.30 (history + memory evidence: $292.36 vs prior max $121.32; prior same-pattern confirmed case CC-4160), so a case is opened."
+      },
+      {
+        "action": "VERIFY_WITH_CUSTOMER",
+        "route": "auto",
+        "reason": "§3b/§5: probability 0.80 is in the fraud band but below the 0.85 stop-high threshold, so a customer_validation request on the $292.36 online charge is made before finalizing, per the risk-score/online playbook."
+      },
+      {
+        "action": "BLOCK_CARD",
+        "route": "L1",
+        "reason": "fraud_band: p=0.80 ≥ 0.70 with two independent families (history, memory) and no legitimacy evidence; exposure $292.36 ≤ $2,500 keeps the block at L1."
+      }
+    ],
+    "final": [
+      {
+        "action": "CREATE_CASE",
+        "route": "auto",
+        "reason": "R2/3a: customer denied the $292.36 charge, exposure $292.36, fraud band confirmed at p=0.9232 with customer + history + memory evidence, so the case stays open."
+      },
+      {
+        "action": "BLOCK_CARD",
+        "route": "L1",
+        "reason": "R2: customer denied transaction 3478782; exposure $292.36 ≤ $2,500, so the block routes to L1."
+      }
+    ],
+    "what_changed": "The assumed customer validation reply (deny) moved the probability from 0.80 to 0.92 and the verdict to fraud, removing VERIFY_WITH_CUSTOMER. Counterfactual: had the customer confirmed the purchase, R3 would have applied: CLOSE_NO_FRAUD."
+  },
+  "sar": {
+    "file": false,
+    "reason": "3a not met: exposure $292.36 <= $1,000; no device profile shared with other cards' fraud; no shared region cluster; no other customer's fraud connected; documented pattern",
+    "narrative": "",
+    "subjects": [],
+    "total_amount_usd": 0,
+    "activity_dates": []
+  },
+  "stop_reason": "Policy §6 test 2 fired: the assumed customer denial settled the question, and test 1 was independently met since probability reached 0.92 with three evidence families (customer, history, memory), so further investigation would not change the block/case decision.",
+  "tool_calls": 17,
+  "tokens": 212881,
+  "latency_s": 163.3
+}

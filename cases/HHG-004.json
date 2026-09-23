@@ -1,0 +1,158 @@
+{
+  "case_id": "HHG-004",
+  "case": {
+    "status": "open",
+    "verdict": "uncertain",
+    "fraud_probability": 0.58,
+    "pattern": "card_not_present_new_device",
+    "pattern_description": "",
+    "affected_txn_ids": [
+      "3583227"
+    ],
+    "first_suspicious_txn_id": "3583227",
+    "connected_card_ids": [],
+    "connected_device_profiles": [],
+    "exposure_usd": 128.33,
+    "evidence": [
+      {
+        "claim": "Customer C08106 denies making the $128.33 purchase 3583227; in this bank's history no customer denial of this kind was ever cleared (0 of 4,665 customer-reported closed cases cleared), which sets the R2/R7 floor at 0.55.",
+        "source": "customer",
+        "ref": "trigger",
+        "entity_ids": [
+          "3583227",
+          "C08106"
+        ]
+      },
+      {
+        "claim": "prior_cases_for_customer shows three confirmed_fraud closures on this same card, all pattern card_not_present_fraud: CC-3778 ($58.42, 2016-09-21), CC-2121 ($102.68, 2016-08-14), CC-1736 ($9.90, 2016-08-06), the most recent within 120 days of this dispute on the same online channel.",
+        "source": "graph",
+        "ref": "query:prior_cases_for_customer(cu=C08106, as_of=2016-12-29 07:53:54)",
+        "entity_ids": [
+          "CC-3778",
+          "CC-2121",
+          "CC-1736",
+          "C08106-K1"
+        ]
+      },
+      {
+        "claim": "case_context reports the case-memory calibration cms_p on the flagged transaction is 0.00701, far below the real-time risk_score of 0.34, pulling the calibrated estimate toward legitimate.",
+        "source": "graph",
+        "ref": "query:case_context(t=3583227, as_of=2016-12-29 07:53:54)",
+        "entity_ids": [
+          "3583227"
+        ]
+      },
+      {
+        "claim": "device_history shows the device profile NULL | NULL | firefox 47.0 | NULL has prior_n=1 with first_ts equal to the flagged transaction's own timestamp, i.e. this is the first-ever use of this device on card C08106-K1.",
+        "source": "graph",
+        "ref": "query:device_history(c=C08106-K1, d=NULL | NULL | firefox 47.0 | NULL, as_of=2016-12-29 07:53:54)",
+        "entity_ids": [
+          "NULL | NULL | firefox 47.0 | NULL",
+          "C08106-K1"
+        ]
+      },
+      {
+        "claim": "recurring_charge_check found zero prior purchases matching 3583227's amount/product/place within tolerance (groups: 0, total_n=0), so the R7 recurring-charge exemption from a block does not apply and there is no benign explanation from cadence.",
+        "source": "graph",
+        "ref": "query:recurring_charge_check(t=3583227, tol=0.01, as_of=2016-12-29 07:53:54)",
+        "entity_ids": [
+          "3583227"
+        ]
+      },
+      {
+        "claim": "card_testing_check and under_threshold_burst both return empty (chain n_small=0, no larger_purchase, 0 bursts), ruling out a card-testing chain or a just-under-$500 burst as the shape of this episode.",
+        "source": "graph",
+        "ref": "query:card_testing_check(c=C08106-K1, as_of=2016-12-29 07:53:54, small=5, window_min=60, min_n=3, big=100, lookahead_h=48)",
+        "entity_ids": []
+      },
+      {
+        "claim": "shared_origin_scan and ring_profile show the flagged device profile is not strong (is_strong=false, 3 cards in 30d, 0 fraud cases on the profile) and no ring_id or wave cards exist, so there is no shared-origin evidence to widen the episode beyond this card.",
+        "source": "graph",
+        "ref": "query:shared_origin_scan(c=C08106-K1, as_of=2016-12-29 07:53:54, days=30)",
+        "entity_ids": [
+          "NULL | NULL | firefox 47.0 | NULL"
+        ]
+      },
+      {
+        "claim": "case_context shows the purchaser email domain hotmail.com has been used 95 times before on this card (prior_pem=95), indicating the recipient side of the transaction is not anomalous for this account.",
+        "source": "graph",
+        "ref": "query:case_context(t=3583227, as_of=2016-12-29 07:53:54)",
+        "entity_ids": [
+          "3583227"
+        ]
+      },
+      {
+        "claim": "Assumed reply: step-up authentication was not completed within the window",
+        "source": "external",
+        "ref": "evidence_request:1",
+        "entity_ids": [
+          "3583227"
+        ]
+      }
+    ],
+    "similar_prior_cases": [
+      "CC-3778",
+      "CC-2121",
+      "CC-1736"
+    ],
+    "summary": "Case HHG-004 (card C08106-K1) is verdict uncertain at p=0.58 on customer C08106's denial of a $128.33 online purchase (txn 3583227, product code C, hotmail.com recipient), the sole episode member and full exposure. Candidate pattern is card_not_present_new_device: the transaction ran on a device profile (NULL | NULL | firefox 47.0 | NULL) used for the first time ever on this card, in a two-transaction 48h chain, but the profile is not strong and shows no ring, card-testing, or burst signature. The decisive evidence is mixed across families: the customer-family denial sets the R2/R7 floor at 0.55, and case-memory shows three prior confirmed_fraud closures on this same card (CC-3778, CC-2121, CC-1736, all card_not_present_fraud) pushing toward fraud, while the case-memory calibration score is very low (cms_p 0.00701) and recurring_charge_check/card_testing_check/shared_origin_scan all came back empty, pulling toward legitimate — a genuine single-signal conflict that kept probability in the 0.55-0.70 band. A step-up authentication was requested per R1/§3b; the reply was assumed inconclusive (not completed within the window). The recommended route is auto/L1: CREATE_CASE and MONITOR_CARD remain in force, and DECLINE_TRANSACTION (L1) applies to any pending authorization under R4 pending the customer's reply; the alternative reading — that this is simply an unremembered charge on the customer's own recurring hotmail.com pattern (as with the cleared CC-0696 travel case) — cannot be ruled out and would flip the verdict to legitimate if the step-up succeeds.",
+    "written_to_graph": true,
+    "graph_case_id": "AC-HHG-004"
+  },
+  "evidence_requests": [
+    {
+      "type": "step_up_auth",
+      "asked_after_step": 21,
+      "assumed_response": "ASSUMED (simulated): step-up authentication was not completed within the window"
+    }
+  ],
+  "next_best_actions": {
+    "initial": [
+      {
+        "action": "CREATE_CASE",
+        "route": "auto",
+        "reason": "3a: verdict uncertain at p=0.58 (>=0.30) and the transaction is a customer dispute, so a case must be opened to hold the evidence."
+      },
+      {
+        "action": "STEP_UP_AUTH",
+        "route": "auto",
+        "reason": "R1/§3b: single evidence family (customer denial only, no corroborating device/history fraud signal) with 0.55<=p=0.58<0.70, so verify before any block via step-up authentication on this online transaction."
+      },
+      {
+        "action": "MONITOR_CARD",
+        "route": "auto",
+        "reason": "uncertain_initial: verdict is uncertain and no reply has been received yet, so monitor the card while the step-up/verification is pending."
+      }
+    ],
+    "final": [
+      {
+        "action": "CREATE_CASE",
+        "route": "auto",
+        "reason": "3a: case remains open; verdict is still uncertain (p=0.58) on a customer dispute, so the case stays open to hold the evidence."
+      },
+      {
+        "action": "MONITOR_CARD",
+        "route": "auto",
+        "reason": "R4: no reply within 24h to the step-up authentication request (outcome recorded as inconclusive), so monitor the card going forward."
+      },
+      {
+        "action": "DECLINE_TRANSACTION",
+        "route": "L1",
+        "reason": "R4: no reply within 24h means any pending authorization on this card must be declined; exposure $128.33 is well below the $500 escalation trigger so no further escalation is required."
+      }
+    ],
+    "what_changed": "The assumed step up auth reply (inconclusive) moved the probability from 0.58 to 0.58 and the verdict to uncertain, adding DECLINE_TRANSACTION, removing STEP_UP_AUTH. Counterfactual: a passed step-up would have closed the alert (R3); a failed one would have led to BLOCK_CARD (R2)."
+  },
+  "sar": {
+    "file": false,
+    "reason": "3a not met: verdict uncertain (fraud not confirmed or strongly suspected), exposure $128.33; no report",
+    "narrative": "",
+    "subjects": [],
+    "total_amount_usd": 0,
+    "activity_dates": []
+  },
+  "stop_reason": "Policy §6 test 3 fired: the requested step-up authentication went unanswered within the window, so R4 governs (monitor the card and decline any pending authorization) and the case stays open awaiting the reply, since no further automated query would move the probability out of the uncertain band absent that reply.",
+  "tool_calls": 21,
+  "tokens": 276983,
+  "latency_s": 112.6
+}

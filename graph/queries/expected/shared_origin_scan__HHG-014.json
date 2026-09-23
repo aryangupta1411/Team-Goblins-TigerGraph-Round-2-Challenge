@@ -20,7 +20,7 @@
    {
     "domain": "gmail.com",
     "n_cards_30d": 1307,
-    "n_fraud_cases": 1729
+    "n_fraud_cases": 98
    }
   ],
   "region_cluster_30d": "[{\"addr1\":\"191.0\",\"n_txns_card\":6,\"n_other_cards_30d\":348,\"n_cards_with_fraud_case_30d\":0},{\"addr1\":\"272.0\",\"n_txns_card\":5,\"n_other_cards_30d\":434,\"n_cards_with_fraud_case_30d\":0}]"

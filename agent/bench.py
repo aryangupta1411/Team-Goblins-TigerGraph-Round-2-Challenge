@@ -4,8 +4,10 @@
   retrieve earlier agent-written ones (PLAN §4.2).
 - One MCP session (harness, read + write tools) for the whole run; the LLM only ever
   sees typed read-query wrappers.
-- `ensure_awake()` backs off on Savanna 502/503 auto-resume; a keep-alive task runs a
-  trivial MCP call every KEEP_ALIVE_S seconds so the workspace does not auto-stop
+- `ensure_awake()` wakes the workspace once before the run (`ops.ensure_awake.warm_up`: only
+  transient errors are retried, within TG_RESUME_MAX_WAIT_S; an auth error or an empty TG_SECRET
+  fails at once). The per-query resume retry lives in `agent.mcp_client.run_query`; a keep-alive
+  task runs a trivial MCP call every KEEP_ALIVE_S seconds so the workspace does not auto-stop
   mid-benchmark.
 - `--resume` skips cases whose runs/<run_id>/<case>/answer.json already exists.
 - Writes runs/<run_id>/run_manifest.json (model, effort, prompt hashes, versions, git sha).
@@ -32,7 +34,7 @@ from pathlib import Path
 
 from agent.config import SETTINGS, Settings
 from agent.engine_api import ENGINE, CaseContext
-from agent.mcp_client import open_session
+from agent.mcp_client import GraphUnavailable, open_session
 from agent.phase_machine import PhaseMachine
 from agent.runlog import PHASE_NAMES, RunLog
 from ops.console import Col, Table, detail, fail, header, joinlist, ok, prob, rule, step, summary, truncate, warn
@@ -105,25 +107,18 @@ def write_manifest(run_dir: Path, settings: Settings, model: str, case_ids: list
 
 
 def ensure_awake(settings: Settings = SETTINGS, max_wait_s: int = 240) -> None:
-    """Backoff 1,2,4,…60 s up to max_wait_s on 502/503/connection errors (Savanna auto-resume)."""
+    """Wake the Savanna workspace before the run (auto-resume drops the first request).
+
+    `ops.ensure_awake.warm_up(tg_connection())`: retries only transient errors (502/503/504, connection
+    errors, an HTML start page) within TG_RESUME_MAX_WAIT_S (default 240 s); `max_wait_s` is kept for the
+    call-site signature. An auth error, a wrong host/graph or an empty TG_SECRET raises at once instead of
+    spinning for four minutes and blaming the workspace. The connection carries the GSQL-TIMEOUT header.
+    """
     if settings.mock:
         return
-    from pyTigerGraph import TigerGraphConnection
-    conn = TigerGraphConnection(host=settings.tg_host, graphname=settings.tg_graphname, gsqlSecret=settings.tg_secret,
-                                tgCloud=settings.tg_host.startswith("https://"), restppPort="9000", gsPort="14240")
-    delay, waited = 1, 0
-    while True:
-        try:
-            conn.echo()
-            return
-        except Exception as e:
-            if waited >= max_wait_s:
-                raise RuntimeError(f"workspace not awake after {max_wait_s}s: {e}") from e
-            with _on_stderr():
-                warn(f"ensure_awake: {type(e).__name__}: workspace not up, retry in {delay}s (waited {waited}s of {max_wait_s}s)")
-            time.sleep(delay)
-            waited += delay
-            delay = min(delay * 2, 60)
+    from ops.ensure_awake import tg_connection, warm_up
+
+    warm_up(tg_connection())
 
 
 async def keep_alive(session, every_s: int, stop: asyncio.Event) -> None:
@@ -356,7 +351,7 @@ async def run(args: argparse.Namespace) -> int:
         Col("problems", align="right", width=8),
         title=f"run {args.run_id}: {len(cases)} case(s), opened_at order",
     )
-    totals = {"sar": 0, "tools": 0, "tokens": 0, "problems": 0, "skipped": 0}
+    totals = {"sar": 0, "tools": 0, "tokens": 0, "problems": 0, "skipped": 0, "not_run": 0}
     async with open_session(read_only=False, settings=settings) as (session, _tools):
         stop = asyncio.Event()
         ka = asyncio.create_task(keep_alive(session, settings.keep_alive_s, stop)) if not settings.mock else None
@@ -403,6 +398,14 @@ async def run(args: argparse.Namespace) -> int:
                                   tail.tools, tail.llm_calls, f"{tail.tokens:,}", f"{time.time() - t0:.1f}", "-", style="red")
                     if args.fail_fast:
                         raise err
+                    if isinstance(err, GraphUnavailable):
+                        # the workspace stayed down for the whole resume budget: every later case would spin the
+                        # same TG_RESUME_MAX_WAIT_S on its first read and fail too. Stop; --resume picks up here.
+                        with _on_stderr():
+                            fail(f"workspace unreachable for TG_RESUME_MAX_WAIT_S; stopping after {ctx.case_id}. "
+                                 f"Rerun with --run-id {args.run_id} --resume once `make awake` answers.")
+                        totals["not_run"] = len(cases) - i
+                        break
                     continue
                 try:
                     c = answer["case"]
@@ -443,7 +446,9 @@ async def run(args: argparse.Namespace) -> int:
     summary(
         f"agent.bench {args.run_id}",
         {
-            "cases": f"{len(cases)} selected, {len(cases) - failures - totals['skipped']} completed, {totals['skipped']} skipped, {failures} failed",
+            "cases": (f"{len(cases)} selected, {len(cases) - failures - totals['skipped'] - totals['not_run']} completed, "
+                      f"{totals['skipped']} skipped, {failures} failed"
+                      + (f", {totals['not_run']} not run (workspace unreachable)" if totals["not_run"] else "")),
             "SARs filed": totals["sar"],
             "tool calls": f"{totals['tools']:,}",
             "tokens": f"{totals['tokens']:,}",

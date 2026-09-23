@@ -8,12 +8,17 @@ one by one through pyTigerGraph conn.gsql() (GSQL server, not RESTPP: the 16 s t
 launcher-style customizeHeader timeout does bound the HTTP call, so we set 600 s here), then
 `INSTALL QUERY ALL` compiles everything that is created-but-not-installed (1–3 min on TG-00).
 Exit code 1 if any CREATE reports an error, so the day-3/day-4 Makefile targets fail loudly.
+
+Savanna auto-resume: getToken and every conn.gsql() go through graph.tg.ensure_awake(), so the first request
+after an auto-suspend (502 / connection error / HTML start page) is retried for up to TG_RESUME_MAX_WAIT_S
+instead of dying with a traceback. CREATE OR REPLACE and INSTALL QUERY ALL are safe to re-send.
 """
 
 from __future__ import annotations
 
 import glob
 import os
+import re
 import sys
 import time
 
@@ -26,11 +31,13 @@ sys.path.insert(0, REPO)                       # repo root, for ops.console
 QDIR = os.path.join(HERE, "queries")
 SKIP = {"install_all.gsql"}
 
+from graph.tg import ensure_awake, html_guard, require_secret  # noqa: E402
 from ops.console import Col, Table, detail, fail, header, ok, progress, step, summary, warn  # noqa: E402
 
 
 def connect() -> TigerGraphConnection:
     load_dotenv()
+    secret = require_secret(os.environ.get("TG_SECRET", ""))   # empty secret: fail before waking the workspace
     conn = TigerGraphConnection(
         host=os.environ["TG_HOST"],
         graphname=os.environ.get("TG_GRAPHNAME", "FraudGraph"),
@@ -41,15 +48,25 @@ def connect() -> TigerGraphConnection:
         gsPort=os.environ.get("TG_GS_PORT", "14240"),
         tgCloud=os.environ.get("TG_TGCLOUD", "true").lower() == "true",
     )
-    if os.environ.get("TG_SECRET"):
-        conn.getToken(os.environ["TG_SECRET"])
+    ensure_awake()(conn.getToken)(secret)
     conn.customizeHeader(timeout=600_000, responseSize=64_000_000)
     return conn
 
 
+@ensure_awake()
+def _gsql(conn: TigerGraphConnection, text: str) -> str:
+    """conn.gsql(text) with resume-retry; an HTML start page in place of the reply is retried, not "success"."""
+    return html_guard(conn.gsql(text))
+
+
 def gsql_ok(text: str) -> bool:
+    """False on a compile/install error. A handful of query files (vectorSearch queries; see the `INSTALL
+    QUERY <name>` lines in their .gsql) INSTALL themselves inline, so a passing reply reads "...succeeded:
+    N, skipped: 0, failed: 0." -- that trailing "failed: 0" would otherwise false-positive the substring
+    check below, so it is scrubbed out first; "failed: 1" or higher still trips it."""
     bad = ("Syntax error", "Semantic Check Fails", "Encountered", "failed", "Error:", "error:")
-    return not any(b in text for b in bad)
+    scrubbed = re.sub(r"failed:\s*0\b", "", text)
+    return not any(b in scrubbed for b in bad)
 
 
 def _tail(text: str, n: int) -> list[str]:
@@ -86,7 +103,7 @@ def main() -> int:
         for i, f in enumerate(files, 1):
             name = os.path.basename(f)
             t = time.time()
-            res = conn.gsql(open(f).read())
+            res = _gsql(conn, open(f).read())
             good = gsql_ok(res)
             if not good:
                 failed.append(name)
@@ -105,7 +122,7 @@ def main() -> int:
 
     step("INSTALL QUERY ALL - compiles every created-but-not-installed query")
     t = time.time()
-    res = conn.gsql("USE GRAPH FraudGraph\nINSTALL QUERY ALL")
+    res = _gsql(conn, "USE GRAPH FraudGraph\nINSTALL QUERY ALL")
     dt = time.time() - t
     if gsql_ok(res):
         ok(f"INSTALL QUERY ALL finished in {dt:.0f}s")

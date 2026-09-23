@@ -20,6 +20,7 @@ REPO = os.path.dirname(HERE)
 sys.path.insert(0, REPO)                       # repo root, for ops.console
 YAML = os.path.join(REPO, "mcp", "query_descriptions.yaml")
 
+from graph.tg import ensure_awake  # noqa: E402
 from ops.console import Col, Table, detail, fail, header, ok, summary  # noqa: E402
 
 
@@ -57,7 +58,7 @@ def main() -> int:
         params = {p: str(d).strip() for p, d in q.get("parameters", {}).items()}
         kind = "yes" if q.get("harness_only") else ("writer" if q.get("writer") else "-")
         try:
-            res = conn.updateQueryDescription(name, desc, params)
+            res = ensure_awake()(conn.updateQueryDescription)(name, desc, params)   # resume-retry, then the ERR row
             t.add_row(i, name, "OK", len(params), kind, _reply(res))
         except Exception as e:  # noqa: BLE001
             failures.append((name, str(e)))

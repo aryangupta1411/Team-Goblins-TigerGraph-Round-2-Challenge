@@ -38,7 +38,16 @@ from agent.answer_fallback import check_invariants
 from agent.config import SETTINGS, Settings
 from agent.engine_api import ENGINE, CaseContext, Evidence
 from agent.llm import wrap_client
-from agent.mcp_client import ToolContext, current_caller, extract_ids, harness_query, load_query_descriptions, make_query_tools, run_query
+from agent.mcp_client import (
+    GraphUnavailable,
+    ToolContext,
+    current_caller,
+    extract_ids,
+    harness_query,
+    load_query_descriptions,
+    make_query_tools,
+    run_query,
+)
 from agent.runlog import RunLog, current_runlog
 from agent.schemas import ActionChoice, Assessment, Closing, SarDraft
 
@@ -203,6 +212,8 @@ class PhaseMachine:
                 },
             )
             self.opened_in_graph = True
+        except GraphUnavailable:
+            raise           # workspace down: the mandatory reads below would spin the same budget again, then fail
         except Exception as e:
             self.opened_in_graph = False
             self.log.note("open_case writer failed; will persist at P10", error=str(e)[:300])
@@ -311,10 +322,14 @@ class PhaseMachine:
                 # the harness's own call is authoritative even when the model already ran the query with
                 # different parameters ("first call wins" in record_result would otherwise leak the model's)
                 F[name] = await harness_query(self.session, self.tctx, name, params)
+            except GraphUnavailable:
+                raise           # the workspace is down: fail the case (bench --resume reruns it), never score missing facts
             except Exception as e:
                 self.log.note(f"engine re-run of {name} failed", error=str(e)[:300])
         try:
             self.post_open = await run_query(self.session, "post_open_activity", {"c": {"id": ctx.card_id}, "opened_at": ctx.opened_at, "days": 7})
+        except GraphUnavailable:
+            raise
         except Exception as e:
             self.post_open = {}
             self.log.note("post_open_activity failed", error=str(e)[:300])
@@ -676,6 +691,8 @@ class PhaseMachine:
         memory = await self.p1_memory()  # P1
         self.log.set_phase("P2")
         await self.p2_investigate(brief, memory)  # P2
+        if self.tctx.graph_unavailable:  # a P2 tool call hit an unreachable workspace: its absence is not evidence
+            raise GraphUnavailable(f"graph unavailable during P2 ({self.tctx.graph_unavailable})")
         self.events.append({"kind": "evidence", "payload": [_to_jsonable(e) for e in self.tctx.ledger]})
         self.log.set_phase("P3")
         sc = await self.p3_scorecard()  # P3

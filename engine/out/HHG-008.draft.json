@@ -149,5 +149,5 @@
   "stop_reason": "Policy \u00a76 test 1: fraud probability 0.95 is at or above 0.85 with 2 independent evidence families (customer, memory); no request could change the action set, so the initial recommendation is final.",
   "tool_calls": 15,
   "tokens": 0,
-  "latency_s": 0.06
+  "latency_s": 0.05
 }

@@ -18,7 +18,7 @@
     "p_email": "hotmail.com",
     "device_id": "NULL | NULL | chrome 66.0 for ios | NULL",
     "device_new": "Found",
-    "cms_p": 0.00461,
+    "cms_p": 0.003065,
     "sig_match": false
    },
    {
@@ -31,7 +31,7 @@
     "p_email": "hotmail.com",
     "device_id": "NULL | NULL | mobile safari 10.0 | NULL",
     "device_new": "Found",
-    "cms_p": 0.13102,
+    "cms_p": 0.08112,
     "sig_match": false
    },
    {
@@ -44,7 +44,7 @@
     "p_email": "hotmail.com",
     "device_id": "NULL | NULL | mobile safari 11.0 | NULL",
     "device_new": "Unknown",
-    "cms_p": 0.002051,
+    "cms_p": 0.002893,
     "sig_match": false
    },
    {
@@ -57,7 +57,7 @@
     "p_email": "hotmail.com",
     "device_id": "Windows | NULL | chrome 66.0 | NULL",
     "device_new": "Found",
-    "cms_p": 0.007382,
+    "cms_p": 0.006163,
     "sig_match": false
    },
    {
@@ -70,7 +70,7 @@
     "p_email": "hotmail.com",
     "device_id": "Windows | NULL | chrome 66.0 | NULL",
     "device_new": "New",
-    "cms_p": 0.00698,
+    "cms_p": 0.00646,
     "sig_match": false
    },
    {
@@ -83,7 +83,7 @@
     "p_email": "gmail.com",
     "device_id": "SM-J730GM Build/NRD90M | NULL | chrome 65.0 for android | NULL",
     "device_new": "Found",
-    "cms_p": 0.024863,
+    "cms_p": 0.025036,
     "sig_match": false
    },
    {
@@ -96,7 +96,7 @@
     "p_email": "hotmail.com",
     "device_id": "NULL | NULL | chrome 66.0 | NULL",
     "device_new": "Found",
-    "cms_p": 0.264283,
+    "cms_p": 0.280338,
     "sig_match": false
    },
    {
@@ -109,7 +109,7 @@
     "p_email": "gmail.com",
     "device_id": "Windows | NULL | chrome 66.0 | NULL",
     "device_new": "New",
-    "cms_p": 0.41272,
+    "cms_p": 0.421783,
     "sig_match": false
    },
    {
@@ -122,7 +122,7 @@
     "p_email": "hotmail.com",
     "device_id": "",
     "device_new": "",
-    "cms_p": 0.004327,
+    "cms_p": 0.00362,
     "sig_match": false
    },
    {
@@ -135,7 +135,7 @@
     "p_email": "hotmail.com",
     "device_id": "NULL | NULL | mobile safari 11.0 | NULL",
     "device_new": "Unknown",
-    "cms_p": 0.390737,
+    "cms_p": 0.342878,
     "sig_match": false
    },
    {
@@ -148,7 +148,7 @@
     "p_email": "hotmail.com",
     "device_id": "SM-G955F Build/NRD90M | NULL | chrome 66.0 for android | NULL",
     "device_new": "New",
-    "cms_p": 0.004083,
+    "cms_p": 0.005364,
     "sig_match": false
    },
    {
@@ -161,7 +161,7 @@
     "p_email": "anonymous.com",
     "device_id": "SM-N950F Build/NMF26X | NULL | chrome 66.0 for android | NULL",
     "device_new": "New",
-    "cms_p": 0.003311,
+    "cms_p": 0.003349,
     "sig_match": false
    },
    {
@@ -174,7 +174,7 @@
     "p_email": "anonymous.com",
     "device_id": "Windows | NULL | chrome 66.0 | NULL",
     "device_new": "Found",
-    "cms_p": 0.002787,
+    "cms_p": 0.004711,
     "sig_match": false
    },
    {
@@ -187,7 +187,7 @@
     "p_email": "gmail.com",
     "device_id": "Windows | NULL | chrome 66.0 | NULL",
     "device_new": "New",
-    "cms_p": 0.003488,
+    "cms_p": 0.00438,
     "sig_match": false
    },
    {
@@ -200,7 +200,7 @@
     "p_email": "hotmail.com",
     "device_id": "F5121 Build/34.4.A.2.19 | NULL | chrome 66.0 for android | NULL",
     "device_new": "Found",
-    "cms_p": 0.001815,
+    "cms_p": 0.002248,
     "sig_match": false
    },
    {
@@ -213,7 +213,7 @@
     "p_email": "hotmail.com",
     "device_id": "F5121 Build/34.4.A.2.19 | NULL | chrome 66.0 for android | NULL",
     "device_new": "New",
-    "cms_p": 0.01124,
+    "cms_p": 0.018934,
     "sig_match": false
    },
    {
@@ -226,7 +226,7 @@
     "p_email": "hotmail.com",
     "device_id": "RNE-L03 Build/HUAWEIRNE-L03 | NULL | chrome 66.0 for android | NULL",
     "device_new": "New",
-    "cms_p": 0.012192,
+    "cms_p": 0.014306,
     "sig_match": false
    },
    {
@@ -239,7 +239,7 @@
     "p_email": "yahoo.com.mx",
     "device_id": "NULL | NULL | chrome 66.0 | NULL",
     "device_new": "Found",
-    "cms_p": 0.008666,
+    "cms_p": 0.008543,
     "sig_match": false
    },
    {
@@ -252,7 +252,7 @@
     "p_email": "hotmail.com",
     "device_id": "SM-J701M Build/NRD90M | NULL | chrome 66.0 for android | NULL",
     "device_new": "Found",
-    "cms_p": 0.029619,
+    "cms_p": 0.028544,
     "sig_match": false
    },
    {
@@ -265,7 +265,7 @@
     "p_email": "hotmail.com",
     "device_id": "Windows | NULL | edge 16.0 | NULL",
     "device_new": "New",
-    "cms_p": 0.061409,
+    "cms_p": 0.03582,
     "sig_match": false
    },
    {
@@ -278,7 +278,7 @@
     "p_email": "gmail.com",
     "device_id": "Windows | NULL | firefox 59.0 | NULL",
     "device_new": "New",
-    "cms_p": 0.665,
+    "cms_p": 0.636075,
     "sig_match": false
    },
    {
@@ -291,7 +291,7 @@
     "p_email": "gmail.com",
     "device_id": "LG-M700 Build/NMF26X | NULL | chrome 66.0 for android | NULL",
     "device_new": "Found",
-    "cms_p": 0.002866,
+    "cms_p": 0.003888,
     "sig_match": false
    },
    {
@@ -304,7 +304,7 @@
     "p_email": "hotmail.com",
     "device_id": "CAM-L03 Build/HUAWEICAM-L03 | NULL | chrome 66.0 for android | NULL",
     "device_new": "Found",
-    "cms_p": 0.016328,
+    "cms_p": 0.022243,
     "sig_match": false
    },
    {
@@ -317,7 +317,7 @@
     "p_email": "hotmail.com",
     "device_id": "SM-G935F Build/NRD90M | NULL | chrome 66.0 for android | NULL",
     "device_new": "New",
-    "cms_p": 0.057297,
+    "cms_p": 0.080203,
     "sig_match": false
    },
    {
@@ -330,7 +330,7 @@
     "p_email": "anonymous.com",
     "device_id": "NULL | NULL | mobile safari 11.0 | NULL",
     "device_new": "Unknown",
-    "cms_p": 0.001824,
+    "cms_p": 0.00216,
     "sig_match": false
    },
    {
@@ -343,7 +343,7 @@
     "p_email": "hotmail.com",
     "device_id": "Windows | NULL | chrome 66.0 | NULL",
     "device_new": "Found",
-    "cms_p": 0.581898,
+    "cms_p": 0.664071,
     "sig_match": false
    },
    {
@@ -356,7 +356,7 @@
     "p_email": "yahoo.com.mx",
     "device_id": "Windows | NULL | chrome 66.0 | NULL",
     "device_new": "Found",
-    "cms_p": 0.0018,
+    "cms_p": 0.00244,
     "sig_match": false
    },
    {
@@ -369,7 +369,7 @@
     "p_email": "gmail.com",
     "device_id": "NULL | NULL | opera | NULL",
     "device_new": "Found",
-    "cms_p": 0.222272,
+    "cms_p": 0.211903,
     "sig_match": false
    },
    {
@@ -382,7 +382,7 @@
     "p_email": "gmail.com",
     "device_id": "SM-G532M Build/MMB29T | NULL | chrome 55.0 for android | NULL",
     "device_new": "New",
-    "cms_p": 0.089879,
+    "cms_p": 0.145004,
     "sig_match": false
    },
    {
@@ -395,7 +395,7 @@
     "p_email": "hotmail.com",
     "device_id": "SLA-L03 Build/HUAWEISLA-L03 | NULL | chrome 59.0 for android | NULL",
     "device_new": "New",
-    "cms_p": 0.002965,
+    "cms_p": 0.005326,
     "sig_match": false
    },
    {
@@ -408,7 +408,7 @@
     "p_email": "hotmail.com",
     "device_id": "",
     "device_new": "",
-    "cms_p": 0.038083,
+    "cms_p": 0.049034,
     "sig_match": false
    },
    {
@@ -421,7 +421,7 @@
     "p_email": "hotmail.com",
     "device_id": "MotoG3 Build/MPIS24.65-33.1-2-16 | NULL | chrome 66.0 for android | NULL",
     "device_new": "Found",
-    "cms_p": 0.889549,
+    "cms_p": 0.922294,
     "sig_match": false
    },
    {
@@ -434,7 +434,7 @@
     "p_email": "yahoo.com.mx",
     "device_id": "HUAWEI TAG-L13 Build/HUAWEITAG-L13 | NULL | chrome 66.0 for android | NULL",
     "device_new": "Found",
-    "cms_p": 0.006693,
+    "cms_p": 0.00961,
     "sig_match": false
    },
    {
@@ -447,7 +447,7 @@
     "p_email": "yahoo.com.mx",
     "device_id": "HUAWEI TAG-L13 Build/HUAWEITAG-L13 | NULL | chrome 66.0 for android | NULL",
     "device_new": "Found",
-    "cms_p": 0.014269,
+    "cms_p": 0.026417,
     "sig_match": false
    },
    {
@@ -460,7 +460,7 @@
     "p_email": "yahoo.com",
     "device_id": "HUAWEI TAG-L13 Build/HUAWEITAG-L13 | NULL | chrome 66.0 for android | NULL",
     "device_new": "New",
-    "cms_p": 0.008695,
+    "cms_p": 0.009667,
     "sig_match": false
    },
    {
@@ -473,7 +473,7 @@
     "p_email": "yahoo.com",
     "device_id": "HUAWEI TAG-L13 Build/HUAWEITAG-L13 | NULL | chrome 66.0 for android | NULL",
     "device_new": "Found",
-    "cms_p": 0.087034,
+    "cms_p": 0.083359,
     "sig_match": false
    },
    {
@@ -486,7 +486,7 @@
     "p_email": "hotmail.com",
     "device_id": "NULL | NULL | chrome 65.0 | NULL",
     "device_new": "New",
-    "cms_p": 0.036616,
+    "cms_p": 0.037057,
     "sig_match": false
    },
    {
@@ -499,7 +499,7 @@
     "p_email": "gmail.com",
     "device_id": "Windows | NULL | chrome 66.0 | NULL",
     "device_new": "Found",
-    "cms_p": 0.028129,
+    "cms_p": 0.027715,
     "sig_match": false
    },
    {
@@ -512,7 +512,7 @@
     "p_email": "yahoo.com.mx",
     "device_id": "LG-X180g Build/LMY47I | NULL | chrome 66.0 for android | NULL",
     "device_new": "Found",
-    "cms_p": 0.017339,
+    "cms_p": 0.016991,
     "sig_match": false
    },
    {
@@ -525,7 +525,7 @@
     "p_email": "yahoo.com.mx",
     "device_id": "LG-X180g Build/LMY47I | NULL | chrome 66.0 for android | NULL",
     "device_new": "New",
-    "cms_p": 0.003764,
+    "cms_p": 0.00317,
     "sig_match": false
    },
    {
@@ -538,7 +538,7 @@
     "p_email": "anonymous.com",
     "device_id": "Windows | NULL | chrome 66.0 | NULL",
     "device_new": "New",
-    "cms_p": 0.069283,
+    "cms_p": 0.080668,
     "sig_match": false
    },
    {
@@ -551,7 +551,7 @@
     "p_email": "hotmail.com",
     "device_id": "Moto G (4) Build/NPJS25.93-14-15 | NULL | chrome 66.0 for android | NULL",
     "device_new": "Found",
-    "cms_p": 0.804868,
+    "cms_p": 0.867876,
     "sig_match": false
    },
    {
@@ -564,7 +564,7 @@
     "p_email": "gmail.com",
     "device_id": "Windows | NULL | chrome 66.0 | NULL",
     "device_new": "New",
-    "cms_p": 0.953595,
+    "cms_p": 0.93926,
     "sig_match": false
    },
    {
@@ -577,7 +577,7 @@
     "p_email": "gmail.com",
     "device_id": "NULL | NULL | mobile safari 11.0 | NULL",
     "device_new": "Unknown",
-    "cms_p": 0.338871,
+    "cms_p": 0.304303,
     "sig_match": false
    },
    {
@@ -590,7 +590,7 @@
     "p_email": "gmail.com",
     "device_id": "ALE-L23 Build/HuaweiALE-L23 | NULL | chrome 65.0 for android | NULL",
     "device_new": "Found",
-    "cms_p": 0.006383,
+    "cms_p": 0.008242,
     "sig_match": false
    },
    {
@@ -603,7 +603,7 @@
     "p_email": "gmail.com",
     "device_id": "NULL | NULL | chrome 66.0 | NULL",
     "device_new": "Found",
-    "cms_p": 0.01352,
+    "cms_p": 0.009919,
     "sig_match": false
    },
    {
@@ -616,7 +616,7 @@
     "p_email": "gmail.com",
     "device_id": "Moto X Play Build/NPD26.48-24-1 | NULL | chrome 66.0 for android | NULL",
     "device_new": "New",
-    "cms_p": 0.015395,
+    "cms_p": 0.014271,
     "sig_match": false
    },
    {
@@ -629,7 +629,7 @@
     "p_email": "gmail.com",
     "device_id": "SM-G900M Build/LRX21T | NULL | chrome 66.0 for android | NULL",
     "device_new": "New",
-    "cms_p": 0.008271,
+    "cms_p": 0.010205,
     "sig_match": false
    },
    {
@@ -642,7 +642,7 @@
     "p_email": "gmail.com",
     "device_id": "SM-G900M Build/LRX21T | NULL | chrome 66.0 for android | NULL",
     "device_new": "Found",
-    "cms_p": 0.142963,
+    "cms_p": 0.119355,
     "sig_match": false
    },
    {
@@ -655,7 +655,7 @@
     "p_email": "hotmail.es",
     "device_id": "NULL | NULL | chrome 66.0 | NULL",
     "device_new": "Found",
-    "cms_p": 0.262209,
+    "cms_p": 0.230064,
     "sig_match": false
    },
    {
@@ -668,7 +668,7 @@
     "p_email": "gmail.com",
     "device_id": "SM-G900M Build/LRX21T | NULL | chrome 66.0 for android | NULL",
     "device_new": "Found",
-    "cms_p": 0.030072,
+    "cms_p": 0.032832,
     "sig_match": false
    },
    {
@@ -681,7 +681,7 @@
     "p_email": "hotmail.com",
     "device_id": "NULL | NULL | chrome 66.0 | NULL",
     "device_new": "New",
-    "cms_p": 0.003978,
+    "cms_p": 0.003622,
     "sig_match": false
    },
    {
@@ -694,7 +694,7 @@
     "p_email": "outlook.com",
     "device_id": "Windows | NULL | chrome 66.0 | NULL",
     "device_new": "New",
-    "cms_p": 0.004802,
+    "cms_p": 0.005184,
     "sig_match": false
    },
    {
@@ -707,7 +707,7 @@
     "p_email": "gmail.com",
     "device_id": "SM-J700M Build/MMB29K | NULL | chrome 66.0 for android | NULL",
     "device_new": "New",
-    "cms_p": 0.009561,
+    "cms_p": 0.014973,
     "sig_match": false
    },
    {
@@ -720,7 +720,7 @@
     "p_email": "hotmail.com",
     "device_id": "Windows | NULL | chrome 66.0 | NULL",
     "device_new": "New",
-    "cms_p": 0.001963,
+    "cms_p": 0.002331,
     "sig_match": false
    },
    {
@@ -733,7 +733,7 @@
     "p_email": "hotmail.com",
     "device_id": "NULL | NULL | mobile safari 11.0 | NULL",
     "device_new": "Unknown",
-    "cms_p": 0.038388,
+    "cms_p": 0.030035,
     "sig_match": false
    },
    {
@@ -746,7 +746,7 @@
     "p_email": "gmail.com",
     "device_id": "Windows | NULL | chrome 66.0 | NULL",
     "device_new": "New",
-    "cms_p": 0.008075,
+    "cms_p": 0.009979,
     "sig_match": false
    },
    {
@@ -759,7 +759,7 @@
     "p_email": "gmail.com",
     "device_id": "NULL | NULL | mobile safari 11.0 | NULL",
     "device_new": "Unknown",
-    "cms_p": 0.045455,
+    "cms_p": 0.034537,
     "sig_match": false
    },
    {
@@ -772,7 +772,7 @@
     "p_email": "hotmail.com",
     "device_id": "NULL | NULL | chrome 66.0 | NULL",
     "device_new": "Found",
-    "cms_p": 0.922981,
+    "cms_p": 0.927636,
     "sig_match": true
    },
    {
@@ -785,7 +785,7 @@
     "p_email": "hotmail.com",
     "device_id": "NULL | NULL | chrome 66.0 | NULL",
     "device_new": "New",
-    "cms_p": 0.194869,
+    "cms_p": 0.28004,
     "sig_match": true
    },
    {
@@ -798,7 +798,7 @@
     "p_email": "hotmail.com",
     "device_id": "NULL | NULL | chrome 66.0 | NULL",
     "device_new": "Found",
-    "cms_p": 0.961422,
+    "cms_p": 0.957266,
     "sig_match": true
    }
   ],

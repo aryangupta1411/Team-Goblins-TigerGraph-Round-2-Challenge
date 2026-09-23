@@ -75,9 +75,13 @@ CREATE OR REPLACE QUERY card_profile(VERTEX<Card> c, DATETIME as_of) FOR GRAPH F
       ACCUM e.@n += 1
       POST-ACCUM @@emails += EmailRow(e.id, e.@n);
 
+  // ACCUM, not POST-ACCUM: verified empirically that POST-ACCUM does not apply a WHERE clause comparing
+  // two different pattern aliases (o.id != s.id, first hop vs last hop of a 2-hop pattern) -- the queried
+  // card's own id still reached @@other_cards under POST-ACCUM. ACCUM (evaluated per-match, during the
+  // traversal) respects the filter correctly.
   O = SELECT o FROM (s:S)-[:REV_OWNS]->(u:Customer)-[:OWNS]->(o:Card)
       WHERE o.id != s.id
-      POST-ACCUM @@other_cards += OtherCard(o.id, o.card_type, o.n_txns);
+      ACCUM @@other_cards += OtherCard(o.id, o.card_type, o.n_txns);
 
   P = SELECT p FROM (s:S)-[:REV_ON_CARD]->(p:ClosedCase)
       WHERE p.opened_at <= as_of

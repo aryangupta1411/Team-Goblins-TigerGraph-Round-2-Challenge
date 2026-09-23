@@ -30,8 +30,7 @@ CREATE OR REPLACE QUERY card_window(VERTEX<Card> c, DATETIME from_ts, DATETIME t
                                  t.risk_score, t.cms_p, t.device_id, t.device_new, t.proxy_type, t.@gap);
 
   WHILE @@latest.size() > 0 DO
-    Row r = @@latest.pop();
-    @@txns += r;
+    @@txns += @@latest.pop();
   END;
   @@summary += Summary(@@n, @@sum_amt, @@n_online, @@n_in_person);
 

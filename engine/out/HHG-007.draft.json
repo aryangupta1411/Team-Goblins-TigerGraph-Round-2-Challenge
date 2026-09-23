@@ -182,5 +182,5 @@
   "stop_reason": "Policy \u00a76 test 3: the verification was not completed within the window and the probability stayed at 0.77; the fraud-band actions (block pending approval) already apply, so no further automated step would change the recommendation.",
   "tool_calls": 15,
   "tokens": 0,
-  "latency_s": 0.07
+  "latency_s": 0.06
 }

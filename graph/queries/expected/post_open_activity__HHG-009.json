@@ -15,7 +15,7 @@
     "channel": "online",
     "addr1": "330.0",
     "device_new": "Found",
-    "cms_p": 0.886352
+    "cms_p": 0.886969
    },
    {
     "ts": "2016-12-30 18:41:54",
@@ -24,7 +24,7 @@
     "channel": "online",
     "addr1": "330.0",
     "device_new": "Found",
-    "cms_p": 0.267188
+    "cms_p": 0.270006
    },
    {
     "ts": "2016-12-30 18:41:57",
@@ -33,7 +33,7 @@
     "channel": "online",
     "addr1": "330.0",
     "device_new": "Found",
-    "cms_p": 0.751634
+    "cms_p": 0.762563
    },
    {
     "ts": "2016-12-31 13:29:09",
@@ -42,7 +42,7 @@
     "channel": "online",
     "addr1": "204.0",
     "device_new": "New",
-    "cms_p": 0.071141
+    "cms_p": 0.055101
    },
    {
     "ts": "2016-12-31 13:35:52",
@@ -51,7 +51,7 @@
     "channel": "online",
     "addr1": "204.0",
     "device_new": "Found",
-    "cms_p": 0.019764
+    "cms_p": 0.017045
    },
    {
     "ts": "2016-12-31 13:36:32",
@@ -60,7 +60,7 @@
     "channel": "online",
     "addr1": "204.0",
     "device_new": "Found",
-    "cms_p": 0.009261
+    "cms_p": 0.008348
    },
    {
     "ts": "2016-12-31 13:46:47",
@@ -69,7 +69,7 @@
     "channel": "online",
     "addr1": "204.0",
     "device_new": "Found",
-    "cms_p": 0.006892
+    "cms_p": 0.004825
    },
    {
     "ts": "2016-12-31 13:52:59",
@@ -78,7 +78,7 @@
     "channel": "online",
     "addr1": "204.0",
     "device_new": "Found",
-    "cms_p": 0.009972
+    "cms_p": 0.009255
    },
    {
     "ts": "2016-12-31 14:01:58",
@@ -87,7 +87,7 @@
     "channel": "online",
     "addr1": "204.0",
     "device_new": "Found",
-    "cms_p": 0.013666
+    "cms_p": 0.013417
    }
   ],
   "summary": {

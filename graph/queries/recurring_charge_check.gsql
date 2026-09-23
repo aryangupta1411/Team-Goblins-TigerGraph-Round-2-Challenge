@@ -13,6 +13,7 @@ CREATE OR REPLACE QUERY recurring_charge_check(VERTEX<Transaction> t, FLOAT tol,
   MaxAccum<FLOAT> @@famt;
   MaxAccum<STRING> @@fpcd, @@fid;
   HeapAccum<Ev>(3000, place ASC, ts_e ASC, ts ASC) @@evs;
+  ListAccum<Ev> @@ecur;
   HeapAccum<Gap>(3000, gap ASC) @@gaps;
   ListAccum<GroupRow> @@groups;
   SumAccum<INT> @@total_n;
@@ -33,19 +34,20 @@ CREATE OR REPLACE QUERY recurring_charge_check(VERTEX<Transaction> t, FLOAT tol,
   STRING first_s = "";
   STRING last_s = "";
   WHILE @@evs.size() > 0 DO
-    Ev e = @@evs.pop();
+    @@ecur.clear();
+    @@ecur += @@evs.pop();
     IF n == 0 THEN
-      cur = e.place;
-      first_s = e.ts;
+      cur = @@ecur.get(0).place;
+      first_s = @@ecur.get(0).ts;
     ELSE
-      FLOAT g = (e.ts_e - prev_e) / 86400.0;
+      FLOAT g = (@@ecur.get(0).ts_e - prev_e) / 86400.0;
       sum_g = sum_g + g;
       sumsq = sumsq + g * g;
       @@gaps += Gap(g);
     END;
     n = n + 1;
-    prev_e = e.ts_e;
-    last_s = e.ts;
+    prev_e = @@ecur.get(0).ts_e;
+    last_s = @@ecur.get(0).ts;
     // finalize the group when the next element belongs to another place (or the heap is exhausted)
     IF @@evs.size() == 0 OR @@evs.top().place != cur THEN
       FLOAT med = 0.0;
@@ -55,7 +57,7 @@ CREATE OR REPLACE QUERY recurring_charge_check(VERTEX<Transaction> t, FLOAT tol,
         INT skip = floor((ng - 1) / 2.0);
         IF skip > 0 THEN
           FOREACH q IN RANGE[1, skip] DO
-            Gap dropped = @@gaps.pop();
+            @@gaps.pop();
           END;
         END;
         med = @@gaps.top().gap;

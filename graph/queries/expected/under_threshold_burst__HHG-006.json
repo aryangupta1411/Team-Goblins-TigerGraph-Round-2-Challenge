@@ -24,8 +24,8 @@
     "start_ts": "2016-11-21 20:00:00",
     "end_ts": "2016-11-21 20:30:00",
     "device_ids": [
-     "iOS Device | iOS 11.2.1 | mobile safari 11.0 | 2208x1242",
-     "Trident/7.0 | Windows 7 | ie 11.0 for desktop | 1920x1080"
+     "Trident/7.0 | Windows 7 | ie 11.0 for desktop | 1920x1080",
+     "iOS Device | iOS 11.2.1 | mobile safari 11.0 | 2208x1242"
     ],
     "emails": [
      "yahoo.com",

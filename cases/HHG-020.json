@@ -1,0 +1,147 @@
+{
+  "case_id": "HHG-020",
+  "case": {
+    "status": "closed_legitimate",
+    "verdict": "legitimate",
+    "fraud_probability": 0.03,
+    "pattern": "none",
+    "pattern_description": "",
+    "affected_txn_ids": [],
+    "first_suspicious_txn_id": "",
+    "connected_card_ids": [],
+    "connected_device_profiles": [],
+    "exposure_usd": 0.0,
+    "evidence": [
+      {
+        "claim": "Amount $125.08 sits inside the card's baseline (prior median $107.91, prior maximum $1,960.95 over 82 prior transactions), and the purchaser email domain yahoo.com was used 20 times before on this card.",
+        "source": "graph",
+        "ref": "query:case_context(txn=3509359)",
+        "entity_ids": [
+          "3509359",
+          "C12265-K2"
+        ]
+      },
+      {
+        "claim": "Billing region 264.0 on this online purchase is the card's modal home region with 82 prior purchases over 61 days and no other region in the card's history (n_regions=1); the region_history hint is 'home'.",
+        "source": "graph",
+        "ref": "query:region_history(c=C12265-K2, addr1=264.0, as_of=2016-12-03 06:04:25)",
+        "entity_ids": [
+          "C12265-K2",
+          "3509359"
+        ]
+      },
+      {
+        "claim": "The case-memory scorer (trained on 5,565 closed cases, October holdout AUC 0.956) rates the flagged transaction at cms_p 0.0061/cal_p 0.0056, far below the real-time risk_score of 0.52, indicating the model's own historical calibration reads this as very low risk.",
+        "source": "graph",
+        "ref": "query:case_context(txn=3509359)",
+        "entity_ids": [
+          "3509359"
+        ]
+      },
+      {
+        "claim": "The device profile Trident/7.0 | Windows 10 | ie 11.0 for desktop | 1920x1080 is New to this card but is not a strong/shared-origin signal: is_strong=False, n_cards_alltime=253, n_cards_30d=139, n_fraud_cases=0; device_neighbors over the trailing 30 days returned zero cards, zero closed cases and zero agent cases on this profile.",
+        "source": "graph",
+        "ref": "query:device_neighbors(d=Trident/7.0 | Windows 10 | ie 11.0 for desktop | 1920x1080, from_ts=2016-11-03 06:04:26, to_ts=2016-12-03 12:04:26, max_cards=60)",
+        "entity_ids": [
+          "Trident/7.0 | Windows 10 | ie 11.0 for desktop | 1920x1080"
+        ]
+      },
+      {
+        "claim": "card_testing_check found no card-testing chain (chain n_members=1, n_small=0, no larger_purchase), under_threshold_burst found no bursts and no lookalike cards, and episode_candidates' 48h chain around the flagged transaction contains only the transaction itself.",
+        "source": "graph",
+        "ref": "query:card_testing_check(c=C12265-K2, as_of=2016-12-03 12:04:26, small=5, window_min=60, min_n=3, big=100, lookahead_h=48)",
+        "entity_ids": [
+          "3509359"
+        ]
+      },
+      {
+        "claim": "shared_origin_scan shows the recipient email domain cox.net used by 25 cards in 30 days with zero fraud cases, and the region cluster for 264.0 shows 737 other cards active in 30 days with zero cards carrying a fraud case in that window, so neither the device, the recipient email nor the region cluster shows coordinated fraud.",
+        "source": "graph",
+        "ref": "query:shared_origin_scan(c=C12265-K2, as_of=2016-12-03 12:04:26, days=30)",
+        "entity_ids": [
+          "Trident/7.0 | Windows 10 | ie 11.0 for desktop | 1920x1080"
+        ]
+      },
+      {
+        "claim": "This card carries two confirmed_fraud account_takeover closed cases from August 2016 (CC-2447, $33.95; CC-2277, $81.93), both months earlier and with no report filed, so they are historical caution but do not connect to this online December transaction via any shared device, chain or region signal.",
+        "source": "graph",
+        "ref": "query:prior_cases_for_customer(customer=C12265)",
+        "entity_ids": [
+          "CC-2447",
+          "CC-2277",
+          "C12265-K2"
+        ]
+      },
+      {
+        "claim": "Assumed reply: customer confirmed the purchase from a new phone/device and recognises the $125.08 charge",
+        "source": "customer",
+        "ref": "evidence_request:1",
+        "entity_ids": [
+          "3509359"
+        ]
+      }
+    ],
+    "similar_prior_cases": [
+      "CC-5008",
+      "CC-4591",
+      "CC-3761",
+      "CC-3332",
+      "CC-4349",
+      "CC-4592"
+    ],
+    "summary": "Verdict: legitimate, fraud probability 0.03. The $125.08 online purchase (transaction 3509359, product R, region 264.0) on card C12265-K2 sits inside the card's normal history — home region, amount within its median-to-max range, familiar purchaser email — and the case-memory scorer rated it 0.006 despite a real-time risk_score of 0.52; the New device flag was a generic, widely-shared profile (253 cards all-time, zero fraud cases) rather than a ring signal, so pattern is none and there is no fraud episode (exposure $0.00). Because this was a single weak signal, R1 called for VERIFY_WITH_CUSTOMER before any block; the customer_validation request was asked and the assumed reply was a confirmation that the purchase was theirs (from a new device), which under R3 settles the case to ALLOW_TRANSACTION and CLOSE_NO_FRAUD, with a case opened per 3a for the evidence request. The eight retrieved similar cases (e.g. CC-5008, CC-4591, CC-3761, CC-3332, CC-4349, CC-4592) were all same-region alerts that cleared with pattern none, reinforcing this reading, though the card's two August confirmed-fraud account_takeover cases mean the alternative reading — treating any new-device online charge on this card as suspect — was not unreasonable, it just wasn't supported by any chain, ring, or shared-origin evidence here. Route: auto (no approval needed); had the customer instead denied the charge, R2 would have required BLOCK_CARD (L1) and CREATE_CASE.",
+    "written_to_graph": true,
+    "graph_case_id": "AC-HHG-020"
+  },
+  "evidence_requests": [
+    {
+      "type": "customer_validation",
+      "asked_after_step": 21,
+      "assumed_response": "ASSUMED (simulated): customer confirmed the purchase from a new phone/device and recognises the $125.08 charge"
+    }
+  ],
+  "next_best_actions": {
+    "initial": [
+      {
+        "action": "CREATE_CASE",
+        "route": "auto",
+        "reason": "3a: a customer_validation evidence request is being made on this risk-score alert, so a case is opened even though probability is low."
+      },
+      {
+        "action": "VERIFY_WITH_CUSTOMER",
+        "route": "auto",
+        "reason": "R1: single evidence family (risk_score/new-device signal) and probability 0.03 < 0.70, so verify with the customer before any block; no block is admissible here."
+      }
+    ],
+    "final": [
+      {
+        "action": "CREATE_CASE",
+        "route": "auto",
+        "reason": "3a: a case was already opened for the customer_validation evidence request on this risk-score alert."
+      },
+      {
+        "action": "ALLOW_TRANSACTION",
+        "route": "auto",
+        "reason": "R3: customer confirmed the $125.08 purchase, so the transaction proceeds."
+      },
+      {
+        "action": "CLOSE_NO_FRAUD",
+        "route": "auto",
+        "reason": "R3: customer confirmed the charge and no other evidence family points to fraud (probability 0.03, legit band), so the case closes as no-fraud."
+      }
+    ],
+    "what_changed": "The assumed customer validation reply (confirm) moved the probability from 0.03 to 0.03 and the verdict to legitimate, adding ALLOW_TRANSACTION, CLOSE_NO_FRAUD, removing VERIFY_WITH_CUSTOMER. Counterfactual: had the customer denied the purchase, R2 would have applied: BLOCK_CARD (L1) and CREATE_CASE."
+  },
+  "sar": {
+    "file": false,
+    "reason": "3a not met: verdict legitimate (fraud not confirmed or strongly suspected), exposure $0.00; no report",
+    "narrative": "",
+    "subjects": [],
+    "total_amount_usd": 0,
+    "activity_dates": []
+  },
+  "stop_reason": "Policy §6 test 2 fired: the assumed customer confirmation settled the question, and independently §6 test 1 was already met with probability 0.03 (≤0.15) supported by two evidence families (history and, after the reply, customer), so no further investigation would change the decision.",
+  "tool_calls": 21,
+  "tokens": 215949,
+  "latency_s": 99.2
+}

@@ -1,0 +1,177 @@
+{
+  "case_id": "HHG-015",
+  "case": {
+    "status": "escalated",
+    "verdict": "uncertain",
+    "fraud_probability": 0.35,
+    "pattern": "account_takeover",
+    "pattern_description": "",
+    "affected_txn_ids": [
+      "3462385",
+      "3462387",
+      "3462404",
+      "3464869"
+    ],
+    "first_suspicious_txn_id": "3462385",
+    "connected_card_ids": [],
+    "connected_device_profiles": [],
+    "exposure_usd": 2140.94,
+    "evidence": [
+      {
+        "claim": "episode_candidates chains four transactions within 48 hours totaling $2,140.94: three in-person purchases at the card's modal region 299.0 on 2016-11-16 (3462385 $440.96, 3462387 $550.03, 3462404 $550.01) followed by an online purchase of $599.94 (3464869) on 2016-11-17, mixing in-person and online channels in one episode.",
+        "source": "graph",
+        "ref": "query:episode_candidates(t=3464869, as_of=2016-11-17 19:03:36, gap_h=48)",
+        "entity_ids": [
+          "3462385",
+          "3462387",
+          "3462404",
+          "3464869"
+        ]
+      },
+      {
+        "claim": "A region_history snapshot taken just before the flagged transaction (as_of=2016-11-17 14:03:35) shows billing region 327.0 had prior_n=0 and share=0 on this card, and device_history at the same instant shows prior_n=0 for the device profile Trident/7.0 | Windows 8.1 | ie 11.0 for desktop | 1680x1050, so both the region and the device are genuinely first-use on transaction 3464869.",
+        "source": "graph",
+        "ref": "query:region_history(c=C03042-K1, addr1=327.0, as_of=2016-11-17 14:03:35); query:device_history(c=C03042-K1, d=Trident/7.0 | Windows 8.1 | ie 11.0 for desktop | 1680x1050, as_of=2016-11-17 14:03:35)",
+        "entity_ids": [
+          "3464869",
+          "C03042-K1",
+          "Trident/7.0 | Windows 8.1 | ie 11.0 for desktop | 1680x1050"
+        ]
+      },
+      {
+        "claim": "case_context shows the memory-calibrated cms_p on transaction 3464869 is 0.005392, far below the real-time risk_score of 0.77 that triggered the alert, producing a direct conflict between the rule-based chain signal and the case-memory model.",
+        "source": "graph",
+        "ref": "query:case_context(t=3464869, as_of=2016-11-17 19:03:36)",
+        "entity_ids": [
+          "3464869"
+        ]
+      },
+      {
+        "claim": "This card has two prior confirmed-fraud closed cases, CC-3886 (opened 2016-09-24, exposure $175.05) and CC-0615 (opened 2016-07-16, exposure $174.99), both labeled card_not_present_new_device, giving that exact pattern precedent on this same card.",
+        "source": "graph",
+        "ref": "query:prior_cases_for_customer(customer=C03042)",
+        "entity_ids": [
+          "CC-3886",
+          "CC-0615",
+          "C03042-K1"
+        ]
+      },
+      {
+        "claim": "This card also has one prior risk-score alert, CC-1313 (opened 2016-07-28, exposure $0), that closed with outcome cleared under a 'confirmed_travel' template, showing this card has previously generated a false-positive alert that was resolved as legitimate.",
+        "source": "graph",
+        "ref": "query:prior_cases_for_customer(customer=C03042)",
+        "entity_ids": [
+          "CC-1313",
+          "C03042-K1"
+        ]
+      },
+      {
+        "claim": "device_neighbors on the flagged device profile (strong, n_cards_alltime=8, n_cards_30d=4) over the 30 days before opening shows only C03042-K1 active on it, with zero fraud cases and zero proxy use, so it is not a shared-origin fraud ring despite being a strong profile.",
+        "source": "graph",
+        "ref": "query:device_neighbors(d=Trident/7.0 | Windows 8.1 | ie 11.0 for desktop | 1680x1050, from_ts=2016-10-18 19:03:36, to_ts=2016-11-17 19:03:36, max_cards=60)",
+        "entity_ids": [
+          "Trident/7.0 | Windows 8.1 | ie 11.0 for desktop | 1680x1050",
+          "C03042-K1"
+        ]
+      },
+      {
+        "claim": "card_testing_check found no small-authorization run among the four chain members (n_small=0) and no larger purchase clearing over the testing threshold, and under_threshold_burst found zero bursts, ruling out both the card_testing and just-under-$500 undocumented shapes for this card.",
+        "source": "graph",
+        "ref": "query:card_testing_check(c=C03042-K1, as_of=2016-11-17 19:03:36, small=5, window_min=60, min_n=3, big=100, lookahead_h=48); query:under_threshold_burst(c=C03042-K1, as_of=2016-11-17 19:03:36)",
+        "entity_ids": [
+          "C03042-K1"
+        ]
+      },
+      {
+        "claim": "region_history taken as of the opened_at time shows home_activity_48h with 3 home-region transactions versus 1 other-region transaction, meaning the cardholder's in-person spending continued in the modal region 299.0 around the same window as the online purchase, consistent with normal continued use rather than a takeover that displaces the account.",
+        "source": "graph",
+        "ref": "query:region_history(c=C03042-K1, addr1=327.0, as_of=2016-11-17 19:03:36)",
+        "entity_ids": [
+          "C03042-K1"
+        ]
+      },
+      {
+        "claim": "Assumed reply: step-up authentication was not completed within the window",
+        "source": "external",
+        "ref": "evidence_request:1",
+        "entity_ids": [
+          "3464869"
+        ]
+      }
+    ],
+    "similar_prior_cases": [
+      "CC-1313",
+      "CC-3886",
+      "CC-0615"
+    ],
+    "summary": "Verdict is uncertain at probability 0.35 for card C03042-K1, candidate pattern account_takeover: a four-transaction episode inside 48 hours (3462385, 3462387, 3462404 in-person at the card's home region 299.0 on 2016-11-16, then the flagged online purchase 3464869 for $599.94 on 2016-11-17) totaling $2,140.94 exposure. The decisive fraud-side evidence (history family) is the chain itself — an in-person spree up to $550.03 followed by an online buy from a brand-new device profile in a billing region the card had never used — while the decisive legitimacy evidence (memory family) is a near-zero case-memory score (cms_p 0.0054 versus the raw risk_score of 0.77) and a prior cleared risk alert on this same card, CC-1313, resolved as confirmed travel; two other prior closed cases on the card, CC-3886 and CC-0615, were confirmed card_not_present_new_device fraud, so the alternative reading — that this is simply a repeat of that confirmed pattern rather than a false alarm — remains live. We requested step-up authentication on the online purchase; the reply is assumed inconclusive/no response within the window, so per R4 the recommendation is CREATE_CASE, MONITOR_CARD, DECLINE_TRANSACTION on the pending $599.94 authorization (L1 route, exposure $2,140.94 ≤ $2,500), and ESCALATE_TO_ANALYST for a human to resolve the conflict; no SAR is filed at this stage. If a step-up reply arrives, a pass closes the case per R3 and a fail triggers BLOCK_CARD per R2.",
+    "written_to_graph": true,
+    "graph_case_id": "AC-HHG-015"
+  },
+  "evidence_requests": [
+    {
+      "type": "step_up_auth",
+      "asked_after_step": 22,
+      "assumed_response": "ASSUMED (simulated): step-up authentication was not completed within the window"
+    }
+  ],
+  "next_best_actions": {
+    "initial": [
+      {
+        "action": "CREATE_CASE",
+        "route": "auto",
+        "reason": "3a: probability 0.35 ≥ 0.30 opens a case, and exposure $2,140.94 > $1,000 on this online alert."
+      },
+      {
+        "action": "STEP_UP_AUTH",
+        "route": "auto",
+        "reason": "§3b/§5: online channel with a single fraud-side family (history) at p=0.35 < 0.70 — verify before any block per R1, requesting step-up authentication rather than declining outright."
+      },
+      {
+        "action": "MONITOR_CARD",
+        "route": "auto",
+        "reason": "uncertain_initial: verdict is uncertain while the step-up reply is pending, so monitor the card in the interim."
+      },
+      {
+        "action": "ESCALATE_TO_ANALYST",
+        "route": "auto",
+        "reason": "R8: evidence conflicts (rulebook chain of $2,140.94 across in-person spree + new-device/new-region online purchase vs. a near-zero memory-calibrated cms_p of 0.0054 against a 0.77 risk score), so escalate alongside the step-up request."
+      }
+    ],
+    "final": [
+      {
+        "action": "CREATE_CASE",
+        "route": "auto",
+        "reason": "3a: case already opened at p=0.35 ≥ 0.30 with exposure $2,140.94 > $1,000; kept open through final stage."
+      },
+      {
+        "action": "MONITOR_CARD",
+        "route": "auto",
+        "reason": "R4: the step-up authentication request produced no conclusive reply within the window, so monitor the card pending resolution."
+      },
+      {
+        "action": "DECLINE_TRANSACTION",
+        "route": "L1",
+        "reason": "R4: no reply/inconclusive step-up on the pending authorization, so decline the flagged $599.94 transaction 3464869 rather than let it clear unverified."
+      },
+      {
+        "action": "ESCALATE_TO_ANALYST",
+        "route": "auto",
+        "reason": "R4/R8: exposure $2,140.94 > $500 with an unresolved conflict (rulebook chain vs. near-zero cms_p 0.0054) after an inconclusive step-up, so escalate to an analyst."
+      }
+    ],
+    "what_changed": "The assumed step up auth reply (inconclusive) moved the probability from 0.35 to 0.35 and the verdict to uncertain, adding DECLINE_TRANSACTION, removing STEP_UP_AUTH. Counterfactual: a passed step-up would have closed the alert (R3); a failed one would have led to BLOCK_CARD (R2)."
+  },
+  "sar": {
+    "file": false,
+    "reason": "3a not met: verdict uncertain (fraud not confirmed or strongly suspected), exposure $2,140.94; no report",
+    "narrative": "",
+    "subjects": [],
+    "total_amount_usd": 0,
+    "activity_dates": []
+  },
+  "stop_reason": "Policy §6 test 3 fired: the step-up verification requested for the online purchase was not answered within the window, so R4 governs (monitor the card and decline the pending authorization) and the case remains open awaiting the reply — no further automated query or action would change the recommendation until an analyst or customer response arrives.",
+  "tool_calls": 22,
+  "tokens": 289079,
+  "latency_s": 177.1
+}

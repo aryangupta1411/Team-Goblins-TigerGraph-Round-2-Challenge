@@ -58,7 +58,7 @@
       "min_tokens": 80,
       "max_tokens": 900,
       "expected_chunks": "one per question (4)",
-      "fetched_at": "2026-09-22T17:01:55Z",
+      "fetched_at": "2026-09-23T14:42:36Z",
       "text_path": "data/corpus/text/sar_faqs_2025.txt"
     },
     {
@@ -82,7 +82,7 @@
       "min_tokens": 120,
       "max_tokens": 800,
       "expected_chunks": "~20-30 (sections + one per example with its commentary)",
-      "fetched_at": "2026-09-22T17:01:55Z",
+      "fetched_at": "2026-09-23T14:42:36Z",
       "text_path": "data/corpus/text/sar_guidance_narrative.txt"
     },
     {
@@ -120,7 +120,7 @@
       "min_tokens": 150,
       "max_tokens": 800,
       "expected_chunks": "2-3",
-      "fetched_at": "2026-09-22T17:01:55Z",
+      "fetched_at": "2026-09-23T14:42:36Z",
       "text_path": "data/corpus/text/fin_2007_g003.txt"
     },
     {
@@ -146,7 +146,7 @@
       "min_tokens": 150,
       "max_tokens": 800,
       "expected_chunks": "3-5",
-      "fetched_at": "2026-09-22T17:01:55Z",
+      "fetched_at": "2026-09-23T14:42:36Z",
       "text_path": "data/corpus/text/sar_tti_19.txt"
     },
     {
@@ -164,8 +164,8 @@
         1,
         4
       ],
-      "sha256": "placeholder",
-      "sha256_status": "placeholder",
+      "sha256": "4d335b2af1ab5899b7afb57e8d6f85eb6fe017c974a3165b1a246f51b1fde2bc",
+      "sha256_status": "verified",
       "sha256_note": "the HTML page (37,966 B) was fetched on 2026-09-19; the direct PDF returns 200/application/pdf/139,664 B but was not hashed in this environment - run fetch_corpus --verify",
       "chunking": "heading",
       "heading_regex": "^\\s*(Identifying Account Takeover Activity|Suspicious Activity Reporting|Reporting Account Takeover Activity|SAR Narrative|Key Term.*|Red Flags?.*|Sharing Information.*)\\s*$",
@@ -174,7 +174,9 @@
       "expected_chunks": "2-4",
       "about": [
         "account_takeover"
-      ]
+      ],
+      "fetched_at": "2026-09-23T14:42:36Z",
+      "text_path": "data/corpus/text/fin_2011_a016.txt"
     },
     {
       "doc_id": "fin_2020_a003",
@@ -197,7 +199,7 @@
       "min_tokens": 150,
       "max_tokens": 800,
       "expected_chunks": "4-6",
-      "fetched_at": "2026-09-22T17:01:55Z",
+      "fetched_at": "2026-09-23T14:42:36Z",
       "text_path": "data/corpus/text/fin_2020_a003.txt"
     },
     {
@@ -227,7 +229,7 @@
         "card_not_present_fraud",
         "card_not_present_new_device"
       ],
-      "fetched_at": "2026-09-22T17:01:55Z",
+      "fetched_at": "2026-09-23T14:42:36Z",
       "text_path": "data/corpus/text/fta_identity_2024.txt"
     },
     {
@@ -243,13 +245,15 @@
       "bytes": 2670081,
       "pages": null,
       "pages_note": "72 pages; after download set pages to the 'Risk indicators' annex and the 'Laundering of proceeds' section (find with `pdftotext -layout file.pdf - | grep -n 'Risk indicators'`)",
-      "sha256": "placeholder",
-      "sha256_status": "placeholder",
+      "sha256": "6888bb2e4d14d6935d2cb17bbd145b818bb10e6116f70675a8aeeb7e765356e6",
+      "sha256_status": "verified",
       "chunking": "heading",
       "heading_regex": "^\\s*(\\d+(\\.\\d+)*\\.?\\s+[A-Z].{3,80}|Annex.*|Risk indicators.*|Red flag.*)\\s*$",
       "min_tokens": 200,
       "max_tokens": 800,
-      "expected_chunks": "10-15"
+      "expected_chunks": "10-15",
+      "fetched_at": "2026-09-23T14:42:36Z",
+      "text_path": "data/corpus/text/fatf_cyber_fraud_2023.txt"
     },
     {
       "doc_id": "ffiec_appendix_f",
@@ -260,12 +264,15 @@
       "kind": "regulation",
       "include": true,
       "browser_only": true,
-      "sha256": "placeholder",
-      "sha256_status": "placeholder",
+      "sha256": "f3722f4683cd370b780ad9f173c9ccbe4a411c85799636cd8ce5c1cd3d5a8b43",
+      "sha256_status": "verified",
       "chunking": "html_headings",
       "min_tokens": 150,
       "max_tokens": 800,
-      "expected_chunks": "8-10 (one per red-flag category heading)"
+      "expected_chunks": "8-10 (one per red-flag category heading)",
+      "bytes": 27766,
+      "fetched_at": "2026-09-23T14:42:36Z",
+      "text_path": "data/corpus/text/ffiec_appendix_f.txt"
     },
     {
       "doc_id": "ffiec_sar_overview",
@@ -276,12 +283,15 @@
       "kind": "regulation",
       "include": true,
       "browser_only": true,
-      "sha256": "placeholder",
-      "sha256_status": "placeholder",
+      "sha256": "bcdca50d7081dda2c6a7f41002493ed2c503d03b939a7e918782962dcf695636",
+      "sha256_status": "verified",
       "chunking": "html_headings",
       "min_tokens": 150,
       "max_tokens": 800,
-      "expected_chunks": "12-15 (thresholds, 30/60-day deadlines, narrative expectations, confidentiality)"
+      "expected_chunks": "12-15 (thresholds, 30/60-day deadlines, narrative expectations, confidentiality)",
+      "bytes": 83690,
+      "fetched_at": "2026-09-23T14:42:36Z",
+      "text_path": "data/corpus/text/ffiec_sar_overview.txt"
     },
     {
       "doc_id": "fatf_new_payment_methods_2010",

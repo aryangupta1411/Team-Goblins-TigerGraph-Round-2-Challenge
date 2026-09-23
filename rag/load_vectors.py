@@ -89,19 +89,19 @@ def connect():
 
 
 def ensure_awake(fn, *args, attempts: int = 8, **kwargs):
-    """Retry through Savanna auto-resume (502/503/connection errors) with 1,2,4..60 s backoff."""
-    delay = 1
-    for i in range(attempts):
-        try:
-            return fn(*args, **kwargs)
-        except Exception as e:  # noqa: BLE001
-            msg = str(e)
-            if i == attempts - 1 or not any(t in msg for t in ("502", "503", "504", "Connection", "timed out", "Bad Gateway")):
-                raise
-            warn(f"{type(e).__name__} from TigerGraph (Savanna auto-resume); retrying in {delay}s")
-            detail(msg[:160])
-            time.sleep(delay)
-            delay = min(delay * 2, 60)
+    """Call ``fn(*args, **kwargs)`` through Savanna auto-resume with the shared ``ops.ensure_awake`` policy.
+
+    Same classifier (502/503/504, connection errors, timeouts, an HTML start page; never 401/403/auth) and the
+    same 1, 2, 4 ... 60 s backoff bounded by TG_RESUME_MAX_WAIT_S (240 s) as every other target.
+    ``attempts`` is IGNORED: it is kept only so the existing call sites keep their signature.
+    """
+    from ops.ensure_awake import ensure_awake as _ea
+
+    def _on_retry(attempt: int, delay: float, exc: BaseException) -> None:
+        warn(f"{type(exc).__name__} from TigerGraph (Savanna auto-resume); retry {attempt} in {delay:.0f}s")
+        detail(str(exc)[:160])
+
+    return _ea(on_retry=_on_retry)(fn)(*args, **kwargs)
 
 
 def split_psv(path: Path, part_bytes: int = PART_BYTES) -> list[Path]:
@@ -217,7 +217,15 @@ def load_psv(conn, psv: Path, vertex: str, attr: str, dry_run: bool = False) -> 
             res = ensure_awake(conn.runLoadingJobWithFile, str(part), "f", job, sep="|", eol="\n",
                                timeout=config.TG_LOAD_TIMEOUT_MS, sizeLimit=128_000_000)
             stats = (res[0] if isinstance(res, list) and res else res) or {}
-            vstats = stats.get("statistics", {}).get("vertex", []) if isinstance(stats, dict) else []
+            # TigerGraph 4.2.5 nests these under statistics.parsingStatistics.objectLevel.* rather than the
+            # flat statistics.* some docs and earlier versions show (same trap as graph/load_all.py
+            # load_result_stats); accept either. A VECTOR attribute load reports under objectLevel.embedding
+            # (typeName "Vertex:attr", e.g. "PolicyChunk:emb") rather than objectLevel.vertex, which a plain
+            # vertex/edge CSV load uses -- read both so this works for either loading job.
+            raw_stats = stats.get("statistics", {}) if isinstance(stats, dict) else {}
+            parsing = raw_stats.get("parsingStatistics")
+            object_level = parsing["objectLevel"] if parsing else raw_stats
+            vstats = object_level.get("vertex", []) + object_level.get("embedding", [])
             valid = sum(int(v.get("validObject", 0)) for v in vstats)
             invalid = sum(int(v.get("invalidAttribute", 0)) + int(v.get("noIdFound", 0)) for v in vstats)
             total["parts"] += 1

@@ -15,7 +15,7 @@
     "channel": "online",
     "addr1": "191.0",
     "device_new": "New",
-    "cms_p": 0.29443
+    "cms_p": 0.168974
    },
    {
     "ts": "2016-11-28 22:07:15",
@@ -24,7 +24,7 @@
     "channel": "in_person",
     "addr1": "191.0",
     "device_new": "",
-    "cms_p": 0.002063
+    "cms_p": 0.002723
    },
    {
     "ts": "2016-11-29 16:55:33",
@@ -33,7 +33,7 @@
     "channel": "in_person",
     "addr1": "272.0",
     "device_new": "",
-    "cms_p": 0.000898
+    "cms_p": 0.00103
    }
   ],
   "summary": {

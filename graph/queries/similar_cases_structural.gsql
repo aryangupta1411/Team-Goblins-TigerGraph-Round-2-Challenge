@@ -51,16 +51,21 @@ CREATE OR REPLACE QUERY similar_cases_structural(INT k, STRING card_id, STRING c
 
   all_c = cc UNION ac;
   IF device_id != "" THEN
+    // datetime_format() of the pattern's own anchor attribute (c.opened_at / a.opened_at) can't share an
+    // ACCUM clause with other statements on this multi-hop pattern (the compiler mis-scopes alias `d`), so
+    // it runs as a second, single-hop pass over the vertex set the first SELECT already produced.
     cd = SELECT c FROM (d:DeviceProfile WHERE d.id == device_id)<-[:FROM_DEVICE]-(t:Transaction)<-[:INVOLVES]-(c:ClosedCase)
          WHERE c.opened_at <= as_of AND datetime_diff(as_of, c.opened_at) <= window_s
          ACCUM c.@score += 3.0, c.@overlap_reasons += "same_device", c.@kind += "closed",
-               c.@outcome_or_verdict += c.outcome, c.@pattern += c.pattern, c.@exposure_usd += c.exposure_usd,
-               c.@opened_at += datetime_format(c.opened_at, "%Y-%m-%d %H:%M:%S");
+               c.@outcome_or_verdict += c.outcome, c.@pattern += c.pattern, c.@exposure_usd += c.exposure_usd;
+    cd = SELECT c FROM (c:cd)
+         POST-ACCUM c.@opened_at += datetime_format(c.opened_at, "%Y-%m-%d %H:%M:%S");
     ad = SELECT a FROM (d:DeviceProfile WHERE d.id == device_id)<-[:CASE_DEVICE]-(a:AgentCase)
          WHERE a.opened_at <= as_of AND datetime_diff(as_of, a.opened_at) <= window_s
          ACCUM a.@score += 3.0, a.@overlap_reasons += "same_device", a.@kind += "agent",
-               a.@outcome_or_verdict += a.verdict, a.@pattern += a.pattern, a.@exposure_usd += a.exposure_usd,
-               a.@opened_at += datetime_format(a.opened_at, "%Y-%m-%d %H:%M:%S");
+               a.@outcome_or_verdict += a.verdict, a.@pattern += a.pattern, a.@exposure_usd += a.exposure_usd;
+    ad = SELECT a FROM (a:ad)
+         POST-ACCUM a.@opened_at += datetime_format(a.opened_at, "%Y-%m-%d %H:%M:%S");
     all_c = all_c UNION cd UNION ad;
   END;
 

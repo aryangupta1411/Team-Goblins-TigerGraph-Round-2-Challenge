@@ -298,7 +298,7 @@ test-data: ## the data-backed unit tests, mandatory locally after `make db featu
 	HHGOA_DB=$(HHGOA_DB) ENGINE_FACTS_DB=$(ENGINE_FACTS_DB) uv run pytest tests/unit/test_card_rule.py tests/unit/test_features.py tests/unit/test_engine.py -rs
 
 test-live: ## live contract tests against the workspace (needs .env)
-	uv run pytest tests/live -m live
+	uv run pytest tests/live -v
 
 lint: ## ruff check
 	uv run ruff check .

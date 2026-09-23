@@ -12,6 +12,7 @@ CREATE OR REPLACE QUERY case_subgraph(VERTEX<Card> c, DATETIME as_of, INT hours)
   SetAccum<NodeRow> @@nodes;
   SetAccum<EdgeRow> @@edges;
   HeapAccum<Pick>(60, ts DESC, id DESC) @@picks;
+  ListAccum<Pick> @@pick_cur;
   SetAccum<STRING> @@keep;
   MaxAccum<STRING> @@cid;
   DATETIME from_ts = epoch_to_datetime(datetime_to_epoch(as_of) - hours * 3600);
@@ -26,8 +27,9 @@ CREATE OR REPLACE QUERY case_subgraph(VERTEX<Card> c, DATETIME as_of, INT hours)
       WHERE t.ts > from_ts AND t.ts <= as_of
       POST-ACCUM @@picks += Pick(t.ts_str, t.id);
   WHILE @@picks.size() > 0 DO
-    Pick p = @@picks.pop();
-    @@keep += p.id;
+    @@pick_cur.clear();
+    @@pick_cur += @@picks.pop();
+    @@keep += @@pick_cur.get(0).id;
   END;
   T2 = SELECT t FROM (t:T)
        WHERE @@keep.contains(t.id)

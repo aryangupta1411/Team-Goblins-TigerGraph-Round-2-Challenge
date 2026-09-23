@@ -12,12 +12,16 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import os
 import sys
 import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))   # repo root, for ops.console
 from tg import connect, ensure_awake, run_query, version  # noqa: E402
+
+from ops.console import Col, Table, detail, fail, header, joinlist, ok, summary, warn  # noqa: E402
 
 log = logging.getLogger("graph.warmup")
 
@@ -30,6 +34,21 @@ WARM_QUERIES = [
     ("ring_profile", {"c": {"id": "C13487-K1"}, "as_of": "2016-11-22 20:11:00"}),
 ]
 VECTOR_ATTRS = {"ClosedCase": "note_emb", "AgentCase": "note_emb", "PolicyChunk": "emb"}
+
+
+def _int(value) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _n(value) -> str:
+    """A count as a right-alignable, thousands-separated cell; non-numbers pass through."""
+    try:
+        return f"{int(value):,}"
+    except (TypeError, ValueError):
+        return str(value)
 
 
 def state(conn) -> dict:
@@ -70,12 +89,24 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
     logging.basicConfig(level=logging.INFO if not args.json else logging.WARNING, format="%(asctime)s %(levelname)s %(message)s")
 
+    if not args.json:
+        header(
+            "graph.warmup",
+            "wake the workspace and report its state before a load, a benchmark or the demo",
+            {"queries": "state only" if args.no_queries else f"{len(WARM_QUERIES)} mandatory reads on HHG-014",
+             "timeout": "120s", "resume budget": f"{os.getenv('TG_RESUME_MAX_WAIT_S', '240')}s", "writes": "nothing"},
+        )
     t0 = time.time()
     try:
         conn = connect(timeout_ms=120_000)
         st = state(conn)
     except Exception as exc:  # noqa: BLE001
-        log.error("workspace unreachable: %s", str(exc)[:300])
+        if args.json:
+            log.error("workspace unreachable: %s", str(exc)[:300])
+        else:
+            fail("workspace unreachable")
+            detail(str(exc)[:300])
+            summary("warmup failed", {"seconds": f"{time.time() - t0:.0f}"}, status="fail")
         return 1
     st["wake_seconds"] = round(time.time() - t0, 1)
     if not args.no_queries:
@@ -93,15 +124,47 @@ def main(argv: list[str] | None = None) -> int:
                 timings[name] = f"error: {str(exc)[:120]}"
         st["warm_queries_s"] = timings
     if args.json:
+        # --json is a MACHINE contract (ui/ and tests/live parse stdout): JSON and nothing else.
         print(json.dumps(st, indent=1, default=str))
-    else:
-        print(f"TigerGraph {st['version']} awake in {st['wake_seconds']}s")
-        print("vertices:", json.dumps(st["vertices"]))
-        print("edges:   ", json.dumps(st["edges"]))
-        print(f"installed queries ({len(st['installed_queries'])}):", ", ".join(st["installed_queries"]))
-        print("vector index:", json.dumps(st["vector_index"]))
-        if "warm_queries_s" in st:
-            print("warm queries:", json.dumps(st["warm_queries_s"]))
+        return 0
+
+    ok(f"TigerGraph {st['version']} awake in {st['wake_seconds']}s")
+    if st.get("graph_error"):
+        warn("no graph yet (day 0/2)")
+        detail(str(st["graph_error"])[:200])
+    counts = Table(Col("type", max_width=22), Col("kind", width=6), Col("count", align="right", width=12),
+                   title="vertices and edges in the graph")
+    for kind, key in (("vertex", "vertices"), ("edge", "edges")):
+        for name, n in sorted((st.get(key) or {}).items(), key=lambda kv: -_int(kv[1])):
+            counts.add_row(name, kind, _n(n))
+    counts.print()
+
+    idx = Table(Col("vector attribute", max_width=26), Col("status", max_width=60), title="vector index")
+    for name, status in st["vector_index"].items():
+        idx.add_row(name, status, style=None if status == "ready" else "yellow")
+    idx.print()
+
+    if "warm_queries_s" in st:
+        warm = Table(Col("query", max_width=28), Col("seconds", align="right", width=9), Col("note", max_width=60),
+                     title="mandatory queries, first call after the resume")
+        for name, v in st["warm_queries_s"].items():
+            if isinstance(v, (int, float)):
+                warm.add_row(name, f"{v:.2f}", "" if v < 5 else "slower than the 5 s contract",
+                             style=None if v < 5 else "yellow")
+            else:
+                warm.add_row(name, "-", str(v), style="red" if str(v).startswith("error") else "yellow")
+        warm.print()
+
+    installed = st["installed_queries"]
+    if st.get("queries_error"):
+        warn(f"installed queries unavailable: {str(st['queries_error'])[:160]}")
+    summary(
+        "workspace warm",
+        {"version": st["version"], "wake seconds": st["wake_seconds"],
+         "vertex types": len(st.get("vertices") or {}), "edge types": len(st.get("edges") or {}),
+         "installed queries": f"{len(installed)}: {joinlist(installed, max_items=6)}",
+         "vector index": joinlist([f"{k}={v}" for k, v in st["vector_index"].items()], sep="  ")},
+    )
     return 0
 
 

@@ -52,8 +52,10 @@ import re
 import sqlite3
 import sys
 import time
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from pathlib import Path
+
+from ops.console import Col, Table, header, ok, progress, step, summary
 
 from . import config
 
@@ -200,6 +202,8 @@ class Embedder:
         self.mode = mode or config.RUN_MODE
         self.total_tokens = 0
         self.calls = 0
+        self.batches = 0      # backend batches flushed (display only)
+        self.cached = 0       # texts served from the sqlite cache in the last embed() (display only)
         self._backend = make_backend(self.backend_name, self.model, self.dim, self.mode, api_key=api_key)
         self.model = self._backend.model          # LocalBackend may substitute a HuggingFace id
         cache_path = cache_path or (config.OUT_DIR / "embed_cache.sqlite")
@@ -247,7 +251,13 @@ class Embedder:
                 delay = min(delay * 2, 60)
         raise RuntimeError("unreachable")
 
-    def embed(self, texts: list[str], input_type: str) -> list[list[float]]:
+    def embed(self, texts: list[str], input_type: str, on_progress: Callable[[int], None] | None = None) -> list[list[float]]:
+        """Embed `texts`, using the sqlite cache for anything already seen.
+
+        `on_progress(n)` (optional) is called with the number of texts finished since the last call -
+        once for the cache hits, then once per flushed batch. It is how `main()` drives the progress
+        bar; library callers (agent/tools_local.py) leave it out and nothing is printed.
+        """
         out: list[list[float] | None] = [None] * len(texts)
         todo: list[int] = []
         for i, t in enumerate(texts):
@@ -256,6 +266,9 @@ class Embedder:
                 out[i] = cached
             else:
                 todo.append(i)
+        self.cached = len(texts) - len(todo)
+        if on_progress is not None and self.cached:
+            on_progress(self.cached)
         batch: list[int] = []
         btoks = 0
         max_texts = getattr(self._backend, "batch_texts", BATCH_TEXTS)
@@ -270,6 +283,9 @@ class Embedder:
                 out[i] = v
                 self._put(self._key(texts[i], input_type), v)
             self._db.commit()
+            if on_progress is not None:
+                on_progress(len(batch))
+            self.batches += 1
             batch, btoks = [], 0
 
         for i in todo:
@@ -316,6 +332,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--input-type", default="document", choices=["document", "query"])
     ap.add_argument("--backend", default="", choices=["", "local", "voyage"], help="default: $EMBED_BACKEND (local)")
     ap.add_argument("--limit", type=int, default=0)
+    ap.add_argument("--json", action="store_true",
+                    help="print the run manifest as one JSON line instead of the summary (same content as "
+                         "<out>.manifest.json, which is always written)")
     a = ap.parse_args(argv)
     rows = [json.loads(line) for line in a.input.open() if line.strip()]
     if a.limit:
@@ -323,14 +342,52 @@ def main(argv: list[str] | None = None) -> int:
     ids = [r[a.id_key] for r in rows]
     texts = [r[a.text_key] for r in rows]
     t0 = time.time()
+    if not a.json:
+        header("rag.embed", "corpus rows -> unit-normalised vectors -> <id>|<f1,f2,...> for the TigerGraph loader",
+               {"backend": "mock (RUN_MODE=mock)" if config.RUN_MODE == "mock" else (a.backend or config.EMBED_BACKEND),
+                "model": config.EMBED_MODEL, "dim": config.EMBED_DIM, "mode": config.RUN_MODE, "input type": a.input_type, "rows": f"{len(rows):,}",
+                "input": str(a.input), "out": str(a.out),
+                "cache": str(config.OUT_DIR / "embed_cache.sqlite")})
+        step("loading the backend (first local run downloads the model)")
     emb = Embedder(backend=a.backend)
-    vecs = emb.embed(texts, a.input_type)
+    if a.json:
+        vecs = emb.embed(texts, a.input_type)
+    else:
+        ok(f"backend ready: {emb.backend_name} / {emb.model} / {emb.dim}-d")
+        with progress("embedding rows", total=len(texts)) as p:
+            vecs = emb.embed(texts, a.input_type, on_progress=p.advance)
     n = write_psv(zip(ids, vecs), a.out)
     manifest = {"model": emb.model, "dim": emb.dim, "mode": emb.mode, "input_type": a.input_type, "rows": n,
                 "api_calls": emb.calls, "voyage_total_tokens": emb.total_tokens, "seconds": round(time.time() - t0, 1),
                 "input": str(a.input), "output": str(a.out), **emb.describe()}
     a.out.with_suffix(".manifest.json").write_text(json.dumps(manifest, indent=2))
-    print(json.dumps(manifest))
+    if a.json:
+        print(json.dumps(manifest))
+        return 0
+    d = emb.describe()
+    t = Table(Col("setting", max_width=20), Col("value", max_width=46), title="embedding run")
+    for k, v in (("backend", d.get("backend")), ("model", d.get("model")), ("dimensions", d.get("dim")),
+                 ("device", d.get("device", "-")), ("model prompts", d.get("model_prompts", "-")),
+                 ("query prefix", d.get("query_prefix", "-")), ("run mode", emb.mode),
+                 ("input type", a.input_type)):
+        t.add_row(k, "yes" if v is True else "no" if v is False else v)
+    t.print()
+    v = Table(Col("measure", max_width=24), Col("value", align="right", width=14), title="throughput")
+    secs = manifest["seconds"]
+    v.add_row("rows written", f"{n:,}")
+    v.add_row("served from cache", f"{emb.cached:,}")
+    v.add_row("embedded now", f"{n - emb.cached:,}")
+    v.add_row("backend batches", f"{emb.batches:,}")
+    if emb.total_tokens:
+        v.add_row("tokens billed", f"{emb.total_tokens:,}")
+    v.add_row("seconds", f"{secs:,.1f}")
+    v.add_row("rows / second", f"{(n / secs):,.0f}" if secs > 0 else "-")
+    v.print()
+    ok(f"vectors -> {a.out} ({n:,} rows x {emb.dim} dims)")
+    summary("rag.embed complete",
+            {"rows": f"{n:,}", "dim": emb.dim, "backend": emb.backend_name, "model": emb.model,
+             "psv": str(a.out), "manifest": str(a.out.with_suffix('.manifest.json')),
+             "elapsed": f"{secs:.1f}s"})
     return 0
 
 

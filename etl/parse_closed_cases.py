@@ -24,9 +24,17 @@ versions are kept because they carry device signal.  Requires tables cc, txc (et
 from __future__ import annotations
 
 import re
+import shutil
 import sys
+import textwrap
 
 import duckdb
+
+from ops.console import Col, Table, detail, header, ok, rule, step, summary, warn
+
+# The six note templates and their documented row counts (verified on all 5,565 rows; see the docstring).
+EXPECTED_TEMPLATES = {"fraud_reported": 4_656, "cleared_travel": 716, "cleared_new_phone": 158,
+                      "cleared_amount": 26, "undoc_ring": 4, "undoc_burst": 5}
 
 RE_FRAUD = re.compile(
     r"^Case (CC-\d{4}): cardholder (C\d{5}) reported unrecognized activity on card (C\d{5}-K\d)\. "
@@ -143,11 +151,65 @@ def build(con: duckdb.DuckDBPyConnection) -> dict:
         "with_region": con.execute("SELECT count(*) FROM closed_case_parsed WHERE note_region <> ''").fetchone()[0],
         "sample": con.execute("SELECT id, embed_text FROM closed_case_parsed WHERE id IN ('CC-0001','CC-0003','CC-2649','CC-3748','CC-4160') ORDER BY id").fetchall(),
     }
-    for k, v in rep.items():
-        print(f"  {k}: {v}")
+    render_report(rep)
     return rep
 
 
+# ----------------------------------------------------------------------------------------
+# rendering — display only: `build()` returns exactly the dict it always did
+# ----------------------------------------------------------------------------------------
+
+def render_report(rep: dict) -> None:
+    """Print the parser report as tables: template counts against the documented ones, then samples."""
+    t = Table(
+        Col("template", max_width=20),
+        Col("expected", align="right", width=9),
+        Col("actual", align="right", width=9),
+        Col("result", width=6, align="center"),
+        title="note templates (all 5,565 rows must parse)",
+    )
+    wrong = []
+    for name in sorted(set(EXPECTED_TEMPLATES) | set(rep["templates"])):
+        want, got = EXPECTED_TEMPLATES.get(name), rep["templates"].get(name, 0)
+        good = want is None or want == got
+        if not good:
+            wrong.append(f"{name}: expected {want:,}, parsed {got:,}")
+        t.add_row(name, f"{want:,}" if want is not None else "-", f"{got:,}",
+                  "PASS" if want is not None and good else "-" if want is None else "FAIL",
+                  style=None if good else "red")
+    total_want = sum(EXPECTED_TEMPLATES.values())
+    t.add_row("TOTAL", f"{total_want:,}", f"{rep['n_cases']:,}",
+              "PASS" if rep["n_cases"] == total_want else "FAIL",
+              style=None if rep["n_cases"] == total_want else "red")
+    t.print()
+    for w in wrong:
+        warn(w)
+    if not wrong and rep["n_cases"] == total_want:
+        ok("every note matched its documented template")
+
+    e = Table(Col("edge / attribute", max_width=30), Col("rows", align="right", width=10),
+              title="edge rows and note attributes")
+    e.add_row("INVOLVES (case -> txn)", f"{rep['involves']:,}")
+    e.add_row("CONNECTED_TO (case -> card)", f"{rep['connected_to']:,}")
+    e.add_row("cases with note_device", f"{rep['with_device']:,}")
+    e.add_row("cases with note_region", f"{rep['with_region']:,}")
+    e.print()
+
+    rule("embed_text samples (masked; one per template family)")
+    width = max(40, min(shutil.get_terminal_size(fallback=(100, 24)).columns, 100) - 5)
+    for case_id, text in rep["sample"]:
+        step(case_id)
+        for line in textwrap.wrap(text, width=width) or [""]:
+            detail(line)
+
+
 if __name__ == "__main__":  # pragma: no cover
-    con = duckdb.connect(sys.argv[1] if len(sys.argv) > 1 else "data/hhgoa.duckdb")
-    build(con)
+    db = sys.argv[1] if len(sys.argv) > 1 else "data/hhgoa.duckdb"
+    header("etl.parse_closed_cases",
+           "template-parse 5,565 analyst notes -> closed_case_parsed / _txn / _conn",
+           {"db": db, "templates": len(EXPECTED_TEMPLATES), "masking": "<CASE> <ID> <N> <DATE> <AMT> <SCORE>"})
+    con = duckdb.connect(db)
+    rep = build(con)
+    summary("etl.parse_closed_cases complete",
+            {"closed cases": f"{rep['n_cases']:,}", "INVOLVES": f"{rep['involves']:,}",
+             "CONNECTED_TO": f"{rep['connected_to']:,}", "db": db})

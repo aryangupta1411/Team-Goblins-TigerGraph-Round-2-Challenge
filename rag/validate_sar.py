@@ -245,15 +245,57 @@ def validate_answer_sar(answer: dict, *, customer_id: str = "", card_id: str = "
                         file_report_in_final=("FILE_REPORT" in finals))
 
 
+CHECK_NAMES = {
+    "V00": "shape / reason cites a rule", "V01": "one paragraph, no newlines or tabs",
+    "V02": "6-12 sentences", "V03": "an ISO date and a currency amount",
+    "V04": "both activity dates named in the narrative", "V05": "activity_dates == affected min/max",
+    "V06": "total_amount_usd == exposure and written out", "V07": "subjects named and resolvable",
+    "V08": "every id in the narrative exists", "V09": "no forbidden text or markdown",
+    "V10": "the internal case id is named", "V11": "OFAC result and prior-report status stated",
+    "V12": "no seed tell", "V13": "prose only, no table markup",
+}
+
+
 def main(argv: list[str] | None = None) -> int:
     argv = argv if argv is not None else sys.argv[1:]
     if not argv:
         print(__doc__)
         return 2
-    ans = json.loads(Path(argv[0]).read_text())
+    from ops.console import Col, Table, fail, header, ok, summary
+
+    path = Path(argv[0])
+    ans = json.loads(path.read_text())
     db = argv[1] if len(argv) > 1 else None
+    sar = ans.get("sar", {}) or {}
+    case = ans.get("case", {}) or {}
+    header("rag.validate_sar",
+           "the single SAR validator (PLAN 4.8 / decisions D10) over one README-format answer",
+           {"answer": str(path), "case_id": ans.get("case_id", "-"),
+            "resolver": f"DuckResolver({db})" if db else "the answer's own ids (StaticResolver)",
+            "sar.file": str(bool(sar.get("file"))), "checks": len(CHECK_NAMES),
+            "exposure_usd": case.get("exposure_usd", "-")})
     errs = validate_answer_sar(ans, resolver=DuckResolver(db) if db else None)
-    print("\n".join(errs) if errs else "sar: OK")
+    failed = {e.split(" ", 1)[0] for e in errs}
+    filing = bool(sar.get("file"))
+    t = Table(Col("check", width=5), Col("what it asserts", max_width=46),
+              Col("result", width=6, align="center"), title="SAR checks",
+              caption="" if filing else "sar.file is false: only the V00 shape rules apply "
+                                        "(narrative '', subjects [], amount 0, dates [])")
+    for code in sorted(CHECK_NAMES):
+        if not filing and code != "V00":
+            t.add_row(code, CHECK_NAMES[code], "n/a", style="dim")
+            continue
+        bad = code in failed
+        t.add_row(code, CHECK_NAMES[code], "FAIL" if bad else "PASS", style="red" if bad else None)
+    t.print()
+    for e in errs:
+        fail(e)
+    if not errs:
+        ok("sar: OK - every check passed")
+    summary("rag.validate_sar complete",
+            {"answer": str(path), "violations": len(errs),
+             "checks failed": ", ".join(sorted(failed)) or "none"},
+            status="fail" if errs else "ok")
     return 1 if errs else 0
 
 

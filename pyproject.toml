@@ -32,6 +32,10 @@ dependencies = [
   "python-dotenv>=1.2,<2",
   "numpy>=2,<3",
   "requests>=2.32,<3",
+  # Terminal rendering for every CLI in the repo. Already present transitively (typer -> rich>=13.8.0,
+  # mcp[rich] -> rich>=13.9.4, streamlit[all] -> rich>=11.0.0); made explicit so it cannot vanish on a
+  # re-resolve. Lower bound is the highest of those transitive floors. Only ops/console.py may import it.
+  "rich>=13.9.4,<16",
   "sentence-transformers>=6.1.0",
   "claude-agent-sdk>=0.2.157",
 ]

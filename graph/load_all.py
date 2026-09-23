@@ -47,11 +47,12 @@ from pathlib import Path
 import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))   # repo root, for ops.console
 from check_contracts import FILE_TO_JOB, RAG_COLUMNS, _strip_comments  # noqa: E402
 from check_contracts import YAML as CSV_YAML  # noqa: E402
 from tg import DATA_OUT, GRAPH_DIR, connect, ensure_awake, gsql, is_transient  # noqa: E402
 
-log = logging.getLogger("graph.load_all")
+from ops.console import Col, Table, detail, fail, header, joinlist, ok, step, summary, warn  # noqa: E402
 
 GRAPH = "FraudGraph"
 SCHEMA_GSQL = GRAPH_DIR / "schema.gsql"
@@ -113,20 +114,32 @@ def file_plan(spec: dict, data_out: Path = DATA_OUT, only: list[str] | None = No
     if only:
         unknown = sorted(set(only) - set(ORDER))
         if unknown:
-            raise SystemExit(f"--only: unknown file stem(s) {unknown}; choose from {ORDER}")
+            raise SystemExit(f"--only: unknown file stem(s) {joinlist(unknown)}; choose from {joinlist(ORDER)}")
     return plan
 
 
-def check_paths(plan: list[FileSpec]) -> list[FileSpec]:
-    """Drop rag files that do not exist yet (day 7); fail on a missing ETL file."""
+def _n(value) -> str:
+    """A count as a right-alignable, thousands-separated cell: 590742 -> '590,742'."""
+    try:
+        return f"{int(value):,}"
+    except (TypeError, ValueError):
+        return str(value)
+
+
+def check_paths(plan: list[FileSpec], *, quiet: bool = False) -> list[FileSpec]:
+    """Drop rag files that do not exist yet (day 7); fail on a missing ETL file.
+
+    `quiet` keeps stdout empty for `--expected`, whose stdout is parsed as JSON.
+    """
     kept = []
     for fs in plan:
         missing = [p for p in fs.paths if not p.exists()]
         if not fs.paths or missing:
             if fs.stem in RAG_STEMS:
-                log.warning("%s: %s not written yet (rag/chunk.py, day 7) - skipped", fs.stem, [p.name for p in missing] or "no file")
+                if not quiet:
+                    warn(f"{fs.stem}: {joinlist([p.name for p in missing], empty='no file')} not written yet (rag/chunk.py, day 7) - skipped")
                 continue
-            raise SystemExit(f"{fs.stem}: missing {missing or 'every chunk'} - run etl.export_graph_csvs first")
+            raise SystemExit(f"{fs.stem}: missing {joinlist([p.name for p in missing], empty='every chunk')} - run etl.export_graph_csvs first")
         kept.append(fs)
     return kept
 
@@ -236,14 +249,17 @@ def graph_exists(conn) -> bool:
 def apply_schema(conn, drop_all: bool = False) -> bool:
     """Run graph/schema.gsql. Returns False when FraudGraph already exists and nothing was done."""
     if drop_all:
-        log.warning("USE GLOBAL / DROP ALL")
+        warn("USE GLOBAL / DROP ALL - every vertex, edge, job and query on the workspace")
         gsql(conn, "USE GLOBAL\nDROP ALL", ok_if=("everything is dropped", "successfully"))
+        ok("workspace dropped")
     elif graph_exists(conn):
-        log.info("FraudGraph already exists - schema.gsql skipped (use --drop-all --yes to start over)")
+        ok(f"{GRAPH} already exists - schema.gsql skipped")
+        detail("use --drop-all --yes to start over")
         return False
+    step(f"applying {SCHEMA_GSQL.name}")
     t0 = time.time()
     gsql(conn, SCHEMA_GSQL.read_text())
-    log.info("schema.gsql applied in %.0fs", time.time() - t0)
+    ok(f"schema applied in {time.time() - t0:.0f}s")
     return True
 
 
@@ -262,6 +278,7 @@ def job_names(text: str) -> list[str]:
 def create_jobs(conn, sep: str = "\t") -> list[str]:
     text = jobs_text(sep)
     names = job_names(text)
+    step(f"re-creating {len(names)} loading jobs (separator {sep!r})")
     for job in names:
         gsql(conn, f"USE GRAPH {GRAPH}\nDROP JOB {job}", ok_if=("does not exist", "dropped"), quiet=True)
     reply = gsql(conn, text, ok_if=("successfully created loading jobs",))
@@ -269,7 +286,7 @@ def create_jobs(conn, sep: str = "\t") -> list[str]:
     missing = [n for n in names if n not in created]
     if missing:
         raise RuntimeError(f"loading jobs not created: {missing}\n{reply[-2000:]}")
-    log.info("%d loading jobs created (separator %r)", len(names), sep)
+    ok(f"{len(names)} loading jobs created")
     return names
 
 
@@ -320,8 +337,6 @@ def load_file(conn, job: str, path: Path, sep: str, n_lines: int) -> dict:
     problems = check_stats(stats, n_lines)
     if problems:
         raise RuntimeError(f"{path.name} ({job}): {'; '.join(problems)}\nraw: {json.dumps(res)[:1500]}")
-    log.info("%-20s %-20s %9d lines %6.1f MB %6.1fs  %s", path.name, job, n_lines, size / 1e6, dt,
-             " ".join(f"{k}={v['validObject']}" for k, v in stats["objects"].items()))
     return stats
 
 
@@ -345,16 +360,35 @@ def edge_count(conn, etype: str) -> int:
 
 
 def verify_counts(conn, expected: dict[str, int]) -> tuple[dict[str, int], list[str]]:
+    """Ask the graph for every count and compare. Rendering is main()'s job (one table, after the loop)."""
     actual: dict[str, int] = {}
     mism = []
     for name, want in expected.items():
         got = edge_count(conn, name) if name.isupper() else vertex_count(conn, name)
         actual[name] = got
-        flag = "" if got == want else "   <-- MISMATCH"
-        log.info("%-18s expected %9d  got %9d%s", name, want, got, flag)
         if got != want:
             mism.append(f"{name}: expected {want}, got {got}")
     return actual, mism
+
+
+def counts_table(expected: dict[str, int], actual: dict[str, int]) -> Table:
+    """expected-vs-actual with a pass mark per vertex/edge type (590,742 / 576,425 / 140,784 / 14,955)."""
+    t = Table(
+        Col("type", max_width=18),
+        Col("kind", width=6),
+        Col("expected", align="right", width=11),
+        Col("actual", align="right", width=11),
+        Col("diff", align="right", width=9),
+        Col("ok", width=8, align="center"),
+        title=f"counts asserted against the graph ({len(expected)} types)",
+    )
+    for name, want in expected.items():
+        got = actual.get(name, 0)
+        good = got == want
+        t.add_row(name, "edge" if name.isupper() else "vertex", _n(want), _n(got),
+                  "-" if good else _n(got - want), "PASS" if good else "MISMATCH",
+                  style=None if good else "red")
+    return t
 
 
 # ------------------------------------------------------------------------------------------ main --------------
@@ -371,19 +405,33 @@ def main(argv: list[str] | None = None, connect_fn=connect) -> int:
     ap.add_argument("--data-out", type=Path, default=DATA_OUT)
     ap.add_argument("--report", type=Path, default=None, help="write per-file statistics + counts as JSON")
     args = ap.parse_args(argv)
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+    # graph/tg.py echoes every GSQL reply at INFO; that echo is the wall of text this output replaces.
+    # WARNING keeps the ensure_awake resume retries and hard errors visible on stderr.
+    logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(name)s: %(message)s")
 
     spec = load_spec()
     sep = args.sep or spec["format"]["separator"]
-    plan = check_paths(file_plan(spec, args.data_out, args.only))
 
     if args.expected:
+        # --expected is a MACHINE contract: stdout must stay parseable JSON and nothing else
+        # (tests/unit/test_graph_contracts.py::test_expected_flag_is_offline does json.loads on it).
+        plan = check_paths(file_plan(spec, args.data_out, args.only), quiet=True)
         t0 = time.time()
         exp = expected_counts(plan)
         print(json.dumps({"expected": exp, "manifest_mismatches": manifest_mismatches(plan, args.data_out),
                           "files": {p.name: count_lines(p) for fs in plan for p in fs.paths},
                           "seconds": round(time.time() - t0, 1)}, indent=1))
         return 0
+
+    stages = ["schema"] if args.schema_only else (["jobs"] if args.jobs_only else ["schema", "jobs", "load"] + ([] if args.skip_counts else ["counts"]))
+    header(
+        "graph.load_all",
+        f"{GRAPH} DDL, loading jobs, chunk upload and exact count assertions",
+        {"graph": GRAPH, "data out": args.data_out, "separator": repr(sep), "stages": " -> ".join(stages),
+         "only": joinlist(args.only, empty="every file"), "timeout": f"{LOAD_TIMEOUT_MS // 1000}s per file",
+         "report": args.report or "-"},
+    )
+    plan = check_paths(file_plan(spec, args.data_out, args.only))
 
     if args.drop_all and not args.yes:
         if input("DROP ALL on the workspace - every vertex, edge, job and query. Type YES to continue: ").strip() != "YES":
@@ -393,37 +441,74 @@ def main(argv: list[str] | None = None, connect_fn=connect) -> int:
     if not args.jobs_only:
         apply_schema(conn, args.drop_all)
     if args.schema_only:
+        summary("schema stage complete", {"graph": GRAPH, "schema": SCHEMA_GSQL.name, "next": "graph/load_all.py (jobs + upload)"})
         return 0
-    create_jobs(conn, sep)
+    jobs = create_jobs(conn, sep)
     if args.jobs_only:
+        summary("jobs stage complete", {"graph": GRAPH, "loading jobs": len(jobs), "separator": repr(sep)})
         return 0
 
-    for m in manifest_mismatches(plan, args.data_out):
-        log.warning("manifest: %s", m)
+    mismatches = manifest_mismatches(plan, args.data_out)
+    for m in mismatches:
+        warn(f"manifest: {m}")
 
     report: dict = {"separator": sep, "files": {}, "started": time.strftime("%Y-%m-%d %H:%M:%S")}
+    uploads = [(fs, p) for fs in plan for p in fs.paths]
+    total_mb = sum(p.stat().st_size for _, p in uploads) / 1e6
+    step(f"uploading {len(uploads)} files ({total_mb:,.1f} MB) through POST /restpp/ddl")
+    loaded = Table(
+        Col("#", align="right", width=3),
+        Col("file", max_width=18),
+        Col("job", max_width=20),
+        Col("rows", align="right", width=9),
+        Col("MB", align="right", width=7),
+        Col("sec", align="right", width=7),
+        Col("rows/s", align="right", width=9),
+        Col("objects created", max_width=60),
+        title="loaded files, in dependency order",
+    )
     t0 = time.time()
     enc_dir = Path(args.data_out) / "_enc"
-    for fs in plan:
-        for p in fs.paths:
-            up, n = encode_for_load(p, sep, enc_dir)
-            report["files"][p.name] = load_file(conn, fs.job, up, sep, n)
+    for i, (fs, p) in enumerate(uploads, 1):
+        up, n = encode_for_load(p, sep, enc_dir)
+        mb = up.stat().st_size / 1e6
+        # one line BEFORE each upload: a 45 MB chunk can take a minute and this is the only sign of life.
+        step(f"[{i:>2}/{len(uploads)}] {p.name} -> {fs.job}  {_n(n)} rows, {mb:,.1f} MB")
+        st = load_file(conn, fs.job, up, sep, n)
+        report["files"][p.name] = st
+        loaded.add_row(i, p.name, fs.job, _n(n), f"{mb:,.1f}", f"{st['seconds']:.1f}",
+                       _n(n / st["seconds"]) if st["seconds"] else "-",
+                       joinlist([f"{k}={_n(v['validObject'])}" for k, v in st["objects"].items()], sep=" ", max_items=4))
     report["load_seconds"] = round(time.time() - t0, 1)
-    log.info("loaded %d files in %.0fs", len(report["files"]), report["load_seconds"])
+    loaded.print()
+    ok(f"loaded {len(report['files'])} files ({total_mb:,.1f} MB) in {report['load_seconds']:.1f}s")
 
     rc = 0
+    expected: dict[str, int] = {}
     if not args.skip_counts:
+        step("verifying vertex and edge counts")
         expected = expected_counts(plan)
         actual, mism = verify_counts(conn, expected)
         report.update(expected=expected, actual=actual, mismatches=mism)
+        counts_table(expected, actual).print()
         if mism:
-            log.error("COUNT MISMATCH: %s", mism)
             rc = 1
+            fail(f"{len(mism)} of {len(expected)} counts do not match")
+            for m in mism:
+                detail(m)
         else:
-            log.info("all %d counts match", len(expected))
+            ok(f"all {len(expected)} counts match")
     if args.report:
         args.report.parent.mkdir(parents=True, exist_ok=True)
         args.report.write_text(json.dumps(report, indent=1))
+    summary(
+        "load complete" if rc == 0 else "load finished with count mismatches",
+        {"files": len(report["files"]), "megabytes": f"{total_mb:,.1f}", "load seconds": f"{report['load_seconds']:.0f}",
+         "types asserted": len(expected) if expected else "skipped",
+         "count mismatches": len(report.get("mismatches", [])) if not args.skip_counts else "-",
+         "manifest warnings": len(mismatches), "report": args.report or "-"},
+        status="ok" if rc == 0 else "fail",
+    )
     return rc
 
 

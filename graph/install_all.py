@@ -21,8 +21,12 @@ from dotenv import load_dotenv
 from pyTigerGraph import TigerGraphConnection
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+REPO = os.path.dirname(HERE)
+sys.path.insert(0, REPO)                       # repo root, for ops.console
 QDIR = os.path.join(HERE, "queries")
 SKIP = {"install_all.gsql"}
+
+from ops.console import Col, Table, detail, fail, header, ok, progress, step, summary, warn  # noqa: E402
 
 
 def connect() -> TigerGraphConnection:
@@ -48,27 +52,77 @@ def gsql_ok(text: str) -> bool:
     return not any(b in text for b in bad)
 
 
+def _tail(text: str, n: int) -> list[str]:
+    """The last `n` non-empty lines of a GSQL reply, for `detail()` under a status line."""
+    return [ln.strip() for ln in str(text).splitlines() if ln.strip()][-n:]
+
+
 def main() -> int:
-    conn = connect()
     names = [a for a in sys.argv[1:] if a != "--only"]  # `--only a b` (module F's runbook) == `a b`
     files = sorted(glob.glob(os.path.join(QDIR, "*.gsql")))
     files = [f for f in files if os.path.basename(f) not in SKIP and (not names or os.path.basename(f)[:-5] in names)]
+    load_dotenv()   # so the banner shows the real host/graph before connect() blocks on a resuming workspace
+    header(
+        "graph.install_all",
+        "CREATE OR REPLACE every query file, then one INSTALL QUERY ALL (1-3 min on TG-00)",
+        {"host": os.environ.get("TG_HOST", "?"), "graph": os.environ.get("TG_GRAPHNAME", "FraudGraph"),
+         "query dir": os.path.relpath(QDIR, REPO), "queries": len(files),
+         "selection": " ".join(names) if names else "every *.gsql"},
+    )
+    conn = connect()
+
+    created = Table(
+        Col("#", align="right", width=3),
+        Col("query", max_width=34),
+        Col("create", width=6, align="center"),
+        Col("sec", align="right", width=6),
+        Col("note", max_width=60),
+        title=f"{len(files)} query files sent to the GSQL server",
+    )
     failed = []
-    for f in files:
-        t = time.time()
-        res = conn.gsql(open(f).read())
-        ok = gsql_ok(res)
-        print(f"{'OK ' if ok else 'ERR'} create {os.path.basename(f):32s} {time.time() - t:5.1f}s")
-        if not ok:
-            failed.append(os.path.basename(f))
-            print(res)
+    replies: dict[str, str] = {}
+    # A live count while the GSQL server chews through the files; the per-query table follows.
+    with progress("creating queries", total=len(files)) as p:
+        for i, f in enumerate(files, 1):
+            name = os.path.basename(f)
+            t = time.time()
+            res = conn.gsql(open(f).read())
+            good = gsql_ok(res)
+            if not good:
+                failed.append(name)
+                replies[name] = res
+            created.add_row(i, name, "OK" if good else "ERR", f"{time.time() - t:.1f}",
+                            "" if good else (_tail(res, 1) or [""])[0], style=None if good else "red")
+            p.advance()
+    created.print()
+    if failed:
+        for name in failed:
+            fail(f"{name} did not compile")
+            for line in _tail(replies[name], 12):
+                detail(line)
+    else:
+        ok(f"{len(files)} queries created")
+
+    step("INSTALL QUERY ALL - compiles every created-but-not-installed query")
     t = time.time()
     res = conn.gsql("USE GRAPH FraudGraph\nINSTALL QUERY ALL")
-    print(f"install all: {time.time() - t:.0f}s\n{res[-2000:]}")
-    if failed:
-        print("FAILED:", failed)
-        return 1
-    return 0
+    dt = time.time() - t
+    if gsql_ok(res):
+        ok(f"INSTALL QUERY ALL finished in {dt:.0f}s")
+        for line in _tail(res, 3):
+            detail(line)
+    else:
+        warn(f"INSTALL QUERY ALL returned errors after {dt:.0f}s")
+        for line in _tail(res, 20):
+            detail(line)
+
+    summary(
+        "query library installed" if not failed else "query library incomplete",
+        {"query files": len(files), "created": len(files) - len(failed), "failed": len(failed),
+         "install seconds": f"{dt:.0f}", "failures": ", ".join(failed) or "-"},
+        status="ok" if not failed else "fail",
+    )
+    return 1 if failed else 0
 
 
 if __name__ == "__main__":

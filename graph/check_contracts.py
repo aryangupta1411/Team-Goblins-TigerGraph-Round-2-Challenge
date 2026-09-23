@@ -25,6 +25,10 @@ import yaml
 
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parent
+sys.path.insert(0, str(REPO))                       # repo root: these scripts run as plain files, not as a package
+
+from ops.console import Col, Table, detail, fail, header, ok  # noqa: E402
+
 _CANDIDATES = [Path(p) for p in (os.environ.get("HHGOA_CSV_COLUMNS", ""),) if p] + [REPO / "contracts" / "csv_columns.yaml", REPO.parent / "contracts" / "csv_columns.yaml"]
 YAML = next((p for p in _CANDIDATES if p.exists()), _CANDIDATES[-1])
 SCHEMA = HERE / "schema.gsql"
@@ -110,6 +114,11 @@ RAG_COLUMNS = {
 
 
 def main() -> int:
+    header(
+        "graph.check_contracts",
+        "offline consistency check: csv_columns.yaml vs schema.gsql vs loading_jobs.gsql",
+        {"contracts": YAML, "schema": SCHEMA.name, "jobs": JOBS.name},
+    )
     spec = yaml.safe_load(YAML.read_text())
     vertices, edges = parse_schema(SCHEMA.read_text())
     jobs = parse_jobs(JOBS.read_text())
@@ -197,11 +206,27 @@ def main() -> int:
         if v not in loaded and v not in runtime_only:
             errors.append(f"vertex {v} has no loading job")
 
-    print(f"schema: {len(vertices)} vertices, {len(edges)} edges; jobs: {len(jobs)}; files: {len(files)}")
-    for e in errors:
-        print("MISMATCH:", e)
-    print("OK" if not errors else f"{len(errors)} mismatch(es)")
-    return 1 if errors else 0
+    t = Table(
+        Col("artefact", max_width=22),
+        Col("count", align="right", width=6),
+        Col("source", max_width=30),
+        Col("checked", max_width=56),
+        title="contract surfaces",
+    )
+    t.add_row("vertex types", len(vertices), SCHEMA.name, "names, attribute order, reserved words")
+    t.add_row("edge types", len(edges), SCHEMA.name, "names, attribute count, reserved words")
+    t.add_row("loading jobs", len(jobs), JOBS.name, "$0..$n, TO VERTEX/EDGE values, USING, no QUOTE")
+    t.add_row("csv files", len(files), YAML.name, "column names == schema attributes, edge guards")
+    t.print()
+
+    if errors:
+        fail(f"{len(errors)} mismatch(es) between the contracts")
+        for e in errors:
+            detail(e)
+        return 1
+    # The trailing token is a contract: tests/unit/test_graph_contracts.py asserts stdout ends with "OK".
+    ok("schema, loading jobs and csv_columns.yaml all agree - OK")
+    return 0
 
 
 if __name__ == "__main__":

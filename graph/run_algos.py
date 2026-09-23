@@ -29,9 +29,10 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))   # repo root, for ops.console
 from tg import GRAPH_DIR, connect, ensure_awake, gsql, merged, run_query  # noqa: E402
 
-log = logging.getLogger("graph.run_algos")
+from ops.console import Col, Table, detail, fail, header, joinlist, ok, step, summary, warn  # noqa: E402
 
 GRAPH = "FraudGraph"
 ALGOS = GRAPH_DIR / "algos"
@@ -41,23 +42,65 @@ RING_PROFILE = "SM-G935F Build/NRD90M | Android 7.0 | chrome 62.0 for android | 
 RING_CARD = "C13487-K1"                                                                       # HHG-014
 
 
+def _n(value) -> str:
+    """A count as a right-alignable, thousands-separated cell; non-numbers pass through."""
+    try:
+        return f"{int(value):,}"
+    except (TypeError, ValueError):
+        return str(value)
+
+
 def install(conn) -> None:
-    for name in OURS:
-        gsql(conn, (ALGOS / f"{name}.gsql").read_text(), ok_if=("successfully created",))
-    for name in LIBRARY:
-        text = (ALGOS / f"{name}.gsql").read_text().replace("CREATE QUERY", "CREATE OR REPLACE QUERY", 1)
-        gsql(conn, f"USE GRAPH {GRAPH}\n{text}", ok_if=("successfully created",))
+    for i, name in enumerate(OURS + LIBRARY, 1):
+        step(f"[{i}/{len(OURS + LIBRARY)}] create or replace {name}")
+        if name in OURS:
+            gsql(conn, (ALGOS / f"{name}.gsql").read_text(), ok_if=("successfully created",))
+        else:
+            text = (ALGOS / f"{name}.gsql").read_text().replace("CREATE QUERY", "CREATE OR REPLACE QUERY", 1)
+            gsql(conn, f"USE GRAPH {GRAPH}\n{text}", ok_if=("successfully created",))
+    step(f"INSTALL QUERY {len(OURS + LIBRARY)} algorithm queries")
     t0 = time.time()
     gsql(conn, f"USE GRAPH {GRAPH}\nINSTALL QUERY {', '.join(OURS + LIBRARY)}", ok_if=("query installation finished",))
-    log.info("installed %s in %.0fs", OURS + LIBRARY, time.time() - t0)
+    ok(f"installed {len(OURS + LIBRARY)} algorithm queries in {time.time() - t0:.0f}s")
 
 
-def step(conn, report: dict, name: str, params: dict) -> dict:
+# What each algorithm writes back to the graph, so the run says so instead of leaving it to the reader.
+WRITES_BACK = {
+    "clear_shares_device": "deletes every SHARES_DEVICE edge",
+    "project_shares_device": "SHARES_DEVICE edges (n_shared, weight, via)",
+    "tg_wcc": "Card.wcc_id",
+    "tg_degree_cent": "Card.device_degree (DOUBLE; may be rejected)",
+    "set_device_degree": "Card.device_degree (INT), wcc_id = -1 for isolated cards",
+    "wcc_summary": "nothing (reads component sizes)",
+}
+# The result keys worth showing per algorithm; everything else stays in --report.
+SHOW = {
+    "clear_shares_device": ["n_deleted"],
+    "project_shares_device": ["n_inserts", "n_profiles", "n_pairs"],
+    "tg_wcc": ["@@comp_sizes.size()", "n_components"],
+    "tg_degree_cent": ["top_scores"],
+    "set_device_degree": ["n_cards", "n_isolated"],
+    "wcc_summary": ["n_components", "n_components_ge2", "n_isolated_cards"],
+}
+
+
+def result_cells(name: str, res: dict) -> list[str]:
+    """`key=value` strings worth showing for one algorithm - never a raw list/dict repr."""
+    if name == "tg_degree_cent":
+        top = [r for r in (res.get("top_scores") or []) if isinstance(r, dict)]
+        return [f"top_k={len(top)}"] + [f"{r.get('Vertex_ID', r.get('v_id', '?'))}={r.get('score')}" for r in top[:2]]
+    cells = [f"{k}={res[k]}" for k in SHOW.get(name, []) if k in res]
+    return cells or [f"{k}={v}" for k, v in list(res.items())[:4] if not isinstance(v, (list, dict))]
+
+
+def run_step(conn, report: dict, name: str, params: dict) -> dict:
+    """Run one installed algorithm query, timed. Results go in the table after the pass, not here."""
+    step(f"{name} - {WRITES_BACK.get(name, 'runs')}")
     t0 = time.time()
     res = merged(run_query(conn, name, params, timeout_ms=600_000))
     dt = round(time.time() - t0, 1)
     report[name] = {"seconds": dt, "params": params, "result": res}
-    log.info("%s %s -> %s (%.1fs)", name, json.dumps(params)[:120], json.dumps(res)[:400], dt)
+    ok(f"{name} in {dt:.1f}s")
     return res
 
 
@@ -68,7 +111,16 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--max-cards-per-profile", type=int, default=60)
     ap.add_argument("--report", type=Path, default=None)
     args = ap.parse_args(argv)
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+    # graph/tg.py echoes every GSQL reply at INFO; WARNING keeps the resume retries and hard errors on stderr.
+    logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(name)s: %(message)s")
+
+    stages = (["install"] if not args.no_install else []) + (["project"] if not args.no_project else []) + ["wcc", "degree", "summary"]
+    header(
+        "graph.run_algos",
+        "the once-only graph-algorithm pass: SHARES_DEVICE projection, WCC, degree",
+        {"graph": GRAPH, "stages": " -> ".join(stages), "timeout": "600s per query",
+         "max cards/profile": args.max_cards_per_profile, "ring card": RING_CARD, "report": args.report or "-"},
+    )
 
     conn = connect(timeout_ms=600_000)
     report: dict = {"started": time.strftime("%Y-%m-%d %H:%M:%S")}
@@ -76,25 +128,28 @@ def main(argv: list[str] | None = None) -> int:
         install(conn)
 
     if not args.no_project:
-        step(conn, report, "clear_shares_device", {})
-        proj = step(conn, report, "project_shares_device", {"max_cards_per_profile": args.max_cards_per_profile, "do_insert": True})
+        run_step(conn, report, "clear_shares_device", {})
+        proj = run_step(conn, report, "project_shares_device", {"max_cards_per_profile": args.max_cards_per_profile, "do_insert": True})
         if not proj.get("n_inserts"):
-            log.error("project_shares_device inserted nothing (%s) - is DeviceProfile.is_strong loaded?", proj)
+            fail("project_shares_device inserted nothing - is DeviceProfile.is_strong loaded?")
+            detail(joinlist([f"{k}={v}" for k, v in proj.items()], sep="  ", empty="empty result"))
+            summary("algorithm pass aborted", {"stage": "project_shares_device", "SHARES_DEVICE edges": 0}, status="fail")
             return 1
 
-    step(conn, report, "tg_wcc", {"v_type_set": ["Card"], "e_type_set": ["SHARES_DEVICE"], "print_limit": 0,
-                                  "print_results": False, "result_attribute": "wcc_id", "file_path": ""})
+    run_step(conn, report, "tg_wcc", {"v_type_set": ["Card"], "e_type_set": ["SHARES_DEVICE"], "print_limit": 0,
+                                      "print_results": False, "result_attribute": "wcc_id", "file_path": ""})
 
     try:
-        step(conn, report, "tg_degree_cent", {"v_type_set": ["Card"], "e_type_set": ["SHARES_DEVICE"], "reverse_e_type_set": ["SHARES_DEVICE"],
-                                              "in_degree": True, "out_degree": False, "top_k": 20, "print_results": True,
-                                              "result_attribute": "device_degree", "file_path": "", "normalize": False})
+        run_step(conn, report, "tg_degree_cent", {"v_type_set": ["Card"], "e_type_set": ["SHARES_DEVICE"], "reverse_e_type_set": ["SHARES_DEVICE"],
+                                                  "in_degree": True, "out_degree": False, "top_k": 20, "print_results": True,
+                                                  "result_attribute": "device_degree", "file_path": "", "normalize": False})
     except Exception as exc:  # noqa: BLE001 - DOUBLE -> INT setAttr rejected: set_device_degree below is the result
         report["tg_degree_cent"] = {"error": str(exc)[:500]}
-        log.warning("tg_degree_cent failed (%s); set_device_degree provides Card.device_degree", str(exc)[:160])
+        warn("tg_degree_cent failed; set_device_degree provides Card.device_degree")
+        detail(str(exc)[:160])
 
-    step(conn, report, "set_device_degree", {"reset_isolated_wcc": True})
-    summary = step(conn, report, "wcc_summary", {"ring_profile_id": RING_PROFILE, "top_n": 10})
+    run_step(conn, report, "set_device_degree", {"reset_isolated_wcc": True})
+    wcc = run_step(conn, report, "wcc_summary", {"ring_profile_id": RING_PROFILE, "top_n": 10})
 
     @ensure_awake()
     def _facts():
@@ -103,11 +158,50 @@ def main(argv: list[str] | None = None) -> int:
 
     facts = _facts()
     report["facts"] = facts
-    top = summary.get("top_components", [])
-    print(json.dumps({"largest_components": top[:3], "n_components": summary.get("n_components"),
-                      "n_components_ge2": summary.get("n_components_ge2"), "n_isolated_cards": summary.get("n_isolated_cards"),
-                      "ring_card_components": summary.get("ring_card_components"), "shares_device_edges": facts["SHARES_DEVICE"],
-                      "ring_card": facts["ring_card"]}, indent=1, default=str))
+
+    timings = Table(
+        Col("algorithm", max_width=24),
+        Col("sec", align="right", width=7),
+        Col("writes back to the graph", max_width=56),
+        Col("result", max_width=58),
+        title="algorithm pass, in order",
+    )
+    for name in ["clear_shares_device", "project_shares_device", "tg_wcc", "tg_degree_cent", "set_device_degree", "wcc_summary"]:
+        r = report.get(name)
+        if r is None:
+            timings.add_row(name, "-", WRITES_BACK.get(name, ""), "skipped", style="yellow")
+            continue
+        if "error" in r:
+            timings.add_row(name, "-", WRITES_BACK.get(name, ""), str(r["error"])[:120], style="red")
+            continue
+        timings.add_row(name, f"{r['seconds']:.1f}", WRITES_BACK.get(name, ""),
+                        joinlist(result_cells(name, r["result"]), sep="  ", empty="-"))
+    timings.print()
+
+    top = wcc.get("top_components", []) or []
+    comps = Table(
+        Col("rank", align="right", width=4),
+        Col("component", max_width=26),
+        Col("cards", align="right", width=9),
+        title="largest weakly-connected components (SHARES_DEVICE over strong device profiles)",
+    )
+    for i, c in enumerate(top[:3], 1):
+        if isinstance(c, dict):
+            comps.add_row(i, c.get("wcc_id", c.get("id", "?")), _n(c.get("n_cards", c.get("size", c.get("n", "?")))))
+        else:
+            comps.add_row(i, str(c), "")
+    comps.print()
+
+    ring = facts["ring_card"]
+    ring_attrs = ring[0].get("attributes", {}) if isinstance(ring, list) and ring else ring
+    summary(
+        "algorithm pass complete",
+        {"SHARES_DEVICE edges": _n(facts["SHARES_DEVICE"]), "components": _n(wcc.get("n_components", "?")),
+         "components >= 2 cards": _n(wcc.get("n_components_ge2", "?")), "isolated cards": _n(wcc.get("n_isolated_cards", "?")),
+         "ring card": f"{RING_CARD} {joinlist([f'{k}={v}' for k, v in (ring_attrs or {}).items()], sep='  ', empty='not found')}",
+         "ring card components": joinlist(wcc.get("ring_card_components") or [], empty="-"),
+         "report": args.report or "-"},
+    )
     if args.report:
         args.report.parent.mkdir(parents=True, exist_ok=True)
         args.report.write_text(json.dumps(report, indent=1, default=str))

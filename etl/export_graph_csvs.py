@@ -24,6 +24,8 @@ import time
 import duckdb
 import yaml
 
+from ops.console import Col, Table, fail, header, ok, progress, step, summary
+
 SEP = "\t"
 CHUNK_BYTES = 45 * 1024 * 1024
 FLOAT2 = "printf('%.2f', {c})"
@@ -197,18 +199,32 @@ def export(db: str, out: str, yaml_path: str, sample: int | None = None, only: l
     report = {}
     if only and os.path.exists(manifest_path):
         report = json.load(open(manifest_path))
-    for path, fspec in spec["files"].items():
-        key = file_key(path)
-        if only and key not in only:
-            continue
-        cols = [c["name"] for c in fspec["columns"]]
-        out_path = os.path.join(out, os.path.basename(path))
-        parts = write_file(con, key, cols, out_path, sample=sample, chunk=(key == "txn"))
-        for p, n, b in parts:
-            report[os.path.basename(p)] = {"rows": n, "bytes": b, "columns": len(cols)}
-            print(f"  {os.path.basename(p):22s} rows={n:8d} bytes={b:11d} cols={len(cols)}", flush=True)
+    todo = [(p, f) for p, f in spec["files"].items() if not only or file_key(p) in only]
+    t = Table(
+        Col("file", max_width=22),
+        Col("rows", align="right", width=10),
+        Col("bytes", align="right", width=13),
+        Col("cols", align="right", width=5),
+        title=f"data/out chunks (TAB-separated, headerless, unquoted){' - SAMPLE' if sample else ''}",
+    )
+    total_rows = total_bytes = 0
+    with progress("exporting files", total=len(todo)) as p:
+        for path, fspec in todo:
+            key = file_key(path)
+            cols = [c["name"] for c in fspec["columns"]]
+            out_path = os.path.join(out, os.path.basename(path))
+            parts = write_file(con, key, cols, out_path, sample=sample, chunk=(key == "txn"))
+            for part_path, n, b in parts:
+                report[os.path.basename(part_path)] = {"rows": n, "bytes": b, "columns": len(cols)}
+                t.add_row(os.path.basename(part_path), f"{n:,}", f"{b:,}", len(cols))
+                total_rows += n
+                total_bytes += b
+            p.advance()
+    t.caption = f"{len(t)} file(s), {total_rows:,} rows, {total_bytes / 1e6:,.1f} MB"
+    t.print()
     report["_elapsed_s"] = round(time.time() - t0, 1)
     json.dump(report, open(manifest_path, "w"), indent=1)
+    ok(f"manifest -> {manifest_path} ({time.time() - t0:.1f}s)")
     return report
 
 
@@ -216,6 +232,16 @@ def verify(out: str, yaml_path: str) -> None:
     """Parse every written file back with DuckDB (tab, no quote) and check the column count."""
     spec = yaml.safe_load(open(yaml_path))
     con = duckdb.connect()
+    step("re-reading every written file with DuckDB (delim=TAB, quote='')")
+    t = Table(
+        Col("file", max_width=22),
+        Col("rows", align="right", width=10),
+        Col("cols expected", align="right", width=13),
+        Col("cols read", align="right", width=9),
+        Col("result", width=6, align="center"),
+        title="round-trip verification",
+    )
+    bad = []
     for path, fspec in spec["files"].items():
         n = len(fspec["columns"])
         base = os.path.basename(path)
@@ -223,8 +249,15 @@ def verify(out: str, yaml_path: str) -> None:
         for f in files:
             cols = con.execute(f"SELECT count(*) FROM (DESCRIBE SELECT * FROM read_csv('{os.path.join(out, f)}', delim='\t', quote='', escape='', header=false, all_varchar=true, columns={{{', '.join(f"'c{i}': 'VARCHAR'" for i in range(n))}}}))").fetchone()[0]
             rows = con.execute(f"SELECT count(*) FROM read_csv('{os.path.join(out, f)}', delim='\t', quote='', escape='', header=false, all_varchar=true, columns={{{', '.join(f"'c{i}': 'VARCHAR'" for i in range(n))}}})").fetchone()[0]
-            assert cols == n, (f, cols, n)
-            print(f"  verified {f}: {rows} rows x {cols} cols")
+            good = cols == n
+            if not good:
+                bad.append((f, cols, n))
+            t.add_row(f, f"{rows:,}", n, cols, "PASS" if good else "FAIL", style=None if good else "red")
+    t.print()
+    for f, cols, n in bad:
+        fail(f"{f}: read {cols} columns, contract says {n}")
+    assert not bad, bad
+    ok(f"{len(t)} file(s) parse back at the contracted column count")
 
 
 if __name__ == "__main__":  # pragma: no cover
@@ -236,6 +269,16 @@ if __name__ == "__main__":  # pragma: no cover
     ap.add_argument("--verify", action="store_true")
     ap.add_argument("--only", nargs="+", default=None, help="file keys to (re)write, e.g. fraud_pattern closed_case txn")
     a = ap.parse_args()
-    export(a.db, a.out, a.yaml, a.sample, a.only)
+    header("etl.export_graph_csvs",
+           "DuckDB derived tables -> headerless TAB-separated chunks for the TigerGraph loader",
+           {"db": a.db, "out": a.out, "contract": a.yaml,
+            "only": " ".join(a.only) if a.only else "every file",
+            "sample": a.sample if a.sample else "all rows", "verify": "yes" if a.verify else "no"})
+    rep = export(a.db, a.out, a.yaml, a.sample, a.only)
     if a.verify:
         verify(a.out, a.yaml)
+    written = [k for k in rep if not k.startswith("_")]
+    summary("etl.export_graph_csvs complete",
+            {"files": len(written), "rows": f"{sum(rep[k]['rows'] for k in written):,}",
+             "bytes": f"{sum(rep[k]['bytes'] for k in written):,}",
+             "out": a.out, "elapsed": f"{rep['_elapsed_s']}s"})

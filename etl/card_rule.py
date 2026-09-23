@@ -63,9 +63,31 @@ def card_ids_exist(con: duckdb.DuckDBPyConnection, ids: list[str]) -> set[str]:
 
 
 if __name__ == "__main__":  # pragma: no cover
+    from ops.console import Col, Table, header, summary
+    from ops.console import ok as ok_line
+
     db = sys.argv[1] if len(sys.argv) > 1 else "data/hhgoa.duckdb"
     con = duckdb.connect(db)
+    header("etl.card_rule",
+           "derive card_id and replay it against every labelled (transaction -> card) pair",
+           {"db": db, "rule": "customer_id || '-K' || dense_rank() over (customer_id ORDER BY card6)"})
     n_cards = build_cardmap(con)
-    n, ok = check_rule(con)
-    print(f"cards={n_cards} pairs={n} ok={ok}")
-    sys.exit(0 if n == ok else 1)
+    n, n_ok = check_rule(con)
+    t = Table(
+        Col("check", max_width=34),
+        Col("expected", align="right", width=10),
+        Col("actual", align="right", width=10),
+        Col("result", width=6, align="center"),
+        title="card rule regression (contracts/schema.md)",
+    )
+    t.add_row("labelled pairs reproduced", f"{n:,}", f"{n_ok:,}", "PASS" if n == n_ok else "FAIL",
+              style=None if n == n_ok else "red")
+    t.add_row("cards in cardmap", f"{n_cards:,}", f"{n_cards:,}", "PASS")
+    t.print()
+    if n == n_ok:
+        ok_line(f"card rule reproduces {n_ok:,}/{n:,} labelled pairs (100.0%)")
+    summary("etl.card_rule complete",
+            {"cards": f"{n_cards:,}", "labelled pairs": f"{n:,}",
+             "reproduced": f"{n_ok:,}", "miss": f"{n - n_ok:,}"},
+            status="ok" if n == n_ok else "fail")
+    sys.exit(0 if n == n_ok else 1)

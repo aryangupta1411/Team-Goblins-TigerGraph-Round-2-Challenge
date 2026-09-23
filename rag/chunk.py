@@ -33,6 +33,8 @@ import sys
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
+from ops.console import Col, Table, fail, header, ok, step, summary, warn
+
 from . import config
 from .fetch_corpus import load_manifest, sha256_of
 
@@ -353,6 +355,12 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--readme-only", action="store_true")
     args = ap.parse_args(argv)
 
+    header("rag.chunk",
+           "README policy/patterns + regulatory corpus -> PolicyChunk rows",
+           {"readme": str(args.readme), "text dir": str(args.text_dir), "manifest": str(args.manifest),
+            "out": str(args.out), "scope": "README only" if args.readme_only else "README + regulations",
+            "target tokens": f"{TARGET_MIN}-{TARGET_MAX}", "overlap": f"{OVERLAP:.0%}"})
+
     manifest = load_manifest(args.manifest)
     docs = manifest["documents"]
     md = args.readme.read_text()
@@ -360,29 +368,68 @@ def main(argv: list[str] | None = None) -> int:
     for d in docs:
         if d.get("media") == "markdown":
             d["sha256"], d["sha256_status"] = readme_sha, "verified"
+    step(f"chunking {args.readme.name} (one chunk per rule R1-R10, per section and per known pattern)")
     chunks, _descriptions = chunk_readme(md, "README.md#fraud-policy", readme_sha)   # descriptions: ETL-owned
+    ok(f"{len(chunks)} README chunks (sha256 {readme_sha[:12]})")
+
+    t = Table(
+        Col("doc_id", max_width=24),
+        Col("kind", max_width=12),
+        Col("chunks", align="right", width=7),
+        Col("tokens min", align="right", width=10),
+        Col("median", align="right", width=7),
+        Col("max", align="right", width=6),
+        Col("status", max_width=26),
+        title="corpus documents",
+    )
+    missing = []
     if not args.readme_only:
         for d in docs:
             if not d.get("include") or d.get("media") == "markdown":
                 continue
             if d.get("media") == "inline":
-                t = d["text"].strip()
-                chunks.append(Chunk(f"{d['doc_id']}#p00-note", d["doc_id"], d["title"], 0, 0, d["kind"], t,
-                                    d.get("url", ""), "", n_tokens(t), []))
+                text = d["text"].strip()
+                chunks.append(Chunk(f"{d['doc_id']}#p00-note", d["doc_id"], d["title"], 0, 0, d["kind"], text,
+                                    d.get("url", ""), "", n_tokens(text), []))
+                t.add_row(d["doc_id"], d.get("kind", ""), 1, n_tokens(text), n_tokens(text), n_tokens(text),
+                          "inline note")
                 continue
             txt = args.text_dir / f"{d['doc_id']}.txt"
             if not txt.exists():
-                print(f"[{d['doc_id']}] no extracted text at {txt} (run rag.fetch_corpus); skipped")
+                missing.append(d["doc_id"])
+                t.add_row(d["doc_id"], d.get("kind", ""), 0, "-", "-", "-",
+                          "no extracted text; skipped", style="yellow")
                 continue
             got = chunk_regulatory(d, txt.read_text(errors="replace"))
-            print(f"[{d['doc_id']}] {len(got)} chunks, tokens min/median/max = "
-                  f"{min(c.n_tokens for c in got)}/{sorted(c.n_tokens for c in got)[len(got) // 2]}/{max(c.n_tokens for c in got)}")
+            toks = sorted(c.n_tokens for c in got)
+            t.add_row(d["doc_id"], d.get("kind", ""), len(got),
+                      toks[0] if toks else "-", toks[len(toks) // 2] if toks else "-", toks[-1] if toks else "-",
+                      "ok" if toks else "no chunks produced", style=None if toks else "yellow")
             chunks.extend(got)
+    t.print()
+    for doc_id in missing:
+        warn(f"{doc_id}: no extracted text in {args.text_dir} - run `python -m rag.fetch_corpus`")
+
     write_outputs(chunks, docs, args.out)
-    by_kind = {}
+    by_kind: dict[str, int] = {}
     for c in chunks:
         by_kind[c.kind] = by_kind.get(c.kind, 0) + 1
-    print(f"wrote {len(chunks)} chunks to {args.out}/policy_chunks.jsonl by kind {by_kind}")
+    k = Table(Col("kind", max_width=14), Col("chunks", align="right", width=8),
+              Col("tokens total", align="right", width=13), title="chunks written by kind")
+    for kind in sorted(by_kind):
+        k.add_row(kind, f"{by_kind[kind]:,}", f"{sum(c.n_tokens for c in chunks if c.kind == kind):,}")
+    k.add_row("TOTAL", f"{len(chunks):,}", f"{sum(c.n_tokens for c in chunks):,}")
+    k.print()
+    if not chunks:
+        fail("no chunks were produced")
+    else:
+        ok(f"{len(chunks):,} chunks -> {args.out}/policy_chunks.jsonl (+ policy_chunk.csv, document.csv, "
+           "chunk_of.csv, about.csv, policy_chunk_embed.jsonl)")
+    summary("rag.chunk complete",
+            {"chunks": f"{len(chunks):,}", "documents chunked": len(t) - len(missing),
+             "documents missing text": len(missing), "out": str(args.out),
+             "next": "python -m rag.embed --input policy_chunk_embed.jsonl --out vec_PolicyChunk.psv"},
+            status="warn" if missing else "ok")
     return 0
 
 

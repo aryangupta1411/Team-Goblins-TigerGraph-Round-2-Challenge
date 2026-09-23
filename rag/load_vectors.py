@@ -26,12 +26,13 @@ Mechanics (verified against pyTigerGraph 2.0.4 source in mcpvenv and ecosys Vect
 from __future__ import annotations
 
 import argparse
-import json
 import os
 import re
 import sys
 import time
 from pathlib import Path
+
+from ops.console import Col, Table, detail, fail, header, joinlist, ok, progress, rule, step, summary, warn
 
 from . import config
 
@@ -97,7 +98,8 @@ def ensure_awake(fn, *args, attempts: int = 8, **kwargs):
             msg = str(e)
             if i == attempts - 1 or not any(t in msg for t in ("502", "503", "504", "Connection", "timed out", "Bad Gateway")):
                 raise
-            print(f"[tg] {type(e).__name__}: {msg[:120]} - retrying in {delay}s", file=sys.stderr)
+            warn(f"{type(e).__name__} from TigerGraph (Savanna auto-resume); retrying in {delay}s")
+            detail(msg[:160])
             time.sleep(delay)
             delay = min(delay * 2, 60)
 
@@ -134,16 +136,28 @@ def vector_attrs_present(conn, vertex: str) -> list[str]:
 
 
 def ensure_schema(conn, dry_run: bool = False) -> None:
+    step(f"checking the {len(config.VECTOR_ATTRS)} vector attributes against the live schema")
     missing = [(v, a) for v, a in config.VECTOR_ATTRS.items() if a not in vector_attrs_present(conn, v)]
+    t = Table(Col("vertex", max_width=14), Col("attribute", max_width=12), Col("dim", align="right", width=6),
+              Col("present", width=7, align="center"), title="vector attributes (graph/schema_change_vectors.gsql)")
+    for v, a in config.VECTOR_ATTRS.items():
+        here = (v, a) not in missing
+        t.add_row(v, a, config.EMBED_DIM, "yes" if here else "no", style=None if here else "yellow")
+    t.print()
     if not missing:
-        print("vector attributes already present")
+        ok("every vector attribute is already on the graph; nothing to do")
         return
-    print("adding vector attributes:", missing, "via", SCHEMA_CHANGE_FILE)
+    warn(f"{len(missing)} attribute(s) missing; sending {SCHEMA_CHANGE_FILE}")
     gsql = schema_change_gsql()
+    rule("GLOBAL SCHEMA_CHANGE JOB")
+    print(gsql)                       # verbatim DDL: kept copy-pasteable, never indented or truncated
+    rule()
     if dry_run:
-        print(gsql)
+        ok("dry run: nothing was sent")
         return
-    print(conn.gsql(gsql))
+    for line in str(conn.gsql(gsql)).splitlines():
+        detail(line)
+    ok("schema change applied")
 
 
 def index_status(conn, vertex: str, attr: str) -> dict:
@@ -154,15 +168,19 @@ def index_status(conn, vertex: str, attr: str) -> dict:
 
 
 def wait_index_ready(conn, vertex: str, attr: str, timeout_s: int = 600, poll_s: float = 3.0) -> bool:
+    """Poll /vector/status until the HNSW index is Ready_for_query. Shows the rebuild rather than going silent."""
     t0 = time.time()
+    step(f"waiting for the HNSW index on {vertex}.{attr} (polling /vector/status every {poll_s:.0f}s, "
+         f"timeout {timeout_s}s)")
     while time.time() - t0 < timeout_s:
         st = ensure_awake(index_status, conn, vertex, attr)
         if st["ready"]:
-            print(f"[index] {vertex}.{attr} Ready_for_query after {time.time() - t0:.0f}s")
+            ok(f"{vertex}.{attr} Ready_for_query after {time.time() - t0:.0f}s")
             return True
-        print(f"[index] {vertex}.{attr} Rebuild_processing on {st['need_rebuild']} ...")
+        detail(f"Rebuild_processing on {len(st['need_rebuild'])} server(s): "
+               f"{joinlist(st['need_rebuild'])} ({time.time() - t0:.0f}s elapsed)")
         time.sleep(poll_s)
-    print(f"[index] {vertex}.{attr} still rebuilding after {timeout_s}s", file=sys.stderr)
+    fail(f"{vertex}.{attr} still rebuilding after {timeout_s}s")
     return False
 
 
@@ -170,9 +188,12 @@ def load_psv(conn, psv: Path, vertex: str, attr: str, dry_run: bool = False) -> 
     """Create (or replace) the loading job, upload every part, return the summed loading statistics."""
     job, gsql = loading_job_gsql(vertex, attr, config.TG_GRAPHNAME)
     if dry_run:
-        print(gsql)
-        print(f"runLoadingJobWithFile({psv}, 'f', '{job}', sep='|', eol='\\n', timeout={config.TG_LOAD_TIMEOUT_MS}, sizeLimit=128000000)")
+        rule(f"{vertex}.{attr} loading job")
+        print(gsql)                   # verbatim GSQL: kept copy-pasteable
+        detail(f"runLoadingJobWithFile({psv}, 'f', '{job}', sep='|', eol='\\n', "
+               f"timeout={config.TG_LOAD_TIMEOUT_MS}, sizeLimit=128000000)")
         return {"dry_run": True}
+    step(f"creating loading job {job}")
     try:
         conn.dropLoadingJob(job)
     except Exception:  # noqa: BLE001 - first run
@@ -181,18 +202,36 @@ def load_psv(conn, psv: Path, vertex: str, attr: str, dry_run: bool = False) -> 
     if "error" in str(r).lower() and "Successfully created" not in str(r):
         raise RuntimeError(f"loading job create failed: {r}")
     total = {"parts": 0, "valid": 0, "invalid": 0}
-    for part in split_psv(psv):
-        t0 = time.time()
-        res = ensure_awake(conn.runLoadingJobWithFile, str(part), "f", job, sep="|", eol="\n",
-                           timeout=config.TG_LOAD_TIMEOUT_MS, sizeLimit=128_000_000)
-        stats = (res[0] if isinstance(res, list) and res else res) or {}
-        vstats = stats.get("statistics", {}).get("vertex", []) if isinstance(stats, dict) else []
-        valid = sum(int(v.get("validObject", 0)) for v in vstats)
-        invalid = sum(int(v.get("invalidAttribute", 0)) + int(v.get("noIdFound", 0)) for v in vstats)
-        total["parts"] += 1
-        total["valid"] += valid
-        total["invalid"] += invalid
-        print(f"[load] {part.name}: valid={valid} invalid={invalid} in {time.time() - t0:.1f}s; raw={json.dumps(stats)[:300]}")
+    parts = split_psv(psv)
+    t = Table(
+        Col("part", max_width=26),
+        Col("MB", align="right", width=8),
+        Col("valid", align="right", width=10),
+        Col("invalid", align="right", width=8),
+        Col("seconds", align="right", width=8),
+        title=f"{vertex}.{attr} <- {psv.name} ({len(parts)} part(s), <= {PART_BYTES // (1024 * 1024)} MB each)",
+    )
+    with progress(f"uploading {vertex}.{attr}", total=len(parts)) as p:
+        for part in parts:
+            t0 = time.time()
+            res = ensure_awake(conn.runLoadingJobWithFile, str(part), "f", job, sep="|", eol="\n",
+                               timeout=config.TG_LOAD_TIMEOUT_MS, sizeLimit=128_000_000)
+            stats = (res[0] if isinstance(res, list) and res else res) or {}
+            vstats = stats.get("statistics", {}).get("vertex", []) if isinstance(stats, dict) else []
+            valid = sum(int(v.get("validObject", 0)) for v in vstats)
+            invalid = sum(int(v.get("invalidAttribute", 0)) + int(v.get("noIdFound", 0)) for v in vstats)
+            total["parts"] += 1
+            total["valid"] += valid
+            total["invalid"] += invalid
+            t.add_row(part.name, f"{part.stat().st_size / 1e6:,.1f}", f"{valid:,}", f"{invalid:,}",
+                      f"{time.time() - t0:.1f}", style="red" if invalid else None)
+            p.advance()
+    t.print()
+    if total["invalid"]:
+        warn(f"{total['invalid']:,} row(s) rejected (invalidAttribute / noIdFound) - "
+             "vectors only load onto vertices that already exist")
+    else:
+        ok(f"{total['valid']:,} vectors loaded onto {vertex}.{attr}, 0 rejected")
     return total
 
 
@@ -224,26 +263,61 @@ def main(argv: list[str] | None = None) -> int:
     elif a.vertex and a.attr and a.psv:
         jobs = [(a.vertex, a.attr, a.psv)]
 
+    mode = ("status" if a.status else "ensure-schema" if a.ensure_schema else
+            "dry run" if a.dry_run else "load")
+    header("rag.load_vectors",
+           "load vec_*.psv into TigerGraph and wait for the HNSW index",
+           {"graph": config.TG_GRAPHNAME, "host": config.TG_HOST or "(TG_HOST not set)",
+            "mode": mode, "dim": config.EMBED_DIM,
+            "jobs": joinlist([f"{v}.{at}" for v, at, _ in jobs], empty="-"),
+            "wait for index": "no" if a.no_wait else "yes",
+            "load timeout": f"{config.TG_LOAD_TIMEOUT_MS} ms"})
+
     if a.dry_run and not a.status and not a.ensure_schema:
         for v, at, p in jobs:
             load_psv(None, p, v, at, dry_run=True)
+        summary("rag.load_vectors dry run", {"jobs": len(jobs), "sent to the graph": "nothing"})
         return 0
 
+    step(f"connecting to {config.TG_GRAPHNAME} (retries through Savanna auto-resume)")
     conn = ensure_awake(connect)
+    ok("connected")
     if a.ensure_schema:
         ensure_schema(conn, a.dry_run)
     if a.status:
+        t = Table(Col("vertex", max_width=14), Col("attribute", max_width=12),
+                  Col("index", width=18, align="center"), Col("rebuilding on", max_width=30),
+                  title="/vector/status")
+        not_ready = 0
         for v, at in config.VECTOR_ATTRS.items():
-            print(v, at, json.dumps(ensure_awake(index_status, conn, v, at)))
+            st = ensure_awake(index_status, conn, v, at)
+            not_ready += 0 if st["ready"] else 1
+            t.add_row(v, at, "Ready_for_query" if st["ready"] else "Rebuild_processing",
+                      joinlist(st["need_rebuild"]), style=None if st["ready"] else "yellow")
+        t.print()
+        summary("vector index status",
+                {"attributes": len(config.VECTOR_ATTRS), "ready": len(config.VECTOR_ATTRS) - not_ready,
+                 "rebuilding": not_ready},
+                status="ok" if not not_ready else "warn")
         return 0
+    loaded = {"valid": 0, "invalid": 0, "parts": 0}
     for v, at, p in jobs:
         if not p.exists():
-            print(f"missing {p}; run rag.embed first", file=sys.stderr)
+            fail(f"missing {p}")
+            detail("run `python -m rag.embed --input <jsonl> --out <psv>` first")
+            summary("rag.load_vectors failed", {"missing": str(p)}, status="fail")
             return 1
+        rule(f"{v}.{at}")
         total = load_psv(conn, p, v, at)
-        print(f"[load] {v}.{at}: {total}")
+        for k in loaded:
+            loaded[k] += int(total.get(k, 0) or 0)
         if not a.no_wait:
             wait_index_ready(conn, v, at)
+    summary("rag.load_vectors complete",
+            {"attributes loaded": len(jobs), "file parts": loaded["parts"],
+             "vectors loaded": f"{loaded['valid']:,}", "rejected": f"{loaded['invalid']:,}",
+             "index": "not waited for (--no-wait)" if a.no_wait else "Ready_for_query"},
+            status="ok" if not loaded["invalid"] else "warn")
     return 0
 
 

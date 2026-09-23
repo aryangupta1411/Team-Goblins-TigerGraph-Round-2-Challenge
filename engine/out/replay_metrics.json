@@ -1,7 +1,7 @@
 {
  "n": 310,
  "n_failed": 0,
- "seconds": 15.6,
+ "seconds": 17.9,
  "pattern_accuracy_fraud_all": 0.8778,
  "pattern_accuracy_fraud_verdict_fraud": 0.9231,
  "pattern_confusion": {

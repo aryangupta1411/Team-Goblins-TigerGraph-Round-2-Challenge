@@ -14,14 +14,19 @@ Requires tables tx, idn, cc, cp, pairs (etl/build_db.py) and cardmap (etl/card_r
 """
 from __future__ import annotations
 
+import json
 import sys
 import time
 
 import duckdb
 
 from etl.card_rule import build_cardmap
+from ops.console import Col, Table, header, money, ok, rule, step, summary, warn
 
 RING_PROFILE = "SM-G935F Build/NRD90M | Android 7.0 | chrome 62.0 for android | 1920x1080"
+
+# Row counts the contract fixes (contracts/schema.md, Makefile `features`); shown as expected-vs-actual.
+EXPECTED_ROWS = {"txc": 590_742, "txn_feat": 590_742, "device_profile": 9_705, "card_feat": 14_317}
 
 # ----------------------------------------------------------------------------------------
 # 1. txc — slim transaction rows (schema.md Transaction attributes that come straight from the files)
@@ -316,16 +321,24 @@ LEFT JOIN burst_member bm USING (TransactionID)
 """
 
 
+_STAGES: list[tuple[str, float]] = []
+
+
 def _run(con, label, sql):
+    step(f"building {label}")
     t0 = time.time()
     con.execute(sql)
-    print(f"  {label:18s} {time.time() - t0:6.1f}s", flush=True)
+    dt = time.time() - t0
+    _STAGES.append((label, dt))
+    ok(f"{label} in {dt:.1f}s")
 
 
 def build_all(con: duckdb.DuckDBPyConnection) -> None:
     con.execute("PRAGMA threads=8")
-    print("features: building tables", flush=True)
+    _STAGES.clear()
+    t0 = time.time()
     if not con.execute("SELECT count(*) FROM information_schema.tables WHERE table_name='cardmap'").fetchone()[0]:
+        step("cardmap absent: deriving it first (etl.card_rule)")
         build_cardmap(con)
     _run(con, "txc", TXC_SQL)
     _run(con, "txn_base", TXN_BASE_SQL)
@@ -342,7 +355,14 @@ def build_all(con: duckdb.DuckDBPyConnection) -> None:
     _run(con, "txn_feat", TXN_FEAT_SQL)
     if keep:
         con.execute("UPDATE txn_feat SET cms_p = c.cms_p, cms_fold = c.cms_fold FROM _cms c WHERE txn_feat.TransactionID = c.TransactionID")
+        ok("carried cms_p / cms_fold over from the previous etl.cms_train run")
     con.execute("DROP TABLE txn_base")
+    t = Table(Col("stage", max_width=18), Col("seconds", align="right", width=8),
+              title="build stages")
+    for label, dt in _STAGES:
+        t.add_row(label, f"{dt:.1f}")
+    t.add_row("TOTAL", f"{time.time() - t0:.1f}")
+    t.print()
 
 
 def report(con: duckdb.DuckDBPyConnection) -> dict:
@@ -364,14 +384,114 @@ def report(con: duckdb.DuckDBPyConnection) -> dict:
     out["modal_region"] = {c: q("SELECT modal_region FROM card_feat WHERE id = ?", c)[0][0] for c in ("C09933-K2", "C08623-K2", "C02354-K2", "C12382-K1")}
     out["recurring"] = {c: q("SELECT recurring_amounts FROM card_feat WHERE id = ?", c)[0][0] for c in ("C02354-K2", "C08623-K2")}
     out["next_ties"] = q("SELECT count(*) FROM txn_feat WHERE gap_seconds = 0")[0][0]
-    for k, v in out.items():
-        print(f"  {k}: {v}")
+    render_report(out)
     return out
+
+
+# ----------------------------------------------------------------------------------------
+# rendering — display only: `report()` returns exactly the dict it always did
+# ----------------------------------------------------------------------------------------
+
+def _recurring_table(card_id: str, blob: str) -> Table:
+    """One row per recurring (amount, product, place) group — never the raw JSON blob."""
+    t = Table(
+        Col("amount", align="right", width=10),
+        Col("product", width=7, align="center"),
+        Col("place", max_width=12),
+        Col("n", align="right", width=5),
+        Col("median gap (d)", align="right", width=14),
+        Col("gap cv", align="right", width=7),
+        title=f"card_feat.recurring_amounts - {card_id}",
+    )
+    try:
+        groups = json.loads(blob or "[]")
+    except json.JSONDecodeError:
+        t.add_row(str(blob))
+        return t
+    for g in groups:
+        t.add_row(money(g.get("amt")), g.get("product_cd"), g.get("place"), f"{g.get('n', 0):,}",
+                  f"{g.get('median_gap_days', 0):.3f}", f"{g.get('gap_cv', 0):.3f}")
+    t.caption = f"{len(groups)} group(s) with n >= 5"
+    return t
+
+
+def render_report(out: dict) -> None:
+    """Print the `report()` dict as aligned tables (no Python dict/list reprs, no JSON blobs)."""
+    rows = out["rows"]
+    t = Table(
+        Col("table", max_width=16),
+        Col("expected", align="right", width=10),
+        Col("actual", align="right", width=10),
+        Col("result", width=6, align="center"),
+        title="derived tables",
+    )
+    mismatched = []
+    for name, got in rows.items():
+        want = EXPECTED_ROWS.get(name)
+        good = want is None or got == want
+        if not good:
+            mismatched.append(f"{name}: expected {want:,}, got {got:,}")
+        t.add_row(name, f"{want:,}" if want is not None else "-", f"{got:,}",
+                  "PASS" if want is not None and good else "-" if want is None else "FAIL",
+                  style=None if good else "red")
+    t.print()
+    for m in mismatched:
+        warn(m)
+    if not mismatched:
+        ok("every contracted row count matches")
+
+    rule("device ring")
+    dp = Table(
+        Col("attribute", max_width=20), Col("value", align="right", width=12),
+        title="device_profile of the ring profile",
+        caption=f"id = {RING_PROFILE}",
+    )
+    if out["ring_profile"]:
+        is_strong, n_cards_all, n_cards_30d, n_txns, n_proxy, n_fraud = out["ring_profile"][0]
+        for k, v in (("is_strong", "yes" if is_strong else "no"), ("n_cards_alltime", f"{n_cards_all:,}"),
+                     ("n_cards_30d", f"{n_cards_30d:,}"), ("n_txns", f"{n_txns:,}"),
+                     ("n_proxy", f"{n_proxy:,}"), ("n_fraud_cases", f"{n_fraud:,}")):
+            dp.add_row(k, v)
+    dp.print()
+    g = Table(Col("measure", max_width=38), Col("value", align="right", width=12), title="ring / burst reach")
+    g.add_row("strong device profiles", f"{out['is_strong']:,}")
+    g.add_row("cards with a ring_id", f"{out['ring_id_cards']:,}")
+    g.add_row("cards on this exact ring profile", f"{out['ring_id_exact_profile_cards']:,}")
+    g.add_row("transactions with ring_hit", f"{out['ring_hit_txns']:,}")
+    g.add_row("bursts (>=4 x $450-499.99 / 40 min)", f"{out['burst']['bursts']:,}")
+    g.add_row("transactions in a burst", f"{out['burst']['txns']:,}")
+    g.add_row("cards bursting in Nov-Dec", f"{out['burst']['novdec_cards']:,}")
+    g.add_row("NEXT edges with gap_seconds = 0", f"{out['next_ties']:,}")
+    g.print()
+
+    rule("HHG-006 burst (C07297-K1)")
+    b = Table(Col("txn id", align="right", width=10), Col("burst id", max_width=22),
+              Col("amount", align="right", width=10), title="burst_member rows, ts order")
+    for txn_id, burst_id, amt in out["burst"]["hhg006"]:
+        b.add_row(txn_id, burst_id, money(amt))
+    b.print()
+
+    rule("spot checks")
+    m = Table(Col("card", width=10), Col("modal_region", max_width=14), title="modal in-person region")
+    for card, region in out["modal_region"].items():
+        m.add_row(card, region)
+    m.print()
+    for card, blob in out["recurring"].items():
+        _recurring_table(card, blob).print()
 
 
 if __name__ == "__main__":  # pragma: no cover
     db = sys.argv[1] if len(sys.argv) > 1 else "data/hhgoa.duckdb"
+    report_only = "--report" in sys.argv
+    header("etl.features",
+           "report only (no rebuild)" if report_only else
+           "txc, txn_feat, burst_member, device_profile, card_feat in DuckDB",
+           {"db": db, "threads": 8, "mode": "report" if report_only else "build + report"})
     con = duckdb.connect(db)
-    if "--report" not in sys.argv:
+    if not report_only:
         build_all(con)
-    report(con)
+    rep = report(con)
+    summary("etl.features complete",
+            {"txc": f"{rep['rows']['txc']:,}", "txn_feat": f"{rep['rows']['txn_feat']:,}",
+             "device_profile": f"{rep['rows']['device_profile']:,}", "card_feat": f"{rep['rows']['card_feat']:,}",
+             "burst_member": f"{rep['rows']['burst_member']:,}", "db": db})

@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import json
 import time
+from collections import Counter
 
 import numpy as np
 import pandas as pd
@@ -31,8 +32,28 @@ from engine import config
 from engine.facts_duckdb import DuckFacts
 from engine.run_cases import run_one
 from engine.types import CaseContext
+from ops.console import Col, Table, detail, fail, header, ok, prob, progress, rule, step, summary, warn
 
 SEED = 7
+
+# PLAN §4.10: the three numbers the replay exists to report, and the guardrail counts that go with
+# them. (label, metric key over all confirmed-fraud rows, key over verdict==fraud rows, target, "min"|"max")
+TARGETS: list[tuple[str, str, str | None, float, str]] = [
+    ("pattern accuracy", "pattern_accuracy_fraud_all", "pattern_accuracy_fraud_verdict_fraud", 0.95, "min"),
+    ("SAR decision accuracy", "sar_accuracy_fraud_all", "sar_accuracy_fraud_verdict_fraud", 1.00, "min"),
+    ("episode Jaccard", "episode_jaccard_fraud_all", "episode_jaccard_fraud_verdict_fraud", 0.85, "min"),
+]
+# The only count with a target in the module docstring: the R7 / uncertain gate must not block a
+# synthetic dispute. Everything else that is merely diagnostic goes in the diagnostics table, with
+# no pass/fail mark, so "targets met" stays an honest count of the stated targets.
+GUARDRAILS: list[tuple[str, str, float, str]] = [
+    ("synthetic disputes blocked in initial", "synthetic_disputes_blocked_initial", 0, "max"),
+]
+DIAGNOSTICS: list[tuple[str, str]] = [
+    ("synthetic disputes blocked in final", "synthetic_disputes_blocked_final"),
+    ("cleared cases given a false episode", "cleared_false_episodes"),
+    ("cases that raised and were skipped", "n_failed"),
+]
 
 
 def sample_cases(fx: DuckFacts) -> list[dict]:
@@ -93,45 +114,170 @@ def ece(p: np.ndarray, y: np.ndarray, bins: int = 10) -> float:
     return float(tot)
 
 
+# --------------------------------------------------------------------------- terminal report
+# Display only. `m` is written to engine/out/replay_metrics.json exactly as it was built; nothing
+# below touches it, and no formatter here is ever used for a file.
+
+
+def _hit(value: float | None, target: float, sense: str) -> bool:
+    if value is None:
+        return False
+    return value >= target if sense == "min" else value <= target
+
+
+def _gap(value: float | None, target: float, sense: str, digits: int) -> str:
+    """How far short the metric falls, signed, so a miss cannot be read as a pass."""
+    if value is None:
+        return "-"
+    d = (value - target) if sense == "min" else (target - value)
+    return "on target" if d >= 0 else f"{d:+.{digits}f}"
+
+
+def print_targets(m: dict) -> list[str]:
+    """The three PLAN §4.10 targets and the guardrail counts, each against its target. Returns the misses."""
+    t = Table(Col("metric", max_width=38), Col("all fraud", align="right", max_width=10),
+              Col("verdict=fraud", align="right", max_width=13), Col("target", align="right", max_width=8),
+              Col("vs target", align="right", max_width=10), Col("result", max_width=6),
+              title="targets (PLAN §4.10)",
+              caption="'all fraud' is every confirmed-fraud case replayed; 'verdict=fraud' only those the engine also called fraud. The target is judged on 'all fraud'.")
+    missed = []
+    for label, key_all, key_vf, target, sense in TARGETS:
+        v = m.get(key_all)
+        good = _hit(v, target, sense)
+        missed += [] if good else [label]
+        t.add_row(label, prob(v, digits=4), prob(m.get(key_vf), digits=4), f"{'>=' if sense == 'min' else '<='} {target:.2f}",
+                  _gap(v, target, sense, 4), "PASS" if good else "MISS", style="green" if good else "bold red")
+    for label, key, target, sense in GUARDRAILS:
+        v = m.get(key)
+        good = _hit(None if v is None else float(v), target, sense)
+        missed += [] if good else [label]
+        t.add_row(label, "-" if v is None else str(v), "-", f"{'>=' if sense == 'min' else '<='} {target:.0f}",
+                  _gap(None if v is None else float(v), target, sense, 0), "PASS" if good else "MISS",
+                  style="green" if good else "bold red")
+    t.print()
+    return missed
+
+
+def print_diagnostics(m: dict) -> None:
+    """Counts worth watching that PLAN §4.10 sets no target for — reported, not graded."""
+    t = Table(Col("diagnostic", max_width=36), Col("count", align="right", max_width=7), title="diagnostics (no target set)")
+    for label, key in DIAGNOSTICS:
+        v = m.get(key)
+        t.add_row(label, "-" if v is None else str(v))
+    t.print()
+
+
+def print_calibration(m: dict) -> None:
+    t = Table(Col("probability", max_width=22), Col("Brier", align="right", max_width=8), Col("ECE", align="right", max_width=8),
+              title="calibration of the engine probability (lower is better)")
+    t.add_row("p_pre (before request)", prob(m.get("brier_pre"), digits=4), prob(m.get("ece_pre"), digits=4))
+    t.add_row("p_post (final answer)", prob(m.get("brier_final"), digits=4), prob(m.get("ece_final"), digits=4))
+    t.print()
+
+
+def print_groups(m: dict) -> None:
+    t = Table(Col("sample group", max_width=28), Col("n", align="right", max_width=4),
+              Col("v.acc", align="right", max_width=6), Col("unc", align="right", max_width=6),
+              Col("mean p", align="right", max_width=6), Col("f/u/l", align="right", max_width=12),
+              Col("F1 fin", align="right", max_width=6), Col("F1 i|f", align="right", max_width=6),
+              Col("blk i", align="right", max_width=5), Col("blk f", align="right", max_width=5),
+              Col("R7", align="right", max_width=4), Col("ring", align="right", max_width=4), Col("burst", align="right", max_width=5),
+              Col("verr", align="right", max_width=4), Col("viol", align="right", max_width=4),
+              title="per sample group",
+              caption="v.acc = verdict accuracy vs the case label; unc = share called uncertain; f/u/l = fraud/uncertain/legitimate verdict counts;\n"
+                      "F1 fin / F1 i|f = action-set F1 (final, and initial union final) vs actions_taken; blk i / blk f = cases recommending BLOCK_CARD;\n"
+                      "R7 / ring / burst = rule hits; verr / viol = validator errors and policy violations")
+    for g, d in sorted(m.get("per_group", {}).items()):
+        vc = d.get("verdict_counts", {})
+        t.add_row(g, d.get("n"), prob(d.get("verdict_accuracy"), digits=4), prob(d.get("uncertain_share"), digits=4),
+                  prob(d.get("mean_p"), digits=4), "/".join(str(vc.get(k, 0)) for k in ("fraud", "uncertain", "legitimate")),
+                  prob(d.get("action_f1_final_mean"), digits=4), prob(d.get("action_f1_initial_union_final_mean"), digits=4),
+                  d.get("blocked_initial"), d.get("blocked_final"), d.get("r7_fires"), d.get("ring_hits"), d.get("burst_hits"),
+                  d.get("validator_errors"), d.get("policy_violations"),
+                  style="red" if (d.get("validator_errors") or d.get("policy_violations")) else None)
+    t.print()
+
+
+def print_requests(m: dict) -> None:
+    t = Table(Col("sample group", max_width=28), Col("request / outcome", max_width=30), Col("n", align="right", max_width=4),
+              title="evidence requests made (§3b, one per case)")
+    for g, d in sorted(m.get("per_group", {}).items()):
+        for req, n in sorted(d.get("requests", {}).items(), key=lambda kv: (-kv[1], kv[0])):
+            t.add_row(g, req or "(none)", n)
+    t.print()
+
+
+def print_confusion(title: str, crosstab: dict, row_label: str, caption: str) -> None:
+    """A pandas crosstab().to_dict() is {column: {row: count}}; keys may be numpy bools, so never stringify them
+    before the lookup — only on the way out."""
+    cols = sorted(crosstab, key=str)
+    idx: list = []
+    for col in cols:
+        for r in crosstab[col]:
+            if r not in idx:
+                idx.append(r)
+    idx.sort(key=str)
+    t = Table(Col(row_label, max_width=30), *[Col(str(c), align="right") for c in cols], title=title, caption=caption)
+    for r in idx:
+        t.add_row(str(r), *[str(crosstab[c].get(r, 0)) for c in cols])
+    t.print()
+
+
 def main() -> None:
     t0 = time.time()
+    header("engine.replay", "310-case deterministic replay of labelled closed cases (PLAN §4.10)",
+           {"facts db": config.FACTS_DB, "calibrator": config.CALIBRATION_JSON, "seed": SEED,
+            "sample": "100 cleared/risk_score + 150 fraud/dispute + 30 fraud/risk_score + 30 synthetic disputes",
+            "out": config.OUT_DIR})
+    step("sampling labelled closed cases")
     fx = DuckFacts()
     cases = sample_cases(fx)
+    st = Table(Col("sample group", max_width=28), Col("replayed as", max_width=16), Col("truth", max_width=16), Col("n", align="right", max_width=4),
+               title=f"{len(cases)} cases sampled (seed {SEED}, reproducible)")
+    seen = Counter((c["group"], c["trigger"], c["outcome"]) for c in cases)
+    for (g, trig, outcome), n in sorted(seen.items()):
+        st.add_row(g, trig, outcome, n)
+    st.print()
+
     rows = []
-    for i, c in enumerate(cases):
-        txt = (f"Real-time model scored transaction {c['flagged']} at {c['risk']:.2f}. Review and decide." if c["trigger"] == "risk_score"
-               else f"Customer {c['customer_id']} message: 'I never made this purchase. Please check my card.' Refers to {c['flagged']}.")
-        ctx = CaseContext(c["case_id"], c["trigger"], txt, c["flagged"], c["card_id"], c["customer_id"], c["opened_at"],
-                          c["risk"] if c["trigger"] == "risk_score" else None)
-        try:
-            r = run_one(ctx, fx, strip_self(fx.collect(ctx), c["case_id"]))
-        except Exception as ex:   # keep going; report failures
-            rows.append({**c, "error": repr(ex)[:200]})
-            print("FAILED", c["case_id"], c["group"], repr(ex)[:160], flush=True)
-            continue
-        a = r["answer"]
-        ini = {x["action"] for x in a["next_best_actions"]["initial"]}
-        fin = {x["action"] for x in a["next_best_actions"]["final"]}
-        aff = set(a["case"]["affected_txn_ids"])
-        truth = set(c["txn_ids"]) if c["outcome"] == "confirmed_fraud" else set()
-        rows.append({**c, "error": "", "verdict": a["case"]["verdict"], "p": a["case"]["fraud_probability"], "p_pre": r["sc_pre"].p_engine,
-                     "cms": r["sc_pre"].cms_p, "engine_pattern": a["case"]["pattern"], "sar": a["sar"]["file"],
-                     "jaccard": (len(aff & truth) / len(aff | truth)) if (aff | truth) else 1.0,
-                     "initial": sorted(ini), "final": sorted(fin), "f1_final": f1(fin, set(c["actions_taken"])),
-                     "blocked_initial": "BLOCK_CARD" in ini, "blocked_final": "BLOCK_CARD" in fin,
-                     "request": r["request"]["type"] + "/" + r["request"]["outcome"] if r["request"] else "",
-                     "f1_union": f1(ini | fin, set(c["actions_taken"])), "n_shared_fraud_cards": len(r["sc_pre"].flags.get("shared_fraud_cards", [])),
-                     "sar_reason": a["sar"]["reason"][:60],
-                     "r7": bool(r["sc_pre"].flags.get("recurring_match")), "ring": bool(r["sc_pre"].flags.get("ring_hit")),
-                     "burst": bool(r["sc_pre"].flags.get("burst_hit")), "errors": "; ".join(r["errors"]), "violations": "; ".join(r["violations"])})
-        if (i + 1) % 50 == 0:
-            print(f"{i + 1}/{len(cases)} {time.time() - t0:.0f}s", flush=True)
+    failures: list[tuple[str, str, str]] = []
+    with progress("replaying cases", total=len(cases)) as tick:
+        for c in cases:
+            txt = (f"Real-time model scored transaction {c['flagged']} at {c['risk']:.2f}. Review and decide." if c["trigger"] == "risk_score"
+                   else f"Customer {c['customer_id']} message: 'I never made this purchase. Please check my card.' Refers to {c['flagged']}.")
+            ctx = CaseContext(c["case_id"], c["trigger"], txt, c["flagged"], c["card_id"], c["customer_id"], c["opened_at"],
+                              c["risk"] if c["trigger"] == "risk_score" else None)
+            tick.advance()
+            try:
+                r = run_one(ctx, fx, strip_self(fx.collect(ctx), c["case_id"]))
+            except Exception as ex:   # keep going; report failures
+                rows.append({**c, "error": repr(ex)[:200]})
+                failures.append((c["case_id"], c["group"], repr(ex)[:160]))
+                continue
+            a = r["answer"]
+            ini = {x["action"] for x in a["next_best_actions"]["initial"]}
+            fin = {x["action"] for x in a["next_best_actions"]["final"]}
+            aff = set(a["case"]["affected_txn_ids"])
+            truth = set(c["txn_ids"]) if c["outcome"] == "confirmed_fraud" else set()
+            rows.append({**c, "error": "", "verdict": a["case"]["verdict"], "p": a["case"]["fraud_probability"], "p_pre": r["sc_pre"].p_engine,
+                         "cms": r["sc_pre"].cms_p, "engine_pattern": a["case"]["pattern"], "sar": a["sar"]["file"],
+                         "jaccard": (len(aff & truth) / len(aff | truth)) if (aff | truth) else 1.0,
+                         "initial": sorted(ini), "final": sorted(fin), "f1_final": f1(fin, set(c["actions_taken"])),
+                         "blocked_initial": "BLOCK_CARD" in ini, "blocked_final": "BLOCK_CARD" in fin,
+                         "request": r["request"]["type"] + "/" + r["request"]["outcome"] if r["request"] else "",
+                         "f1_union": f1(ini | fin, set(c["actions_taken"])), "n_shared_fraud_cards": len(r["sc_pre"].flags.get("shared_fraud_cards", [])),
+                         "sar_reason": a["sar"]["reason"][:60],
+                         "r7": bool(r["sc_pre"].flags.get("recurring_match")), "ring": bool(r["sc_pre"].flags.get("ring_hit")),
+                         "burst": bool(r["sc_pre"].flags.get("burst_hit")), "errors": "; ".join(r["errors"]), "violations": "; ".join(r["violations"])})
+    for case_id, group, ex in failures:
+        fail(f"{case_id} ({group}) raised during replay")
+        detail(ex)
     df = pd.DataFrame(rows)
     df.to_csv(config.OUT_DIR / "replay_rows.csv", index=False)
-    ok = df[df.error == ""]
+    good = df[df.error == ""]          # `good`, not `ok`: ops.console.ok is the status-line helper
     m: dict = {"n": int(len(df)), "n_failed": int((df.error != "").sum()), "seconds": round(time.time() - t0, 1)}
-    fr = ok[ok.outcome == "confirmed_fraud"]
-    cl = ok[ok.outcome == "cleared"]
+    fr = good[good.outcome == "confirmed_fraud"]
+    cl = good[good.outcome == "cleared"]
     m["pattern_accuracy_fraud_all"] = round(float((fr.engine_pattern == fr.pattern).mean()), 4)
     frf = fr[fr.verdict == "fraud"]
     m["pattern_accuracy_fraud_verdict_fraud"] = round(float((frf.engine_pattern == frf.pattern).mean()), 4) if len(frf) else None
@@ -142,14 +288,14 @@ def main() -> None:
     m["episode_jaccard_fraud_all"] = round(float(fr.jaccard.mean()), 4)
     m["episode_jaccard_fraud_verdict_fraud"] = round(float(frf.jaccard.mean()), 4) if len(frf) else None
     m["cleared_false_episodes"] = int((cl.jaccard < 1).sum())
-    y = (ok.outcome == "confirmed_fraud").astype(int).values
-    p = ok.p.values.astype(float)
+    y = (good.outcome == "confirmed_fraud").astype(int).values
+    p = good.p.values.astype(float)
     m["brier_final"] = round(float(np.mean((p - y) ** 2)), 4)
     m["ece_final"] = round(ece(p, y), 4)
-    m["brier_pre"] = round(float(np.mean((ok.p_pre.values.astype(float) - y) ** 2)), 4)
-    m["ece_pre"] = round(ece(ok.p_pre.values.astype(float), y), 4)
+    m["brier_pre"] = round(float(np.mean((good.p_pre.values.astype(float) - y) ** 2)), 4)
+    m["ece_pre"] = round(ece(good.p_pre.values.astype(float), y), 4)
     per = {}
-    for g, d in ok.groupby("group"):
+    for g, d in good.groupby("group"):
         want = "fraud" if d.outcome.iloc[0] == "confirmed_fraud" else "legitimate"
         per[g] = {"n": int(len(d)), "verdict_counts": d.verdict.value_counts().to_dict(), "verdict_accuracy": round(float((d.verdict == want).mean()), 4),
                   "uncertain_share": round(float((d.verdict == "uncertain").mean()), 4), "action_f1_final_mean": round(float(d.f1_final.mean()), 4),
@@ -161,7 +307,32 @@ def main() -> None:
     m["synthetic_disputes_blocked_initial"] = per.get("cleared_as_synthetic_dispute", {}).get("blocked_initial")
     m["synthetic_disputes_blocked_final"] = per.get("cleared_as_synthetic_dispute", {}).get("blocked_final")
     json.dump(m, open(config.OUT_DIR / "replay_metrics.json", "w"), indent=1, default=str)
-    print(json.dumps(m, indent=1, default=str))
+
+    # ---- report (display only; `m` above is already on disk, untouched by anything below) ----
+    rule("results")
+    missed = print_targets(m)
+    print_diagnostics(m)
+    print_calibration(m)
+    print_groups(m)
+    print_requests(m)
+    print_confusion("pattern confusion (confirmed-fraud cases)", m["pattern_confusion"], "true pattern \\ engine pattern",
+                    "rows = the closed case's labelled pattern, columns = the pattern the engine named; the diagonal is correct")
+    print_confusion("SAR confusion (confirmed-fraud cases)", m["sar_confusion"], "report_filed \\ engine sar",
+                    "rows = whether a SAR was actually filed, columns = whether the engine filed one")
+    if m["n_failed"]:
+        fail(f"{m['n_failed']} of {m['n']} cases raised and were skipped")
+    for label in missed:
+        warn(f"below target: {label}")
+    ok(f"rows  -> {config.OUT_DIR / 'replay_rows.csv'} ({m['n']} rows)")
+    ok(f"metrics -> {config.OUT_DIR / 'replay_metrics.json'}")
+    summary("replay complete",
+            {"cases replayed": m["n"],
+             "failed": m["n_failed"],
+             "targets met": f"{len(TARGETS) + len(GUARDRAILS) - len(missed)}/{len(TARGETS) + len(GUARDRAILS)}",
+             "below target": ", ".join(missed) or "none",
+             "wall time": f"{m['seconds']}s",
+             "metrics": config.OUT_DIR / "replay_metrics.json"},
+            status="fail" if m["n_failed"] else ("warn" if missed else "ok"))
 
 
 if __name__ == "__main__":

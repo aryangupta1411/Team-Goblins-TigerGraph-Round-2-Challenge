@@ -131,5 +131,5 @@
   "stop_reason": "Policy \u00a76 test 3: the verification was not answered within the window; R4 applies (monitor + decline pending authorisations) and the case stays open for the reply, so no further automated step would change the recommendation until a reply arrives.",
   "tool_calls": 15,
   "tokens": 0,
-  "latency_s": 0.04
+  "latency_s": 0.05
 }

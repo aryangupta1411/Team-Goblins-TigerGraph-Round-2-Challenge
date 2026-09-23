@@ -20,6 +20,10 @@ import duckdb
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(os.path.dirname(os.path.dirname(HERE)))
+sys.path.insert(0, REPO)                       # repo root: this runs as a plain file, not as a package
+
+from ops.console import Col, Table, detail, fail, header, ok, step, summary  # noqa: E402
+
 DB = os.environ.get("HHGOA_DB") or os.environ.get("HHGOA_DUCKDB") or os.path.join(REPO, "data", "hhgoa.duckdb")
 MODEL = os.path.join(HERE, "_model.duckdb")
 RING = "SM-G935F Build/NRD90M | Android 7.0 | chrome 62.0 for android | 1920x1080"
@@ -73,12 +77,32 @@ def _json(o):
 
 
 def main():
-    if "--rebuild" in sys.argv or not os.path.exists(MODEL):
+    rebuild = "--rebuild" in sys.argv or not os.path.exists(MODEL)
+    header(
+        "graph.queries.expected.run_expected",
+        "DuckDB ground truth for every read query on the named exam cases (offline, no workspace)",
+        {"source db": DB, "model": os.path.relpath(MODEL, REPO), "model build": "rebuild" if rebuild else "reuse",
+         "specs": len(SPECS), "out": os.path.relpath(HERE, REPO) + "/<query>__<case>.json"},
+    )
+    if rebuild:
+        step("building the model DuckDB from the ETL tables")
         t = time.time()
         build_model()
-        print(f"model built in {time.time() - t:.1f}s")
+        ok(f"model built in {time.time() - t:.1f}s")
     con = duckdb.connect(MODEL, read_only=True)
-    for q, case, params in SPECS:
+
+    t_all = time.time()
+    results = Table(
+        Col("#", align="right", width=3),
+        Col("query", max_width=24),
+        Col("case", max_width=17),
+        Col("ms", align="right", width=7),
+        Col("fields", align="right", width=6),
+        Col("expectation file", max_width=46),
+        title=f"{len(SPECS)} expectation files",
+    )
+    errors = []
+    for i, (q, case, params) in enumerate(SPECS, 1):
         sql = open(os.path.join(HERE, f"{q}.sql")).read()
         t = time.time()
         code = "\n".join(ln for ln in sql.splitlines() if not ln.lstrip().startswith("--"))
@@ -86,16 +110,31 @@ def main():
         try:
             cur = con.execute(sql, used)
         except Exception as e:  # keep going so one bad SQL does not hide the others
-            print(f"{q:26s} {case:16s} ERROR {e}")
+            errors.append((q, case, str(e)))
+            results.add_row(i, q, case, "-", "-", f"ERROR {str(e)[:60]}", style="red")
             continue
         row = cur.fetchone()
         cols = [d[0] for d in cur.description]
         out = dict(zip(cols, row))
         ms = (time.time() - t) * 1000
         path = os.path.join(HERE, f"{q}__{case}.json")
+        # File content is a checked-in artefact: plain json.dump, never a display formatter.
         with open(path, "w") as fh:
             json.dump({"query": q, "case": case, "params": params, "expected": out}, fh, indent=1, default=_json)
-        print(f"{q:26s} {case:16s} {ms:6.0f} ms -> {os.path.basename(path)}")
+        results.add_row(i, q, case, f"{ms:.0f}", len(cols), os.path.basename(path))
+    results.print()
+
+    for q, case, err in errors:
+        fail(f"{q} / {case} did not run")
+        detail(err[:300])
+    if not errors:
+        ok(f"{len(SPECS)} expectation files written")
+    summary(
+        "expectations rebuilt" if not errors else "expectations incomplete",
+        {"specs": len(SPECS), "written": len(SPECS) - len(errors), "errors": len(errors),
+         "seconds": f"{time.time() - t_all:.1f}", "out": os.path.relpath(HERE, REPO)},
+        status="ok" if not errors else "fail",
+    )
 
 
 if __name__ == "__main__":

@@ -33,6 +33,7 @@ import sys
 from pathlib import Path
 
 from etl.parse_closed_cases import embed_text, mask, parse_note
+from ops.console import Col, Table, detail, fail, header, ok, summary, truncate, warn
 
 from . import config
 
@@ -85,21 +86,43 @@ def build(db_path: Path, out_dir: Path, standalone: bool = False) -> int:
         source = "closed_case_parsed.embed_text (ETL)"
     else:
         if not standalone:
-            print("closed_case_parsed not in DuckDB - run `python -m etl.parse_closed_cases <db>` first "
-                  "(falling back to --standalone parsing of `cc`; the text is built by the same ETL functions)", file=sys.stderr)
+            warn("closed_case_parsed is not in the DuckDB")
+            detail("run `python -m etl.parse_closed_cases <db>` first; falling back to --standalone "
+                   "parsing of `cc` (same ETL functions, same text)")
         rows = _standalone_rows(con)
         source = "standalone parse of cc"
     out_dir.mkdir(parents=True, exist_ok=True)
     # sanity: no case id / card id / cent amount survives the ETL mask ("$500" in the burst template is pattern text)
     unmasked = re.compile(r"\bCC-\d{4}\b|\bC\d{5}(?:-K\d)?\b|\$[\d,]+\.\d{2}")
-    bad = 0
-    with (out_dir / "closed_case_embed.jsonl").open("w") as fj:
+    leaks: list[tuple[str, str]] = []
+    out_path = out_dir / "closed_case_embed.jsonl"
+    with out_path.open("w") as fj:
         for case_id, text in rows:
-            if unmasked.search(text):
-                bad += 1
+            hit = unmasked.search(text)
+            if hit:
+                leaks.append((case_id, hit.group(0)))
             fj.write(json.dumps({"id": case_id, "text": text}) + "\n")
-    print(f"wrote {len(rows)} rows -> {out_dir}/closed_case_embed.jsonl from {source}; unmasked rows: {bad}")
-    return 0 if rows and bad == 0 else 1
+
+    t = Table(Col("check", max_width=34), Col("expected", align="right", width=10),
+              Col("actual", align="right", width=10), Col("result", width=6, align="center"),
+              title="masking check (no id, case number or cent amount may survive)")
+    t.add_row("rows written", "> 0", f"{len(rows):,}", "PASS" if rows else "FAIL",
+              style=None if rows else "red")
+    t.add_row("rows with an unmasked identifier", "0", f"{len(leaks):,}",
+              "PASS" if not leaks else "FAIL", style=None if not leaks else "red")
+    t.print()
+    for case_id, token in leaks[:10]:
+        fail(f"{case_id}: unmasked {token!r} survived the ETL mask")
+    if len(leaks) > 10:
+        detail(f"... and {len(leaks) - 10} more")
+    if rows and not leaks:
+        ok(f"{len(rows):,} masked texts -> {out_path}")
+        detail(f"sample: {truncate(rows[0][1], 92)}")
+    summary("rag.closedcase_embed_text complete",
+            {"rows": f"{len(rows):,}", "source": source, "unmasked": len(leaks), "out": str(out_path),
+             "next": f"python -m rag.embed --input {out_path} --out data/out/vec_ClosedCase.psv"},
+            status="ok" if rows and not leaks else "fail")
+    return 0 if rows and not leaks else 1
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -108,6 +131,11 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--out", type=Path, default=config.OUT_DIR)
     ap.add_argument("--standalone", action="store_true", help="parse cc here instead of reading closed_case_parsed")
     a = ap.parse_args(argv)
+    header("rag.closedcase_embed_text",
+           "ClosedCase.embed_text (ETL, masked) -> closed_case_embed.jsonl, the input for rag.embed",
+           {"db": str(a.db), "out": str(a.out),
+            "source": "standalone parse of cc" if a.standalone else "closed_case_parsed (ETL)",
+            "masks": "<CASE> <ID> <N> <DATE> <AMT> <SCORE>"})
     return build(a.db, a.out, a.standalone)
 
 

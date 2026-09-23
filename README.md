@@ -21,10 +21,22 @@ Both are also published as pages: [plan](https://claude.ai/artifact/WobuxhoP2dZd
 
 `IMPLEMENTATION.md` embeds every source file verbatim, so the document and this tree are the same thing:
 
+List every file the document carries:
+
 ```bash
-python extract_code.py --dry-run   # list every file the document carries
-python extract_code.py             # write them (existing files kept unless --force)
-python sync_spec.py                # write edited files back into the document
+python extract_code.py --dry-run
+```
+
+Write them (existing files kept unless `--force`):
+
+```bash
+python extract_code.py
+```
+
+Write edited files back into the document:
+
+```bash
+python sync_spec.py
 ```
 
 ## Architecture
@@ -44,11 +56,74 @@ case_pack.csv ─► agent/bench.py ─► agent/phase_machine.py (Anthropic SDK
 offline once:  etl/ (DuckDB, card_id rule, baselines, LightGBM scorer) → engine/facts_from_etl.py → graph/load_all.py → graph/run_algos.py → rag/ (local embeddings) → graph/install_all.py
 ```
 
+## Start here
+
+Two commands answer "what can I run?" and "what is already built?". Both are instant, offline, and print
+nothing but plain text when piped.
+
+```bash
+make help
+```
+
+Every target, grouped by build stage, with its description wrapped to your terminal width:
+
+```
+== make ============================================================================================
+     agentic fraud investigation on TigerGraph - 39 targets, in build order
+
+Start here
+  help              this list, grouped by build stage (the default target)
+  status            what exists and what does not: data, models, chunks, vectors, cases, backends.
+                    Offline; never prints a secret
+
+ETL, scorer, facts (day 1)
+  db                data/raw/*.csv -> data/hhgoa.duckdb (tx 590,742 / idn 144,432 / cc 5,565 / cp
+                    20; card rule 14,975/14,975)
+  ...
+```
+
+```bash
+make status
+```
+
+A dashboard of this checkout: which backends are selected, and which artefact each stage has
+produced. It reads only the filesystem — no network, no TigerGraph, and secrets are reported as
+`set` / `not set`, never printed.
+
+```
+artefact                    state    path                                detail
+--------------------------  -------  ----------------------------------  ------
+etl duckdb                  ready    data/hhgoa.duckdb                   356M
+engine facts db             ready    data/hhgoa_engine.duckdb            50M
+graph chunks                ready    data/out/txn_*.csv                  8 files, 324M
+embeddings                  ready    data/out/vec_*.psv                  2 files, 53M
+answer files                missing  cases/HHG-*.json                    -> make bench promote RUN_ID=v1
+
+WARN 1 artefact(s) missing
+     next: make bench promote RUN_ID=v1
+```
+
+Every command in this repository prints through one terminal layer (`ops/console.py`): a run header
+with the config that decides the outcome, aligned tables instead of Python list reprs, and a summary
+block with the totals. On a terminal it is coloured; piped, redirected or in CI it degrades to plain
+ASCII with **zero escape bytes**, so `make sheet | cat` stays greppable. `NO_COLOR=1` and
+`HHG_PLAIN=1` force plain (useful for a clean demo capture), `FORCE_COLOR=1` forces colour.
+
+Mistyped or pasted a trailing `# comment` after a make command? Make no longer dies with
+`No rule to make target '#'` — it names the closest real target, or tells you it was a pasted comment
+and carries on.
+
 ## Setup (macOS Apple Silicon, Python 3.12 via uv)
 
 ```bash
 git clone <repo> && cd <repo>
+```
+
+```bash
 make install                 # uv sync --extra dev; creates .env from .env.example
+```
+
+```bash
 # fill .env: TG_HOST, TG_SECRET (Savanna Database Secret)
 # the model needs NO key: LLM_BACKEND=cli (the default) runs the agent on claude-agent-sdk, which drives
 #   the Claude Code CLI it bundles and authenticates with your Claude subscription. It sees ONLY our typed
@@ -67,35 +142,123 @@ Full build order with acceptance checks: [`docs/BUILD_ORDER.md`](docs/BUILD_ORDE
 
 ## Build the graph
 
+Run `make status` between any two of these to see what the previous one produced.
+
+DuckDB → features → scorer → engine facts DB → TSV chunks → `ids.duckdb` (day 1):
+
 ```bash
-make db features cms facts chunks ids   # DuckDB → features → scorer → engine facts DB → TSV chunks → ids.duckdb   (day 1)
-make load algos                # schema + loading jobs + 590,742 transactions; WCC / degree once (day 2, 4)
-make install-queries describe  # the 25 installed queries (16 LLM-exposed reads + 4 writers + 5 harness-only: grounding_chunks + 4 RAG) + MCP descriptions (day 3–4)
-make sheet engine-drafts       # deterministic engine: expectation sheet + 20 LLM-free drafts  (day 5–6)
-make corpus embed vectors      # GraphRAG corpus, local embeddings (no API key), TigerVector loads  (day 7)
+make db features cms facts chunks ids
+```
+
+Schema + loading jobs + 590,742 transactions; WCC / degree once (day 2, 4):
+
+```bash
+make load algos
+```
+
+The 25 installed queries (16 LLM-exposed reads + 4 writers + 5 harness-only: `grounding_chunks` + 4 RAG) and their MCP descriptions (day 3–4):
+
+```bash
+make install-queries describe
+```
+
+Deterministic engine: the expectation sheet (`qa/engine_expectation_sheet.md`) + 20 LLM-free drafts, printed as one aligned table of 20 cases with a summary of SARs filed and total exposure (day 5–6):
+
+```bash
+make sheet engine-drafts
+```
+
+GraphRAG corpus, local embeddings (no API key), TigerVector loads (day 7):
+
+```bash
+make corpus embed vectors
 ```
 
 ## Run the 20 cases
 
+Wake the workspace (auto-resume drops the first request) — prints the TigerGraph version:
+
 ```bash
-make awake                      # wake the workspace (auto-resume drops the first request)
-make keepalive &                # optional: ping every 3 min while the benchmark runs
-make bench RUN_ID=v1            # all 20 in opened_at order → runs/v1/<case>/{answer.json,calls.jsonl,phases.jsonl,sar.md}
-make promote RUN_ID=v1          # validator (ids resolved against data/ids.duckdb) → cases/
-make ui                         # http://localhost:8501  queue · case · approvals · graph · runs
+make awake
 ```
 
-Without a workspace or API keys: `RUN_MODE=mock make mock-run ui` renders the UI from `cases/` (or the sample HHG-014 answer) and replays recorded tool traces.
+Optional: ping every 3 min while the benchmark runs, one `OK` line per ping:
+
+```bash
+make keepalive &
+```
+
+All 20 in `opened_at` order → `runs/v1/<case>/{answer.json,calls.jsonl,phases.jsonl,sar.md}`:
+
+```bash
+make bench RUN_ID=v1
+```
+
+Validator (ids resolved against `data/ids.duckdb`) → `cases/`:
+
+```bash
+make promote RUN_ID=v1
+```
+
+The analyst dashboard at http://localhost:8501 — queue · case · approvals · graph · runs:
+
+```bash
+make ui
+```
+
+Without a workspace or API keys, render the UI from `cases/` (or the sample HHG-014 answer) and replay recorded tool traces. `make mock-run` prints a table of every case it replayed, with the phase and call counts it synthesised:
+
+```bash
+RUN_MODE=mock make mock-run ui
+```
 
 Without a workspace but **with** the real model (subscription, still no keys) — the facts come from DuckDB, the decisions from Claude:
 
 ```bash
 uv run python -m agent.bench --run-id cli1 --cases HHG-014,HHG-010 --mock --llm-backend cli
-uv run python -m agent.validator --db data/ids.duckdb runs/cli1/*/answer.json     # -> []
+```
+
+```bash
+uv run python -m agent.validator --db data/ids.duckdb runs/cli1/*/answer.json
 ```
 
 `--mock` picks the fact source (DuckDB instead of TigerGraph); `--llm-backend` picks the model
 (`cli` = claude-agent-sdk, `api` = anthropic SDK, `mock` = recorded fixtures). They are independent.
+
+## Checks that need nothing but this checkout
+
+The unit suite (data-backed tests skip when the DuckDB files are absent):
+
+```bash
+make test
+```
+
+`ruff check .`:
+
+```bash
+make lint
+```
+
+Static GSQL lint — every `alias.attribute` in `graph/queries/*.gsql` resolves against `graph/schema.gsql`,
+brackets balance, and `mcp/query_descriptions.yaml` has one entry per query. Prints a row per query file
+and exits 1 on the first problem:
+
+```bash
+make lint-gsql
+```
+
+Contract lint — GSQL parameter lists vs `mcp/query_descriptions.yaml` vs `engine.facts_duckdb.DuckFacts`
+vs `agent.mcp_client.BUILTIN_QUERIES`, as one coverage table (`ok` / `X` / `-` per module):
+
+```bash
+make lint-contracts
+```
+
+Rebuild the id-only validator DuckDB (`data/ids.duckdb`, checked in) and verify every row count:
+
+```bash
+make ids
+```
 
 ## Guarantees about the answer files
 
@@ -108,7 +271,7 @@ uv run python -m agent.validator --db data/ids.duckdb runs/cli1/*/answer.json   
 
 ## Repository map
 
-`etl/` DuckDB + features + scorer (owns `data/out/*.csv` incl. `fraud_pattern.csv`) · `graph/` schema, loading jobs, 25 queries, algorithms, loaders · `mcp/` launcher, tool lists, query descriptions · `rag/` corpus, chunks, embeddings, vector loads, SAR generator + validator · `engine/` deterministic decision engine, facts DB builder, replay, drafts · `policy/` fraud_policy.yaml · `agent/` phase machine, prompts, schemas, MCP client, persist, validator, bench · `qa/` integration lint · `ui/` Streamlit · `ops/` ensure_awake, keep_alive, id export, mock runs · `docs/` checklists, demo script, blog · `tests/` unit + live.
+`etl/` DuckDB + features + scorer (owns `data/out/*.csv` incl. `fraud_pattern.csv`) · `graph/` schema, loading jobs, 25 queries, algorithms, loaders · `mcp/` launcher, tool lists, query descriptions · `rag/` corpus, chunks, embeddings, vector loads, SAR generator + validator · `engine/` deterministic decision engine, facts DB builder, replay, drafts · `policy/` fraud_policy.yaml · `agent/` phase machine, prompts, schemas, MCP client, persist, validator, bench · `qa/` GSQL lint + cross-module contract lint · `ui/` Streamlit · `ops/` `console.py` (the one terminal-output layer every CLI prints through), ensure_awake, keep_alive, id export, mock runs · `docs/` checklists, demo script, blog · `tests/` unit + live.
 
 ## Data and licensing
 

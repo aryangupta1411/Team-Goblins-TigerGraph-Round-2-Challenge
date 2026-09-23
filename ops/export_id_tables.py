@@ -31,6 +31,8 @@ import time
 
 import duckdb
 
+from ops.console import Col, Table, fail, header, ok, progress, step, summary
+
 CARDMAP = """
 SELECT customer_id, coalesce(card6,'') AS c6,
        dense_rank() OVER (PARTITION BY customer_id ORDER BY coalesce(card6,'')) AS k
@@ -71,16 +73,22 @@ EXPECTED = {"txn": 590_742, "card": 14_317, "customer": 13_553, "device_profile"
 
 
 def export(src: str, out: str) -> dict[str, int]:
+    """Build `out` from `src` and return the row count of every table *and* view.
+
+    Tables are keyed by `EXPECTED`, views by `VIEWS`; the two name spaces are disjoint,
+    so the caller compares against ``EXPECTED | VIEWS``. Counting is done here (rather
+    than asserting) so the CLI can report every mismatch at once instead of dying on the
+    first one with a traceback.
+    """
     if os.path.exists(out):
         os.remove(out)
     con = duckdb.connect(out)
     con.execute(f"ATTACH '{src}' AS src (READ_ONLY)")
-    for stmt in SQL:
-        con.execute(stmt)
-    counts = {t: con.execute(f"SELECT count(*) FROM {t}").fetchone()[0] for t in EXPECTED}
-    for v, n in VIEWS.items():
-        got = con.execute(f"SELECT count(*) FROM {v}").fetchone()[0]
-        assert got == n, f"view {v}: {got} rows, expected {n}"
+    with progress("creating tables and views", total=len(SQL)) as p:
+        for stmt in SQL:
+            con.execute(stmt)
+            p.advance()
+    counts = {n: con.execute(f"SELECT count(*) FROM {n}").fetchone()[0] for n in (*EXPECTED, *VIEWS)}
     con.execute("DETACH src")
     con.close()
     return counts
@@ -91,16 +99,62 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--src", default=os.getenv("HHGOA_DB", "data/hhgoa.duckdb"))
     ap.add_argument("--out", default=os.getenv("VALIDATOR_DB", "data/ids.duckdb"))
     args = ap.parse_args(argv)
+    header(
+        "ops.export_id_tables",
+        "id-only DuckDB so the answer-file validator resolves every id without the raw CSVs",
+        {"src": args.src, "out": args.out, "tables": len(EXPECTED), "views": len(VIEWS)},
+    )
+    if not os.path.exists(args.src):
+        fail(f"source DuckDB not found: {args.src}")
+        summary("id export failed", {"src": args.src, "hint": "run `make db features` first"}, status="fail")
+        return 1
+
     t0 = time.time()
+    step(f"attaching {args.src} read-only")
     counts = export(args.src, args.out)
-    ok = True
-    for t, n in counts.items():
-        flag = "ok" if n == EXPECTED[t] else f"EXPECTED {EXPECTED[t]:,}"
-        ok &= n == EXPECTED[t]
-        print(f"{t:15s} {n:>9,}  {flag}")
-    print(f"views: {', '.join(VIEWS)} (txc/card_feat/customer_feat/cc for engine.validator)")
-    print(f"wrote {args.out} ({os.path.getsize(args.out)/1e6:.1f} MB) in {time.time()-t0:.1f}s")
-    return 0 if ok else 1
+
+    want = {**EXPECTED, **VIEWS}
+    t = Table(
+        Col("object", max_width=16),
+        Col("kind", width=5),
+        Col("rows", align="right", width=9),
+        Col("expected", align="right", width=9),
+        Col("status", width=6),
+        title=f"{len(counts)} objects in {args.out}",
+        caption="views txc / card_feat / customer_feat / cc carry the column names engine.validator queries",
+    )
+    bad = []
+    for name, n in counts.items():
+        good = n == want[name]
+        if not good:
+            bad.append((name, n, want[name]))
+        t.add_row(
+            name,
+            "table" if name in EXPECTED else "view",
+            f"{n:,}",
+            f"{want[name]:,}",
+            "ok" if good else "WRONG",
+            style=None if good else "red",
+        )
+    t.print()
+
+    for name, got, exp in bad:
+        fail(f"{name}: {got:,} rows, expected {exp:,}")
+    if not bad:
+        ok(f"every table and view matches its expected row count ({counts['txn']:,} transactions)")
+    mb = os.path.getsize(args.out) / 1e6
+    summary(
+        "id export complete" if not bad else "id export finished with wrong counts",
+        {
+            "database": args.out,
+            "size": f"{mb:.1f} MB",
+            "objects": f"{len(EXPECTED)} tables + {len(VIEWS)} views",
+            "row mismatches": len(bad),
+            "elapsed": f"{time.time() - t0:.1f}s",
+        },
+        status="fail" if bad else "ok",
+    )
+    return 0 if not bad else 1
 
 
 if __name__ == "__main__":

@@ -143,9 +143,48 @@ def fetch_ofac(dest: Path, user_agent: str) -> dict:
 
 
 def main(argv: list[str] | None = None) -> int:
+    from ops.console import Col, Table, detail, header, ok, step, summary, warn
+
     argv = argv if argv is not None else sys.argv[1:]
-    for name in argv or ["C13487"]:
-        print(json.dumps(ofac_screen(name), indent=1)[:1500])
+    names = list(argv) or ["C13487"]
+    idx = get_index()
+    v = idx.version
+    header("rag.ofac",
+           "deterministic OFAC SDN screening (exact match, then rapidfuzz token_set_ratio)",
+           {"sdn.csv": str(idx.sdn_path), "alt.csv": str(idx.alt_path) if idx.alt_path else "(not loaded)",
+            "entities": f"{v['sdn_rows']:,}", "names indexed": f"{v['name_rows']:,}",
+            "list fetched": v["fetched_at"], "sdn sha256": v["sdn_sha256"][:16],
+            "threshold": THRESHOLD, "queries": len(names)})
+    hits = 0
+    for name in names:
+        r = ofac_screen(name)
+        step(f"screening {name!r}")
+        detail(f"normalised {r['normalised']!r} | exact={r['exact']} | best score {r['best_score']} "
+               f"| threshold {r['threshold']} | ref {r['ref']}")
+        if r.get("note"):
+            warn(r["note"])
+        t = Table(
+            Col("score", align="right", width=6),
+            Col("ent_num", align="right", width=8),
+            Col("name", max_width=36),
+            Col("type", max_width=10),
+            Col("program", max_width=14),
+            Col("matched via", max_width=12),
+            title=f"matches for {name!r}",
+        )
+        for m in r["matches"]:
+            t.add_row(m["score"], m["ent_num"], m["name"], m["type"], m["program"], m["source"],
+                      style="red" if m["score"] >= 100 else "yellow")
+        if r["matches"]:
+            t.print()
+            hits += 1
+            warn(f"{name}: {len(r['matches'])} SDN match(es), best score {r['best_score']}")
+        else:
+            ok(f"{name}: no OFAC SDN match (screened against {v['name_rows']:,} names)")
+    summary("rag.ofac complete",
+            {"queries": len(names), "with matches": hits, "clean": len(names) - hits,
+             "list version": f"sdn.csv {v['fetched_at']} ({v['sdn_rows']:,} entities)"},
+            status="warn" if hits else "ok")
     return 0
 
 

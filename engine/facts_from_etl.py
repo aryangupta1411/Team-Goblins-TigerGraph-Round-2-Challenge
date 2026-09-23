@@ -28,6 +28,8 @@ import time
 
 import duckdb
 
+from ops.console import Col, Table, fail, header, ok, step, summary
+
 SQL = [
     """CREATE OR REPLACE TABLE txc AS
        SELECT t.TransactionID, t.TransactionID::VARCHAR AS id, t.card_id, t.customer_id, t.ts, t.ts_str, t.amt, t.product_cd, t.channel,
@@ -72,13 +74,29 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--out", default=os.getenv("ENGINE_FACTS_DB", "data/hhgoa_engine.duckdb"))
     a = ap.parse_args(argv)
     t0 = time.time()
+    header("engine.facts_from_etl", "materialise the engine's facts DuckDB from the ETL tables (decision D7)",
+           {"etl db": a.etl, "out db": a.out, "tables": len(SQL)})
+    step(f"building {len(SQL)} tables from {a.etl}")
     counts = build(a.etl, a.out)
-    ok = True
-    for t, n in counts.items():
-        ok &= n == EXPECTED[t]
-        print(f"{t:15s} {n:>9,}  {'ok' if n == EXPECTED[t] else f'EXPECTED {EXPECTED[t]:,}'}")
-    print(f"wrote {a.out} in {time.time() - t0:.1f}s")
-    return 0 if ok else 1
+    t = Table(Col("table", max_width=16), Col("rows", align="right", max_width=11), Col("expected", align="right", max_width=11),
+              Col("result", max_width=8), title="engine facts DB contents")
+    bad = []
+    for name, n in counts.items():
+        good = n == EXPECTED[name]
+        bad += [] if good else [name]
+        t.add_row(name, f"{n:,}", f"{EXPECTED[name]:,}", "ok" if good else "MISMATCH", style="green" if good else "bold red")
+    t.print()
+    for name in bad:
+        fail(f"{name}: {counts[name]:,} rows, expected {EXPECTED[name]:,}")
+    if not bad:
+        ok("every table matches its expected row count")
+    size_mb = os.path.getsize(a.out) / 1e6 if os.path.exists(a.out) else 0
+    summary("facts DB written",
+            {"path": a.out, "size": f"{size_mb:,.1f} MB", "tables": len(counts),
+             "rows": f"{sum(counts.values()):,}", "mismatched": ", ".join(bad) or "none",
+             "wall time": f"{time.time() - t0:.1f}s"},
+            status="fail" if bad else "ok")
+    return 0 if not bad else 1
 
 
 if __name__ == "__main__":

@@ -26,6 +26,8 @@ import json
 import os
 import sys
 
+from ops.console import Col, Table, fail, header, joinlist, money, ok, prob, step, summary, warn
+
 MANDATORY_QUERIES = [
     "case_context",
     "card_profile",
@@ -182,6 +184,16 @@ def build(answers_dir: str, run_id: str, runs_dir: str, case_pack_csv: str, mode
     return written
 
 
+def _lines(path: str) -> int:
+    with open(path, encoding="utf-8") as f:
+        return sum(1 for _ in f)
+
+
+def _action_names(actions: list | None) -> list[str]:
+    """``next_best_actions.final`` holds action objects; show the verbs, not the dict repr."""
+    return [a.get("action", "?") if isinstance(a, dict) else str(a) for a in (actions or [])]
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--answers", default="cases")
@@ -190,8 +202,76 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--case-pack", default="data/raw/case_pack.csv")
     ap.add_argument("--model", default="mock")
     a = ap.parse_args(argv)
-    written = build(a.answers, a.run_id, a.runs, a.case_pack, a.model)
-    print(f"wrote {len(written)} case(s) to {os.path.join(a.runs, a.run_id)}: {', '.join(written)}")
+    out_root = os.path.join(a.runs, a.run_id)
+    have = len(glob.glob(os.path.join(a.answers, "HHG-*.json")))
+    header(
+        "ops.make_mock_run",
+        "replay a runs/ tree from finished answer files so the UI works with no graph and no keys",
+        {
+            "answers": a.answers if have else "tests/fixtures/answers (no cases/HHG-*.json yet)",
+            "case pack": a.case_pack if os.path.exists(a.case_pack) else f"{a.case_pack} (missing: trigger/opened_at defaulted)",
+            "run id": a.run_id,
+            "output": out_root,
+            "model": a.model,
+        },
+    )
+    if not have:
+        warn(f"no answer files in {a.answers}/ - falling back to the checked-in sample answers")
+    step(f"synthesising phases.jsonl, calls.jsonl and sar.md under {out_root}")
+    try:
+        written = build(a.answers, a.run_id, a.runs, a.case_pack, a.model)
+    except SystemExit as exc:  # build() raises when there is nothing at all to replay
+        fail(str(exc))
+        summary("mock run not written", {"answers": a.answers, "run id": a.run_id}, status="fail")
+        return 1
+
+    t = Table(
+        Col("case", width=7),
+        Col("verdict", max_width=10),
+        Col("p", align="right", width=4),
+        Col("pattern", max_width=22),
+        Col("exposure", align="right", width=11),
+        Col("final actions", max_width=30),
+        Col("phases", align="right", width=6),
+        Col("calls", align="right", width=5),
+        Col("sar", width=3, align="center"),
+        title=f"{len(written)} case(s) replayed into {out_root}",
+        caption="phases = P0..P10 rows, calls = GSQL tool rows + one LLM row per LLM phase",
+    )
+    sars = 0
+    exposure = 0.0
+    for cid in written:
+        d = os.path.join(out_root, cid)
+        with open(os.path.join(d, "answer.json"), encoding="utf-8") as f:
+            ans = json.load(f)
+        case = ans["case"]
+        filed = bool(ans.get("sar", {}).get("file"))
+        sars += filed
+        exposure += float(case.get("exposure_usd") or 0)
+        t.add_row(
+            cid,
+            case.get("verdict", "-"),
+            prob(case.get("fraud_probability")),
+            case.get("pattern") or "-",
+            money(case.get("exposure_usd")),
+            joinlist(_action_names(ans.get("next_best_actions", {}).get("final")), max_items=3),
+            _lines(os.path.join(d, "phases.jsonl")),
+            _lines(os.path.join(d, "calls.jsonl")),
+            "Y" if filed else "-",
+            style="yellow" if case.get("verdict") == "fraud" else None,
+        )
+    t.print()
+    ok(f"run manifest -> {os.path.join(out_root, 'run_manifest.json')} (mode=mock, model={a.model})")
+    summary(
+        "mock run ready",
+        {
+            "cases": len(written),
+            "SARs filed": sars,
+            "total exposure": money(exposure),
+            "run id": a.run_id,
+            "next": f"RUN_MODE=mock make ui   (pick run {a.run_id})",
+        },
+    )
     return 0
 
 

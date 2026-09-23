@@ -1,13 +1,13 @@
 """Static lint of graph/queries/*.gsql against the schema (module C's "static checks", now a repo file).
 
 For every query file:
-  * every `alias.attribute` reference resolves to an attribute of the vertex / edge type bound to that alias —
+  * every `alias.attribute` reference resolves to an attribute of the vertex / edge type bound to that alias -
     aliases are bound from `(alias:Type)` / `-[alias:EDGE]-` patterns, `S = {param}` (the parameter's VERTEX<T>),
     and `X = SELECT x FROM ...` (X takes the type of x); vertex-set variables used as pattern types resolve through
     that binding; `alias.@acc` (accumulators) and tuple locals (`Row r = @@heap.pop(); r.id`) are skipped;
   * the schema is graph/schema.gsql (the DDL) cross-checked with contracts/schema.md (the only allowed rename is
     proxy -> proxy_type, so `t.proxy` is reported: PROXY is a 4.2 DDL reserved word and the attribute is stored
-    as proxy_type — decision M1);
+    as proxy_type - decision M1);
   * brackets / parentheses / braces are balanced.
 Also: mcp/query_descriptions.yaml parses and every query's `parameters` keys equal its `example` keys, and every
 query file has a yaml entry (and vice versa).
@@ -24,8 +24,11 @@ import sys
 import yaml
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.join(ROOT, "graph"))
 from check_contracts import parse_schema  # noqa: E402
+
+from ops.console import Col, Table, fail, header, ok, rule, summary, warn  # noqa: E402
 
 RENAMES = {"proxy": "proxy_type"}
 QUERIES = os.path.join(ROOT, "graph", "queries")
@@ -105,18 +108,49 @@ def schema_md_vertices(md_path: str) -> dict[str, list[str]]:
 
 
 def main() -> int:
-    vertices, edges = parse_schema(open(os.path.join(ROOT, "graph", "schema.gsql")).read())
-    problems: list[str] = []
+    schema_gsql = os.path.join(ROOT, "graph", "schema.gsql")
+    yaml_path = os.path.join(ROOT, "mcp", "query_descriptions.yaml")
     md_path = next((p for p in (os.path.join(ROOT, "contracts", "schema.md"), os.path.join(os.path.dirname(ROOT), "contracts", "schema.md")) if os.path.exists(p)), None)
+    header(
+        "qa.lint_gsql",
+        "every alias.attribute in graph/queries resolves against the schema; brackets balance; yaml agrees",
+        {
+            "queries": os.path.relpath(QUERIES, ROOT),
+            "schema": os.path.relpath(schema_gsql, ROOT),
+            "schema.md": os.path.relpath(md_path, ROOT) if md_path else "(absent - vertex-attribute cross-check skipped)",
+            "descriptions": os.path.relpath(yaml_path, ROOT),
+        },
+    )
+    vertices, edges = parse_schema(open(schema_gsql).read())
+    problems: list[str] = []
     if md_path:
         for v, attrs in schema_md_vertices(md_path).items():
             if vertices.get(v) != attrs:
                 problems.append(f"schema.md {v} attrs != schema.gsql: md {attrs} vs gsql {vertices.get(v)}")
+    else:
+        warn("contracts/schema.md not found - comparing queries against graph/schema.gsql only")
     files = sorted(f for f in glob.glob(os.path.join(QUERIES, "*.gsql")) if not f.endswith("install_all.gsql"))
-    for f in files:
-        problems += lint_file(f, vertices, edges)
-    y = yaml.safe_load(open(os.path.join(ROOT, "mcp", "query_descriptions.yaml")))["queries"]
+    y = yaml.safe_load(open(yaml_path))["queries"]
     names = {os.path.basename(f)[:-5] for f in files}
+
+    per_file = Table(
+        Col("query", max_width=30),
+        Col("lines", align="right", width=5),
+        Col("params", align="right", width=6),
+        Col("yaml", width=7, align="center"),
+        Col("problems", align="right", width=8),
+        title=f"{len(files)} query files vs {len(vertices)} vertex types / {len(edges)} edge types",
+    )
+    for f in files:
+        found = lint_file(f, vertices, edges)
+        problems += found
+        stem = os.path.basename(f)[:-5]
+        text = open(f).read()
+        head = re.search(r"CREATE OR REPLACE QUERY \w+\s*\((.*?)\)\s*FOR GRAPH", text, re.S)
+        nparams = len([p for p in re.split(r",(?![^<]*>)", head.group(1)) if p.strip()]) if head else 0
+        per_file.add_row(stem, len(text.splitlines()), nparams, "ok" if stem in y else "MISSING", len(found), style="red" if found or stem not in y else None)
+    per_file.print()
+
     for q, spec in y.items():
         if list(spec.get("parameters", {})) != list(spec.get("example", {})):
             problems.append(f"yaml {q}: parameters keys != example keys")
@@ -124,9 +158,27 @@ def main() -> int:
         problems.append(f"yaml: no entry for graph/queries/{q}.gsql")
     for q in sorted(set(y) - names):
         problems.append(f"yaml: entry {q} has no graph/queries/{q}.gsql")
-    for p in problems:
-        print("PROBLEM:", p)
-    print(f"{len(files)} query files, {len(y)} yaml entries, {len(problems)} problems")
+
+    if problems:
+        rule("problems")
+        t = Table(Col("#", align="right", width=3), Col("problem", max_width=140), title=f"{len(problems)} problem(s)")
+        for i, p in enumerate(problems, 1):
+            t.add_row(i, p, style="red")
+        t.print()
+        fail(f"{len(problems)} problem(s) - fix them before `make install-queries`")
+    else:
+        ok(f"{len(files)} query files clean: every alias.attribute resolves, brackets balance, yaml matches")
+    summary(
+        "gsql lint",
+        {
+            "query files": len(files),
+            "yaml entries": len(y),
+            "vertex types": len(vertices),
+            "edge types": len(edges),
+            "problems": len(problems),
+        },
+        status="fail" if problems else "ok",
+    )
     return 1 if problems else 0
 
 

@@ -8,6 +8,8 @@ USE GRAPH FraudGraph
  Weights (research/gap4 recommendation): same_device 3.0, same_card 2.5, same_customer 2.0,
  same_pattern 1.5, same_region 1.0, plus a recency bonus of up to 0.5 inside the 120-day window.
 */
+// AgentCase rows use STRICT opened_at < as_of: the case under investigation (written at intake with opened_at =
+// as_of) and any later case are never returned as its own precedent.
 CREATE OR REPLACE QUERY similar_cases_structural(INT k, STRING card_id, STRING customer_id, STRING device_id,
                                                  STRING addr1, STRING pattern_sig, DATETIME as_of)
     FOR GRAPH FraudGraph SYNTAX v3 {
@@ -37,7 +39,7 @@ CREATE OR REPLACE QUERY similar_cases_structural(INT k, STRING card_id, STRING c
          IF pattern_sig != "" AND c.pattern == pattern_sig THEN c.@score += 1.5, c.@overlap_reasons += "same_pattern" END;
 
   ac = SELECT a FROM (a:AgentCase)
-       WHERE a.opened_at <= as_of AND datetime_diff(as_of, a.opened_at) <= window_s
+       WHERE a.opened_at < as_of AND datetime_diff(as_of, a.opened_at) <= window_s
          AND ((card_id != "" AND a.card_id == card_id)
            OR (customer_id != "" AND a.customer_id == customer_id)
            OR (pattern_sig != "" AND a.pattern == pattern_sig))
@@ -61,7 +63,7 @@ CREATE OR REPLACE QUERY similar_cases_structural(INT k, STRING card_id, STRING c
     cd = SELECT c FROM (c:cd)
          POST-ACCUM c.@opened_at += datetime_format(c.opened_at, "%Y-%m-%d %H:%M:%S");
     ad = SELECT a FROM (d:DeviceProfile WHERE d.id == device_id)<-[:CASE_DEVICE]-(a:AgentCase)
-         WHERE a.opened_at <= as_of AND datetime_diff(as_of, a.opened_at) <= window_s
+         WHERE a.opened_at < as_of AND datetime_diff(as_of, a.opened_at) <= window_s
          ACCUM a.@score += 3.0, a.@overlap_reasons += "same_device", a.@kind += "agent",
                a.@outcome_or_verdict += a.verdict, a.@pattern += a.pattern, a.@exposure_usd += a.exposure_usd;
     ad = SELECT a FROM (a:ad)

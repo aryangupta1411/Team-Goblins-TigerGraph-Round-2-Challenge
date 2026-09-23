@@ -20,6 +20,8 @@ import sys
 
 import yaml
 
+# the key renames mcp/normalize.py applies to raw query output before any reader sees it
+PRINT_RENAMES = {"best_run": "run"}
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 os.environ.setdefault("RUN_MODE", "mock")
@@ -86,6 +88,8 @@ def main() -> int:
             if ye != params:
                 errors.append(("yaml example", name, f"yaml example keys {ye} != gsql {params}"))
                 bad["yaml"] = True
+            # mcp/normalize renames GSQL print keys that cannot carry the contract name (card_testing_check: best_run -> run)
+            prints = [PRINT_RENAMES.get(k, k) for k in prints]
             if yk is not None and set(yk) != set(prints):
                 errors.append(("yaml prints", name, f"yaml {yk} != gsql {sorted(set(prints))}"))
                 bad["yaml"] = True

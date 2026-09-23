@@ -26,7 +26,8 @@ queries:
     mandatory: true
     description: >
       Baselines and memory for one card up to as_of: every Card attribute (medians, max, modal region, ring_id,
-      burst look-alikes, WCC / degree / PPR), last-30-day aggregates, top-5 regions (with distinct days),
+      burst look-alikes, WCC / degree / PPR; the history counts n_txns, first/last_ts, median/p90/max amounts,
+      online / in-person counts, n_regions and n_devices_seen are recomputed over ts <= as_of), last-30-day aggregates, top-5 regions (with distinct days),
       top-5 device profiles (with strength), top-10 purchaser email domains, the customer's other cards,
       prior closed cases (with template_id: fraud_reported / cleared_travel / cleared_new_phone / cleared_amount /
       undoc_ring / undoc_burst — the cleared-precedent rule D9 matches on it) and prior agent-written cases on this
@@ -77,8 +78,9 @@ queries:
   device_neighbors:
     description: >
       Every card that used device profile d between from_ts and to_ts (R6 shared origin, rings): per card
-      n_txns, sum_amt, proxy and New counts, first/last use; plus the closed and agent-written cases on those
-      cards. If the profile is not strong (generic, e.g. "NULL | NULL | chrome 66.0 | NULL") only device{} is
+      n_txns, sum_amt, proxy and New counts, first/last use; plus the closed cases whose transactions used THIS
+      profile (not every case on those cards) and the agent-written cases on those cards opened before to_ts
+      (never the calling case itself). If the profile is not strong (generic, e.g. "NULL | NULL | chrome 66.0 | NULL") only device{} is
       returned and the lists are empty — generic profiles are never shared-device evidence.
       Wave scope for a ring: from_ts = first day of the month, to_ts = end of the exam period.
     parameters:
@@ -156,8 +158,9 @@ queries:
     description: >
       The <= gap_h-hour-gap chain of transactions on the card that contains the flagged transaction, up to
       as_of, with cms_p, device, email, amount, channel and sig_match (same strong device profile, or same
-      email + product with the amount within 5 % inside 2 h). Input to affected_txn_ids. Very busy cards
-      return the 85 members nearest the flagged transaction (60 before, 25 after).
+      email + product with the amount within 5 % inside 2 h). Input to affected_txn_ids. The chain stays within
+      7 days of the flagged transaction; a chain of more than 200 members prints the 100 before it and up to 100
+      after it (the same caps as the engine's DuckFacts).
     parameters:
       t: 'VERTEX<Transaction> — {"id": "3514948"}.'
       as_of: 'DATETIME — evidence cut-off.'
@@ -216,7 +219,8 @@ queries:
     harness_only: true
     description: >
       Case memory (GraphRAG): structurally related ClosedCase / AgentCase (same card, customer, device profile,
-      billing region or pattern in the 120 days before as_of) re-ranked by note-embedding similarity; at least
+      billing region or pattern in the 120 days before as_of; agent-written cases strictly before as_of, so a case
+      never retrieves its own AgentCase) re-ranked by note-embedding similarity; at least
       one cleared case when available. Harness-side tool find_similar_cases embeds the query text with
       rag.embed and calls it — the LLM never sees the 1024-float q.
     parameters:

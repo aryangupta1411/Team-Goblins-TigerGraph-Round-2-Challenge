@@ -60,9 +60,11 @@ CREATE OR REPLACE QUERY similar_prior_cases(LIST<FLOAT> q, INT k, STRING card_id
                 IF addr1 != "" AND c.note_region == addr1 THEN c.@overlap_reasons += "same_region" END,
                 IF pattern_sig != "" AND c.pattern == pattern_sig THEN c.@overlap_reasons += "same_pattern" END;
 
-  // ---- candidates among agent-written cases (cases run in opened_at order, so earlier ones qualify) ----
+  // ---- candidates among agent-written cases (cases run in opened_at order, so earlier ones qualify). STRICT
+  //      opened_at < as_of: the case under investigation (its AgentCase is written at intake with opened_at = as_of,
+  //      and a superseded run's copy has the same id / opened_at) and any later case never retrieve themselves ----
   ac_all = SELECT a FROM (a:AgentCase)
-           WHERE a.opened_at <= as_of AND datetime_diff(as_of, a.opened_at) <= window_s
+           WHERE a.opened_at < as_of AND datetime_diff(as_of, a.opened_at) <= window_s
            ACCUM a.@kind += "agent", a.@outcome_or_verdict += a.verdict, a.@pattern += a.pattern,
                  a.@exposure_usd += a.exposure_usd, a.@opened_at += datetime_format(a.opened_at, "%Y-%m-%d %H:%M:%S");
   ac_struct = SELECT a FROM (a:ac_all)
@@ -84,7 +86,7 @@ CREATE OR REPLACE QUERY similar_prior_cases(LIST<FLOAT> q, INT k, STRING card_id
              ACCUM c.@overlap_reasons += "same_device", c.@kind += "closed", c.@outcome_or_verdict += c.outcome,
                    c.@pattern += c.pattern, c.@exposure_usd += c.exposure_usd, c.@opened_at += datetime_format(c.opened_at, "%Y-%m-%d %H:%M:%S");
     ac_dev = SELECT a FROM (d:DeviceProfile WHERE d.id == device_id)<-[:CASE_DEVICE]-(a:AgentCase)
-             WHERE a.opened_at <= as_of AND datetime_diff(as_of, a.opened_at) <= window_s
+             WHERE a.opened_at < as_of AND datetime_diff(as_of, a.opened_at) <= window_s
              ACCUM a.@overlap_reasons += "same_device", a.@kind += "agent", a.@outcome_or_verdict += a.verdict,
                    a.@pattern += a.pattern, a.@exposure_usd += a.exposure_usd, a.@opened_at += datetime_format(a.opened_at, "%Y-%m-%d %H:%M:%S");
     cand = cand UNION cc_dev UNION ac_dev;

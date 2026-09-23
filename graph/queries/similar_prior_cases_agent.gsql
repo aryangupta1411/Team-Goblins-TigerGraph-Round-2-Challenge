@@ -3,6 +3,8 @@ USE GRAPH FraudGraph
  FALLBACK 2/2 - AgentCase-only twin of similar_prior_cases_closed (see that file). Returns an empty set
  until the first AgentCase carries a note_emb whose index has been rebuilt.
 */
+// AgentCase rows use STRICT opened_at < as_of: the case under investigation (written at intake with opened_at =
+// as_of) and any later case are never returned as its own precedent.
 CREATE OR REPLACE QUERY similar_prior_cases_agent(LIST<FLOAT> q, INT k, STRING card_id, STRING customer_id,
                                                   STRING device_id, STRING addr1, STRING pattern_sig,
                                                   DATETIME as_of) FOR GRAPH FraudGraph SYNTAX v3 {
@@ -18,7 +20,7 @@ CREATE OR REPLACE QUERY similar_prior_cases_agent(LIST<FLOAT> q, INT k, STRING c
   INT kk = k * 3;
 
   ac_all = SELECT a FROM (a:AgentCase)
-           WHERE a.opened_at <= as_of AND datetime_diff(as_of, a.opened_at) <= window_s
+           WHERE a.opened_at < as_of AND datetime_diff(as_of, a.opened_at) <= window_s
            ACCUM a.@kind += "agent", a.@outcome_or_verdict += a.verdict, a.@pattern += a.pattern,
                  a.@exposure_usd += a.exposure_usd, a.@opened_at += datetime_format(a.opened_at, "%Y-%m-%d %H:%M:%S");
   cand = SELECT a FROM (a:ac_all)
@@ -31,7 +33,7 @@ CREATE OR REPLACE QUERY similar_prior_cases_agent(LIST<FLOAT> q, INT k, STRING c
            IF pattern_sig != "" AND a.pattern == pattern_sig THEN a.@overlap_reasons += "same_pattern" END;
   IF device_id != "" THEN
     ac_dev = SELECT a FROM (d:DeviceProfile WHERE d.id == device_id)<-[:CASE_DEVICE]-(a:AgentCase)
-             WHERE a.opened_at <= as_of AND datetime_diff(as_of, a.opened_at) <= window_s
+             WHERE a.opened_at < as_of AND datetime_diff(as_of, a.opened_at) <= window_s
              ACCUM a.@overlap_reasons += "same_device", a.@kind += "agent", a.@outcome_or_verdict += a.verdict,
                    a.@pattern += a.pattern, a.@exposure_usd += a.exposure_usd, a.@opened_at += datetime_format(a.opened_at, "%Y-%m-%d %H:%M:%S");
     cand = cand UNION ac_dev;

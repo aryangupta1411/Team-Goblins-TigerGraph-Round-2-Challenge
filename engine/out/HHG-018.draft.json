@@ -1,0 +1,177 @@
+{
+  "case_id": "HHG-018",
+  "case": {
+    "status": "escalated",
+    "verdict": "uncertain",
+    "fraud_probability": 0.55,
+    "pattern": "out_of_region_use",
+    "pattern_description": "",
+    "affected_txn_ids": [
+      "3485990",
+      "3490180",
+      "3491361"
+    ],
+    "first_suspicious_txn_id": "3485990",
+    "connected_card_ids": [],
+    "connected_device_profiles": [],
+    "exposure_usd": 197.11,
+    "evidence": [
+      {
+        "claim": "Amount $39.08 sits inside the card's baseline (prior median $86.91, prior maximum $4,438.01 over 5860 transactions)",
+        "source": "graph",
+        "ref": "query:case_context(txn=3491361)",
+        "entity_ids": [
+          "3491361",
+          "C02354-K2"
+        ]
+      },
+      {
+        "claim": "Billing region 126.0 is known to the card: 565 prior purchases on 141 days since 2016-07-02 (modal region 325.0, 38 regions used)",
+        "source": "graph",
+        "ref": "query:region_history(card=C02354-K2, addr1=126.0)",
+        "entity_ids": [
+          "3491361",
+          "C02354-K2"
+        ]
+      },
+      {
+        "claim": "$39.08 +-1% under product code W is a recurring price point on this card: 143 prior purchases, 17 of them at 126.0 (median gap 5.1 days, gap CV 1.03; R7's monthly-cadence test fails)",
+        "source": "graph",
+        "ref": "query:recurring_charge_check(txn=3491361)",
+        "entity_ids": [
+          "3491361",
+          "C02354-K2"
+        ]
+      },
+      {
+        "claim": "A second transaction in the same 48 h window (3490180, $117.07, in_person, region 325.0) scores 0.72 on the case-memory scorer",
+        "source": "graph",
+        "ref": "query:episode_candidates(txn=3491361)",
+        "entity_ids": [
+          "3490180",
+          "3491361"
+        ]
+      },
+      {
+        "claim": "19 prior confirmed-fraud case(s) on this card (account_takeover, card_not_present_fraud, out_of_region_use), most recent 2016-11-01; 1 within 120 days on the same channel",
+        "source": "graph",
+        "ref": "query:prior_cases_for_customer(customer=C02354)",
+        "entity_ids": [
+          "CC-0255",
+          "CC-0454",
+          "CC-0631",
+          "CC-1450",
+          "CC-1699",
+          "CC-2051",
+          "CC-2187",
+          "CC-2432",
+          "CC-2589",
+          "CC-3085",
+          "CC-3537",
+          "CC-3634",
+          "C02354-K2"
+        ]
+      },
+      {
+        "claim": "Customer C02354 reports they did not make the $39.08 purchase 3491361 (the denial is evidence: 4,665/4,665 customer-reported closed cases were confirmed fraud, 0 denials were cleared)",
+        "source": "customer",
+        "ref": "trigger",
+        "entity_ids": [
+          "3491361",
+          "C02354"
+        ]
+      },
+      {
+        "claim": "Case-memory scorer (LightGBM over the bank's 5,565 closed cases; October holdout AUC 0.956) puts the flagged transaction at 0.25 (calibrated 0.33); the real-time risk score was 0.48; the scorer is unreliable here (card has 7079 transactions, position 5861)",
+        "source": "graph",
+        "ref": "query:case_context(txn=3491361)",
+        "entity_ids": [
+          "3491361"
+        ]
+      },
+      {
+        "claim": "No reply within 24 hours / verification not completed (assumed); probability unchanged",
+        "source": "customer",
+        "ref": "evidence_request:1",
+        "entity_ids": []
+      }
+    ],
+    "similar_prior_cases": [
+      "CC-4942",
+      "CC-4721",
+      "CC-4436",
+      "CC-3537",
+      "CC-2589",
+      "CC-1450"
+    ],
+    "summary": "Customer C02354 disputed transaction 3491361 ($39.08, in person) on card C02354-K2. Customer C02354 reports they did not make the $39.08 purchase 3491361 (the denial is evidence: 4,665/4,665 customer-reported closed cases were confirmed fraud, 0 denials were cleared). 19 prior confirmed-fraud case(s) on this card (account_takeover, card_not_present_fraud, out_of_region_use), most recent 2016-11-01; 1 within 120 days on the same channel. Verdict uncertain at probability 0.55, pattern out_of_region_use, 3 affected transaction(s) worth $197.11 (families for fraud: customer, memory; for legitimacy: history). Initial actions: CREATE_CASE, VERIFY_WITH_CUSTOMER, MONITOR_CARD, ESCALATE_TO_ANALYST. Assumed customer_validation reply: no reply from the customer within 24 hours. Final actions: CREATE_CASE, MONITOR_CARD, DECLINE_TRANSACTION, ESCALATE_TO_ANALYST. Status escalated.",
+    "written_to_graph": false,
+    "graph_case_id": "AC-HHG-018"
+  },
+  "evidence_requests": [
+    {
+      "type": "customer_validation",
+      "asked_after_step": 15,
+      "assumed_response": "ASSUMED (simulated): no reply from the customer within 24 hours"
+    }
+  ],
+  "next_best_actions": {
+    "initial": [
+      {
+        "action": "CREATE_CASE",
+        "route": "auto",
+        "reason": "3a: customer dispute; case opened and written to the graph"
+      },
+      {
+        "action": "VERIFY_WITH_CUSTOMER",
+        "route": "auto",
+        "reason": "\u00a73b / \u00a75: verdict uncertain at 0.55 (families for fraud: customer, memory; for legitimacy: history); ask the cardholder which of the transactions were theirs"
+      },
+      {
+        "action": "MONITOR_CARD",
+        "route": "auto",
+        "reason": "\u00a73b / \u00a75: verdict uncertain; raise monitoring for 72 h while the verification is pending"
+      },
+      {
+        "action": "ESCALATE_TO_ANALYST",
+        "route": "auto",
+        "reason": "R8: the evidence conflicts (for fraud: memory; for legitimacy: history; the customer's own statement excluded)"
+      }
+    ],
+    "final": [
+      {
+        "action": "CREATE_CASE",
+        "route": "auto",
+        "reason": "3a: customer dispute; case opened and written to the graph"
+      },
+      {
+        "action": "MONITOR_CARD",
+        "route": "auto",
+        "reason": "R4: no reply within 24 h; raise monitoring sensitivity for 72 h"
+      },
+      {
+        "action": "DECLINE_TRANSACTION",
+        "route": "L1",
+        "reason": "R4: no reply within 24 h; decline pending / further authorisations on this card (card stays active)"
+      },
+      {
+        "action": "ESCALATE_TO_ANALYST",
+        "route": "auto",
+        "reason": "R8: the evidence conflicts (for fraud: memory; for legitimacy: history; the customer's own statement excluded)"
+      }
+    ],
+    "what_changed": "The assumed reply (customer_validation: no reply from the customer within 24 hours) left the probability at 0.55 and the verdict became uncertain. Added DECLINE_TRANSACTION. Dropped VERIFY_WITH_CUSTOMER. Counterfactual: a confirmation would have closed the alert (R3); a renewed denial would have led to BLOCK_CARD and CREATE_CASE (R2)."
+  },
+  "sar": {
+    "file": false,
+    "reason": "3a not met: verdict uncertain (fraud not confirmed or strongly suspected), exposure $197.11; no report",
+    "narrative": "",
+    "subjects": [],
+    "total_amount_usd": 0.0,
+    "activity_dates": []
+  },
+  "stop_reason": "Policy \u00a76 test 3: the verification was not answered within the window; R4 applies (monitor + decline pending authorisations) and the case is escalated to an analyst (R8), so no further automated step would change the recommendation until a reply arrives.",
+  "tool_calls": 15,
+  "tokens": 0,
+  "latency_s": 0.07
+}

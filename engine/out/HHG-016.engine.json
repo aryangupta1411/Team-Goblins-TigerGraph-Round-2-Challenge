@@ -1,0 +1,475 @@
+{
+ "scorecard_pre": {
+  "cms_p": 0.4463,
+  "cal_p": 0.5259,
+  "adjustments": [
+   [
+    "customer denial corroborated by the scorer (calibrated >= 0.5)",
+    1.1
+   ],
+   [
+    "customer denial not explained by R7 \u2192 floor",
+    0.55
+   ]
+  ],
+  "p_engine": 0.7692,
+  "families_fraud": [
+   "customer",
+   "memory"
+  ],
+  "families_legit": [],
+  "flags": {
+   "denial": true,
+   "analyst_request": false,
+   "risk_alert": false,
+   "trigger_type": "customer_report",
+   "flagged_ts": "2016-12-11 22:39:08",
+   "flagged_txn_id": "3534820",
+   "flagged_amt": 59.67,
+   "flagged_addr1": "",
+   "flagged_device_id": "Windows | NULL | edge 16.0 | NULL",
+   "flagged_device_new": "New",
+   "flagged_device_cards": 160,
+   "flagged_device_strong": false,
+   "channel": "online",
+   "modal_region": "",
+   "card_n_txns": 61,
+   "two_cards_confirmed_fraud": false,
+   "outcome": "",
+   "asked": true,
+   "pending": false,
+   "ring_hit": false,
+   "ring_id": "",
+   "ring_txn_ids": [],
+   "ring_rows": [],
+   "wave_cards": [],
+   "pre_open_cards": [],
+   "ring_cases": [],
+   "burst_hit": false,
+   "burst_txn_ids": [],
+   "burst": {},
+   "burst_lookalikes": [],
+   "r5_run": false,
+   "card_testing_run_ids": [],
+   "r5_cleared_over_big": false,
+   "r5": {
+    "run": {},
+    "larger_purchase": {},
+    "cleared_over_big": false,
+    "chain": {
+     "n_members": 1,
+     "n_small": 0
+    }
+   },
+   "recurring_match": false,
+   "recurring_group": null,
+   "recurring_total_n": 0,
+   "recurring_neighbour_hi": false,
+   "recurring_place": "hotmail.com",
+   "scorer_unreliable": false,
+   "dormant_days": 21,
+   "roaming_card": false,
+   "rulebook_chain_ids": [
+    "3534820"
+   ],
+   "rulebook_chain_sum": 59.67,
+   "conflict_chain": false,
+   "conflict_chain_ids": [],
+   "shared_fraud_cards": [],
+   "shared_device_fraud": false,
+   "device_known": false,
+   "shared_recipient_email": [],
+   "recent_same_channel_case": false,
+   "prior_fraud_case_ids": [],
+   "prior_cleared_case_ids": [],
+   "cleared_precedent_case_ids": [],
+   "conflict": false,
+   "floor": 0.55,
+   "families_conflict": false,
+   "mixed_channel": false,
+   "any_new_member": true,
+   "all_in_modal_region": false,
+   "card_testing_chain": false,
+   "candidate_chain_ids": [
+    "3534820"
+   ],
+   "request_type": "step_up_auth"
+  },
+  "chain": [
+   {
+    "id": "3534820",
+    "ts": "2016-12-11 22:39:08",
+    "amt": 59.67,
+    "product_cd": "C",
+    "channel": "online",
+    "addr1": "",
+    "p_email": "hotmail.com",
+    "device_id": "Windows | NULL | edge 16.0 | NULL",
+    "device_new": "New",
+    "cms_p": 0.44633350709290776,
+    "sig_match": true
+   }
+  ],
+  "episode_ids": [
+   "3534820"
+  ],
+  "first_suspicious_txn_id": "3534820",
+  "exposure_usd": 59.67,
+  "connected_card_ids": [],
+  "connected_device_profiles": [],
+  "pattern": "card_not_present_new_device",
+  "pattern_description": "",
+  "verdict": "fraud",
+  "similar_prior_cases": [],
+  "evidence": [
+   {
+    "claim": "Amount $59.67 sits inside the card's baseline (prior median $37.75, prior maximum $94.70 over 48 transactions)",
+    "source": "graph",
+    "ref": "query:case_context(txn=3534820)",
+    "entity_ids": [
+     "3534820",
+     "C09988-K1"
+    ],
+    "family": "history",
+    "direction": "legit"
+   },
+   {
+    "claim": "Card was dormant for 21 days before the flagged transaction",
+    "source": "graph",
+    "ref": "query:card_window(card=C09988-K1, hours=72)",
+    "entity_ids": [
+     "3534820",
+     "C09988-K1"
+    ],
+    "family": "history",
+    "direction": "fraud"
+   },
+   {
+    "claim": "Purchaser email domain hotmail.com used 16 times before on this card",
+    "source": "graph",
+    "ref": "query:case_context(txn=3534820)",
+    "entity_ids": [
+     "3534820"
+    ],
+    "family": "history",
+    "direction": "legit"
+   },
+   {
+    "claim": "Device profile `Windows | NULL | edge 16.0 | NULL` is marked New for this account; the profile is generic (160 cards use it) and is not a shared-origin signal; a New device is not by itself a fraud signal in this history (cleared 'new phone' alerts are New-device ones)",
+    "source": "graph",
+    "ref": "query:case_context(txn=3534820)",
+    "entity_ids": [
+     "Windows | NULL | edge 16.0 | NULL",
+     "3534820"
+    ],
+    "family": "device",
+    "direction": "neutral"
+   },
+   {
+    "claim": "Case-memory scorer (LightGBM over the bank's 5,565 closed cases; October holdout AUC 0.956) puts the flagged transaction at 0.45 (calibrated 0.53); the real-time risk score was 0.37",
+    "source": "graph",
+    "ref": "query:case_context(txn=3534820)",
+    "entity_ids": [
+     "3534820"
+    ],
+    "family": "memory",
+    "direction": "fraud"
+   },
+   {
+    "claim": "Customer C09988 reports they did not make the $59.67 purchase 3534820 (the denial is evidence: 4,665/4,665 customer-reported closed cases were confirmed fraud, 0 denials were cleared)",
+    "source": "customer",
+    "ref": "trigger",
+    "entity_ids": [
+     "3534820",
+     "C09988"
+    ],
+    "family": "customer",
+    "direction": "fraud"
+   }
+  ]
+ },
+ "scorecard_post": {
+  "cms_p": 0.4463,
+  "cal_p": 0.5259,
+  "adjustments": [
+   [
+    "customer denial corroborated by the scorer (calibrated >= 0.5)",
+    1.1
+   ],
+   [
+    "customer denial not explained by R7 \u2192 floor",
+    0.55
+   ]
+  ],
+  "p_engine": 0.7692,
+  "families_fraud": [
+   "customer",
+   "memory"
+  ],
+  "families_legit": [],
+  "flags": {
+   "denial": true,
+   "analyst_request": false,
+   "risk_alert": false,
+   "trigger_type": "customer_report",
+   "flagged_ts": "2016-12-11 22:39:08",
+   "flagged_txn_id": "3534820",
+   "flagged_amt": 59.67,
+   "flagged_addr1": "",
+   "flagged_device_id": "Windows | NULL | edge 16.0 | NULL",
+   "flagged_device_new": "New",
+   "flagged_device_cards": 160,
+   "flagged_device_strong": false,
+   "channel": "online",
+   "modal_region": "",
+   "card_n_txns": 61,
+   "two_cards_confirmed_fraud": false,
+   "outcome": "inconclusive",
+   "asked": true,
+   "pending": true,
+   "ring_hit": false,
+   "ring_id": "",
+   "ring_txn_ids": [],
+   "ring_rows": [],
+   "wave_cards": [],
+   "pre_open_cards": [],
+   "ring_cases": [],
+   "burst_hit": false,
+   "burst_txn_ids": [],
+   "burst": {},
+   "burst_lookalikes": [],
+   "r5_run": false,
+   "card_testing_run_ids": [],
+   "r5_cleared_over_big": false,
+   "r5": {
+    "run": {},
+    "larger_purchase": {},
+    "cleared_over_big": false,
+    "chain": {
+     "n_members": 1,
+     "n_small": 0
+    }
+   },
+   "recurring_match": false,
+   "recurring_group": null,
+   "recurring_total_n": 0,
+   "recurring_neighbour_hi": false,
+   "recurring_place": "hotmail.com",
+   "scorer_unreliable": false,
+   "dormant_days": 21,
+   "roaming_card": false,
+   "rulebook_chain_ids": [
+    "3534820"
+   ],
+   "rulebook_chain_sum": 59.67,
+   "conflict_chain": false,
+   "conflict_chain_ids": [],
+   "shared_fraud_cards": [],
+   "shared_device_fraud": false,
+   "device_known": false,
+   "shared_recipient_email": [],
+   "recent_same_channel_case": false,
+   "prior_fraud_case_ids": [],
+   "prior_cleared_case_ids": [],
+   "cleared_precedent_case_ids": [],
+   "conflict": false,
+   "floor": 0.55,
+   "families_conflict": false,
+   "mixed_channel": false,
+   "any_new_member": true,
+   "all_in_modal_region": false,
+   "card_testing_chain": false,
+   "candidate_chain_ids": [
+    "3534820"
+   ],
+   "request_type": "step_up_auth",
+   "request_seq": 1,
+   "escalated": false
+  },
+  "chain": [
+   {
+    "id": "3534820",
+    "ts": "2016-12-11 22:39:08",
+    "amt": 59.67,
+    "product_cd": "C",
+    "channel": "online",
+    "addr1": "",
+    "p_email": "hotmail.com",
+    "device_id": "Windows | NULL | edge 16.0 | NULL",
+    "device_new": "New",
+    "cms_p": 0.44633350709290776,
+    "sig_match": true
+   }
+  ],
+  "episode_ids": [
+   "3534820"
+  ],
+  "first_suspicious_txn_id": "3534820",
+  "exposure_usd": 59.67,
+  "connected_card_ids": [],
+  "connected_device_profiles": [],
+  "pattern": "card_not_present_new_device",
+  "pattern_description": "",
+  "verdict": "fraud",
+  "similar_prior_cases": [],
+  "evidence": [
+   {
+    "claim": "Amount $59.67 sits inside the card's baseline (prior median $37.75, prior maximum $94.70 over 48 transactions)",
+    "source": "graph",
+    "ref": "query:case_context(txn=3534820)",
+    "entity_ids": [
+     "3534820",
+     "C09988-K1"
+    ],
+    "family": "history",
+    "direction": "legit"
+   },
+   {
+    "claim": "Card was dormant for 21 days before the flagged transaction",
+    "source": "graph",
+    "ref": "query:card_window(card=C09988-K1, hours=72)",
+    "entity_ids": [
+     "3534820",
+     "C09988-K1"
+    ],
+    "family": "history",
+    "direction": "fraud"
+   },
+   {
+    "claim": "Purchaser email domain hotmail.com used 16 times before on this card",
+    "source": "graph",
+    "ref": "query:case_context(txn=3534820)",
+    "entity_ids": [
+     "3534820"
+    ],
+    "family": "history",
+    "direction": "legit"
+   },
+   {
+    "claim": "Device profile `Windows | NULL | edge 16.0 | NULL` is marked New for this account; the profile is generic (160 cards use it) and is not a shared-origin signal; a New device is not by itself a fraud signal in this history (cleared 'new phone' alerts are New-device ones)",
+    "source": "graph",
+    "ref": "query:case_context(txn=3534820)",
+    "entity_ids": [
+     "Windows | NULL | edge 16.0 | NULL",
+     "3534820"
+    ],
+    "family": "device",
+    "direction": "neutral"
+   },
+   {
+    "claim": "Case-memory scorer (LightGBM over the bank's 5,565 closed cases; October holdout AUC 0.956) puts the flagged transaction at 0.45 (calibrated 0.53); the real-time risk score was 0.37",
+    "source": "graph",
+    "ref": "query:case_context(txn=3534820)",
+    "entity_ids": [
+     "3534820"
+    ],
+    "family": "memory",
+    "direction": "fraud"
+   },
+   {
+    "claim": "Customer C09988 reports they did not make the $59.67 purchase 3534820 (the denial is evidence: 4,665/4,665 customer-reported closed cases were confirmed fraud, 0 denials were cleared)",
+    "source": "customer",
+    "ref": "trigger",
+    "entity_ids": [
+     "3534820",
+     "C09988"
+    ],
+    "family": "customer",
+    "direction": "fraud"
+   },
+   {
+    "claim": "No reply within 24 hours / verification not completed (assumed); probability unchanged",
+    "source": "customer",
+    "ref": "evidence_request:1",
+    "entity_ids": [],
+    "family": "customer",
+    "direction": "neutral"
+   }
+  ]
+ },
+ "branches": {
+  "pass": [
+   "CREATE_CASE",
+   "CLOSE_NO_FRAUD"
+  ],
+  "fail": [
+   "CREATE_CASE",
+   "BLOCK_CARD"
+  ],
+  "inconclusive": [
+   "CREATE_CASE",
+   "MONITOR_CARD",
+   "DECLINE_TRANSACTION",
+   "BLOCK_CARD"
+  ]
+ },
+ "adm_initial": {
+  "required": [
+   "CREATE_CASE",
+   "STEP_UP_AUTH",
+   "BLOCK_CARD"
+  ],
+  "allowed": [
+   "ALLOW_TRANSACTION",
+   "DECLINE_TRANSACTION",
+   "MONITOR_CARD",
+   "MONITOR_CONNECTED_CARDS",
+   "WARN_CUSTOMER",
+   "VERIFY_WITH_CUSTOMER",
+   "STEP_UP_AUTH",
+   "BLOCK_CARD",
+   "GENERATE_REPORT",
+   "CREATE_CASE",
+   "FILE_REPORT",
+   "ESCALATE_TO_ANALYST",
+   "CLOSE_NO_FRAUD"
+  ],
+  "forbidden": [
+   "BLOCK_ALL_CARDS"
+  ],
+  "routes": {
+   "ALLOW_TRANSACTION": "auto",
+   "DECLINE_TRANSACTION": "L1",
+   "MONITOR_CARD": "auto",
+   "MONITOR_CONNECTED_CARDS": "auto",
+   "WARN_CUSTOMER": "auto",
+   "VERIFY_WITH_CUSTOMER": "auto",
+   "STEP_UP_AUTH": "auto",
+   "BLOCK_CARD": "L1",
+   "BLOCK_ALL_CARDS": "L2",
+   "GENERATE_REPORT": "auto",
+   "CREATE_CASE": "auto",
+   "FILE_REPORT": "L2",
+   "ESCALATE_TO_ANALYST": "auto",
+   "CLOSE_NO_FRAUD": "auto"
+  },
+  "citations": {
+   "CREATE_CASE": [
+    "3a_case",
+    "R2",
+    "fraud_band"
+   ],
+   "BLOCK_CARD": [
+    "R2",
+    "fraud_band"
+   ],
+   "STEP_UP_AUTH": [
+    "fraud_band"
+   ],
+   "_forbidden": {
+    "BLOCK_ALL_CARDS": [
+     "R10"
+    ]
+   },
+   "_conflicts": {}
+  },
+  "fired": [
+   "3a_case",
+   "R2",
+   "R10",
+   "fraud_band"
+  ]
+ },
+ "violations": [],
+ "errors": []
+}

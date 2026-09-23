@@ -1,0 +1,47 @@
+# graph/Makefile.graph — module B targets. Add `-include graph/Makefile.graph` as the LAST line of the root Makefile
+# (module G): the root's load / algos / install-queries / describe / rebuild / keepalive targets stay as they are;
+# this fragment adds the day-0 / day-2 / day-4 helpers and fixes one variable — the vector loader is module F's
+# `python -m rag.load_vectors --all`, not graph/load_vectors.py (recipe variables expand when the recipe runs, so a
+# later `:=` wins). Every target is idempotent and safe to re-run on a live workspace unless it says DROP.
+PY ?= uv run python
+GRAPH_VECTORS := -m rag.load_vectors --all
+
+.PHONY: check-contracts schema jobs graph-expected load-rag vectors-schema algos-fetch warmup day0-smoke \
+        day0-smoke-drop rebuild-timed graph-test
+
+check-contracts: ## csv_columns.yaml == schema.gsql == loading_jobs.gsql (offline; also tests/unit/test_graph_contracts.py)
+	$(PY) graph/check_contracts.py
+
+schema: check-contracts ## day 2 step 1: apply graph/schema.gsql (skipped when FraudGraph already exists)
+	$(PY) graph/load_all.py --schema-only
+
+jobs: check-contracts ## drop + re-create the 18 loading jobs (needed after the vectors stage disabled some)
+	$(PY) graph/load_all.py --jobs-only
+
+graph-expected: ## the vertex / edge counts `make load` must reach, computed offline from data/out (+ manifest cross-check)
+	$(PY) graph/load_all.py --expected
+
+load-rag: check-contracts ## day 7: Document / PolicyChunk vertices + CHUNK_OF / ABOUT edges from rag/chunk.py output
+	$(PY) graph/load_all.py --only document policy_chunk chunk_of about --skip-counts
+
+vectors-schema: ## GLOBAL schema-change job adding the three VECTOR attributes (idempotent), no vector data
+	$(PY) graph/rebuild.py --only vectors --no-vector-data
+
+algos-fetch: ## re-download the two library algorithms verbatim from branch tg_4.2.5_dev (graph/algos/README.md)
+	curl -fsSL -o graph/algos/tg_wcc.gsql https://raw.githubusercontent.com/tigergraph/gsql-graph-algorithms/tg_4.2.5_dev/algorithms/Community/connected_components/weakly_connected_components/standard/tg_wcc.gsql
+	curl -fsSL -o graph/algos/tg_degree_cent.gsql https://raw.githubusercontent.com/tigergraph/gsql-graph-algorithms/tg_4.2.5_dev/algorithms/Centrality/degree/unweighted/tg_degree_cent.gsql
+
+warmup: ## wake the workspace; print version, counts, installed queries, vector-index status; run the mandatory queries once
+	$(PY) graph/warmup.py
+
+day0-smoke: ## day 0: every planned name, vector two-type search, tab-separator load, GDBMS_ALGO — on SmokeGraph, kept
+	$(PY) graph/day0_smoke.py --report docs/day0_records.json
+
+day0-smoke-drop: ## day 0, then USE GLOBAL DROP ALL (empty workspace for day 2)
+	$(PY) graph/day0_smoke.py --drop-all --report docs/day0_records.json
+
+rebuild-timed: ## disaster-recovery drill (day 2 milestone): time the whole rebuild from the checked-in chunks
+	time $(PY) graph/rebuild.py --from schema --report runs/rebuild.json
+
+graph-test: ## offline unit tests of this module (contracts, loader plan/counts/encoding, fake-connection load)
+	uv run pytest tests/unit/test_graph_contracts.py -q

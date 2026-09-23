@@ -1,0 +1,96 @@
+// card_profile — baseline attributes of the card, last-30-day aggregates, top regions / devices / emails
+// up to as_of, the customer's other cards, and case memory on this card (closed + agent cases; closed rows carry
+// template_id = fraud_reported / cleared_travel / cleared_new_phone / cleared_amount / undoc_ring / undoc_burst, D9).
+// Region / device / email aggregates use vertex-attached accumulators on BillingRegion / DeviceProfile /
+// EmailDomain vertices reached from the card's transactions (no whole-graph scan; HHG-011's 10k txns ~1 s).
+// Prior agent cases use opened_at < as_of (strict) so the case being investigated (opened at as_of) is excluded.
+USE GRAPH FraudGraph
+CREATE OR REPLACE QUERY card_profile(VERTEX<Card> c, DATETIME as_of) FOR GRAPH FraudGraph SYNTAX v3 {
+  TYPEDEF TUPLE<STRING id, STRING customer_id, STRING card_type, STRING card_network, INT n_txns, STRING first_ts,
+                STRING last_ts, FLOAT median_amt, FLOAT p90_amt, FLOAT max_amt, FLOAT max_in_person_amt, INT n_online,
+                INT n_in_person, STRING modal_region, INT n_regions, STRING home_regions, STRING usual_products,
+                STRING usual_p_email, INT n_devices_seen, STRING known_device_ids, STRING recurring_amounts,
+                INT n_prior_fraud_cases, INT n_prior_cleared_cases, STRING ring_id, STRING burst_lookalike_ids,
+                STRING region_cluster_30d, INT wcc_id, INT device_degree, FLOAT fraud_ppr> CardRow;
+  TYPEDEF TUPLE<INT n, FLOAT sum_amt, INT n_online, INT n_regions, INT n_devices, INT n_products> Last30;
+  TYPEDEF TUPLE<STRING addr1, INT n, INT days, STRING first_ts, STRING last_ts> RegionRow;
+  TYPEDEF TUPLE<STRING device_id, INT n, STRING first_ts, BOOL is_strong> DeviceRow;
+  TYPEDEF TUPLE<STRING domain, INT n> EmailRow;
+  TYPEDEF TUPLE<STRING id, STRING card_type, INT n_txns> OtherCard;
+  TYPEDEF TUPLE<STRING id, STRING opened_at, STRING outcome, STRING pattern, FLOAT exposure_usd, BOOL report_filed,
+                STRING template_id> ClosedRow;
+  TYPEDEF TUPLE<STRING id, STRING opened_at, STRING verdict, STRING pattern, FLOAT exposure_usd> AgentRow;
+
+  MaxAccum<CardRow> @@card;
+  MaxAccum<Last30> @@last30;
+  SumAccum<INT> @@n30, @@n30_online;
+  SumAccum<FLOAT> @@sum30;
+  SetAccum<STRING> @@regions30, @@devices30, @@products30;
+  HeapAccum<RegionRow>(5, n DESC, addr1 ASC) @@regions;
+  HeapAccum<DeviceRow>(5, n DESC, device_id ASC) @@devices;
+  HeapAccum<EmailRow>(10, n DESC, domain ASC) @@emails;
+  ListAccum<OtherCard> @@other_cards;
+  HeapAccum<ClosedRow>(30, opened_at DESC, id ASC) @@prior_closed_cases;
+  HeapAccum<AgentRow>(30, opened_at DESC, id ASC) @@prior_agent_cases;
+  // vertex-attached, reused on BillingRegion / DeviceProfile / EmailDomain
+  SumAccum<INT> @n;
+  SetAccum<STRING> @days;
+  MinAccum<INT> @first_e = 9999999999;
+  MaxAccum<INT> @last_e = 0;
+
+  DATETIME from30 = epoch_to_datetime(datetime_to_epoch(as_of) - 30 * 86400);
+
+  S = {c};
+  S = SELECT s FROM (s:S)
+      POST-ACCUM @@card += CardRow(s.id, s.customer_id, s.card_type, s.card_network, s.n_txns,
+                                   datetime_format(s.first_ts), datetime_format(s.last_ts), s.median_amt, s.p90_amt,
+                                   s.max_amt, s.max_in_person_amt, s.n_online, s.n_in_person, s.modal_region,
+                                   s.n_regions, s.home_regions, s.usual_products, s.usual_p_email, s.n_devices_seen,
+                                   s.known_device_ids, s.recurring_amounts, s.n_prior_fraud_cases,
+                                   s.n_prior_cleared_cases, s.ring_id, s.burst_lookalike_ids, s.region_cluster_30d,
+                                   s.wcc_id, s.device_degree, s.fraud_ppr);
+
+  T = SELECT t FROM (s:S)-[:MADE]->(t:Transaction)
+      WHERE t.ts <= as_of
+      ACCUM
+        IF t.ts > from30 THEN
+          @@n30 += 1, @@sum30 += t.amt, @@products30 += t.product_cd,
+          IF t.channel == "online" THEN @@n30_online += 1 END,
+          IF t.addr1 != "" THEN @@regions30 += t.addr1 END,
+          IF t.device_id != "" THEN @@devices30 += t.device_id END
+        END;
+
+  R = SELECT r FROM (t:T)-[:BILLED_IN]->(r:BillingRegion)
+      ACCUM r.@n += 1, r.@days += datetime_format(t.ts, "%Y-%m-%d"),
+            r.@first_e += datetime_to_epoch(t.ts), r.@last_e += datetime_to_epoch(t.ts)
+      POST-ACCUM @@regions += RegionRow(r.id, r.@n, r.@days.size(),
+                                        datetime_format(epoch_to_datetime(r.@first_e)),
+                                        datetime_format(epoch_to_datetime(r.@last_e)));
+
+  D = SELECT d FROM (t:T)-[:FROM_DEVICE]->(d:DeviceProfile)
+      ACCUM d.@n += 1, d.@first_e += datetime_to_epoch(t.ts)
+      POST-ACCUM @@devices += DeviceRow(d.id, d.@n, datetime_format(epoch_to_datetime(d.@first_e)), d.is_strong);
+
+  E = SELECT e FROM (t:T)-[:PURCHASER_EMAIL]->(e:EmailDomain)
+      ACCUM e.@n += 1
+      POST-ACCUM @@emails += EmailRow(e.id, e.@n);
+
+  O = SELECT o FROM (s:S)-[:REV_OWNS]->(u:Customer)-[:OWNS]->(o:Card)
+      WHERE o.id != s.id
+      POST-ACCUM @@other_cards += OtherCard(o.id, o.card_type, o.n_txns);
+
+  P = SELECT p FROM (s:S)-[:REV_ON_CARD]->(p:ClosedCase)
+      WHERE p.opened_at <= as_of
+      POST-ACCUM @@prior_closed_cases += ClosedRow(p.id, datetime_format(p.opened_at), p.outcome, p.pattern,
+                                                   p.exposure_usd, p.report_filed, p.template_id);
+
+  A = SELECT a FROM (s:S)-[:REV_CASE_ON_CARD]->(a:AgentCase)
+      WHERE a.opened_at < as_of
+      POST-ACCUM @@prior_agent_cases += AgentRow(a.id, datetime_format(a.opened_at), a.verdict, a.pattern, a.exposure_usd);
+
+  @@last30 += Last30(@@n30, @@sum30, @@n30_online, @@regions30.size(), @@devices30.size(), @@products30.size());
+
+  PRINT @@card AS card, @@last30 AS last30, @@regions AS regions, @@devices AS devices, @@emails AS emails,
+        @@other_cards AS other_cards, @@prior_closed_cases AS prior_closed_cases,
+        @@prior_agent_cases AS prior_agent_cases;
+}

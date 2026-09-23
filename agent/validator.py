@@ -1,0 +1,145 @@
+"""Answer-file validator (contracts §C `agent/validator.py`; 00-integration.md M4).
+
+A thin wrapper over `engine.validator.validate(answer, db, meta)` — the single set of PLAN §4.7 / §4.9
+invariants (decision D10) — that
+
+  * builds `meta` from the case pack (`p_pre`, `families_fraud_pre`, `opened_at`, `card_id`,
+    `customer_id`) so the R1 lint, the time-box check and the SAR subject check can run, and
+  * wraps a plain DuckDB connection in the `.q(sql, *params) -> DataFrame` object the engine validator
+    expects, so the CLI works against the small `data/ids.duckdb` (`ops/export_id_tables.py`) instead of
+    the 590 k-row facts DB. That file carries the views the validator queries:
+    `txc(TransactionID, id, card_id, customer_id, ts, amt, p_email, r_email, addr1)`, `card_feat(id)`,
+    `customer_feat(id)`, `cc(case_id, outcome, pattern)` and the table `device_profile(id)`.
+
+Library use (the phase machine resolves this module before `engine.validator`):
+
+    from agent.validator import validate
+    problems = validate(answer, db)            # db = DuckFacts or any .q(sql, *params)
+
+CLI (Makefile `validate`, CI "Validate answer files", BUILD_ORDER day 3/6/10):
+
+    uv run python -m agent.validator --db data/ids.duckdb cases/*.json
+    uv run python -m agent.validator --db data/ids.duckdb runs/r1/*/answer.json
+
+prints `<file>: []` for a clean file and one line per problem otherwise; exit status 1 when any file
+has a problem (0 otherwise), so it can gate a build.
+"""
+from __future__ import annotations
+
+import argparse
+import csv
+import glob
+import json
+import os
+import sys
+from pathlib import Path
+from typing import Any
+
+from engine import validator as engine_validator
+
+REPO_ROOT = Path(os.environ.get("HHGOA_REPO_ROOT", Path(__file__).resolve().parents[1]))
+
+
+class _Q:
+    """`.q(sql, *params)` over a DuckDB connection — the shape `engine.validator.validate` needs."""
+
+    def __init__(self, con: Any) -> None:
+        self.con = con
+
+    def q(self, sql: str, *params: Any):
+        return self.con.execute(sql, list(params)).fetchdf()
+
+
+def open_db(path: str | Path) -> _Q:
+    """Read-only DuckDB at `path` wrapped for the engine validator."""
+    import duckdb
+
+    return _Q(duckdb.connect(str(path), read_only=True))
+
+
+# ----------------------------------------------------------------------------- case-pack meta
+
+def _case_pack_rows(path: str | Path | None = None) -> dict[str, dict]:
+    p = Path(path or os.environ.get("CASE_PACK_CSV", REPO_ROOT / "data" / "raw" / "case_pack.csv"))
+    if not p.exists():
+        return {}
+    with p.open(encoding="utf-8", newline="") as fh:
+        return {r["case_id"]: r for r in csv.DictReader(fh)}
+
+
+def meta_for(answer: dict, case_pack: dict[str, dict] | None = None) -> dict:
+    """`meta` for `engine.validator.validate` from the case pack plus the answer's own numbers.
+
+    `p_pre` / `families_fraud_pre` are the pre-evidence values the R1 lint needs: when the case made no
+    evidence request the answer's own probability and families are the pre-evidence ones; when it did,
+    `engine.run_cases` writes `out/<case>.engine.json` next to the draft — the CLI does not read it, so
+    the R1 lint is only applied when the answer carries no request (a lint, never a false positive).
+    """
+    case = answer.get("case", {}) or {}
+    rows = case_pack if case_pack is not None else _case_pack_rows()
+    cp = rows.get(str(answer.get("case_id", "")), {})
+    meta = {"opened_at": cp.get("opened_at", ""), "card_id": cp.get("card_id", ""), "customer_id": cp.get("customer_id", "")}
+    if not answer.get("evidence_requests"):
+        meta["p_pre"] = float(case.get("fraud_probability", 0) or 0)
+        ev = case.get("evidence", []) or []
+        meta["families_fraud_pre"] = len({e.get("source") for e in ev if e.get("source") in ("graph", "document", "external")})
+    return {k: v for k, v in meta.items() if v not in ("", None)}
+
+
+# ----------------------------------------------------------------------------- API
+
+def validate(answer: dict, db: Any, meta: dict | None = None) -> list[str]:
+    """`engine.validator.validate` with `meta` filled in from the case pack when the caller has none."""
+    return engine_validator.validate(answer, db, meta if meta is not None else meta_for(answer))
+
+
+# ----------------------------------------------------------------------------- CLI
+
+def _expand(files: list[str]) -> list[Path]:
+    out: list[Path] = []
+    for f in files:
+        hits = [Path(h) for h in sorted(glob.glob(f))] or [Path(f)]
+        out += hits
+    return out
+
+
+def main(argv: list[str] | None = None) -> int:
+    ap = argparse.ArgumentParser(description="Validate HHGOA answer files against the PLAN §4.7 / §4.9 invariants.")
+    ap.add_argument("--db", default=os.environ.get("VALIDATOR_DB", str(REPO_ROOT / "data" / "ids.duckdb")),
+                    help="DuckDB with the id tables/views (data/ids.duckdb from ops.export_id_tables)")
+    ap.add_argument("--case-pack", default=None, help="case_pack.csv for the meta (default data/raw/case_pack.csv)")
+    ap.add_argument("files", nargs="+", help="answer files (cases/*.json, runs/<run>/*/answer.json)")
+    args = ap.parse_args(argv)
+
+    db_path = Path(args.db)
+    if not db_path.exists():
+        print(f"validator db not found: {db_path} (run `python -m ops.export_id_tables`)", file=sys.stderr)
+        return 1
+    db = open_db(db_path)
+    pack = _case_pack_rows(args.case_pack)
+    bad = 0
+    for f in _expand(args.files):
+        try:
+            answer = json.loads(f.read_text(encoding="utf-8"))
+        except Exception as e:
+            print(f"{f}: [unreadable: {e}]")
+            bad += 1
+            continue
+        answer.pop("_validation", None)
+        try:
+            problems = validate(answer, db, meta_for(answer, pack))
+        except Exception as e:                       # a malformed file must fail, never crash the build
+            problems = [f"validator raised: {type(e).__name__}: {e}"]
+        if problems:
+            bad += 1
+            print(f"{f}: {len(problems)} problem(s)")
+            for p in problems:
+                print(f"  - {p}")
+        else:
+            print(f"{f}: []")
+    print(f"\n{bad} file(s) with problems")
+    return 1 if bad else 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

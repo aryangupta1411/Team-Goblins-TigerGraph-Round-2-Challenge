@@ -1,0 +1,768 @@
+{
+ "scorecard_pre": {
+  "cms_p": 0.0713,
+  "cal_p": 0.0797,
+  "adjustments": [
+   [
+    "anonymous-proxy device ring \u2192 floor",
+    0.9
+   ]
+  ],
+  "p_engine": 0.9,
+  "families_fraud": [
+   "device"
+  ],
+  "families_legit": [
+   "history"
+  ],
+  "flags": {
+   "denial": false,
+   "analyst_request": true,
+   "risk_alert": false,
+   "trigger_type": "analyst_request",
+   "flagged_ts": "2016-11-22 16:11:00",
+   "flagged_txn_id": "3478561",
+   "flagged_amt": 74.96,
+   "flagged_addr1": "191.0",
+   "flagged_device_id": "SM-G935F Build/NRD90M | Android 7.0 | chrome 62.0 for android | 1920x1080",
+   "flagged_device_new": "New",
+   "flagged_device_cards": 52,
+   "flagged_device_strong": true,
+   "channel": "online",
+   "modal_region": "272.0",
+   "card_n_txns": 85,
+   "two_cards_confirmed_fraud": false,
+   "outcome": "",
+   "asked": false,
+   "pending": false,
+   "ring_hit": true,
+   "ring_id": "SM-G935F Build/NRD90M | Android 7.0 | chrome 62.0 for android | 1920x1080",
+   "ring_txn_ids": [
+    "3460634",
+    "3478561"
+   ],
+   "ring_rows": [
+    {
+     "id": "3460634",
+     "ts": "2016-11-15 20:30:00",
+     "amt": 112.37
+    },
+    {
+     "id": "3478561",
+     "ts": "2016-11-22 16:11:00",
+     "amt": 74.96
+    }
+   ],
+   "wave_cards": [
+    "C01289-K1",
+    "C01996-K2",
+    "C02910-K1",
+    "C02975-K1",
+    "C03676-K2",
+    "C04108-K2",
+    "C04274-K1",
+    "C05448-K2",
+    "C06031-K2",
+    "C06650-K2",
+    "C06710-K1",
+    "C07472-K1",
+    "C08168-K1",
+    "C08972-K2",
+    "C09049-K1",
+    "C09195-K1",
+    "C09906-K1",
+    "C09975-K1",
+    "C10020-K1",
+    "C10193-K2",
+    "C10326-K1",
+    "C11082-K1",
+    "C11670-K2",
+    "C11702-K1",
+    "C12645-K1",
+    "C12796-K1",
+    "C13291-K1"
+   ],
+   "pre_open_cards": [
+    "C01289-K1",
+    "C01996-K2",
+    "C02910-K1",
+    "C02975-K1",
+    "C03676-K2",
+    "C04108-K2",
+    "C04274-K1",
+    "C05448-K2",
+    "C06710-K1",
+    "C08168-K1",
+    "C09049-K1",
+    "C09906-K1",
+    "C09975-K1",
+    "C10193-K2",
+    "C10326-K1",
+    "C11082-K1",
+    "C11670-K2",
+    "C12796-K1",
+    "C13291-K1"
+   ],
+   "ring_cases": [
+    "CC-2649",
+    "CC-2971",
+    "CC-2985",
+    "CC-3035"
+   ],
+   "burst_hit": false,
+   "burst_txn_ids": [],
+   "burst": {},
+   "burst_lookalikes": [],
+   "r5_run": false,
+   "card_testing_run_ids": [],
+   "r5_cleared_over_big": false,
+   "r5": {
+    "run": {},
+    "larger_purchase": {},
+    "cleared_over_big": false,
+    "chain": {
+     "n_members": 3,
+     "n_small": 0
+    }
+   },
+   "recurring_match": false,
+   "recurring_group": null,
+   "recurring_total_n": 0,
+   "recurring_neighbour_hi": false,
+   "recurring_place": "yahoo.com",
+   "scorer_unreliable": false,
+   "roaming_card": false,
+   "rulebook_chain_ids": [
+    "3477218",
+    "3478561",
+    "3478886"
+   ],
+   "rulebook_chain_sum": 142.0,
+   "conflict_chain": false,
+   "conflict_chain_ids": [],
+   "shared_fraud_cards": [],
+   "shared_device_fraud": true,
+   "device_known": false,
+   "shared_recipient_email": [],
+   "recent_same_channel_case": false,
+   "prior_fraud_case_ids": [],
+   "prior_cleared_case_ids": [],
+   "cleared_precedent_case_ids": [],
+   "conflict": false,
+   "floor": 0.9,
+   "families_conflict": true,
+   "mixed_channel": false,
+   "any_new_member": true,
+   "all_in_modal_region": false,
+   "card_testing_chain": false,
+   "candidate_chain_ids": [
+    "3478561"
+   ],
+   "escalated": true
+  },
+  "chain": [
+   {
+    "id": "3477218",
+    "ts": "2016-11-21 23:39:05",
+    "amt": 36.04,
+    "product_cd": "W",
+    "channel": "in_person",
+    "addr1": "191.0",
+    "p_email": "",
+    "device_id": "",
+    "device_new": "",
+    "cms_p": 0.0014761294900901812,
+    "sig_match": false
+   },
+   {
+    "id": "3478561",
+    "ts": "2016-11-22 16:11:00",
+    "amt": 74.96,
+    "product_cd": "C",
+    "channel": "online",
+    "addr1": "191.0",
+    "p_email": "yahoo.com",
+    "device_id": "SM-G935F Build/NRD90M | Android 7.0 | chrome 62.0 for android | 1920x1080",
+    "device_new": "New",
+    "cms_p": 0.07130767306514302,
+    "sig_match": true
+   },
+   {
+    "id": "3478886",
+    "ts": "2016-11-22 18:04:15",
+    "amt": 31.0,
+    "product_cd": "W",
+    "channel": "in_person",
+    "addr1": "272.0",
+    "p_email": "gmail.com",
+    "device_id": "",
+    "device_new": "",
+    "cms_p": 0.0028519233831704738,
+    "sig_match": false
+   }
+  ],
+  "episode_ids": [
+   "3460634",
+   "3478561"
+  ],
+  "first_suspicious_txn_id": "3460634",
+  "exposure_usd": 187.33,
+  "connected_card_ids": [
+   "C01289-K1",
+   "C01996-K2",
+   "C02910-K1",
+   "C02975-K1",
+   "C03676-K2",
+   "C04108-K2",
+   "C04274-K1",
+   "C05448-K2",
+   "C06031-K2",
+   "C06650-K2",
+   "C06710-K1",
+   "C07472-K1",
+   "C08168-K1",
+   "C08972-K2",
+   "C09049-K1",
+   "C09195-K1",
+   "C09906-K1",
+   "C09975-K1",
+   "C10020-K1",
+   "C10193-K2",
+   "C10326-K1",
+   "C11082-K1",
+   "C11670-K2",
+   "C11702-K1",
+   "C12645-K1",
+   "C12796-K1",
+   "C13291-K1"
+  ],
+  "connected_device_profiles": [
+   "SM-G935F Build/NRD90M | Android 7.0 | chrome 62.0 for android | 1920x1080"
+  ],
+  "pattern": "undocumented",
+  "pattern_description": "Anonymous-proxy device ring: 28 cards in the current wave (19 of them active before this case opened) share one exact device profile `SM-G935F Build/NRD90M | Android 7.0 | chrome 62.0 for android | 1920x1080` routed through IP_PROXY:ANONYMOUS, each making small online purchases marked New for the account. The same profile drove 4 closed cases in August-September that analysts confirmed as undocumented fraud. Found by following FROM_DEVICE from the flagged transaction to the profile and back out to every other card on it.",
+  "verdict": "fraud",
+  "similar_prior_cases": [
+   "CC-2649",
+   "CC-2971",
+   "CC-2985",
+   "CC-3035"
+  ],
+  "evidence": [
+   {
+    "claim": "Amount $74.96 sits inside the card's baseline (prior median $55.92, prior maximum $225.94 over 71 transactions)",
+    "source": "graph",
+    "ref": "query:case_context(txn=3478561)",
+    "entity_ids": [
+     "3478561",
+     "C13487-K1"
+    ],
+    "family": "history",
+    "direction": "legit"
+   },
+   {
+    "claim": "Billing region 191.0 on the online purchase is the card's known region (36 prior purchases on 34 days)",
+    "source": "graph",
+    "ref": "query:region_history(card=C13487-K1, addr1=191.0)",
+    "entity_ids": [
+     "3478561",
+     "C13487-K1"
+    ],
+    "family": "history",
+    "direction": "legit"
+   },
+   {
+    "claim": "Device profile `SM-G935F Build/NRD90M | Android 7.0 | chrome 62.0 for android | 1920x1080` behind an anonymous proxy is a strong profile shared by 52 cards (28 in one 30-day window, 19 other cards active before this case opened, 27 in the current wave) with 4 prior confirmed-fraud cases",
+    "source": "graph",
+    "ref": "query:ring_profile(card=C13487-K1)",
+    "entity_ids": [
+     "SM-G935F Build/NRD90M | Android 7.0 | chrome 62.0 for android | 1920x1080",
+     "C13487-K1",
+     "C01289-K1",
+     "C01996-K2",
+     "C02910-K1",
+     "C02975-K1",
+     "C03676-K2",
+     "C04108-K2",
+     "C04274-K1",
+     "C05448-K2",
+     "C06710-K1",
+     "C08168-K1",
+     "C09049-K1",
+     "C09906-K1",
+     "C09975-K1",
+     "C10193-K2",
+     "C10326-K1",
+     "C11082-K1",
+     "C11670-K2",
+     "C12796-K1",
+     "C13291-K1"
+    ],
+    "family": "device",
+    "direction": "fraud"
+   },
+   {
+    "claim": "Case-memory scorer (LightGBM over the bank's 5,565 closed cases; October holdout AUC 0.956) puts the flagged transaction at 0.07 (calibrated 0.08); the real-time risk score was 0.05",
+    "source": "graph",
+    "ref": "query:case_context(txn=3478561)",
+    "entity_ids": [
+     "3478561"
+    ],
+    "family": "memory",
+    "direction": "legit"
+   },
+   {
+    "claim": "The ring profile appears in 4 closed cases confirmed as undocumented fraud in August-September (CC-2649, CC-2971, CC-2985, CC-3035), each listing the other wave cards as connected",
+    "source": "graph",
+    "ref": "query:similar_prior_cases(device=SM-G935F Build/NRD90M | Android 7.0 | chrome 62.0 for android | 1920x1080)",
+    "entity_ids": [
+     "CC-2649",
+     "CC-2971",
+     "CC-2985",
+     "CC-3035"
+    ],
+    "family": "memory",
+    "direction": "fraud"
+   },
+   {
+    "claim": "Analyst request: several cards this month show purchases from the same unusual device profile",
+    "source": "customer",
+    "ref": "trigger",
+    "entity_ids": [
+     "3478561",
+     "C13487-K1"
+    ],
+    "family": "customer",
+    "direction": "neutral"
+   }
+  ]
+ },
+ "scorecard_post": {
+  "cms_p": 0.0713,
+  "cal_p": 0.0797,
+  "adjustments": [
+   [
+    "anonymous-proxy device ring \u2192 floor",
+    0.9
+   ]
+  ],
+  "p_engine": 0.9,
+  "families_fraud": [
+   "device"
+  ],
+  "families_legit": [
+   "history"
+  ],
+  "flags": {
+   "denial": false,
+   "analyst_request": true,
+   "risk_alert": false,
+   "trigger_type": "analyst_request",
+   "flagged_ts": "2016-11-22 16:11:00",
+   "flagged_txn_id": "3478561",
+   "flagged_amt": 74.96,
+   "flagged_addr1": "191.0",
+   "flagged_device_id": "SM-G935F Build/NRD90M | Android 7.0 | chrome 62.0 for android | 1920x1080",
+   "flagged_device_new": "New",
+   "flagged_device_cards": 52,
+   "flagged_device_strong": true,
+   "channel": "online",
+   "modal_region": "272.0",
+   "card_n_txns": 85,
+   "two_cards_confirmed_fraud": false,
+   "outcome": "",
+   "asked": false,
+   "pending": false,
+   "ring_hit": true,
+   "ring_id": "SM-G935F Build/NRD90M | Android 7.0 | chrome 62.0 for android | 1920x1080",
+   "ring_txn_ids": [
+    "3460634",
+    "3478561"
+   ],
+   "ring_rows": [
+    {
+     "id": "3460634",
+     "ts": "2016-11-15 20:30:00",
+     "amt": 112.37
+    },
+    {
+     "id": "3478561",
+     "ts": "2016-11-22 16:11:00",
+     "amt": 74.96
+    }
+   ],
+   "wave_cards": [
+    "C01289-K1",
+    "C01996-K2",
+    "C02910-K1",
+    "C02975-K1",
+    "C03676-K2",
+    "C04108-K2",
+    "C04274-K1",
+    "C05448-K2",
+    "C06031-K2",
+    "C06650-K2",
+    "C06710-K1",
+    "C07472-K1",
+    "C08168-K1",
+    "C08972-K2",
+    "C09049-K1",
+    "C09195-K1",
+    "C09906-K1",
+    "C09975-K1",
+    "C10020-K1",
+    "C10193-K2",
+    "C10326-K1",
+    "C11082-K1",
+    "C11670-K2",
+    "C11702-K1",
+    "C12645-K1",
+    "C12796-K1",
+    "C13291-K1"
+   ],
+   "pre_open_cards": [
+    "C01289-K1",
+    "C01996-K2",
+    "C02910-K1",
+    "C02975-K1",
+    "C03676-K2",
+    "C04108-K2",
+    "C04274-K1",
+    "C05448-K2",
+    "C06710-K1",
+    "C08168-K1",
+    "C09049-K1",
+    "C09906-K1",
+    "C09975-K1",
+    "C10193-K2",
+    "C10326-K1",
+    "C11082-K1",
+    "C11670-K2",
+    "C12796-K1",
+    "C13291-K1"
+   ],
+   "ring_cases": [
+    "CC-2649",
+    "CC-2971",
+    "CC-2985",
+    "CC-3035"
+   ],
+   "burst_hit": false,
+   "burst_txn_ids": [],
+   "burst": {},
+   "burst_lookalikes": [],
+   "r5_run": false,
+   "card_testing_run_ids": [],
+   "r5_cleared_over_big": false,
+   "r5": {
+    "run": {},
+    "larger_purchase": {},
+    "cleared_over_big": false,
+    "chain": {
+     "n_members": 3,
+     "n_small": 0
+    }
+   },
+   "recurring_match": false,
+   "recurring_group": null,
+   "recurring_total_n": 0,
+   "recurring_neighbour_hi": false,
+   "recurring_place": "yahoo.com",
+   "scorer_unreliable": false,
+   "roaming_card": false,
+   "rulebook_chain_ids": [
+    "3477218",
+    "3478561",
+    "3478886"
+   ],
+   "rulebook_chain_sum": 142.0,
+   "conflict_chain": false,
+   "conflict_chain_ids": [],
+   "shared_fraud_cards": [],
+   "shared_device_fraud": true,
+   "device_known": false,
+   "shared_recipient_email": [],
+   "recent_same_channel_case": false,
+   "prior_fraud_case_ids": [],
+   "prior_cleared_case_ids": [],
+   "cleared_precedent_case_ids": [],
+   "conflict": false,
+   "floor": 0.9,
+   "families_conflict": true,
+   "mixed_channel": false,
+   "any_new_member": true,
+   "all_in_modal_region": false,
+   "card_testing_chain": false,
+   "candidate_chain_ids": [
+    "3478561"
+   ],
+   "escalated": true
+  },
+  "chain": [
+   {
+    "id": "3477218",
+    "ts": "2016-11-21 23:39:05",
+    "amt": 36.04,
+    "product_cd": "W",
+    "channel": "in_person",
+    "addr1": "191.0",
+    "p_email": "",
+    "device_id": "",
+    "device_new": "",
+    "cms_p": 0.0014761294900901812,
+    "sig_match": false
+   },
+   {
+    "id": "3478561",
+    "ts": "2016-11-22 16:11:00",
+    "amt": 74.96,
+    "product_cd": "C",
+    "channel": "online",
+    "addr1": "191.0",
+    "p_email": "yahoo.com",
+    "device_id": "SM-G935F Build/NRD90M | Android 7.0 | chrome 62.0 for android | 1920x1080",
+    "device_new": "New",
+    "cms_p": 0.07130767306514302,
+    "sig_match": true
+   },
+   {
+    "id": "3478886",
+    "ts": "2016-11-22 18:04:15",
+    "amt": 31.0,
+    "product_cd": "W",
+    "channel": "in_person",
+    "addr1": "272.0",
+    "p_email": "gmail.com",
+    "device_id": "",
+    "device_new": "",
+    "cms_p": 0.0028519233831704738,
+    "sig_match": false
+   }
+  ],
+  "episode_ids": [
+   "3460634",
+   "3478561"
+  ],
+  "first_suspicious_txn_id": "3460634",
+  "exposure_usd": 187.33,
+  "connected_card_ids": [
+   "C01289-K1",
+   "C01996-K2",
+   "C02910-K1",
+   "C02975-K1",
+   "C03676-K2",
+   "C04108-K2",
+   "C04274-K1",
+   "C05448-K2",
+   "C06031-K2",
+   "C06650-K2",
+   "C06710-K1",
+   "C07472-K1",
+   "C08168-K1",
+   "C08972-K2",
+   "C09049-K1",
+   "C09195-K1",
+   "C09906-K1",
+   "C09975-K1",
+   "C10020-K1",
+   "C10193-K2",
+   "C10326-K1",
+   "C11082-K1",
+   "C11670-K2",
+   "C11702-K1",
+   "C12645-K1",
+   "C12796-K1",
+   "C13291-K1"
+  ],
+  "connected_device_profiles": [
+   "SM-G935F Build/NRD90M | Android 7.0 | chrome 62.0 for android | 1920x1080"
+  ],
+  "pattern": "undocumented",
+  "pattern_description": "Anonymous-proxy device ring: 28 cards in the current wave (19 of them active before this case opened) share one exact device profile `SM-G935F Build/NRD90M | Android 7.0 | chrome 62.0 for android | 1920x1080` routed through IP_PROXY:ANONYMOUS, each making small online purchases marked New for the account. The same profile drove 4 closed cases in August-September that analysts confirmed as undocumented fraud. Found by following FROM_DEVICE from the flagged transaction to the profile and back out to every other card on it.",
+  "verdict": "fraud",
+  "similar_prior_cases": [
+   "CC-2649",
+   "CC-2971",
+   "CC-2985",
+   "CC-3035"
+  ],
+  "evidence": [
+   {
+    "claim": "Amount $74.96 sits inside the card's baseline (prior median $55.92, prior maximum $225.94 over 71 transactions)",
+    "source": "graph",
+    "ref": "query:case_context(txn=3478561)",
+    "entity_ids": [
+     "3478561",
+     "C13487-K1"
+    ],
+    "family": "history",
+    "direction": "legit"
+   },
+   {
+    "claim": "Billing region 191.0 on the online purchase is the card's known region (36 prior purchases on 34 days)",
+    "source": "graph",
+    "ref": "query:region_history(card=C13487-K1, addr1=191.0)",
+    "entity_ids": [
+     "3478561",
+     "C13487-K1"
+    ],
+    "family": "history",
+    "direction": "legit"
+   },
+   {
+    "claim": "Device profile `SM-G935F Build/NRD90M | Android 7.0 | chrome 62.0 for android | 1920x1080` behind an anonymous proxy is a strong profile shared by 52 cards (28 in one 30-day window, 19 other cards active before this case opened, 27 in the current wave) with 4 prior confirmed-fraud cases",
+    "source": "graph",
+    "ref": "query:ring_profile(card=C13487-K1)",
+    "entity_ids": [
+     "SM-G935F Build/NRD90M | Android 7.0 | chrome 62.0 for android | 1920x1080",
+     "C13487-K1",
+     "C01289-K1",
+     "C01996-K2",
+     "C02910-K1",
+     "C02975-K1",
+     "C03676-K2",
+     "C04108-K2",
+     "C04274-K1",
+     "C05448-K2",
+     "C06710-K1",
+     "C08168-K1",
+     "C09049-K1",
+     "C09906-K1",
+     "C09975-K1",
+     "C10193-K2",
+     "C10326-K1",
+     "C11082-K1",
+     "C11670-K2",
+     "C12796-K1",
+     "C13291-K1"
+    ],
+    "family": "device",
+    "direction": "fraud"
+   },
+   {
+    "claim": "Case-memory scorer (LightGBM over the bank's 5,565 closed cases; October holdout AUC 0.956) puts the flagged transaction at 0.07 (calibrated 0.08); the real-time risk score was 0.05",
+    "source": "graph",
+    "ref": "query:case_context(txn=3478561)",
+    "entity_ids": [
+     "3478561"
+    ],
+    "family": "memory",
+    "direction": "legit"
+   },
+   {
+    "claim": "The ring profile appears in 4 closed cases confirmed as undocumented fraud in August-September (CC-2649, CC-2971, CC-2985, CC-3035), each listing the other wave cards as connected",
+    "source": "graph",
+    "ref": "query:similar_prior_cases(device=SM-G935F Build/NRD90M | Android 7.0 | chrome 62.0 for android | 1920x1080)",
+    "entity_ids": [
+     "CC-2649",
+     "CC-2971",
+     "CC-2985",
+     "CC-3035"
+    ],
+    "family": "memory",
+    "direction": "fraud"
+   },
+   {
+    "claim": "Analyst request: several cards this month show purchases from the same unusual device profile",
+    "source": "customer",
+    "ref": "trigger",
+    "entity_ids": [
+     "3478561",
+     "C13487-K1"
+    ],
+    "family": "customer",
+    "direction": "neutral"
+   }
+  ]
+ },
+ "branches": {
+  "info": [
+   "CREATE_CASE",
+   "MONITOR_CONNECTED_CARDS",
+   "BLOCK_CARD",
+   "FILE_REPORT",
+   "ESCALATE_TO_ANALYST"
+  ]
+ },
+ "adm_initial": {
+  "required": [
+   "CREATE_CASE",
+   "MONITOR_CONNECTED_CARDS",
+   "BLOCK_CARD",
+   "FILE_REPORT",
+   "ESCALATE_TO_ANALYST"
+  ],
+  "allowed": [
+   "ALLOW_TRANSACTION",
+   "DECLINE_TRANSACTION",
+   "MONITOR_CARD",
+   "MONITOR_CONNECTED_CARDS",
+   "WARN_CUSTOMER",
+   "VERIFY_WITH_CUSTOMER",
+   "STEP_UP_AUTH",
+   "BLOCK_CARD",
+   "GENERATE_REPORT",
+   "CREATE_CASE",
+   "FILE_REPORT",
+   "ESCALATE_TO_ANALYST",
+   "CLOSE_NO_FRAUD"
+  ],
+  "forbidden": [
+   "BLOCK_ALL_CARDS"
+  ],
+  "routes": {
+   "ALLOW_TRANSACTION": "auto",
+   "DECLINE_TRANSACTION": "L1",
+   "MONITOR_CARD": "auto",
+   "MONITOR_CONNECTED_CARDS": "auto",
+   "WARN_CUSTOMER": "auto",
+   "VERIFY_WITH_CUSTOMER": "auto",
+   "STEP_UP_AUTH": "auto",
+   "BLOCK_CARD": "L1",
+   "BLOCK_ALL_CARDS": "L2",
+   "GENERATE_REPORT": "auto",
+   "CREATE_CASE": "auto",
+   "FILE_REPORT": "L2",
+   "ESCALATE_TO_ANALYST": "auto",
+   "CLOSE_NO_FRAUD": "auto"
+  },
+  "citations": {
+   "CREATE_CASE": [
+    "3a_case",
+    "R6",
+    "R9",
+    "fraud_band"
+   ],
+   "MONITOR_CONNECTED_CARDS": [
+    "R6",
+    "fraud_band"
+   ],
+   "FILE_REPORT": [
+    "R6",
+    "R9",
+    "fraud_band"
+   ],
+   "ESCALATE_TO_ANALYST": [
+    "R9"
+   ],
+   "BLOCK_CARD": [
+    "fraud_band"
+   ],
+   "_forbidden": {
+    "BLOCK_ALL_CARDS": [
+     "R10"
+    ]
+   },
+   "_conflicts": {}
+  },
+  "fired": [
+   "3a_case",
+   "R6",
+   "R9",
+   "R10",
+   "fraud_band"
+  ]
+ },
+ "violations": [],
+ "errors": []
+}

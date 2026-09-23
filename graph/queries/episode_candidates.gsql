@@ -1,0 +1,68 @@
+// episode_candidates — the <= gap_h-gap chain on the card that contains flagged transaction t, time-boxed to
+// ts <= as_of, with the fields the episode rule needs (cms_p, device, email, amount, channel) and a signature
+// flag: sig_match = same STRONG device profile as t, OR same purchaser email + ProductCD with the amount within
+// 5 % of t inside 2 hours of t. The flagged transaction is always a member.
+// Scan window: 45 days ending at as_of (heap capacity 8000; HHG-011's card has ~1,400 txns/month).
+// Output cap: if the chain has more than 85 members (chronically busy cards where every gap is < 48 h) the
+// 85 members nearest to t (60 before, 25 after) are printed (~6k tokens); the engine treats the rest as
+// "chain continues" — busy cards are scorer-unreliable anyway (PLAN §4.5) and the episode rule keeps cms_p >= 0.5.
+USE GRAPH FraudGraph
+CREATE OR REPLACE QUERY episode_candidates(VERTEX<Transaction> t, DATETIME as_of, INT gap_h) FOR GRAPH FraudGraph SYNTAX v3 {
+  TYPEDEF TUPLE<INT ts_e, STRING id, STRING ts, FLOAT amt, STRING product_cd, STRING channel, STRING addr1,
+                STRING p_email, STRING device_id, STRING device_new, FLOAT cms_p, BOOL sig_match> In;
+  TYPEDEF TUPLE<STRING id, STRING ts, FLOAT amt, STRING product_cd, STRING channel, STRING addr1, STRING p_email,
+                STRING device_id, STRING device_new, FLOAT cms_p, BOOL sig_match> Out;
+  MaxAccum<INT> @@t_e;
+  MaxAccum<FLOAT> @@t_amt;
+  MaxAccum<STRING> @@t_id, @@t_dev, @@t_pem, @@t_pcd;
+  OrAccum @@t_strong;
+  HeapAccum<In>(8000, ts_e ASC, id ASC) @@heap;
+  ListAccum<In> @@rows;
+  ListAccum<Out> @@chain;
+  INT gap_s = gap_h * 3600;
+
+  S = {t};
+  S = SELECT s FROM (s:S)
+      POST-ACCUM @@t_e += datetime_to_epoch(s.ts), @@t_amt += s.amt, @@t_id += s.id, @@t_dev += s.device_id,
+                 @@t_pem += s.p_email, @@t_pcd += s.product_cd;
+  D = SELECT d FROM (s:S)-[:FROM_DEVICE]->(d:DeviceProfile) POST-ACCUM @@t_strong += d.is_strong;
+
+  DATETIME from_ts = epoch_to_datetime(datetime_to_epoch(as_of) - 45 * 86400);
+  X = SELECT x FROM (s:S)-[:REV_MADE]->(c:Card)-[:MADE]->(x:Transaction)
+      WHERE x.ts <= as_of AND x.ts >= from_ts
+      ACCUM BOOL sig = false,
+            IF @@t_strong AND x.device_id != "" AND x.device_id == @@t_dev THEN sig = true END,
+            IF x.p_email != "" AND x.p_email == @@t_pem AND x.product_cd == @@t_pcd
+               AND abs(x.amt - @@t_amt) <= 0.05 * @@t_amt AND abs(datetime_to_epoch(x.ts) - @@t_e) <= 7200 THEN sig = true END,
+            @@heap += In(datetime_to_epoch(x.ts), x.id, x.ts_str, x.amt, x.product_cd, x.channel, x.addr1, x.p_email,
+                         x.device_id, x.device_new, x.cms_p, sig);
+  WHILE @@heap.size() > 0 DO
+    In r = @@heap.pop();
+    @@rows += r;
+  END;
+
+  INT m = @@rows.size();
+  INT ai = -1;
+  IF m > 0 THEN
+    FOREACH k IN RANGE[0, m - 1] DO
+      IF @@rows.get(k).id == @@t_id THEN ai = k; END;
+    END;
+  END;
+  IF ai >= 0 THEN
+    INT lo = ai;
+    INT hi = ai;
+    WHILE lo > 0 AND @@rows.get(lo).ts_e - @@rows.get(lo - 1).ts_e <= gap_s DO lo = lo - 1; END;
+    WHILE hi + 1 < m AND @@rows.get(hi + 1).ts_e - @@rows.get(hi).ts_e <= gap_s DO hi = hi + 1; END;
+    IF hi - lo + 1 > 85 THEN
+      IF ai - 60 > lo THEN lo = ai - 60; END;
+      IF ai + 25 < hi THEN hi = ai + 25; END;
+    END;
+    FOREACH k IN RANGE[lo, hi] DO
+      In r = @@rows.get(k);
+      @@chain += Out(r.id, r.ts, r.amt, r.product_cd, r.channel, r.addr1, r.p_email, r.device_id, r.device_new,
+                     r.cms_p, r.sig_match);
+    END;
+  END;
+
+  PRINT @@chain AS chain;
+}

@@ -1,0 +1,480 @@
+{
+ "scorecard_pre": {
+  "cms_p": 0.6595,
+  "cal_p": 0.7533,
+  "adjustments": [
+   [
+    "recent card-testing / CNP case on the card",
+    0.5
+   ]
+  ],
+  "p_engine": 0.8343,
+  "families_fraud": [
+   "history",
+   "memory"
+  ],
+  "families_legit": [],
+  "flags": {
+   "denial": false,
+   "analyst_request": false,
+   "risk_alert": true,
+   "trigger_type": "risk_score",
+   "flagged_ts": "2016-11-22 17:27:07",
+   "flagged_txn_id": "3478782",
+   "flagged_amt": 292.36,
+   "flagged_addr1": "",
+   "flagged_device_id": "",
+   "flagged_device_new": "",
+   "flagged_device_cards": 0,
+   "flagged_device_strong": false,
+   "channel": "online",
+   "modal_region": "",
+   "card_n_txns": 44,
+   "two_cards_confirmed_fraud": false,
+   "outcome": "",
+   "asked": true,
+   "pending": false,
+   "ring_hit": false,
+   "ring_id": "",
+   "ring_txn_ids": [],
+   "ring_rows": [],
+   "wave_cards": [],
+   "pre_open_cards": [],
+   "ring_cases": [],
+   "burst_hit": false,
+   "burst_txn_ids": [],
+   "burst": {},
+   "burst_lookalikes": [],
+   "r5_run": false,
+   "card_testing_run_ids": [],
+   "r5_cleared_over_big": false,
+   "r5": {
+    "run": {},
+    "larger_purchase": {},
+    "cleared_over_big": false,
+    "chain": {
+     "n_members": 1,
+     "n_small": 0
+    }
+   },
+   "recurring_match": false,
+   "recurring_group": null,
+   "recurring_total_n": 0,
+   "recurring_neighbour_hi": false,
+   "recurring_place": "hotmail.com",
+   "scorer_unreliable": false,
+   "dormant_days": 16,
+   "roaming_card": false,
+   "rulebook_chain_ids": [
+    "3478782"
+   ],
+   "rulebook_chain_sum": 292.36,
+   "conflict_chain": false,
+   "conflict_chain_ids": [],
+   "shared_fraud_cards": [],
+   "shared_device_fraud": false,
+   "device_known": false,
+   "shared_recipient_email": [],
+   "recent_same_channel_case": true,
+   "prior_fraud_case_ids": [
+    "CC-4160"
+   ],
+   "prior_cleared_case_ids": [],
+   "cleared_precedent_case_ids": [],
+   "conflict": false,
+   "floor": 0.0,
+   "families_conflict": false,
+   "mixed_channel": false,
+   "any_new_member": false,
+   "all_in_modal_region": false,
+   "card_testing_chain": false,
+   "candidate_chain_ids": [
+    "3478782"
+   ],
+   "request_type": "customer_validation"
+  },
+  "chain": [
+   {
+    "id": "3478782",
+    "ts": "2016-11-22 17:27:07",
+    "amt": 292.36,
+    "product_cd": "C",
+    "channel": "online",
+    "addr1": "",
+    "p_email": "hotmail.com",
+    "device_id": "",
+    "device_new": "",
+    "cms_p": 0.6595448752556989,
+    "sig_match": true
+   }
+  ],
+  "episode_ids": [
+   "3478782"
+  ],
+  "first_suspicious_txn_id": "3478782",
+  "exposure_usd": 292.36,
+  "connected_card_ids": [],
+  "connected_device_profiles": [],
+  "pattern": "card_not_present_fraud",
+  "pattern_description": "",
+  "verdict": "fraud",
+  "similar_prior_cases": [
+   "CC-4160"
+  ],
+  "evidence": [
+   {
+    "claim": "Amount $292.36 is 2.4x the card's prior maximum ($121.32); prior median $47.29 over 35 transactions",
+    "source": "graph",
+    "ref": "query:case_context(txn=3478782)",
+    "entity_ids": [
+     "3478782",
+     "C11891-K1"
+    ],
+    "family": "history",
+    "direction": "fraud"
+   },
+   {
+    "claim": "Card was dormant for 16 days before the flagged transaction",
+    "source": "graph",
+    "ref": "query:card_window(card=C11891-K1, hours=72)",
+    "entity_ids": [
+     "3478782",
+     "C11891-K1"
+    ],
+    "family": "history",
+    "direction": "fraud"
+   },
+   {
+    "claim": "Purchaser email domain hotmail.com used 7 times before on this card",
+    "source": "graph",
+    "ref": "query:case_context(txn=3478782)",
+    "entity_ids": [
+     "3478782"
+    ],
+    "family": "history",
+    "direction": "legit"
+   },
+   {
+    "claim": "No identity record for this online transaction: the device is unknown, not new",
+    "source": "graph",
+    "ref": "query:case_context(txn=3478782)",
+    "entity_ids": [
+     "3478782"
+    ],
+    "family": "history",
+    "direction": "neutral"
+   },
+   {
+    "claim": "Case-memory scorer (LightGBM over the bank's 5,565 closed cases; October holdout AUC 0.956) puts the flagged transaction at 0.66 (calibrated 0.75); the real-time risk score was 0.79",
+    "source": "graph",
+    "ref": "query:case_context(txn=3478782)",
+    "entity_ids": [
+     "3478782"
+    ],
+    "family": "memory",
+    "direction": "fraud"
+   },
+   {
+    "claim": "1 prior confirmed-fraud case(s) on this card (card_not_present_fraud), most recent 2016-09-30; 1 within 120 days on the same channel",
+    "source": "graph",
+    "ref": "query:prior_cases_for_customer(customer=C11891)",
+    "entity_ids": [
+     "CC-4160",
+     "C11891-K1"
+    ],
+    "family": "memory",
+    "direction": "fraud"
+   }
+  ]
+ },
+ "scorecard_post": {
+  "cms_p": 0.6595,
+  "cal_p": 0.7533,
+  "adjustments": [
+   [
+    "recent card-testing / CNP case on the card",
+    0.5
+   ],
+   [
+    "customer denial through a request",
+    1.1
+   ],
+   [
+    "denial with a second fraud family \u2192 floor",
+    0.8
+   ]
+  ],
+  "p_engine": 0.938,
+  "families_fraud": [
+   "customer",
+   "history",
+   "memory"
+  ],
+  "families_legit": [],
+  "flags": {
+   "denial": false,
+   "analyst_request": false,
+   "risk_alert": true,
+   "trigger_type": "risk_score",
+   "flagged_ts": "2016-11-22 17:27:07",
+   "flagged_txn_id": "3478782",
+   "flagged_amt": 292.36,
+   "flagged_addr1": "",
+   "flagged_device_id": "",
+   "flagged_device_new": "",
+   "flagged_device_cards": 0,
+   "flagged_device_strong": false,
+   "channel": "online",
+   "modal_region": "",
+   "card_n_txns": 44,
+   "two_cards_confirmed_fraud": false,
+   "outcome": "deny",
+   "asked": true,
+   "pending": false,
+   "ring_hit": false,
+   "ring_id": "",
+   "ring_txn_ids": [],
+   "ring_rows": [],
+   "wave_cards": [],
+   "pre_open_cards": [],
+   "ring_cases": [],
+   "burst_hit": false,
+   "burst_txn_ids": [],
+   "burst": {},
+   "burst_lookalikes": [],
+   "r5_run": false,
+   "card_testing_run_ids": [],
+   "r5_cleared_over_big": false,
+   "r5": {
+    "run": {},
+    "larger_purchase": {},
+    "cleared_over_big": false,
+    "chain": {
+     "n_members": 1,
+     "n_small": 0
+    }
+   },
+   "recurring_match": false,
+   "recurring_group": null,
+   "recurring_total_n": 0,
+   "recurring_neighbour_hi": false,
+   "recurring_place": "hotmail.com",
+   "scorer_unreliable": false,
+   "dormant_days": 16,
+   "roaming_card": false,
+   "rulebook_chain_ids": [
+    "3478782"
+   ],
+   "rulebook_chain_sum": 292.36,
+   "conflict_chain": false,
+   "conflict_chain_ids": [],
+   "shared_fraud_cards": [],
+   "shared_device_fraud": false,
+   "device_known": false,
+   "shared_recipient_email": [],
+   "recent_same_channel_case": true,
+   "prior_fraud_case_ids": [
+    "CC-4160"
+   ],
+   "prior_cleared_case_ids": [],
+   "cleared_precedent_case_ids": [],
+   "conflict": false,
+   "floor": 0.0,
+   "families_conflict": false,
+   "mixed_channel": false,
+   "any_new_member": false,
+   "all_in_modal_region": false,
+   "card_testing_chain": false,
+   "candidate_chain_ids": [
+    "3478782"
+   ],
+   "request_type": "customer_validation",
+   "request_seq": 1,
+   "escalated": false
+  },
+  "chain": [
+   {
+    "id": "3478782",
+    "ts": "2016-11-22 17:27:07",
+    "amt": 292.36,
+    "product_cd": "C",
+    "channel": "online",
+    "addr1": "",
+    "p_email": "hotmail.com",
+    "device_id": "",
+    "device_new": "",
+    "cms_p": 0.6595448752556989,
+    "sig_match": true
+   }
+  ],
+  "episode_ids": [
+   "3478782"
+  ],
+  "first_suspicious_txn_id": "3478782",
+  "exposure_usd": 292.36,
+  "connected_card_ids": [],
+  "connected_device_profiles": [],
+  "pattern": "card_not_present_fraud",
+  "pattern_description": "",
+  "verdict": "fraud",
+  "similar_prior_cases": [
+   "CC-4160"
+  ],
+  "evidence": [
+   {
+    "claim": "Amount $292.36 is 2.4x the card's prior maximum ($121.32); prior median $47.29 over 35 transactions",
+    "source": "graph",
+    "ref": "query:case_context(txn=3478782)",
+    "entity_ids": [
+     "3478782",
+     "C11891-K1"
+    ],
+    "family": "history",
+    "direction": "fraud"
+   },
+   {
+    "claim": "Card was dormant for 16 days before the flagged transaction",
+    "source": "graph",
+    "ref": "query:card_window(card=C11891-K1, hours=72)",
+    "entity_ids": [
+     "3478782",
+     "C11891-K1"
+    ],
+    "family": "history",
+    "direction": "fraud"
+   },
+   {
+    "claim": "Purchaser email domain hotmail.com used 7 times before on this card",
+    "source": "graph",
+    "ref": "query:case_context(txn=3478782)",
+    "entity_ids": [
+     "3478782"
+    ],
+    "family": "history",
+    "direction": "legit"
+   },
+   {
+    "claim": "No identity record for this online transaction: the device is unknown, not new",
+    "source": "graph",
+    "ref": "query:case_context(txn=3478782)",
+    "entity_ids": [
+     "3478782"
+    ],
+    "family": "history",
+    "direction": "neutral"
+   },
+   {
+    "claim": "Case-memory scorer (LightGBM over the bank's 5,565 closed cases; October holdout AUC 0.956) puts the flagged transaction at 0.66 (calibrated 0.75); the real-time risk score was 0.79",
+    "source": "graph",
+    "ref": "query:case_context(txn=3478782)",
+    "entity_ids": [
+     "3478782"
+    ],
+    "family": "memory",
+    "direction": "fraud"
+   },
+   {
+    "claim": "1 prior confirmed-fraud case(s) on this card (card_not_present_fraud), most recent 2016-09-30; 1 within 120 days on the same channel",
+    "source": "graph",
+    "ref": "query:prior_cases_for_customer(customer=C11891)",
+    "entity_ids": [
+     "CC-4160",
+     "C11891-K1"
+    ],
+    "family": "memory",
+    "direction": "fraud"
+   },
+   {
+    "claim": "Customer denied the purchases when asked and still has the card (assumed reply)",
+    "source": "customer",
+    "ref": "evidence_request:1",
+    "entity_ids": [],
+    "family": "customer",
+    "direction": "fraud"
+   }
+  ]
+ },
+ "branches": {
+  "confirm": [
+   "CREATE_CASE",
+   "ALLOW_TRANSACTION",
+   "CLOSE_NO_FRAUD"
+  ],
+  "deny": [
+   "CREATE_CASE",
+   "BLOCK_CARD"
+  ],
+  "no_reply": [
+   "CREATE_CASE",
+   "MONITOR_CARD",
+   "DECLINE_TRANSACTION",
+   "BLOCK_CARD"
+  ]
+ },
+ "adm_initial": {
+  "required": [
+   "CREATE_CASE",
+   "VERIFY_WITH_CUSTOMER",
+   "BLOCK_CARD"
+  ],
+  "allowed": [
+   "ALLOW_TRANSACTION",
+   "DECLINE_TRANSACTION",
+   "MONITOR_CARD",
+   "MONITOR_CONNECTED_CARDS",
+   "WARN_CUSTOMER",
+   "VERIFY_WITH_CUSTOMER",
+   "STEP_UP_AUTH",
+   "BLOCK_CARD",
+   "GENERATE_REPORT",
+   "CREATE_CASE",
+   "FILE_REPORT",
+   "ESCALATE_TO_ANALYST",
+   "CLOSE_NO_FRAUD"
+  ],
+  "forbidden": [
+   "BLOCK_ALL_CARDS"
+  ],
+  "routes": {
+   "ALLOW_TRANSACTION": "auto",
+   "DECLINE_TRANSACTION": "L1",
+   "MONITOR_CARD": "auto",
+   "MONITOR_CONNECTED_CARDS": "auto",
+   "WARN_CUSTOMER": "auto",
+   "VERIFY_WITH_CUSTOMER": "auto",
+   "STEP_UP_AUTH": "auto",
+   "BLOCK_CARD": "L1",
+   "BLOCK_ALL_CARDS": "L2",
+   "GENERATE_REPORT": "auto",
+   "CREATE_CASE": "auto",
+   "FILE_REPORT": "L2",
+   "ESCALATE_TO_ANALYST": "auto",
+   "CLOSE_NO_FRAUD": "auto"
+  },
+  "citations": {
+   "CREATE_CASE": [
+    "3a_case",
+    "fraud_band"
+   ],
+   "BLOCK_CARD": [
+    "fraud_band"
+   ],
+   "VERIFY_WITH_CUSTOMER": [
+    "fraud_band"
+   ],
+   "_forbidden": {
+    "BLOCK_ALL_CARDS": [
+     "R10"
+    ]
+   },
+   "_conflicts": {}
+  },
+  "fired": [
+   "3a_case",
+   "R10",
+   "fraud_band"
+  ]
+ },
+ "violations": [],
+ "errors": []
+}

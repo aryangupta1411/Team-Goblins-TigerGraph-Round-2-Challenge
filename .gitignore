@@ -1,0 +1,26 @@
+# secrets and local state
+.env
+ui/approvals.sqlite
+runs/
+!runs/.gitkeep
+
+# raw data (708 MB) and the full DuckDB; the id-only data/ids.duckdb IS checked in for CI
+data/raw/
+data/hhgoa.duckdb
+data/hhgoa.duckdb.wal
+data/out/
+data/corpus/raw/
+data/ofac/*.csv
+
+# python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+
+# editors / os
+.DS_Store
+.idea/
+.vscode/

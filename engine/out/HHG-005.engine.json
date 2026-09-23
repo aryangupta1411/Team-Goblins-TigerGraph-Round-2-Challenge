@@ -1,0 +1,656 @@
+{
+ "scorecard_pre": {
+  "cms_p": 0.0261,
+  "cal_p": 0.0346,
+  "adjustments": [],
+  "p_engine": 0.0346,
+  "families_fraud": [],
+  "families_legit": [
+   "history",
+   "memory"
+  ],
+  "flags": {
+   "denial": false,
+   "analyst_request": false,
+   "risk_alert": true,
+   "trigger_type": "risk_score",
+   "flagged_ts": "2016-12-07 21:38:37",
+   "flagged_txn_id": "3523199",
+   "flagged_amt": 100.07,
+   "flagged_addr1": "330.0",
+   "flagged_device_id": "iOS Device | iOS 9.3.5 | mobile safari 9.0 | 1024x768",
+   "flagged_device_new": "New",
+   "flagged_device_cards": 112,
+   "flagged_device_strong": false,
+   "channel": "online",
+   "modal_region": "330.0",
+   "card_n_txns": 92,
+   "two_cards_confirmed_fraud": false,
+   "outcome": "",
+   "asked": true,
+   "pending": false,
+   "ring_hit": false,
+   "ring_id": "Windows | Windows 7 | firefox 57.0 | 1680x1050",
+   "ring_txn_ids": [
+    "3045126",
+    "3045247"
+   ],
+   "ring_rows": [
+    {
+     "id": "3045126",
+     "ts": "2016-07-14 14:53:56",
+     "amt": 9.92
+    },
+    {
+     "id": "3045247",
+     "ts": "2016-07-14 15:25:07",
+     "amt": 20.0
+    }
+   ],
+   "wave_cards": [
+    "C00750-K2",
+    "C00941-K1",
+    "C01377-K1",
+    "C01492-K1",
+    "C01638-K1",
+    "C02193-K1",
+    "C02780-K2",
+    "C02902-K2",
+    "C03218-K2",
+    "C04258-K1",
+    "C06220-K1",
+    "C06224-K2",
+    "C07215-K1",
+    "C07356-K1",
+    "C07518-K2",
+    "C07612-K1",
+    "C07867-K2",
+    "C08361-K1",
+    "C08483-K1",
+    "C08918-K2",
+    "C09241-K2",
+    "C10320-K1",
+    "C11000-K2",
+    "C11751-K1",
+    "C12897-K1",
+    "C13001-K1"
+   ],
+   "pre_open_cards": [
+    "C00750-K2",
+    "C00941-K1",
+    "C01377-K1",
+    "C01492-K1",
+    "C01638-K1",
+    "C02193-K1",
+    "C02780-K2",
+    "C02902-K2",
+    "C03218-K2",
+    "C04258-K1",
+    "C06220-K1",
+    "C06224-K2",
+    "C07215-K1",
+    "C07356-K1",
+    "C07518-K2",
+    "C07612-K1",
+    "C07867-K2",
+    "C08361-K1",
+    "C08483-K1",
+    "C08918-K2",
+    "C09241-K2",
+    "C10320-K1",
+    "C11000-K2",
+    "C11751-K1",
+    "C12897-K1",
+    "C13001-K1"
+   ],
+   "ring_cases": [
+    "CC-0049",
+    "CC-1985"
+   ],
+   "burst_hit": false,
+   "burst_txn_ids": [],
+   "burst": {},
+   "burst_lookalikes": [],
+   "r5_run": false,
+   "card_testing_run_ids": [],
+   "r5_cleared_over_big": false,
+   "r5": {
+    "run": {},
+    "larger_purchase": {},
+    "cleared_over_big": false,
+    "chain": {
+     "n_members": 1,
+     "n_small": 0
+    }
+   },
+   "recurring_match": false,
+   "recurring_group": null,
+   "recurring_total_n": 1,
+   "recurring_neighbour_hi": false,
+   "recurring_place": "icloud.com",
+   "scorer_unreliable": false,
+   "roaming_card": false,
+   "rulebook_chain_ids": [
+    "3523199"
+   ],
+   "rulebook_chain_sum": 100.07,
+   "conflict_chain": false,
+   "conflict_chain_ids": [],
+   "shared_fraud_cards": [],
+   "shared_device_fraud": false,
+   "device_known": false,
+   "shared_recipient_email": [],
+   "recent_same_channel_case": false,
+   "prior_fraud_case_ids": [
+    "CC-2400",
+    "CC-2717",
+    "CC-2857"
+   ],
+   "prior_cleared_case_ids": [],
+   "cleared_precedent_case_ids": [],
+   "conflict": false,
+   "floor": 0.0,
+   "families_conflict": false,
+   "mixed_channel": false,
+   "any_new_member": false,
+   "all_in_modal_region": false,
+   "card_testing_chain": false,
+   "request_type": "customer_validation"
+  },
+  "chain": [
+   {
+    "id": "3523199",
+    "ts": "2016-12-07 21:38:37",
+    "amt": 100.07,
+    "product_cd": "R",
+    "channel": "online",
+    "addr1": "330.0",
+    "p_email": "icloud.com",
+    "device_id": "iOS Device | iOS 9.3.5 | mobile safari 9.0 | 1024x768",
+    "device_new": "New",
+    "cms_p": 0.026141999911475877,
+    "sig_match": true
+   }
+  ],
+  "episode_ids": [],
+  "first_suspicious_txn_id": "",
+  "exposure_usd": 0.0,
+  "connected_card_ids": [],
+  "connected_device_profiles": [],
+  "pattern": "none",
+  "pattern_description": "",
+  "verdict": "legitimate",
+  "similar_prior_cases": [
+   "CC-2857",
+   "CC-2717",
+   "CC-2400",
+   "CC-1672",
+   "CC-0965",
+   "CC-0374"
+  ],
+  "evidence": [
+   {
+    "claim": "Amount $100.07 sits inside the card's baseline (prior median $117.01, prior maximum $1,104.08 over 90 transactions)",
+    "source": "graph",
+    "ref": "query:case_context(txn=3523199)",
+    "entity_ids": [
+     "3523199",
+     "C02923-K1"
+    ],
+    "family": "history",
+    "direction": "legit"
+   },
+   {
+    "claim": "Billing region 330.0 on the online purchase is the card's modal region (85 prior purchases on 49 days)",
+    "source": "graph",
+    "ref": "query:region_history(card=C02923-K1, addr1=330.0)",
+    "entity_ids": [
+     "3523199",
+     "C02923-K1"
+    ],
+    "family": "history",
+    "direction": "legit"
+   },
+   {
+    "claim": "Purchaser email domain icloud.com never seen on this card before",
+    "source": "graph",
+    "ref": "query:case_context(txn=3523199)",
+    "entity_ids": [
+     "3523199"
+    ],
+    "family": "history",
+    "direction": "fraud"
+   },
+   {
+    "claim": "Device profile `iOS Device | iOS 9.3.5 | mobile safari 9.0 | 1024x768` is marked New for this account; the profile is generic (112 cards use it) and is not a shared-origin signal; a New device is not by itself a fraud signal in this history (cleared 'new phone' alerts are New-device ones)",
+    "source": "graph",
+    "ref": "query:case_context(txn=3523199)",
+    "entity_ids": [
+     "iOS Device | iOS 9.3.5 | mobile safari 9.0 | 1024x768",
+     "3523199"
+    ],
+    "family": "device",
+    "direction": "neutral"
+   },
+   {
+    "claim": "Case-memory scorer (LightGBM over the bank's 5,565 closed cases; October holdout AUC 0.956) puts the flagged transaction at 0.03 (calibrated 0.03); the real-time risk score was 0.54",
+    "source": "graph",
+    "ref": "query:case_context(txn=3523199)",
+    "entity_ids": [
+     "3523199"
+    ],
+    "family": "memory",
+    "direction": "legit"
+   },
+   {
+    "claim": "3 prior confirmed-fraud case(s) on this card (account_takeover), most recent 2016-09-01",
+    "source": "graph",
+    "ref": "query:prior_cases_for_customer(customer=C02923)",
+    "entity_ids": [
+     "CC-2400",
+     "CC-2717",
+     "CC-2857",
+     "C02923-K1"
+    ],
+    "family": "memory",
+    "direction": "fraud"
+   },
+   {
+    "claim": "The same device profile appears in 4 closed alerts on other cards that were cleared as 'new phone' (CC-0965, CC-0374, CC-0219, CC-0189)",
+    "source": "graph",
+    "ref": "query:similar_prior_cases(device=iOS Device | iOS 9.3.5 | mobile safari 9.0 | 1024x768)",
+    "entity_ids": [
+     "CC-0965",
+     "CC-0374",
+     "CC-0219",
+     "CC-0189"
+    ],
+    "family": "memory",
+    "direction": "legit"
+   }
+  ]
+ },
+ "scorecard_post": {
+  "cms_p": 0.0261,
+  "cal_p": 0.0346,
+  "adjustments": [
+   [
+    "customer confirmation \u2192 ceiling",
+    0.1
+   ]
+  ],
+  "p_engine": 0.0346,
+  "families_fraud": [],
+  "families_legit": [
+   "customer",
+   "history",
+   "memory"
+  ],
+  "flags": {
+   "denial": false,
+   "analyst_request": false,
+   "risk_alert": true,
+   "trigger_type": "risk_score",
+   "flagged_ts": "2016-12-07 21:38:37",
+   "flagged_txn_id": "3523199",
+   "flagged_amt": 100.07,
+   "flagged_addr1": "330.0",
+   "flagged_device_id": "iOS Device | iOS 9.3.5 | mobile safari 9.0 | 1024x768",
+   "flagged_device_new": "New",
+   "flagged_device_cards": 112,
+   "flagged_device_strong": false,
+   "channel": "online",
+   "modal_region": "330.0",
+   "card_n_txns": 92,
+   "two_cards_confirmed_fraud": false,
+   "outcome": "confirm",
+   "asked": true,
+   "pending": false,
+   "ring_hit": false,
+   "ring_id": "Windows | Windows 7 | firefox 57.0 | 1680x1050",
+   "ring_txn_ids": [
+    "3045126",
+    "3045247"
+   ],
+   "ring_rows": [
+    {
+     "id": "3045126",
+     "ts": "2016-07-14 14:53:56",
+     "amt": 9.92
+    },
+    {
+     "id": "3045247",
+     "ts": "2016-07-14 15:25:07",
+     "amt": 20.0
+    }
+   ],
+   "wave_cards": [
+    "C00750-K2",
+    "C00941-K1",
+    "C01377-K1",
+    "C01492-K1",
+    "C01638-K1",
+    "C02193-K1",
+    "C02780-K2",
+    "C02902-K2",
+    "C03218-K2",
+    "C04258-K1",
+    "C06220-K1",
+    "C06224-K2",
+    "C07215-K1",
+    "C07356-K1",
+    "C07518-K2",
+    "C07612-K1",
+    "C07867-K2",
+    "C08361-K1",
+    "C08483-K1",
+    "C08918-K2",
+    "C09241-K2",
+    "C10320-K1",
+    "C11000-K2",
+    "C11751-K1",
+    "C12897-K1",
+    "C13001-K1"
+   ],
+   "pre_open_cards": [
+    "C00750-K2",
+    "C00941-K1",
+    "C01377-K1",
+    "C01492-K1",
+    "C01638-K1",
+    "C02193-K1",
+    "C02780-K2",
+    "C02902-K2",
+    "C03218-K2",
+    "C04258-K1",
+    "C06220-K1",
+    "C06224-K2",
+    "C07215-K1",
+    "C07356-K1",
+    "C07518-K2",
+    "C07612-K1",
+    "C07867-K2",
+    "C08361-K1",
+    "C08483-K1",
+    "C08918-K2",
+    "C09241-K2",
+    "C10320-K1",
+    "C11000-K2",
+    "C11751-K1",
+    "C12897-K1",
+    "C13001-K1"
+   ],
+   "ring_cases": [
+    "CC-0049",
+    "CC-1985"
+   ],
+   "burst_hit": false,
+   "burst_txn_ids": [],
+   "burst": {},
+   "burst_lookalikes": [],
+   "r5_run": false,
+   "card_testing_run_ids": [],
+   "r5_cleared_over_big": false,
+   "r5": {
+    "run": {},
+    "larger_purchase": {},
+    "cleared_over_big": false,
+    "chain": {
+     "n_members": 1,
+     "n_small": 0
+    }
+   },
+   "recurring_match": false,
+   "recurring_group": null,
+   "recurring_total_n": 1,
+   "recurring_neighbour_hi": false,
+   "recurring_place": "icloud.com",
+   "scorer_unreliable": false,
+   "roaming_card": false,
+   "rulebook_chain_ids": [
+    "3523199"
+   ],
+   "rulebook_chain_sum": 100.07,
+   "conflict_chain": false,
+   "conflict_chain_ids": [],
+   "shared_fraud_cards": [],
+   "shared_device_fraud": false,
+   "device_known": false,
+   "shared_recipient_email": [],
+   "recent_same_channel_case": false,
+   "prior_fraud_case_ids": [
+    "CC-2400",
+    "CC-2717",
+    "CC-2857"
+   ],
+   "prior_cleared_case_ids": [],
+   "cleared_precedent_case_ids": [],
+   "conflict": false,
+   "floor": 0.0,
+   "families_conflict": false,
+   "mixed_channel": false,
+   "any_new_member": false,
+   "all_in_modal_region": false,
+   "card_testing_chain": false,
+   "request_type": "customer_validation",
+   "request_seq": 1,
+   "escalated": false
+  },
+  "chain": [
+   {
+    "id": "3523199",
+    "ts": "2016-12-07 21:38:37",
+    "amt": 100.07,
+    "product_cd": "R",
+    "channel": "online",
+    "addr1": "330.0",
+    "p_email": "icloud.com",
+    "device_id": "iOS Device | iOS 9.3.5 | mobile safari 9.0 | 1024x768",
+    "device_new": "New",
+    "cms_p": 0.026141999911475877,
+    "sig_match": true
+   }
+  ],
+  "episode_ids": [],
+  "first_suspicious_txn_id": "",
+  "exposure_usd": 0.0,
+  "connected_card_ids": [],
+  "connected_device_profiles": [],
+  "pattern": "none",
+  "pattern_description": "",
+  "verdict": "legitimate",
+  "similar_prior_cases": [
+   "CC-2857",
+   "CC-2717",
+   "CC-2400",
+   "CC-1672",
+   "CC-0965",
+   "CC-0374"
+  ],
+  "evidence": [
+   {
+    "claim": "Amount $100.07 sits inside the card's baseline (prior median $117.01, prior maximum $1,104.08 over 90 transactions)",
+    "source": "graph",
+    "ref": "query:case_context(txn=3523199)",
+    "entity_ids": [
+     "3523199",
+     "C02923-K1"
+    ],
+    "family": "history",
+    "direction": "legit"
+   },
+   {
+    "claim": "Billing region 330.0 on the online purchase is the card's modal region (85 prior purchases on 49 days)",
+    "source": "graph",
+    "ref": "query:region_history(card=C02923-K1, addr1=330.0)",
+    "entity_ids": [
+     "3523199",
+     "C02923-K1"
+    ],
+    "family": "history",
+    "direction": "legit"
+   },
+   {
+    "claim": "Purchaser email domain icloud.com never seen on this card before",
+    "source": "graph",
+    "ref": "query:case_context(txn=3523199)",
+    "entity_ids": [
+     "3523199"
+    ],
+    "family": "history",
+    "direction": "fraud"
+   },
+   {
+    "claim": "Device profile `iOS Device | iOS 9.3.5 | mobile safari 9.0 | 1024x768` is marked New for this account; the profile is generic (112 cards use it) and is not a shared-origin signal; a New device is not by itself a fraud signal in this history (cleared 'new phone' alerts are New-device ones)",
+    "source": "graph",
+    "ref": "query:case_context(txn=3523199)",
+    "entity_ids": [
+     "iOS Device | iOS 9.3.5 | mobile safari 9.0 | 1024x768",
+     "3523199"
+    ],
+    "family": "device",
+    "direction": "neutral"
+   },
+   {
+    "claim": "Case-memory scorer (LightGBM over the bank's 5,565 closed cases; October holdout AUC 0.956) puts the flagged transaction at 0.03 (calibrated 0.03); the real-time risk score was 0.54",
+    "source": "graph",
+    "ref": "query:case_context(txn=3523199)",
+    "entity_ids": [
+     "3523199"
+    ],
+    "family": "memory",
+    "direction": "legit"
+   },
+   {
+    "claim": "3 prior confirmed-fraud case(s) on this card (account_takeover), most recent 2016-09-01",
+    "source": "graph",
+    "ref": "query:prior_cases_for_customer(customer=C02923)",
+    "entity_ids": [
+     "CC-2400",
+     "CC-2717",
+     "CC-2857",
+     "C02923-K1"
+    ],
+    "family": "memory",
+    "direction": "fraud"
+   },
+   {
+    "claim": "The same device profile appears in 4 closed alerts on other cards that were cleared as 'new phone' (CC-0965, CC-0374, CC-0219, CC-0189)",
+    "source": "graph",
+    "ref": "query:similar_prior_cases(device=iOS Device | iOS 9.3.5 | mobile safari 9.0 | 1024x768)",
+    "entity_ids": [
+     "CC-0965",
+     "CC-0374",
+     "CC-0219",
+     "CC-0189"
+    ],
+    "family": "memory",
+    "direction": "legit"
+   },
+   {
+    "claim": "Customer confirmed the activity when asked (assumed reply)",
+    "source": "customer",
+    "ref": "evidence_request:1",
+    "entity_ids": [],
+    "family": "customer",
+    "direction": "legit"
+   }
+  ]
+ },
+ "branches": {
+  "confirm": [
+   "CREATE_CASE",
+   "ALLOW_TRANSACTION",
+   "CLOSE_NO_FRAUD"
+  ],
+  "deny": [
+   "CREATE_CASE",
+   "ALLOW_TRANSACTION",
+   "CLOSE_NO_FRAUD"
+  ],
+  "no_reply": [
+   "CREATE_CASE",
+   "MONITOR_CARD",
+   "DECLINE_TRANSACTION"
+  ]
+ },
+ "adm_initial": {
+  "required": [
+   "CREATE_CASE",
+   "VERIFY_WITH_CUSTOMER"
+  ],
+  "allowed": [
+   "ALLOW_TRANSACTION",
+   "MONITOR_CARD",
+   "MONITOR_CONNECTED_CARDS",
+   "WARN_CUSTOMER",
+   "VERIFY_WITH_CUSTOMER",
+   "STEP_UP_AUTH",
+   "GENERATE_REPORT",
+   "CREATE_CASE",
+   "ESCALATE_TO_ANALYST"
+  ],
+  "forbidden": [
+   "BLOCK_ALL_CARDS",
+   "BLOCK_CARD",
+   "CLOSE_NO_FRAUD",
+   "DECLINE_TRANSACTION",
+   "FILE_REPORT"
+  ],
+  "routes": {
+   "ALLOW_TRANSACTION": "auto",
+   "DECLINE_TRANSACTION": "L1",
+   "MONITOR_CARD": "auto",
+   "MONITOR_CONNECTED_CARDS": "auto",
+   "WARN_CUSTOMER": "auto",
+   "VERIFY_WITH_CUSTOMER": "auto",
+   "STEP_UP_AUTH": "auto",
+   "BLOCK_CARD": "L1",
+   "BLOCK_ALL_CARDS": "L2",
+   "GENERATE_REPORT": "auto",
+   "CREATE_CASE": "auto",
+   "FILE_REPORT": "L2",
+   "ESCALATE_TO_ANALYST": "auto",
+   "CLOSE_NO_FRAUD": "auto"
+  },
+  "citations": {
+   "CREATE_CASE": [
+    "3a_case",
+    "legit_leaning_initial"
+   ],
+   "VERIFY_WITH_CUSTOMER": [
+    "R1",
+    "legit_leaning_initial"
+   ],
+   "_forbidden": {
+    "BLOCK_CARD": [
+     "R1",
+     "legit_leaning_initial"
+    ],
+    "BLOCK_ALL_CARDS": [
+     "R1",
+     "R10",
+     "legit_leaning_initial"
+    ],
+    "DECLINE_TRANSACTION": [
+     "legit_leaning_initial"
+    ],
+    "FILE_REPORT": [
+     "legit_leaning_initial"
+    ],
+    "CLOSE_NO_FRAUD": [
+     "legit_leaning_initial"
+    ]
+   },
+   "_conflicts": {}
+  },
+  "fired": [
+   "3a_case",
+   "R1",
+   "R10",
+   "legit_leaning_initial"
+  ]
+ },
+ "violations": [],
+ "errors": []
+}

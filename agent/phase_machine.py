@@ -1,0 +1,799 @@
+"""The phase machine P0–P10 (PLAN §4.2), over the LLM backend seam `agent/llm.py`.
+
+Decision authority (PLAN §3.1): the deterministic engine decides — scorecard,
+pattern, episode, SAR rule, admissible actions, routes, stop rule; the LLM
+investigates through typed MCP tools, writes evidence claims, may move the
+probability by at most ±0.10 with a cited reason, chooses within the admissible
+set, and writes the summary and the SAR narrative.
+
+The machine asks the backend for exactly two things and does not care which runs
+(`LLM_BACKEND` = cli | api | mock, default cli — see `agent/llm.py`):
+
+  llm.parse(phase, schema, user_text, history, system, tool_defs, model, log) -> pydantic object
+  llm.investigate(user_text, history, system, tools, model, log, max_iterations) -> None
+
+  cli   claude-agent-sdk on the bundled Claude Code CLI (subscription auth, no ANTHROPIC_API_KEY):
+        JSON-schema structured output for the parse phases, an in-process SDK MCP server carrying
+        the same typed query tools for P2.
+  api   anthropic 1.7.0: client.beta.messages.parse(output_format=Model) and
+        client.beta.messages.tool_runner(...) + await runner.generate_tool_call_response();
+        cache_control {"type": "ephemeral", "ttl": "1h"} on the system block; thinking adaptive;
+        tool_choice {"type": "none"} on parse phases.
+  mock  the api code driven by agent/fake_anthropic.FakeAnthropic (RUN_MODE=mock).
+
+History is append-only: every user prompt, every assistant message (including
+thinking blocks) and every tool_result is appended and never edited.
+"""
+
+from __future__ import annotations
+
+import json
+from dataclasses import asdict, is_dataclass
+from datetime import datetime, timedelta
+from typing import Any
+
+from agent import tools_local
+from agent.answer_fallback import build as build_answer_fallback
+from agent.answer_fallback import check_invariants
+from agent.config import SETTINGS, Settings
+from agent.engine_api import ENGINE, CaseContext, Evidence
+from agent.llm import wrap_client
+from agent.mcp_client import ToolContext, current_caller, extract_ids, harness_query, load_query_descriptions, make_query_tools, run_query
+from agent.runlog import RunLog, current_runlog
+from agent.schemas import ActionChoice, Assessment, Closing, SarDraft
+
+
+def _resolve_builder():
+    """agent.answer_writer.build (contracts §C) > engine.answer_writer.build > agent.answer_fallback.build."""
+    for modname in ("agent.answer_writer", "engine.answer_writer"):
+        try:
+            mod = __import__(modname, fromlist=["build"])
+            return mod.build, modname
+        except Exception:
+            continue
+    return build_answer_fallback, "agent.answer_fallback"
+
+
+def _resolve_validator():
+    """agent.validator.validate(answer, db, meta) > engine.validator.validate(answer, db, meta); db = engine DuckFacts."""
+    for modname in ("agent.validator", "engine.validator"):
+        try:
+            mod = __import__(modname, fromlist=["validate"])
+            return mod.validate, modname
+        except Exception:
+            continue
+    return None, ""
+
+
+def _facts_db():
+    try:
+        from engine import config as ecfg
+        from engine.facts_duckdb import DuckFacts
+
+        return DuckFacts() if ecfg.FACTS_DB.exists() else None
+    except Exception:
+        return None
+
+
+build_answer, BUILDER_SOURCE = _resolve_builder()
+validate_answer, VALIDATOR_SOURCE = _resolve_validator()
+
+TS = "%Y-%m-%d %H:%M:%S"
+
+
+def _ts_add(ts: str, **delta: float) -> str:
+    return (datetime.strptime(ts, TS) + timedelta(**delta)).strftime(TS)
+
+
+def _to_jsonable(o: Any) -> Any:
+    if is_dataclass(o):
+        return {k: _to_jsonable(v) for k, v in asdict(o).items()}
+    if isinstance(o, set):
+        return sorted(o)
+    if isinstance(o, dict):
+        return {k: _to_jsonable(v) for k, v in o.items()}
+    if isinstance(o, (list, tuple)):
+        return [_to_jsonable(v) for v in o]
+    return o
+
+
+def _fill(template: str, **kw: Any) -> str:
+    out = template
+    for k, v in kw.items():
+        out = out.replace("{" + k + "}", str(v))
+    return out
+
+
+def _norm_ids(xs: Any) -> list[str]:
+    """Defensive: wave/connected lists may arrive as strings or {"card_id"|"id": ...} rows."""
+    out: list[str] = []
+    for x in xs or []:
+        v = x.get("card_id") or x.get("id") if isinstance(x, dict) else x
+        if v and str(v) not in out:
+            out.append(str(v))
+    return out
+
+
+def _norm_scorecard(sc: Any) -> Any:
+    sc.connected_card_ids = _norm_ids(sc.connected_card_ids)
+    sc.connected_device_profiles = _norm_ids(sc.connected_device_profiles)
+    sc.episode_ids = [str(i) for i in sc.episode_ids]
+    sc.similar_prior_cases = _norm_ids(sc.similar_prior_cases)
+    return sc
+
+
+class PhaseMachine:
+    def __init__(self, client: Any, session: Any, run_id: str, settings: Settings = SETTINGS, engine: Any = ENGINE, tg_conn_factory: Any = None):
+        self.llm = wrap_client(client, settings)
+        self.client = getattr(self.llm, "client", client)   # the raw SDK client, when there is one
+        self.session = session
+        self.run_id = run_id
+        self.s = settings
+        self.E = engine
+        self.tg_conn_factory = tg_conn_factory
+        self.prompts = {p.stem: p.read_text(encoding="utf-8") for p in settings.prompts_dir.glob("*.md")}
+        # Frozen system prefix: one block, cached for the run (>= 512 tokens on Opus 5 / 1024 on Sonnet 5).
+        self.system = [{"type": "text", "text": self.prompts["system"], "cache_control": {"type": "ephemeral", "ttl": settings.cache_ttl}}]
+        self.descriptions = load_query_descriptions(settings.query_descriptions_yaml)
+
+    # ------------------------------------------------------------------ helpers
+    async def _parse(self, phase: str, schema: type, user_text: str, model: str | None = None):
+        """One structured phase, on whichever backend is configured (agent/llm.py)."""
+        return await self.llm.parse(
+            phase=phase, schema=schema, user_text=user_text, history=self.history,
+            system=self.system, tool_defs=self.tool_defs, model=model or self.s.model, log=self.log,
+        )
+
+    def _known_ids(self) -> set[str]:
+        ids: set[str] = set()
+        for rows in self.tctx.facts_all.values():
+            for r in rows:
+                ids.update(extract_ids(r))
+        ids.add(self.ctx.flagged_txn_id)
+        ids.add(self.ctx.card_id)
+        ids.add(self.ctx.customer_id)
+        return ids
+
+    def _clean_evidence(self, items: list[Any], known: set[str]) -> list[dict]:
+        out = []
+        for e in items:
+            d = e.model_dump() if hasattr(e, "model_dump") else dict(e)
+            kept = [i for i in d.get("entity_ids", []) if i in known and not str(i).startswith("AC-")]
+            dropped = [i for i in d.get("entity_ids", []) if i not in kept]
+            if dropped:
+                self.log.note("dropped unknown entity_ids from a claim", dropped=dropped, ref=d.get("ref"))
+            d["entity_ids"] = kept
+            if d.get("source") not in ("graph", "document", "customer", "external"):
+                d["source"] = "graph"
+            out.append(d)
+        return out
+
+    def _sc_json(self, sc: Any) -> dict:
+        d = _to_jsonable(sc)
+        d["ledger"] = [_to_jsonable(e) for e in self.tctx.ledger[-14:]]
+        d["trigger_type"] = self.ctx.trigger_type
+        d["flagged_txn_id"] = self.ctx.flagged_txn_id
+        d["online"] = (self.tctx.facts.get("case_context", {}).get("txn", {}) or {}).get("channel") == "online"
+        return d
+
+    def _actions_dicts(self, choice: ActionChoice) -> list[dict]:
+        return [a.model_dump() for a in choice.actions]
+
+    # ------------------------------------------------------------------ P0
+    async def p0_intake(self, ctx: CaseContext) -> str:
+        self.graph_case_id = f"AC-{ctx.case_id}"
+        self.log.record_phase("P0", {"ctx": _to_jsonable(ctx), "graph_case_id": self.graph_case_id, "engine": self.E.source})
+        tok = current_caller.set("persist")
+        try:
+            # M8: the installed GSQL signature is
+            # open_case(case_id, source_case_id, customer_id, card_id, trigger_type, opened_at, run_id, flagged_txn_id)
+            # — `status` is not a parameter (the query writes "open" itself) and flagged_txn_id is required.
+            await run_query(
+                self.session,
+                "open_case",
+                {
+                    "case_id": self.graph_case_id,
+                    "source_case_id": ctx.case_id,
+                    "customer_id": ctx.customer_id,
+                    "card_id": ctx.card_id,
+                    "trigger_type": ctx.trigger_type,
+                    "opened_at": ctx.opened_at,
+                    "run_id": self.run_id,
+                    "flagged_txn_id": ctx.flagged_txn_id,
+                },
+            )
+            self.opened_in_graph = True
+        except Exception as e:
+            self.opened_in_graph = False
+            self.log.note("open_case writer failed; will persist at P10", error=str(e)[:300])
+        finally:
+            current_caller.reset(tok)
+        # mandatory queries (PLAN §3.5)
+        F: dict[str, dict] = {}
+        F["case_context"] = await harness_query(self.session, self.tctx, "case_context", {"t": {"id": ctx.flagged_txn_id}, "as_of": ctx.opened_at})
+        txn = F["case_context"].get("txn", {}) or {}
+        flagged_ts = str(txn.get("ts") or ctx.opened_at)
+        F["card_profile"] = await harness_query(self.session, self.tctx, "card_profile", {"c": {"id": ctx.card_id}, "as_of": ctx.opened_at})
+        # M5: the same window DuckFacts.collect uses (flagged_ts − 72 h → opened_at), not opened_at − 72 h
+        F["card_window"] = await harness_query(self.session, self.tctx, "card_window", {"c": {"id": ctx.card_id}, "from_ts": _ts_add(flagged_ts, hours=-72), "to_ts": ctx.opened_at, "max_rows": 60})
+        F["prior_cases_for_customer"] = await harness_query(self.session, self.tctx, "prior_cases_for_customer", {"cu": {"id": ctx.customer_id}, "as_of": ctx.opened_at})
+        head = {
+            "case_id": ctx.case_id,
+            "trigger_type": ctx.trigger_type,
+            "trigger_text": ctx.trigger_text,
+            "flagged_txn_id": ctx.flagged_txn_id,
+            "card_id": ctx.card_id,
+            "customer_id": ctx.customer_id,
+            "opened_at": ctx.opened_at,
+            "risk_score": ctx.risk_score,
+            "graph_case_id": self.graph_case_id,
+        }
+        note = ""
+        if ctx.trigger_type == "customer_report":
+            note = (
+                f"The customer has already denied transaction {ctx.flagged_txn_id}: the denial is evidence (source customer, ref trigger); "
+                "R2 applies once the verdict is fraud, R1/R8 govern while it is uncertain, R7 if the charge is recurring."
+            )
+        elif ctx.trigger_type == "analyst_request":
+            note = "An analyst asked for related activity on a shared element: follow Playbook D."
+        else:
+            note = f"Risk-score alert ({'in-person' if txn.get('channel') == 'in_person' else 'online'}): follow Playbook {'A' if txn.get('channel') == 'in_person' else 'B'}."
+        brief = ["CASE:", json.dumps(head, sort_keys=True), note, "", "MANDATORY QUERY RESULTS (ts <= opened_at):"]
+        for name in ("case_context", "card_profile", "card_window", "prior_cases_for_customer"):
+            brief.append(f"## {name}\n" + json.dumps(F[name], separators=(",", ":"), sort_keys=True, default=str)[: self.s.tool_result_max_chars // 2])
+        return "\n".join(brief)
+
+    # ------------------------------------------------------------------ P1
+    async def p1_memory(self) -> str:
+        cc = self.tctx.facts.get("case_context", {})
+        txn, dev = cc.get("txn", {}) or {}, cc.get("device", {}) or {}
+        q = (
+            f"{self.ctx.trigger_type} alert; {txn.get('channel', '')} purchase; product {txn.get('product_cd', '')}; device_new {txn.get('device_new', '')}; "
+            f"proxy {txn.get('proxy', '')}; region {txn.get('addr1', '')}; ring_hit {txn.get('ring_hit', False)}; burst {bool(txn.get('burst_id'))}"
+        )
+        # M5: same arguments as DuckFacts.collect's similar_prior_cases (device id of the flagged txn, not only strong profiles)
+        sims = await tools_local.find_similar_cases(q, self.ctx, k=8, device_id=str(txn.get("device_id") or dev.get("id", "")), addr1=str(txn.get("addr1", "")), pattern_sig="")
+        gq = {
+            "risk_score": "verify before block on a weak signal; travel versus clone; new phone; R1 R3 R4 stopping rule",
+            "customer_report": "customer denies a charge; recurring charge dispute; block and case; shared device report threshold R2 R7 R8 3a",
+            "analyst_request": "shared device profile across several cards; undocumented coordinated pattern; report and monitor connected cards R6 R9 3a",
+        }
+        chunks = await tools_local.grounding_chunks(gq.get(self.ctx.trigger_type, "fraud policy rules"), doc_filter="", kind_filter="", k=5)
+        pack = {
+            "similar_prior_cases": sims.get("cases", [])[:8],
+            "grounding": [{"id": c.get("id"), "section": c.get("section"), "text": (c.get("text") or "")[:500]} for c in chunks.get("chunks", [])[:5]],
+        }
+        self.log.record_phase("P1", pack)
+        return "MEMORY PACK:\n" + json.dumps(pack, sort_keys=True, default=str)
+
+    # ------------------------------------------------------------------ P2
+    async def p2_investigate(self, brief: str, memory: str) -> None:
+        instructions = _fill(self.prompts["investigate"], max_tool_calls=self.s.max_tool_calls)
+        user = f"{instructions}\n\n{brief}\n\n{memory}"
+        await self.llm.investigate(
+            phase="P2", user_text=user, history=self.history, system=self.system, tools=self.tools,
+            model=self.s.model, log=self.log, max_iterations=self.s.max_tool_calls + 2,
+        )
+        self.log.record_phase("P2", {"llm_tool_calls": self.tctx.budget.used, "facts": sorted(self.tctx.facts)})
+
+    async def _ensure_facts(self) -> None:
+        """Re-run the playbook queries the engine needs if the model skipped them.
+
+        M5: this is the query list and the parameters of `engine.facts_duckdb.DuckFacts.collect`
+        verbatim — the same set for **every** case, whatever the channel or trigger. `region_history`
+        and `device_history` are called with `as_of = flagged_ts − 1 s` (D8: they exclude the flagged
+        transaction); every other read uses `as_of = opened_at`.
+        """
+        ctx, F = self.ctx, self.tctx.facts
+        txn = (F.get("case_context", {}) or {}).get("txn", {}) or {}
+        as_of = ctx.opened_at
+        flagged_ts = str(txn.get("ts") or as_of)
+        before = _ts_add(flagged_ts, seconds=-1)  # D8: strictly prior to the flagged transaction
+        c, t = {"id": ctx.card_id}, {"id": ctx.flagged_txn_id}
+        need: list[tuple[str, dict]] = []
+        if str(txn.get("addr1", "")):
+            need.append(("region_history", {"c": c, "addr1": str(txn["addr1"]), "as_of": before}))
+        if txn.get("device_id"):
+            need += [
+                ("device_history", {"c": c, "d": {"id": txn["device_id"]}, "as_of": before}),
+                ("device_neighbors", {"d": {"id": txn["device_id"]}, "from_ts": _ts_add(flagged_ts, days=-30), "to_ts": as_of, "max_cards": 60}),
+            ]
+        need += [
+            ("shared_origin_scan", {"c": c, "as_of": as_of, "days": 30}),
+            ("card_testing_check", {"c": c, "as_of": as_of, "small": 5.0, "window_min": 60, "min_n": 3, "big": 100.0, "lookahead_h": 48}),
+            ("under_threshold_burst", {"c": c, "as_of": as_of}),
+            ("recurring_charge_check", {"t": t, "tol": 0.01, "as_of": as_of}),
+            ("episode_candidates", {"t": t, "as_of": as_of, "gap_h": 48}),
+            ("ring_profile", {"c": c, "as_of": as_of}),
+        ]
+        for name, params in need:
+            try:
+                # the harness's own call is authoritative even when the model already ran the query with
+                # different parameters ("first call wins" in record_result would otherwise leak the model's)
+                F[name] = await harness_query(self.session, self.tctx, name, params)
+            except Exception as e:
+                self.log.note(f"engine re-run of {name} failed", error=str(e)[:300])
+        try:
+            self.post_open = await run_query(self.session, "post_open_activity", {"c": {"id": ctx.card_id}, "opened_at": ctx.opened_at, "days": 7})
+        except Exception as e:
+            self.post_open = {}
+            self.log.note("post_open_activity failed", error=str(e)[:300])
+
+    # ------------------------------------------------------------------ P3
+    async def p3_scorecard(self):
+        await self._ensure_facts()
+        sc = _norm_scorecard(self.E.scorecard.compute(self.ctx, self.tctx.facts, self.tctx.ledger))
+        self.log.record_phase("P3", _to_jsonable(sc))
+        return sc
+
+    # ------------------------------------------------------------------ P4
+    async def p4_assess(self, sc: Any) -> tuple[Any, list[dict], list[str]]:
+        text = _fill(self.prompts["assess"], scorecard_json=json.dumps(self._sc_json(sc), sort_keys=True, default=str))
+        a: Assessment = await self._parse("P4", Assessment, text)
+        lo, hi = max(0.0, sc.p_engine - 0.10), min(1.0, sc.p_engine + 0.10)
+        p = min(max(float(a.fraud_probability), lo), hi)
+        if p != a.fraud_probability:
+            self.log.note("fraud_probability clamped to p_engine ± 0.10", llm=a.fraud_probability, clamped=p)
+        if p != sc.p_engine:
+            sc.adjustments.append((f"LLM adjustment ({a.calibration_basis[:120]})", round(p - sc.p_engine, 3)))
+            sc.p_engine = round(p, 3)
+            new_v = "fraud" if p >= 0.70 else "legitimate" if p <= 0.15 else "uncertain"
+            if sc.flags.get("denial") and new_v == "legitimate":
+                new_v = "uncertain"
+            if new_v != sc.verdict:
+                self.log.note("verdict band changed by LLM adjustment", old=sc.verdict, new=new_v)
+                sc.verdict = new_v
+                if new_v == "legitimate":
+                    sc.pattern, sc.pattern_description, sc.episode_ids, sc.first_suspicious_txn_id, sc.exposure_usd = "none", "", [], "", 0.0
+                    sc.connected_card_ids, sc.connected_device_profiles = [], []
+        known = self._known_ids()
+        evidence = self._clean_evidence(a.evidence, known)
+        if self.ctx.trigger_type == "customer_report" and not any(e["source"] == "customer" for e in evidence):
+            evidence.insert(
+                0,
+                {
+                    "claim": f"Customer denied transaction {self.ctx.flagged_txn_id} in the alert message: '{self.ctx.trigger_text[:120]}'.",
+                    "source": "customer",
+                    "ref": "trigger",
+                    "entity_ids": [self.ctx.flagged_txn_id],
+                },
+            )
+        for e in evidence:  # every claim also lands in the engine ledger (direction from the verdict context is neutral)
+            self.tctx.ledger.append(
+                Evidence(claim=e["claim"], source=e["source"], ref=e["ref"], entity_ids=e["entity_ids"], family="customer" if e["source"] == "customer" else "history", direction="neutral")
+            )
+        # M22: `fraud_probability` at the top level of the payload (ui/common.probability_pre_post)
+        self.log.record_phase(
+            "P4",
+            {
+                "assessment": a.model_dump(),
+                "fraud_probability": sc.p_engine,
+                "p_engine_after": sc.p_engine,
+                "verdict": sc.verdict,
+                "families_fraud": sorted(sc.families_fraud),
+                "families_legit": sorted(sc.families_legit),
+            },
+        )
+        return sc, evidence, list(a.wanted_requests)
+
+    # ------------------------------------------------------------------ P5 / P7
+    async def _decide(self, phase: str, stage: str, sc: Any, post_note: str = "") -> list[dict]:
+        adm = self.E.policy.admissible(self.ctx, sc, stage)
+        text = _fill(
+            self.prompts["nba"],
+            phase=phase,
+            stage=stage,
+            p=sc.p_engine,
+            verdict=sc.verdict,
+            families_fraud=sorted(sc.families_fraud),
+            families_legit=sorted(sc.families_legit),
+            exposure=f"{sc.exposure_usd:,.2f}",
+            post_evidence_note=post_note,
+            admissible_json=json.dumps(adm, sort_keys=True),
+        )
+        choice: ActionChoice = await self._parse(phase, ActionChoice, text)
+        actions = self._actions_dicts(choice)
+        violations = self.E.policy.check(actions, self.ctx, sc, stage)
+        if violations:
+            self.log.note(f"{phase}: policy violations, re-prompting", violations=violations)
+            choice = await self._parse(
+                phase + "-retry", ActionChoice, "Your action list violates the policy gate:\n- " + "\n- ".join(violations) + "\nReply with a corrected ActionChoice inside the admissible set."
+            )
+            actions = self._actions_dicts(choice)
+            violations = self.E.policy.check(actions, self.ctx, sc, stage)
+        if violations:
+            actions = self._correct(actions, adm, sc)
+            self.events.append({"kind": "policy_override", "payload": {"stage": stage, "violations": violations, "corrected": actions}})
+            self.log.note(f"{phase}: deterministic policy correction applied", violations=violations)
+        actions = self.E.policy.order(actions)
+        for a in actions:
+            a["route"] = self.E.policy.route(a["action"], sc.exposure_usd)
+        # M22: P7 carries the post-evidence probability at the top level (ui/common.probability_pre_post reads it)
+        self.log.record_phase(phase, {"stage": stage, "admissible": adm, "actions": actions, "fraud_probability": sc.p_engine, "verdict": sc.verdict})
+        return actions
+
+    def _request_type_for(self, sc: Any) -> str:
+        """`engine.voi.request_type_for`; the stub engine has no such function, so fall back to the
+        action the policy would put in the initial set."""
+        fn = getattr(self.E.voi, "request_type_for", None)
+        if callable(fn):
+            try:
+                return fn(self.ctx, sc)
+            except Exception as e:
+                self.log.note("voi.request_type_for raised", error=str(e)[:200])
+        if self.ctx.trigger_type == "analyst_request":
+            return "analyst_info"
+        online = (self.tctx.facts.get("case_context", {}).get("txn", {}) or {}).get("channel") == "online"
+        return "step_up_auth" if online and sc.flags.get("denial") else "customer_validation"
+
+    def _correct(self, actions: list[dict], adm: dict, sc: Any) -> list[dict]:
+        by_name = {a["action"]: a for a in actions}
+        out: list[dict] = []
+        for r in adm["required"]:
+            a = by_name.get(r) or {"action": r, "route": adm["routes"].get(r, "auto"), "reason": "/".join(adm["citations"].get(r, ["policy"])) + ": required by policy (deterministic correction)"}
+            out.append(a)
+        for a in actions:
+            if a["action"] in adm["allowed"] and a["action"] not in adm["required"]:
+                out.append(a)
+        for a in out:
+            a["route"] = adm["routes"].get(a["action"], a.get("route", "auto"))
+            if "R1" in a.get("reason", "") and not (sc.p_engine < 0.70 and len(sc.families_fraud) < 2):
+                a["reason"] = a["reason"].replace("R1", "§3b/§5")
+        return out
+
+    # ------------------------------------------------------------------ P6
+    async def p6_evidence(self, sc: Any, rt: str, branches: dict) -> tuple[list[dict], Any]:
+        """Simulate exactly the one request type the engine chose (`engine.voi.request_type_for`).
+
+        M5: the decision to ask and the request type are taken in `_run` before P5 so the initial
+        recommendation already names the matching verification action; P6 only plays the reply out.
+        """
+        rep = self.E.simulator.reply(rt, self.ctx, sc)
+        request = {"type": rt, "asked_after_step": self.log.tool_calls, "assumed_response": rep["assumed_response"]}
+        requests = [request]
+        self.evidence.append(
+            {
+                "claim": rep["assumed_response"].replace("ASSUMED (simulated): ", "Assumed reply: "),
+                "source": "customer" if rt == "customer_validation" else "external",
+                "ref": "evidence_request:1",
+                "entity_ids": [self.ctx.flagged_txn_id] if rt != "analyst_info" else [],
+            }
+        )
+        sc_post = _norm_scorecard(self.E.scorecard.post_evidence(sc, rep["outcome"]))
+        sc_post.flags["asked"] = True
+        sc_post.flags["request_seq"] = 1
+        sc_post.flags["post_outcome"] = rep["outcome"]
+        sc_post.flags["counterfactual"] = rep["counterfactual"]
+        self.events += [{"kind": "evidence_request", "payload": request}, {"kind": "assumed_response", "payload": rep}]
+        # M22: the shape ui/common.py reads (counterfactual / voi branches / post-evidence probability)
+        self.log.record_phase(
+            "P6", {"request": request, "simulated": rep, "voi": {"request_type": rt, "branches": branches}, "counterfactual": rep["counterfactual"], "fraud_probability": sc_post.p_engine}
+        )
+        self.history.append(
+            {
+                "role": "user",
+                "content": (
+                    f"EVIDENCE REQUEST 1 ({rt}) was made after step {request['asked_after_step']}. Assumed reply (simulated): "
+                    f"{rep['assumed_response']}\nOutcome class: {rep['outcome']}. Probability moved {sc.p_engine} -> {sc_post.p_engine}; "
+                    f"verdict now {sc_post.verdict}. Counterfactual: {rep['counterfactual']}."
+                ),
+            }
+        )
+        return requests, sc_post
+
+    # ------------------------------------------------------------------ P8
+    def _sar_resolver(self):
+        """Id resolver for `rag.validate_sar` (D10): the dataset DuckDB when it is there, else the engine
+        facts DB, else the answer's own ids (`rag.validate_sar.answer_resolver` is applied by the caller)."""
+        try:
+            from rag.validate_sar import DuckResolver
+
+            if self.s.duckdb_path.exists():
+                return DuckResolver(self.s.duckdb_path)
+        except Exception as e:
+            self.log.note("SAR DuckResolver unavailable", error=str(e)[:200])
+        try:
+            from engine.validator import FactsResolver
+
+            db = _facts_db()
+            if db is not None:
+                return FactsResolver(db)
+        except Exception as e:
+            self.log.note("SAR FactsResolver unavailable", error=str(e)[:200])
+        return None
+
+    def _sar_facts(self, sc: Any, final: list[dict], reason: str, ofac: dict):
+        """`rag.sar.SarFacts` for this case, built from the fact pack the harness collected."""
+        from rag.sar import SarFacts
+
+        f = sc.flags
+        ts_of = self._ts_lookup()
+        chain = {str(m.get("id")): dict(m) for m in sc.chain}
+        for r in f.get("ring_rows", []) or []:
+            chain.setdefault(
+                str(r["id"]), {"id": r["id"], "ts": r.get("ts", ""), "amt": r.get("amt", 0.0), "channel": "online", "addr1": "", "device_new": "New", "device_id": f.get("ring_id", ""), "proxy": ""}
+            )
+        affected = []
+        for i in sc.episode_ids:
+            row = chain.get(str(i)) or {"id": str(i), "ts": ts_of.get(str(i), ""), "amt": 0.0}
+            row.setdefault("ts", ts_of.get(str(i), ""))
+            affected.append(row)
+        affected.sort(key=lambda r: (str(r.get("ts", "")), str(r.get("id", ""))))
+        card = (self.tctx.facts.get("card_profile", {}) or {}).get("card", {}) or {}
+        prior = (self.tctx.facts.get("card_profile", {}) or {}).get("prior_closed_cases", []) or []
+        reply = ""
+        for e in self.evidence:
+            if str(e.get("ref", "")).startswith("evidence_request"):
+                reply = e["claim"]
+        shared = ""
+        if f.get("ring_hit"):
+            shared = f"a profile that appears on {len(f.get('wave_cards', []) or [])} other cards in the same wave"
+        elif sc.connected_card_ids:
+            shared = f"a profile shared with {len(sc.connected_card_ids)} other cards carrying confirmed fraud within 30 days"
+        return SarFacts(
+            case_id=self.ctx.case_id,
+            graph_case_id=self.graph_case_id,
+            customer_id=self.ctx.customer_id,
+            card_id=self.ctx.card_id,
+            opened_at=self.ctx.opened_at,
+            verdict=sc.verdict,
+            fraud_probability=float(sc.p_engine),
+            pattern=sc.pattern,
+            pattern_description=sc.pattern_description,
+            affected=affected,
+            exposure_usd=float(sc.exposure_usd),
+            connected_card_ids=list(sc.connected_card_ids),
+            connected_device_profiles=list(sc.connected_device_profiles),
+            card_type=str(card.get("card_type", "")),
+            card_network=str(card.get("card_network", "")),
+            baseline={k: card[k] for k in ("n_txns", "median_amt", "max_amt", "n_online", "n_in_person", "modal_region", "first_ts", "n_devices_seen") if k in card},
+            prior_cases=[{"id": c.get("id"), "pattern": c.get("pattern"), "outcome": c.get("outcome"), "report_filed": c.get("report_filed"), "opened_at": c.get("opened_at")} for c in prior],
+            customer_reply=reply,
+            ofac=ofac,
+            final_actions=[dict(a) for a in final],
+            sar_reason=reason,
+            shared_element=shared,
+            trigger_type=self.ctx.trigger_type,
+        )
+
+    async def p8_sar(self, sc: Any, final: list[dict]) -> dict:
+        """M15 / M16 / D10: grounded on the two FinCEN documents by id, drafted through `rag.sar.build_prompt`,
+        assembled by `rag.sar.assemble` and checked by `rag.validate_sar.validate_sar` — the single SAR validator.
+        After two failed LLM drafts the deterministic `rag.sar.fallback_narrative` is used."""
+        from rag import sar as rag_sar
+        from rag.validate_sar import validate_sar
+
+        file_, reason = self.E.policy.sar_required(sc)
+        file_ = file_ and "FILE_REPORT" in {a["action"] for a in final}
+        if not file_:
+            return rag_sar.negative_sar(reason)
+        ofac = tools_local.ofac_screen(self.ctx.customer_id)
+        ofac = dict(ofac, best_score=max([m["score"] for m in ofac.get("matches", [])] or [0.0]))
+        facts = self._sar_facts(sc, final, reason, ofac)
+        # M15: the Document ids are `sar_guidance_narrative` (the narrative guidance) and `sar_tti_19`
+        # (the effective / less-effective narrative examples); an unknown filter searches everything.
+        chunks: list[dict] = []
+        for doc, q in (
+            ("sar_guidance_narrative", "SAR narrative: who what when where how why; supporting documentation"),
+            ("sar_tti_19", "example of an effective and a less effective SAR narrative"),
+        ):
+            try:
+                got = await tools_local.grounding_chunks(q, doc_filter=doc, kind_filter="", k=3)
+                chunks += list(got.get("chunks", []) or [])
+            except Exception as e:
+                self.log.note(f"grounding_chunks({doc}) failed", error=str(e)[:200])
+        for c in chunks:  # rag.sar.build_prompt reads doc_id/section/page/text
+            c.setdefault("doc_id", str(c.get("id", "")).split("#")[0])
+            c.setdefault("section", "")
+            c.setdefault("page", 0)
+        resolver = self._sar_resolver()
+        affected_ts = [str(t.get("ts", "")) for t in facts.affected if t.get("ts")]
+        sys_text, user_text = rag_sar.build_prompt(facts, chunks)
+        text = sys_text + "\n\n" + user_text
+        sar: dict | None = None
+        problems: list[str] = []
+        for attempt in range(2):
+            d: SarDraft = await self._parse(
+                "P8" if attempt == 0 else f"P8-retry{attempt}",
+                SarDraft,
+                text if attempt == 0 else "The narrative failed validation: " + "; ".join(problems) + ". Rewrite the SarDraft.",
+                model=self.s.sar_model,
+            )
+            cand = rag_sar.assemble(facts, d.narrative, reason)
+            problems = validate_sar(
+                cand,
+                exposure_usd=facts.exposure_usd,
+                affected_ts=affected_ts,
+                case_ids=(self.ctx.case_id, self.graph_case_id),
+                customer_id=self.ctx.customer_id,
+                card_id=self.ctx.card_id,
+                resolver=resolver,
+                file_report_in_final=True,
+            )
+            if not problems:
+                sar = cand
+                break
+            self.log.note("SAR validation failed", attempt=attempt + 1, problems=problems)
+        if sar is None:
+            sar = rag_sar.assemble(facts, rag_sar.fallback_narrative(facts), reason)
+            residual = validate_sar(
+                sar,
+                exposure_usd=facts.exposure_usd,
+                affected_ts=affected_ts,
+                case_ids=(self.ctx.case_id, self.graph_case_id),
+                customer_id=self.ctx.customer_id,
+                card_id=self.ctx.card_id,
+                resolver=resolver,
+                file_report_in_final=True,
+            )
+            self.log.note("SAR: rag.sar.fallback_narrative used after two failed drafts", residual=residual)
+        self.events.append({"kind": "sar", "payload": {"reason": reason, "ofac": ofac, "chunks": [c.get("id") for c in chunks]}})
+        return sar
+
+    def _ts_lookup(self) -> dict[str, str]:
+        """TransactionID -> ts from every fact row seen (chain, card_window, ring_profile, bursts...)."""
+        out: dict[str, str] = {}
+
+        def walk(o: Any):
+            if isinstance(o, dict):
+                if "id" in o and "ts" in o and isinstance(o.get("ts"), str) and str(o["id"]).isdigit():
+                    out.setdefault(str(o["id"]), o["ts"])
+                for v in o.values():
+                    walk(v)
+            elif isinstance(o, list):
+                for v in o:
+                    walk(v)
+
+        for rows in self.tctx.facts_all.values():
+            walk(rows)
+        return out
+
+    # ------------------------------------------------------------------ run
+    async def run_case(self, ctx: CaseContext, log: RunLog) -> dict:
+        self.ctx, self.log = ctx, log
+        token = current_runlog.set(log)
+        try:
+            return await self._run(ctx)
+        finally:
+            current_runlog.reset(token)
+
+    async def _run(self, ctx: CaseContext) -> dict:
+        self.llm.new_case()          # cli backend: one Claude CLI session per case
+        self.history: list[dict] = []
+        self.events: list[dict] = []
+        self.evidence: list[dict] = []
+        self.post_open: dict = {}
+        self.tctx = ToolContext(opened_at=ctx.opened_at)
+        self.tctx.budget.limit = self.s.max_tool_calls
+        tools_local.bind(self.session, self.tctx)
+        self.tools = make_query_tools(self.session, self.tctx, self.descriptions) + tools_local.make_local_tools(ctx, self.tctx)
+        self.tools.sort(key=lambda t: t.name)  # deterministic tool order (cache prefix)
+        self.tool_defs = [t.to_dict() for t in self.tools]
+
+        self.log.set_phase("P0")
+        brief = await self.p0_intake(ctx)  # P0
+        self.log.set_phase("P1")
+        memory = await self.p1_memory()  # P1
+        self.log.set_phase("P2")
+        await self.p2_investigate(brief, memory)  # P2
+        self.events.append({"kind": "evidence", "payload": [_to_jsonable(e) for e in self.tctx.ledger]})
+        self.log.set_phase("P3")
+        sc = await self.p3_scorecard()  # P3
+        self.log.set_phase("P4")
+        sc, self.evidence, wanted = await self.p4_assess(sc)  # P4
+        self.events.append({"kind": "assessment", "payload": _to_jsonable(sc)})
+        # M5: the §6 test-1 gate and the value-of-information test run BEFORE P5, exactly as engine.run_cases.run_one
+        # does, so the initial recommendation already knows whether a verification request is part of it and which one.
+        settled = bool(getattr(self.E.stop, "settled_pre", lambda _s: False)(sc))
+        rt, ask, branches, voi_zero = "", False, {}, False
+        if not settled:
+            rt = self._request_type_for(sc)
+            ask, branches = self.E.voi.should_ask(self.ctx, sc, rt)
+            # D1: a fraud-band case that §6 test 1 has not settled still makes its one §3b verification request
+            if not ask and sc.verdict == "fraud" and ctx.trigger_type != "analyst_request":
+                ask, voi_zero = True, True
+            if ask:
+                sc.flags["asked"] = True
+                sc.flags["request_type"] = rt
+            else:
+                voi_zero = True
+        self.log.record_phase("P5-voi", {"settled_pre": settled, "request_type": rt, "ask": ask, "voi_zero": voi_zero, "branches": branches, "llm_wanted": list(wanted)})
+        initial = await self._decide("P5", "initial", sc)  # P5
+        self.events.append({"kind": "nba_initial", "payload": initial})
+        if ask:  # P6 — only the request type the engine chose
+            requests, sc_post = await self.p6_evidence(sc, rt, branches)
+        else:
+            requests, sc_post = [], None
+        if requests:  # P7
+            sc_final = sc_post
+            final = await self._decide("P7", "final", sc_final, post_note=f"Post-evidence: assumed {requests[0]['type']} outcome '{sc_post.flags.get('post_outcome')}'.")
+            what_changed = self._what_changed(requests[0], sc, sc_post, initial, final)
+            if what_changed == "nothing":  # same actions and routes: keep initial verbatim so final == initial exactly
+                final = [dict(a) for a in initial]
+        else:
+            sc_final, final, what_changed = sc, [dict(a) for a in initial], "nothing"
+        self.events.append({"kind": "nba_final", "payload": final})
+        stop = self.E.stop.stop_reason(sc, sc_post, bool(requests), voi_zero)
+        self.log.set_phase("P8")
+        sar = await self.p8_sar(sc_final, final)  # P8
+        final_json = {
+            "verdict": sc_final.verdict,
+            "fraud_probability": sc_final.p_engine,
+            "pattern": sc_final.pattern,
+            "affected_txn_ids": sc_final.episode_ids,
+            "exposure_usd": sc_final.exposure_usd,
+            "families_fraud": sorted(sc_final.families_fraud),
+            "families_legit": sorted(sc_final.families_legit),
+            "evidence_requests": requests,
+            "initial": initial,
+            "final": final,
+            "what_changed": what_changed,
+            "similar_prior_cases": sc_final.similar_prior_cases,
+            "sar_file": sar["file"],
+            "post_open_activity": self.post_open.get("summary", {}),
+            "counterfactual": (sc_post.flags.get("counterfactual") if sc_post else ""),
+        }
+        closing: Closing = await self._parse("P9", Closing, _fill(self.prompts["explain"], engine_stop_reason=stop, final_json=json.dumps(final_json, sort_keys=True, default=str)))
+        closing_d = closing.model_dump()
+        closing_d["stop_reason"] = closing.stop_reason if "§6" in closing.stop_reason else f"{stop} {closing.stop_reason}".strip()
+        closing_d["what_changed"] = what_changed
+        # P10 persist before the file is finalised so written_to_graph is truthful
+        self.log.set_phase("P10")
+        from agent import persist
+
+        written = await persist.persist_case(self, ctx, sc_final, initial, final, requests, sar, closing_d, self.evidence)
+        closing_d["written_to_graph"] = written
+        ev_objs = [
+            Evidence(claim=e["claim"], source=e["source"], ref=e["ref"], entity_ids=list(e["entity_ids"]), family="customer" if e["source"] == "customer" else "history", direction="neutral")
+            for e in self.evidence
+        ]
+        if requests and sc_post is not None:
+            sc_post.flags["pending"] = sc_post.flags.get("post_outcome") in ("no_reply", "inconclusive")
+        try:
+            answer = build_answer(ctx, sc, sc_post or sc, initial, final, ev_objs, requests, sar, closing_d, self.log.totals(), self.graph_case_id)
+            builder = BUILDER_SOURCE
+        except Exception as e:  # the engine builder asserts invariants; keep the file, log the reason
+            self.log.note(f"{BUILDER_SOURCE}.build failed; using agent.answer_fallback", error=str(e)[:400])
+            answer = build_answer_fallback(ctx, sc, sc_post, initial, final, ev_objs, requests, sar, closing_d, self.log.totals(), self.graph_case_id)
+            builder = "agent.answer_fallback"
+        answer["case"]["written_to_graph"] = written
+        answer["case"]["graph_case_id"] = self.graph_case_id if written else ""
+        answer["next_best_actions"]["what_changed"] = what_changed
+        problems = check_invariants(answer)
+        if validate_answer is not None:
+            try:
+                db = _facts_db()
+                if db is not None:
+                    meta = {"p_pre": sc.p_engine, "families_fraud_pre": len(sc.families_fraud), "opened_at": ctx.opened_at, "card_id": ctx.card_id, "customer_id": ctx.customer_id}
+                    problems += validate_answer(answer, db, meta)  # agent.validator and engine.validator share the signature
+                else:
+                    self.log.note("validator skipped: engine facts DuckDB not found")
+            except Exception as e:
+                self.log.note("validator raised", error=str(e)[:300])
+        self.log.note("answer assembled", builder=builder, validator=VALIDATOR_SOURCE)
+        if problems:
+            self.log.note("answer validation problems", problems=problems)
+        answer["_validation"] = problems
+        (self.log.root / "answer.json").write_text(json.dumps({k: v for k, v in answer.items() if k != "_validation"}, indent=2, ensure_ascii=False), encoding="utf-8")
+        (self.log.root / "sar.md").write_text((sar["narrative"] or f"No SAR. {sar['reason']}") + "\n", encoding="utf-8")
+        self.log.record_phase("P9", {"validation": problems, "totals": self.log.totals()})
+        return answer
+
+    def _what_changed(self, req: dict, sc: Any, sc_post: Any, initial: list[dict], final: list[dict]) -> str:
+        ini, fin = [(a["action"], a["route"]) for a in initial], [(a["action"], a["route"]) for a in final]
+        if ini == fin:
+            return "nothing"
+        added = [a for a, _ in fin if a not in {x for x, _ in ini}]
+        removed = [a for a, _ in ini if a not in {x for x, _ in fin}]
+        parts = [
+            f"The assumed {req['type'].replace('_', ' ')} reply ({sc_post.flags.get('post_outcome')}) moved the probability from {sc.p_engine:.2f} to {sc_post.p_engine:.2f} and the verdict to {sc_post.verdict}"
+        ]
+        if added:
+            parts.append(f"adding {', '.join(added)}")
+        if removed:
+            parts.append(f"removing {', '.join(removed)}")
+        cf = sc_post.flags.get("counterfactual")
+        s = ", ".join(parts) + "."
+        if cf:
+            s += f" Counterfactual: {cf}."
+        return s

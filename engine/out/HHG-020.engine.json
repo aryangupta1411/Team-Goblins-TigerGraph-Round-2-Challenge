@@ -1,0 +1,494 @@
+{
+ "scorecard_pre": {
+  "cms_p": 0.0061,
+  "cal_p": 0.0056,
+  "adjustments": [],
+  "p_engine": 0.0056,
+  "families_fraud": [],
+  "families_legit": [
+   "history"
+  ],
+  "flags": {
+   "denial": false,
+   "analyst_request": false,
+   "risk_alert": true,
+   "trigger_type": "risk_score",
+   "flagged_ts": "2016-12-03 06:04:26",
+   "flagged_txn_id": "3509359",
+   "flagged_amt": 125.08,
+   "flagged_addr1": "264.0",
+   "flagged_device_id": "Trident/7.0 | Windows 10 | ie 11.0 for desktop | 1920x1080",
+   "flagged_device_new": "New",
+   "flagged_device_cards": 253,
+   "flagged_device_strong": false,
+   "channel": "online",
+   "modal_region": "264.0",
+   "card_n_txns": 109,
+   "two_cards_confirmed_fraud": false,
+   "outcome": "",
+   "asked": true,
+   "pending": false,
+   "ring_hit": false,
+   "ring_id": "",
+   "ring_txn_ids": [],
+   "ring_rows": [],
+   "wave_cards": [],
+   "pre_open_cards": [],
+   "ring_cases": [],
+   "burst_hit": false,
+   "burst_txn_ids": [],
+   "burst": {},
+   "burst_lookalikes": [],
+   "r5_run": false,
+   "card_testing_run_ids": [],
+   "r5_cleared_over_big": false,
+   "r5": {
+    "run": {},
+    "larger_purchase": {},
+    "cleared_over_big": false,
+    "chain": {
+     "n_members": 1,
+     "n_small": 0
+    }
+   },
+   "recurring_match": false,
+   "recurring_group": null,
+   "recurring_total_n": 0,
+   "recurring_neighbour_hi": false,
+   "recurring_place": "yahoo.com",
+   "scorer_unreliable": false,
+   "roaming_card": false,
+   "rulebook_chain_ids": [
+    "3509359"
+   ],
+   "rulebook_chain_sum": 125.08,
+   "conflict_chain": false,
+   "conflict_chain_ids": [],
+   "shared_fraud_cards": [],
+   "shared_device_fraud": false,
+   "device_known": false,
+   "shared_recipient_email": [],
+   "recent_same_channel_case": false,
+   "prior_fraud_case_ids": [
+    "CC-2277",
+    "CC-2447"
+   ],
+   "prior_cleared_case_ids": [],
+   "cleared_precedent_case_ids": [],
+   "conflict": false,
+   "floor": 0.0,
+   "families_conflict": false,
+   "mixed_channel": false,
+   "any_new_member": false,
+   "all_in_modal_region": false,
+   "card_testing_chain": false,
+   "request_type": "customer_validation"
+  },
+  "chain": [
+   {
+    "id": "3509359",
+    "ts": "2016-12-03 06:04:26",
+    "amt": 125.08,
+    "product_cd": "R",
+    "channel": "online",
+    "addr1": "264.0",
+    "p_email": "yahoo.com",
+    "device_id": "Trident/7.0 | Windows 10 | ie 11.0 for desktop | 1920x1080",
+    "device_new": "New",
+    "cms_p": 0.006110255769897083,
+    "sig_match": true
+   }
+  ],
+  "episode_ids": [],
+  "first_suspicious_txn_id": "",
+  "exposure_usd": 0.0,
+  "connected_card_ids": [],
+  "connected_device_profiles": [],
+  "pattern": "none",
+  "pattern_description": "",
+  "verdict": "legitimate",
+  "similar_prior_cases": [
+   "CC-2447",
+   "CC-2277"
+  ],
+  "evidence": [
+   {
+    "claim": "Amount $125.08 sits inside the card's baseline (prior median $107.91, prior maximum $1,960.95 over 82 transactions)",
+    "source": "graph",
+    "ref": "query:case_context(txn=3509359)",
+    "entity_ids": [
+     "3509359",
+     "C12265-K2"
+    ],
+    "family": "history",
+    "direction": "legit"
+   },
+   {
+    "claim": "Billing region 264.0 on the online purchase is the card's modal region (82 prior purchases on 61 days)",
+    "source": "graph",
+    "ref": "query:region_history(card=C12265-K2, addr1=264.0)",
+    "entity_ids": [
+     "3509359",
+     "C12265-K2"
+    ],
+    "family": "history",
+    "direction": "legit"
+   },
+   {
+    "claim": "First use of product code R on this card",
+    "source": "graph",
+    "ref": "query:case_context(txn=3509359)",
+    "entity_ids": [
+     "3509359"
+    ],
+    "family": "history",
+    "direction": "fraud"
+   },
+   {
+    "claim": "Purchaser email domain yahoo.com used 20 times before on this card",
+    "source": "graph",
+    "ref": "query:case_context(txn=3509359)",
+    "entity_ids": [
+     "3509359"
+    ],
+    "family": "history",
+    "direction": "legit"
+   },
+   {
+    "claim": "Device profile `Trident/7.0 | Windows 10 | ie 11.0 for desktop | 1920x1080` is marked New for this account; the profile is generic (253 cards use it) and is not a shared-origin signal; a New device is not by itself a fraud signal in this history (cleared 'new phone' alerts are New-device ones)",
+    "source": "graph",
+    "ref": "query:case_context(txn=3509359)",
+    "entity_ids": [
+     "Trident/7.0 | Windows 10 | ie 11.0 for desktop | 1920x1080",
+     "3509359"
+    ],
+    "family": "device",
+    "direction": "neutral"
+   },
+   {
+    "claim": "Case-memory scorer (LightGBM over the bank's 5,565 closed cases; October holdout AUC 0.956) puts the flagged transaction at 0.01 (calibrated 0.01); the real-time risk score was 0.52",
+    "source": "graph",
+    "ref": "query:case_context(txn=3509359)",
+    "entity_ids": [
+     "3509359"
+    ],
+    "family": "memory",
+    "direction": "legit"
+   },
+   {
+    "claim": "2 prior confirmed-fraud case(s) on this card (account_takeover), most recent 2016-08-22",
+    "source": "graph",
+    "ref": "query:prior_cases_for_customer(customer=C12265)",
+    "entity_ids": [
+     "CC-2277",
+     "CC-2447",
+     "C12265-K2"
+    ],
+    "family": "memory",
+    "direction": "fraud"
+   }
+  ]
+ },
+ "scorecard_post": {
+  "cms_p": 0.0061,
+  "cal_p": 0.0056,
+  "adjustments": [
+   [
+    "customer confirmation \u2192 ceiling",
+    0.1
+   ]
+  ],
+  "p_engine": 0.0056,
+  "families_fraud": [],
+  "families_legit": [
+   "customer",
+   "history"
+  ],
+  "flags": {
+   "denial": false,
+   "analyst_request": false,
+   "risk_alert": true,
+   "trigger_type": "risk_score",
+   "flagged_ts": "2016-12-03 06:04:26",
+   "flagged_txn_id": "3509359",
+   "flagged_amt": 125.08,
+   "flagged_addr1": "264.0",
+   "flagged_device_id": "Trident/7.0 | Windows 10 | ie 11.0 for desktop | 1920x1080",
+   "flagged_device_new": "New",
+   "flagged_device_cards": 253,
+   "flagged_device_strong": false,
+   "channel": "online",
+   "modal_region": "264.0",
+   "card_n_txns": 109,
+   "two_cards_confirmed_fraud": false,
+   "outcome": "confirm",
+   "asked": true,
+   "pending": false,
+   "ring_hit": false,
+   "ring_id": "",
+   "ring_txn_ids": [],
+   "ring_rows": [],
+   "wave_cards": [],
+   "pre_open_cards": [],
+   "ring_cases": [],
+   "burst_hit": false,
+   "burst_txn_ids": [],
+   "burst": {},
+   "burst_lookalikes": [],
+   "r5_run": false,
+   "card_testing_run_ids": [],
+   "r5_cleared_over_big": false,
+   "r5": {
+    "run": {},
+    "larger_purchase": {},
+    "cleared_over_big": false,
+    "chain": {
+     "n_members": 1,
+     "n_small": 0
+    }
+   },
+   "recurring_match": false,
+   "recurring_group": null,
+   "recurring_total_n": 0,
+   "recurring_neighbour_hi": false,
+   "recurring_place": "yahoo.com",
+   "scorer_unreliable": false,
+   "roaming_card": false,
+   "rulebook_chain_ids": [
+    "3509359"
+   ],
+   "rulebook_chain_sum": 125.08,
+   "conflict_chain": false,
+   "conflict_chain_ids": [],
+   "shared_fraud_cards": [],
+   "shared_device_fraud": false,
+   "device_known": false,
+   "shared_recipient_email": [],
+   "recent_same_channel_case": false,
+   "prior_fraud_case_ids": [
+    "CC-2277",
+    "CC-2447"
+   ],
+   "prior_cleared_case_ids": [],
+   "cleared_precedent_case_ids": [],
+   "conflict": false,
+   "floor": 0.0,
+   "families_conflict": false,
+   "mixed_channel": false,
+   "any_new_member": false,
+   "all_in_modal_region": false,
+   "card_testing_chain": false,
+   "request_type": "customer_validation",
+   "request_seq": 1,
+   "escalated": false
+  },
+  "chain": [
+   {
+    "id": "3509359",
+    "ts": "2016-12-03 06:04:26",
+    "amt": 125.08,
+    "product_cd": "R",
+    "channel": "online",
+    "addr1": "264.0",
+    "p_email": "yahoo.com",
+    "device_id": "Trident/7.0 | Windows 10 | ie 11.0 for desktop | 1920x1080",
+    "device_new": "New",
+    "cms_p": 0.006110255769897083,
+    "sig_match": true
+   }
+  ],
+  "episode_ids": [],
+  "first_suspicious_txn_id": "",
+  "exposure_usd": 0.0,
+  "connected_card_ids": [],
+  "connected_device_profiles": [],
+  "pattern": "none",
+  "pattern_description": "",
+  "verdict": "legitimate",
+  "similar_prior_cases": [
+   "CC-2447",
+   "CC-2277"
+  ],
+  "evidence": [
+   {
+    "claim": "Amount $125.08 sits inside the card's baseline (prior median $107.91, prior maximum $1,960.95 over 82 transactions)",
+    "source": "graph",
+    "ref": "query:case_context(txn=3509359)",
+    "entity_ids": [
+     "3509359",
+     "C12265-K2"
+    ],
+    "family": "history",
+    "direction": "legit"
+   },
+   {
+    "claim": "Billing region 264.0 on the online purchase is the card's modal region (82 prior purchases on 61 days)",
+    "source": "graph",
+    "ref": "query:region_history(card=C12265-K2, addr1=264.0)",
+    "entity_ids": [
+     "3509359",
+     "C12265-K2"
+    ],
+    "family": "history",
+    "direction": "legit"
+   },
+   {
+    "claim": "First use of product code R on this card",
+    "source": "graph",
+    "ref": "query:case_context(txn=3509359)",
+    "entity_ids": [
+     "3509359"
+    ],
+    "family": "history",
+    "direction": "fraud"
+   },
+   {
+    "claim": "Purchaser email domain yahoo.com used 20 times before on this card",
+    "source": "graph",
+    "ref": "query:case_context(txn=3509359)",
+    "entity_ids": [
+     "3509359"
+    ],
+    "family": "history",
+    "direction": "legit"
+   },
+   {
+    "claim": "Device profile `Trident/7.0 | Windows 10 | ie 11.0 for desktop | 1920x1080` is marked New for this account; the profile is generic (253 cards use it) and is not a shared-origin signal; a New device is not by itself a fraud signal in this history (cleared 'new phone' alerts are New-device ones)",
+    "source": "graph",
+    "ref": "query:case_context(txn=3509359)",
+    "entity_ids": [
+     "Trident/7.0 | Windows 10 | ie 11.0 for desktop | 1920x1080",
+     "3509359"
+    ],
+    "family": "device",
+    "direction": "neutral"
+   },
+   {
+    "claim": "Case-memory scorer (LightGBM over the bank's 5,565 closed cases; October holdout AUC 0.956) puts the flagged transaction at 0.01 (calibrated 0.01); the real-time risk score was 0.52",
+    "source": "graph",
+    "ref": "query:case_context(txn=3509359)",
+    "entity_ids": [
+     "3509359"
+    ],
+    "family": "memory",
+    "direction": "legit"
+   },
+   {
+    "claim": "2 prior confirmed-fraud case(s) on this card (account_takeover), most recent 2016-08-22",
+    "source": "graph",
+    "ref": "query:prior_cases_for_customer(customer=C12265)",
+    "entity_ids": [
+     "CC-2277",
+     "CC-2447",
+     "C12265-K2"
+    ],
+    "family": "memory",
+    "direction": "fraud"
+   },
+   {
+    "claim": "Customer confirmed the activity when asked (assumed reply)",
+    "source": "customer",
+    "ref": "evidence_request:1",
+    "entity_ids": [],
+    "family": "customer",
+    "direction": "legit"
+   }
+  ]
+ },
+ "branches": {
+  "confirm": [
+   "CREATE_CASE",
+   "ALLOW_TRANSACTION",
+   "CLOSE_NO_FRAUD"
+  ],
+  "deny": [
+   "CREATE_CASE",
+   "ALLOW_TRANSACTION",
+   "CLOSE_NO_FRAUD"
+  ],
+  "no_reply": [
+   "CREATE_CASE",
+   "MONITOR_CARD",
+   "DECLINE_TRANSACTION"
+  ]
+ },
+ "adm_initial": {
+  "required": [
+   "CREATE_CASE",
+   "VERIFY_WITH_CUSTOMER"
+  ],
+  "allowed": [
+   "ALLOW_TRANSACTION",
+   "MONITOR_CARD",
+   "MONITOR_CONNECTED_CARDS",
+   "WARN_CUSTOMER",
+   "VERIFY_WITH_CUSTOMER",
+   "STEP_UP_AUTH",
+   "GENERATE_REPORT",
+   "CREATE_CASE",
+   "ESCALATE_TO_ANALYST"
+  ],
+  "forbidden": [
+   "BLOCK_ALL_CARDS",
+   "BLOCK_CARD",
+   "CLOSE_NO_FRAUD",
+   "DECLINE_TRANSACTION",
+   "FILE_REPORT"
+  ],
+  "routes": {
+   "ALLOW_TRANSACTION": "auto",
+   "DECLINE_TRANSACTION": "L1",
+   "MONITOR_CARD": "auto",
+   "MONITOR_CONNECTED_CARDS": "auto",
+   "WARN_CUSTOMER": "auto",
+   "VERIFY_WITH_CUSTOMER": "auto",
+   "STEP_UP_AUTH": "auto",
+   "BLOCK_CARD": "L1",
+   "BLOCK_ALL_CARDS": "L2",
+   "GENERATE_REPORT": "auto",
+   "CREATE_CASE": "auto",
+   "FILE_REPORT": "L2",
+   "ESCALATE_TO_ANALYST": "auto",
+   "CLOSE_NO_FRAUD": "auto"
+  },
+  "citations": {
+   "CREATE_CASE": [
+    "3a_case",
+    "legit_leaning_initial"
+   ],
+   "VERIFY_WITH_CUSTOMER": [
+    "R1",
+    "legit_leaning_initial"
+   ],
+   "_forbidden": {
+    "BLOCK_CARD": [
+     "R1",
+     "legit_leaning_initial"
+    ],
+    "BLOCK_ALL_CARDS": [
+     "R1",
+     "R10",
+     "legit_leaning_initial"
+    ],
+    "DECLINE_TRANSACTION": [
+     "legit_leaning_initial"
+    ],
+    "FILE_REPORT": [
+     "legit_leaning_initial"
+    ],
+    "CLOSE_NO_FRAUD": [
+     "legit_leaning_initial"
+    ]
+   },
+   "_conflicts": {}
+  },
+  "fired": [
+   "3a_case",
+   "R1",
+   "R10",
+   "legit_leaning_initial"
+  ]
+ },
+ "violations": [],
+ "errors": []
+}

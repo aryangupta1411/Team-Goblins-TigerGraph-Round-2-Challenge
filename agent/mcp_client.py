@@ -1,0 +1,602 @@
+"""MCP client for the agent (contracts §C `agent/mcp_client.py`).
+
+- `open_session(read_only)` spawns `mcp/tg_mcp_launcher.py` over stdio through the
+  official `mcp` ClientSession (mcp 2.2.0) and lists the served tools.
+- `make_query_tools(...)` turns the installed read queries described in
+  `mcp/query_descriptions.yaml` into typed Anthropic tools
+  (`anthropic.lib.tools.BetaAsyncFunctionTool`, anthropic 1.7.0) so the model picks
+  a query BY NAME with a schema-checked parameter set. The raw
+  `tigergraph__run_installed_query` tool is never given to the model.
+- `run_query(session, name, params)` calls `tigergraph__run_installed_query`, parses
+  the MCP formatter's ```json block, merges the printed JSON objects into one dict,
+  and logs the call to the active RunLog.
+- Every tool result becomes `Evidence` rows through `evidence_from_result()` (ids
+  extracted by code, never by the model).
+
+Parameter encoding (contracts §A): VERTEX<T> → {"id": "..."}; DATETIME → "YYYY-MM-DD HH:MM:SS";
+INT/FLOAT/STRING/BOOL → JSON scalars; LIST<FLOAT> → JSON array.
+"""
+from __future__ import annotations
+
+import contextvars
+import json
+import os
+import re
+import sys
+import time
+from collections.abc import AsyncIterator, Callable
+from contextlib import asynccontextmanager
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
+
+from agent.config import SETTINGS, Settings
+from agent.engine_api import Evidence
+from agent.runlog import current_runlog
+
+RUN_INSTALLED = "tigergraph__run_installed_query"
+
+# ---------------------------------------------------------------- query registry
+
+# Fallback description of the installed read queries (contracts §A). The file
+# mcp/query_descriptions.yaml (written by the queries module) overrides/extends it.
+_DT = "DATETIME"
+BUILTIN_QUERIES: dict[str, dict] = {
+    "case_context": {"description": "First look at the flagged transaction: its attributes (amount, channel, region, emails, device_new, proxy, cms_p, prior_* baselines, ring_hit, burst_id), the card (modal region, n_txns, ring_id), the customer and the device profile (strength, fan-out, fraud cases).",
+                     "parameters": {"t": {"type": "VERTEX<Transaction>", "description": "flagged transaction", "example": {"id": "3478561"}},
+                                    "as_of": {"type": _DT, "description": "opened_at; only ts <= as_of is visible", "example": "2016-11-22 20:11:00"}}},
+    "card_profile": {"description": "Card baseline attributes, last-30-day aggregates, top regions/devices/emails, the customer's other cards, prior ClosedCase and AgentCase records on the card.",
+                     "parameters": {"c": {"type": "VERTEX<Card>", "description": "card", "example": {"id": "C13487-K1"}},
+                                    "as_of": {"type": _DT, "description": "opened_at", "example": "2016-11-22 20:11:00"}}},
+    "card_window": {"description": "Ordered transactions on the card between from_ts and to_ts (last max_rows): amount, product, channel, region, emails, risk_score, cms_p, device profile, device_new, proxy, gap_seconds; plus a summary.",
+                    "parameters": {"c": {"type": "VERTEX<Card>", "description": "card", "example": {"id": "C13487-K1"}},
+                                   "from_ts": {"type": _DT, "description": "window start", "example": "2016-11-19 20:11:00"},
+                                   "to_ts": {"type": _DT, "description": "window end (clamped to opened_at)", "example": "2016-11-22 20:11:00"},
+                                   "max_rows": {"type": "INT", "description": "row cap", "example": 60}}},
+    "region_history": {"description": "How well the card knows billing region addr1: prior count/days, first/last, share, modal region, n_regions, home activity within 48h, hint home/known/rare/new.",
+                       "parameters": {"c": {"type": "VERTEX<Card>", "description": "card", "example": {"id": "C12382-K1"}},
+                                      "addr1": {"type": "STRING", "description": "billing region code as in the data, e.g. '444.0'", "example": "444.0"},
+                                      "as_of": {"type": _DT, "description": "opened_at", "example": "2016-12-05 01:55:28"}}},
+    "device_history": {"description": "Prior uses of a device profile on this card: prior_n, first_ts, device_new values seen. New phone vs new fraudster.",
+                       "parameters": {"c": {"type": "VERTEX<Card>", "description": "card", "example": {"id": "C02923-K1"}},
+                                      "d": {"type": "VERTEX<DeviceProfile>", "description": "device profile id (4 fields joined by ' | ')", "example": {"id": "iOS Device | iOS 11.1.2 | mobile safari 11.0 | 2208x1242"}},
+                                      "as_of": {"type": _DT, "description": "opened_at", "example": "2016-12-08 03:38:37"}}},
+    "device_neighbors": {"description": "Other cards on a device profile in a time window with their txn counts, proxy/new counts, and closed/agent cases touching them. Returns only the device summary when the profile is not strong.",
+                         "parameters": {"d": {"type": "VERTEX<DeviceProfile>", "description": "device profile id", "example": {"id": "SM-G935F Build/NRD90M | Android 7.0 | chrome 62.0 for android | 1920x1080"}},
+                                        "from_ts": {"type": _DT, "description": "window start", "example": "2016-11-01 00:00:00"},
+                                        "to_ts": {"type": _DT, "description": "window end", "example": "2016-11-22 20:11:00"},
+                                        "max_cards": {"type": "INT", "description": "card cap", "example": 60}}},
+    "email_neighbors": {"description": "Other cards sharing a recipient/purchaser email domain with this card in a window, and fraud cases among them (R6 recipient-email clause).",
+                        "parameters": {"e": {"type": "VERTEX<EmailDomain>", "description": "email domain", "example": {"id": "anonymous.com"}},
+                                       "c": {"type": "VERTEX<Card>", "description": "card", "example": {"id": "C10434-K1"}},
+                                       "from_ts": {"type": _DT, "description": "window start", "example": "2016-11-02 00:00:00"},
+                                       "to_ts": {"type": _DT, "description": "window end", "example": "2016-12-02 18:18:27"}}},
+    "shared_origin_scan": {"description": "Strong device profiles and recipient email domains on the card's recent online transactions with fan-out and fraud-case counts; region_cluster_30d from the card (R6 / R2 shared clause).",
+                           "parameters": {"c": {"type": "VERTEX<Card>", "description": "card", "example": {"id": "C13487-K1"}},
+                                          "as_of": {"type": _DT, "description": "opened_at", "example": "2016-11-22 20:11:00"},
+                                          "days": {"type": "INT", "description": "lookback days", "example": 30}}},
+    "card_testing_check": {"description": "R5 detector: best run of >= min_n small online auths within window_min minutes followed by a larger purchase within lookahead_h; whether a > big purchase cleared; chain size and sub-$5 count.",
+                           "parameters": {"c": {"type": "VERTEX<Card>", "description": "card", "example": {"id": "C11923-K2"}},
+                                          "as_of": {"type": _DT, "description": "opened_at", "example": "2016-12-29 06:27:44"},
+                                          "small": {"type": "FLOAT", "description": "small auth threshold", "example": 5.0},
+                                          "window_min": {"type": "INT", "description": "window minutes", "example": 60},
+                                          "min_n": {"type": "INT", "description": "min small auths", "example": 3},
+                                          "big": {"type": "FLOAT", "description": "larger purchase threshold", "example": 100.0},
+                                          "lookahead_h": {"type": "INT", "description": "hours after the run", "example": 48}}},
+    "under_threshold_burst": {"description": "Just-under-$500 online bursts on the card (>= 4 x $450-499.99 within 40 min) with members, devices, emails, regions and look-alike cards.",
+                              "parameters": {"c": {"type": "VERTEX<Card>", "description": "card", "example": {"id": "C07297-K1"}},
+                                             "as_of": {"type": _DT, "description": "opened_at", "example": "2016-11-22 02:30:00"}}},
+    "recurring_charge_check": {"description": "R7 detector: prior same-amount (±tol) same-product transactions per place (addr1 in person, purchaser email online) with median gap and gap CV in days.",
+                               "parameters": {"t": {"type": "VERTEX<Transaction>", "description": "disputed transaction", "example": {"id": "3530164"}},
+                                              "tol": {"type": "FLOAT", "description": "amount tolerance fraction", "example": 0.01},
+                                              "as_of": {"type": _DT, "description": "opened_at", "example": "2016-12-10 15:01:21"}}},
+    "episode_candidates": {"description": "The <= gap_h-hour-gap chain on the card containing the transaction (ts <= as_of) with cms_p, device, email, amount and signature-match flags: the candidate fraud episode.",
+                           "parameters": {"t": {"type": "VERTEX<Transaction>", "description": "flagged transaction", "example": {"id": "3478561"}},
+                                          "as_of": {"type": _DT, "description": "opened_at", "example": "2016-11-22 20:11:00"},
+                                          "gap_h": {"type": "INT", "description": "max gap hours", "example": 48}}},
+    "prior_cases_for_customer": {"description": "All closed and agent-written cases on all of the customer's cards (case memory).",
+                                 "parameters": {"cu": {"type": "VERTEX<Customer>", "description": "customer", "example": {"id": "C13487"}},
+                                                "as_of": {"type": _DT, "description": "opened_at", "example": "2016-11-22 20:11:00"}}},
+    "ring_profile": {"description": "Profile-centric ring facts for the card: ring_id, the device summary, all wave cards (no time box), pre-open cards, the card's own transactions on the ring profile, closed cases on it.",
+                     "parameters": {"c": {"type": "VERTEX<Card>", "description": "card", "example": {"id": "C13487-K1"}},
+                                    "as_of": {"type": _DT, "description": "opened_at", "example": "2016-11-22 20:11:00"}}},
+    # harness-only (not exposed to the model as tools)
+    "post_open_activity": {"harness_only": True, "description": "Activity after opening (monitoring note, never exposure).",
+                           "parameters": {"c": {"type": "VERTEX<Card>", "example": {"id": "C13487-K1"}}, "opened_at": {"type": _DT, "example": "2016-11-22 20:11:00"}, "days": {"type": "INT", "example": 7}}},
+    "case_subgraph": {"harness_only": True, "description": "UI subgraph.", "parameters": {"c": {"type": "VERTEX<Card>"}, "as_of": {"type": _DT}, "hours": {"type": "INT"}}},
+    "similar_prior_cases": {"harness_only": True, "description": "Vector + structural similar cases.", "parameters": {"q": {"type": "LIST<FLOAT>"}, "k": {"type": "INT"}, "card_id": {"type": "STRING"}, "customer_id": {"type": "STRING"}, "device_id": {"type": "STRING"}, "addr1": {"type": "STRING"}, "pattern_sig": {"type": "STRING"}, "as_of": {"type": _DT}}},
+    "grounding_chunks": {"harness_only": True, "description": "Policy / regulation chunks.", "parameters": {"q": {"type": "LIST<FLOAT>"}, "k": {"type": "INT"}, "doc_filter": {"type": "STRING"}, "kind_filter": {"type": "STRING"}}},
+    "open_case": {"harness_only": True, "writer": True, "description": "Writer.", "parameters": {}},
+    # M8: the installed signature is append_case_event(case_id, seq, kind, event_at, payload) — `event_at` fills CaseEvent.at
+    "append_case_event": {"harness_only": True, "writer": True, "description": "Writer.", "parameters": {"case_id": {"type": "STRING"}, "seq": {"type": "INT"}, "kind": {"type": "STRING"}, "event_at": {"type": _DT}, "payload": {"type": "STRING"}}},
+    "close_case": {"harness_only": True, "writer": True, "description": "Writer.", "parameters": {}},
+    "record_approval": {"harness_only": True, "writer": True, "description": "Writer.", "parameters": {}},
+}
+
+# Which evidence family each query feeds (PLAN §4.5).
+QUERY_FAMILY: dict[str, str] = {
+    "case_context": "history", "card_profile": "history", "card_window": "history", "region_history": "history",
+    "card_testing_check": "history", "under_threshold_burst": "history", "recurring_charge_check": "history",
+    "episode_candidates": "history", "post_open_activity": "history",
+    "device_history": "device", "device_neighbors": "device", "email_neighbors": "device",
+    "shared_origin_scan": "device", "ring_profile": "device",
+    "prior_cases_for_customer": "memory", "similar_prior_cases": "memory",
+    "grounding_chunks": "document", "find_similar_cases": "memory",
+}
+
+# Parameters the harness clamps to opened_at so no evidence leaks past it.
+_UPPER_BOUND_PARAMS = {"as_of", "to_ts"}
+
+
+def _split_type(spec_type: str) -> tuple[str, str]:
+    """'VERTEX<Card> — the card as {"id": ...}' -> ('VERTEX<Card>', 'the card as ...')."""
+    for sep in (" \u2014 ", " — ", " - ", ": "):
+        if sep in spec_type:
+            t, d = spec_type.split(sep, 1)
+            return t.strip(), d.strip()
+    parts = spec_type.split(None, 1)
+    return (parts[0].strip(), parts[1].strip()) if len(parts) == 2 and not spec_type.strip().upper().startswith(("LIST<", "SET<", "MAP<")) else (spec_type.strip(), "")
+
+
+def load_query_descriptions(path: Path | None = None) -> dict[str, dict]:
+    """Merge mcp/query_descriptions.yaml over the built-in table, defensively.
+
+    Accepted shapes (the queries module writes the second):
+      {query_name: {description, parameters: {name: {type, description, example}}}}
+      {version, graph, queries: {query_name: {description, parameters: {name: 'TYPE — description'},
+                                              example: {name: value}, writer: bool, mandatory: bool}}}
+    Anything malformed is ignored with the built-in entry kept. Queries unknown to the
+    built-in table default to harness_only (never exposed to the model unless the YAML
+    says `llm: true`).
+    """
+    merged: dict[str, dict] = {k: {"description": v.get("description", ""), "parameters": dict(v.get("parameters", {})),
+                                   "harness_only": v.get("harness_only", False), "writer": v.get("writer", False),
+                                   "mandatory": k in ("case_context", "card_profile", "card_window", "prior_cases_for_customer")}
+                               for k, v in BUILTIN_QUERIES.items()}
+    path = path or SETTINGS.query_descriptions_yaml
+    if not path or not Path(path).exists():
+        return merged
+    try:
+        import yaml
+        raw = yaml.safe_load(Path(path).read_text(encoding="utf-8")) or {}
+    except Exception:
+        return merged
+    if isinstance(raw, dict) and isinstance(raw.get("queries"), dict):
+        raw = raw["queries"]
+    if not isinstance(raw, dict):
+        return merged
+    for name, spec in raw.items():
+        if not isinstance(name, str) or not isinstance(spec, dict):
+            continue
+        entry = merged.setdefault(name, {"description": "", "parameters": {}, "harness_only": True, "writer": False, "mandatory": False})
+        if isinstance(spec.get("description"), str) and spec["description"].strip():
+            entry["description"] = " ".join(spec["description"].split())
+        params = spec.get("parameters") or spec.get("params") or {}
+        examples = spec.get("example") if isinstance(spec.get("example"), dict) else {}
+        if isinstance(params, dict):
+            clean: dict[str, dict] = {}
+            for pname, pspec in params.items():
+                if isinstance(pspec, str):
+                    t, d = _split_type(pspec)
+                    pspec = {"type": t, "description": d}
+                if not isinstance(pspec, dict):
+                    continue
+                t = str(pspec.get("type", "STRING"))
+                d = str(pspec.get("description", "") or "")
+                if not d:
+                    t, d = _split_type(t)
+                clean[str(pname)] = {"type": t, "description": d, "example": pspec.get("example", examples.get(str(pname)))}
+            if clean:
+                entry["parameters"] = clean
+        for flag in ("harness_only", "writer", "mandatory"):
+            if flag in spec:
+                entry[flag] = bool(spec[flag])
+        if spec.get("llm") is True:
+            entry["harness_only"] = False
+    return merged
+
+
+def _json_type(gsql_type: str) -> dict:
+    t = gsql_type.strip().upper()
+    if t.startswith("VERTEX"):
+        return {"type": "object", "properties": {"id": {"type": "string"}}, "required": ["id"], "additionalProperties": False}
+    if t.startswith("SET<VERTEX") or t.startswith("LIST<VERTEX"):
+        return {"type": "array", "items": {"type": "object", "properties": {"id": {"type": "string"}}, "required": ["id"], "additionalProperties": False}}
+    if t in ("INT", "UINT"):
+        return {"type": "integer"}
+    if t in ("FLOAT", "DOUBLE"):
+        return {"type": "number"}
+    if t == "BOOL":
+        return {"type": "boolean"}
+    if t.startswith("LIST<") or t.startswith("SET<"):
+        inner = t[t.index("<") + 1:-1]
+        return {"type": "array", "items": _json_type(inner)}
+    return {"type": "string"}   # STRING, DATETIME ('YYYY-MM-DD HH:MM:SS')
+
+
+def input_schema_for(spec: dict) -> dict:
+    props: dict[str, dict] = {}
+    for pname, pspec in spec.get("parameters", {}).items():
+        js = _json_type(pspec.get("type", "STRING"))
+        desc = pspec.get("description", "") or ""
+        if pspec.get("type", "").upper() == "DATETIME":
+            desc = (desc + " Format 'YYYY-MM-DD HH:MM:SS'.").strip()
+        if pspec.get("example") is not None:
+            desc = (desc + f" Example: {json.dumps(pspec['example'])}").strip()
+        if desc:
+            js["description"] = desc
+        props[pname] = js
+    return {"type": "object", "properties": props, "required": list(props), "additionalProperties": False}
+
+
+# ---------------------------------------------------------------- allowlist + session
+
+def read_allowlist(path: Path | None = None) -> dict[str, list[str]]:
+    path = path or SETTINGS.tools_allowlist
+    sections: dict[str, list[str]] = {"read": [], "write": [], "blocked": []}
+    current = "read"
+    for line in Path(path).read_text(encoding="utf-8").splitlines():
+        s = line.strip()
+        if not s or s.startswith("#"):
+            continue
+        if s.startswith("[") and s.endswith("]"):
+            current = s[1:-1]
+            sections.setdefault(current, [])
+            continue
+        sections[current].append(s)
+    return sections
+
+
+def launcher_env(read_only: bool, settings: Settings = SETTINGS) -> dict[str, str]:
+    al = read_allowlist(settings.tools_allowlist)
+    allowed = al["read"] + ([] if read_only else al["write"])
+    env = {**os.environ}
+    env.update({
+        "TG_HOST": settings.tg_host, "TG_GRAPHNAME": settings.tg_graphname,
+        "TG_QUERY_TIMEOUT_MS": str(settings.tg_query_timeout_ms),
+        "TG_RESPONSE_LIMIT_BYTES": str(settings.tg_response_limit_bytes),
+        "TG_ALLOWED_TOOLS": ",".join(allowed), "TG_BLOCKED_TOOLS": ",".join(al["blocked"]),
+        "TG_LOG_TOOL_CALLS": os.environ.get("TG_LOG_TOOL_CALLS", "1"),
+    })
+    if settings.tg_secret:
+        env["TG_SECRET"] = settings.tg_secret
+    return env
+
+
+@asynccontextmanager
+async def open_session(read_only: bool, settings: Settings = SETTINGS) -> AsyncIterator[tuple[Any, list[Any]]]:
+    """Spawn the launcher over stdio and yield `(ClientSession, [mcp.types.Tool])`.
+
+    read_only=True serves only the [read] tools (LLM-facing / UI sessions);
+    read_only=False adds the [write] tools for the harness (persist).
+    In RUN_MODE=mock a FakeSession backed by agent/mock_fixtures.py is yielded instead.
+    """
+    if settings.mock:
+        from agent.mock_fixtures import FakeSession
+        session = FakeSession()
+        yield session, session.tools()
+        return
+    from mcp.client.stdio import StdioServerParameters, stdio_client
+
+    from mcp import ClientSession
+
+    params = StdioServerParameters(
+        command=sys.executable, args=[str(settings.launcher_path)], env=launcher_env(read_only, settings),
+        cwd=str(settings.launcher_path.parent.parent),
+    )
+    async with stdio_client(params) as (read, write):
+        async with ClientSession(read, write) as session:
+            await session.initialize()
+            listed = (await session.list_tools()).tools
+            names = {t.name for t in listed}
+            if RUN_INSTALLED not in names:
+                raise RuntimeError(f"{RUN_INSTALLED} is not served; served={sorted(names)}")
+            yield session, list(listed)
+
+
+# ---------------------------------------------------------------- run_query
+
+class QueryError(RuntimeError):
+    pass
+
+
+_FENCE = re.compile(r"```json\s*(\{.*?\})\s*```", re.S)
+
+
+def parse_tool_text(text: str) -> dict:
+    """Parse the tigergraph-mcp formatter output (first ```json block = ToolResponse)."""
+    m = _FENCE.search(text)
+    if not m:
+        try:
+            return json.loads(text)
+        except Exception as e:
+            raise QueryError(f"unparseable MCP tool result: {text[:300]!r}") from e
+    return json.loads(m.group(1))
+
+
+_normalize = None
+_normalize_mod = None
+
+
+def _load_normalize():
+    """mcp/normalize.py (queries module) loaded by file path — `import mcp.normalize` would
+    shadow the `mcp` SDK package, so the folder stays a plain directory and is loaded by path
+    (00-integration.md M18: never import it as a package, and never add mcp/__init__.py)."""
+    global _normalize, _normalize_mod
+    if _normalize is not None:
+        return _normalize
+    import importlib.util
+    path = SETTINGS.launcher_path.parent / "normalize.py"
+    if path.exists():
+        spec = importlib.util.spec_from_file_location("hhgoa_mcp_normalize", path)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        _normalize_mod = mod
+        _normalize = getattr(mod, "normalize", False)
+    else:
+        _normalize = False
+    return _normalize
+
+
+def merge_printed(results: Any, qname: str = "") -> dict:
+    """Merge the list of PRINT objects returned by RESTPP into one dict (contracts §A).
+
+    Uses mcp/normalize.py (vertex-set flattening, JSON-string decoding) when present, then unwraps the
+    one-element-list PRINTs the contract reads as objects (`card_testing_check.run`, M7).
+    """
+    if isinstance(results, dict) and isinstance(results.get("results"), list):
+        results = results["results"]
+    norm = _load_normalize()
+    if norm:
+        merged = norm(results if isinstance(results, list) else [results] if isinstance(results, dict) else [])
+    else:
+        merged = {}
+        if isinstance(results, dict):
+            results = [results]
+        for obj in results or []:
+            if isinstance(obj, dict):
+                for k, v in obj.items():
+                    merged[k] = v
+    return _unwrap_singletons(qname, merged)
+
+
+# PRINT keys a GroupByAccum prints as a one-element list although the contract (and every consumer) reads a
+# single object: card_testing_check.run (00-integration.md M7, contracts §A).
+_SINGLETON_KEYS: dict[str, tuple[str, ...]] = {"card_testing_check": ("run",)}
+
+
+def _unwrap_singletons(qname: str, merged: dict) -> dict:
+    """`card_testing_check` prints `run` as `[{start_id, ids, amts, start_ts, end_ts}]`; the harness hands the
+    engine a dict, exactly as `mcp/normalize.unwrap_singleton` does."""
+    keys = _SINGLETON_KEYS.get(qname or "")
+    if not keys:
+        return merged
+    unwrap = getattr(_normalize_mod, "unwrap_singleton", None) if _normalize_mod else None
+    for k in keys:
+        if k in merged:
+            merged[k] = unwrap(merged, k) if callable(unwrap) else (merged[k][0] if isinstance(merged[k], list) and merged[k]
+                                                                    else {} if isinstance(merged[k], list) else merged[k])
+    return merged
+
+
+def _result_text(res: Any) -> str:
+    parts = []
+    for c in getattr(res, "content", []) or []:
+        t = getattr(c, "text", None)
+        if t:
+            parts.append(t)
+    return "\n".join(parts)
+
+
+async def run_query(session: Any, name: str, params: dict) -> dict:
+    """Run an installed query through the MCP and return its printed JSON merged into one dict."""
+    log = current_runlog.get()
+    t0 = time.time()
+    ok, err, size = True, "", 0
+    try:
+        res = await session.call_tool(RUN_INSTALLED, {"query_name": name, "params": params})
+        text = _result_text(res)
+        size = len(text.encode("utf-8"))
+        if getattr(res, "is_error", False):
+            raise QueryError(text[:500])
+        payload = parse_tool_text(text)
+        if not payload.get("success", False):
+            raise QueryError(payload.get("error") or payload.get("summary") or "query failed")
+        data = payload.get("data") or {}
+        return merge_printed(data.get("result"), name)
+    except Exception as e:
+        ok, err = False, str(e)
+        raise
+    finally:
+        if log is not None:
+            log.record_tool(f"query:{name}", params, time.time() - t0, size, ok=ok, error=err,
+                            caller=current_caller.get())
+
+
+current_caller: contextvars.ContextVar[str] = contextvars.ContextVar("hhgoa_caller", default="harness")
+
+
+# ---------------------------------------------------------------- evidence extraction
+
+_TXN = re.compile(r"\b3[0-9]{6}\b")            # TransactionIDs are 3000001..3590742
+_CARD = re.compile(r"\bC\d{5}-K\d\b")
+_CUST = re.compile(r"\bC\d{5}\b(?!-K)")
+_CC = re.compile(r"\bCC-\d{4}\b")
+_DEVICE_KEYS = {"device_id", "ring_id"}
+
+
+def extract_ids(obj: Any, out: list[str] | None = None, key: str = "") -> list[str]:
+    """Collect dataset ids (transactions, cards, customers, closed cases, device profiles)."""
+    out = [] if out is None else out
+
+    def add(x: str):
+        if x and x not in out and not x.startswith("AC-"):
+            out.append(x)
+
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            if k in _DEVICE_KEYS and isinstance(v, str) and " | " in v:
+                add(v)
+            elif k == "id" and isinstance(v, str) and " | " in v:
+                add(v)
+            elif k in ("device_ids", "connected_device_profiles") and isinstance(v, list):
+                for s in v:
+                    if isinstance(s, str) and " | " in s:
+                        add(s)
+            extract_ids(v, out, k)
+    elif isinstance(obj, list):
+        for v in obj:
+            extract_ids(v, out, key)
+    elif isinstance(obj, str):
+        if key in ("id", "ids", "first_fraud_txn_id", "txn_id", "card_id", "customer_id", "case_id") or key.endswith("_ids") or key.endswith("_id"):
+            for rx in (_TXN, _CARD, _CC):
+                for m in rx.findall(obj):
+                    add(m)
+            for m in _CUST.findall(obj):
+                if m + "-K" not in obj:
+                    add(m)
+    elif isinstance(obj, int) and key in ("id", "ids", "first_fraud_txn_id", "txn_id"):
+        s = str(obj)
+        if _TXN.fullmatch(s):
+            add(s)
+    return out
+
+
+def summarize_result(name: str, result: dict) -> str:
+    """One-line, code-generated claim describing what the query returned."""
+    bits = []
+    for k, v in result.items():
+        if isinstance(v, list):
+            bits.append(f"{k}: {len(v)} rows")
+        elif isinstance(v, dict):
+            inner = ", ".join(f"{ik}={iv}" for ik, iv in list(v.items())[:6] if not isinstance(iv, (list, dict)))
+            bits.append(f"{k}{{{inner}}}" if inner else f"{k}: {len(v)} keys")
+        else:
+            bits.append(f"{k}={v}")
+    return f"{name} returned " + "; ".join(bits)[:600]
+
+
+def format_ref(name: str, params: dict) -> str:
+    def fmt(v: Any) -> str:
+        if isinstance(v, dict) and "id" in v:
+            return str(v["id"])
+        if isinstance(v, list):
+            return f"[{len(v)} items]"
+        return str(v)
+    return f"query:{name}(" + ", ".join(f"{k}={fmt(v)}" for k, v in params.items()) + ")"
+
+
+def evidence_from_result(name: str, params: dict, result: dict, source: str = "graph") -> Evidence:
+    return Evidence(
+        claim=summarize_result(name, result), source=source, ref=format_ref(name, params),
+        entity_ids=extract_ids(result)[:60], family=QUERY_FAMILY.get(name, "history"), direction="neutral",
+    )
+
+
+# ---------------------------------------------------------------- typed tools
+
+@dataclass
+class ToolBudget:
+    limit: int
+    used: int = 0
+
+    def take(self) -> bool:
+        if self.used >= self.limit:
+            return False
+        self.used += 1
+        return True
+
+
+@dataclass
+class ToolContext:
+    """Shared state the typed tools write into during P2 (owned by the phase machine)."""
+    opened_at: str
+    facts: dict[str, dict] = field(default_factory=dict)
+    facts_all: dict[str, list[dict]] = field(default_factory=dict)
+    ledger: list = field(default_factory=list)
+    budget: ToolBudget = field(default_factory=lambda: ToolBudget(SETTINGS.max_tool_calls))
+    max_chars: int = SETTINGS.tool_result_max_chars
+    on_result: Callable[[str, dict, dict], None] | None = None
+
+
+def clamp_params(params: dict, opened_at: str) -> tuple[dict, list[str]]:
+    """Clamp as_of / to_ts to opened_at so no evidence leaks past the case opening."""
+    notes = []
+    out = dict(params)
+    for k in _UPPER_BOUND_PARAMS:
+        v = out.get(k)
+        if isinstance(v, str) and v > opened_at:
+            out[k] = opened_at
+            notes.append(f"{k} clamped to opened_at {opened_at}")
+    return out, notes
+
+
+def compact_json(obj: Any, max_chars: int) -> str:
+    s = json.dumps(obj, separators=(",", ":"), sort_keys=True, default=str)
+    if len(s) <= max_chars:
+        return s
+    return s[:max_chars] + f'... [truncated {len(s) - max_chars} chars; ask a narrower query]'
+
+
+def make_query_tools(session: Any, tctx: ToolContext, descriptions: dict[str, dict] | None = None,
+                     include: list[str] | None = None) -> list[Any]:
+    """Typed Anthropic tools over the installed read queries (one tool per query)."""
+    from anthropic.lib.tools import BetaAsyncFunctionTool
+
+    descriptions = descriptions or load_query_descriptions()
+    tools: list[Any] = []
+    for qname, spec in descriptions.items():
+        if spec.get("harness_only") or spec.get("writer"):
+            continue
+        if include is not None and qname not in include:
+            continue
+        tools.append(_make_tool(BetaAsyncFunctionTool, session, tctx, qname, spec))
+    return tools
+
+
+def _make_tool(cls, session: Any, tctx: ToolContext, qname: str, spec: dict):
+    async def _run(**params: Any) -> str:
+        return await call_query_tool(session, tctx, qname, params)
+
+    _run.__name__ = qname
+    _run.__doc__ = spec.get("description", "")
+    desc = spec.get("description", "") + " Every result is time-boxed to ts <= opened_at."
+    return cls(_run, name=qname, description=desc, input_schema=input_schema_for(spec))
+
+
+async def call_query_tool(session: Any, tctx: ToolContext, qname: str, params: dict) -> str:
+    """Body of every typed tool: budget, clamp, run, record facts + evidence, return compact JSON."""
+    if not tctx.budget.take():
+        return json.dumps({"error": "tool budget exhausted", "hint": "You have used every allowed graph call. Stop investigating and give your assessment from the evidence collected."})
+    params, notes = clamp_params(params, tctx.opened_at)
+    token = current_caller.set("llm")
+    try:
+        result = await run_query(session, qname, params)
+    except Exception as e:
+        return json.dumps({"error": f"{qname} failed: {str(e)[:400]}", "hint": "Check the parameter encoding (VERTEX → {\"id\": ...}, DATETIME → 'YYYY-MM-DD HH:MM:SS') or choose another query."})
+    finally:
+        current_caller.reset(token)
+    record_result(tctx, qname, params, result)
+    payload = {"query": qname, "params": params, "result": result}
+    if notes:
+        payload["notes"] = notes
+    return compact_json(payload, tctx.max_chars)
+
+
+def record_result(tctx: ToolContext, qname: str, params: dict, result: dict) -> Evidence:
+    tctx.facts_all.setdefault(qname, []).append(result)
+    if qname not in tctx.facts:
+        tctx.facts[qname] = result           # first call wins (the harness's mandatory call)
+    ev = evidence_from_result(qname, params, result)
+    tctx.ledger.append(ev)
+    if tctx.on_result:
+        tctx.on_result(qname, params, result)
+    return ev
+
+
+async def harness_query(session: Any, tctx: ToolContext, qname: str, params: dict) -> dict:
+    """Mandatory / engine re-run query by the harness (counted in tool_calls, logged as caller=harness)."""
+    params, _ = clamp_params(params, tctx.opened_at)
+    result = await run_query(session, qname, params)
+    record_result(tctx, qname, params, result)
+    return result

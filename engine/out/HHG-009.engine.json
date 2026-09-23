@@ -1,0 +1,398 @@
+{
+ "scorecard_pre": {
+  "cms_p": 0.8587,
+  "cal_p": 0.7784,
+  "adjustments": [
+   [
+    "customer denial corroborated by the scorer (calibrated >= 0.5)",
+    1.1
+   ],
+   [
+    "customer denial not explained by R7 \u2192 floor",
+    0.55
+   ]
+  ],
+  "p_engine": 0.9134,
+  "families_fraud": [
+   "customer",
+   "memory"
+  ],
+  "families_legit": [
+   "history"
+  ],
+  "flags": {
+   "denial": true,
+   "analyst_request": false,
+   "risk_alert": false,
+   "trigger_type": "customer_report",
+   "flagged_ts": "2016-12-28 12:10:53",
+   "flagged_txn_id": "3581141",
+   "flagged_amt": 30.02,
+   "flagged_addr1": "203.0",
+   "flagged_device_id": "",
+   "flagged_device_new": "Found",
+   "flagged_device_cards": 0,
+   "flagged_device_strong": false,
+   "channel": "online",
+   "modal_region": "441.0",
+   "card_n_txns": 56,
+   "two_cards_confirmed_fraud": false,
+   "outcome": "",
+   "asked": false,
+   "pending": false,
+   "ring_hit": false,
+   "ring_id": "",
+   "ring_txn_ids": [],
+   "ring_rows": [],
+   "wave_cards": [],
+   "pre_open_cards": [],
+   "ring_cases": [],
+   "burst_hit": false,
+   "burst_txn_ids": [],
+   "burst": {},
+   "burst_lookalikes": [],
+   "r5_run": false,
+   "card_testing_run_ids": [],
+   "r5_cleared_over_big": false,
+   "r5": {
+    "run": {},
+    "larger_purchase": {},
+    "cleared_over_big": false,
+    "chain": {
+     "n_members": 1,
+     "n_small": 0
+    }
+   },
+   "recurring_match": false,
+   "recurring_group": {
+    "place": "",
+    "n": 4,
+    "median_gap_days": 55.981,
+    "gap_cv": 0.588,
+    "first_ts": "2016-07-11 20:27:14",
+    "last_ts": "2016-12-15 16:07:11"
+   },
+   "recurring_total_n": 4,
+   "recurring_neighbour_hi": false,
+   "recurring_place": "",
+   "scorer_unreliable": false,
+   "roaming_card": false,
+   "rulebook_chain_ids": [
+    "3581141"
+   ],
+   "rulebook_chain_sum": 30.02,
+   "conflict_chain": false,
+   "conflict_chain_ids": [],
+   "shared_fraud_cards": [],
+   "shared_device_fraud": false,
+   "device_known": false,
+   "shared_recipient_email": [],
+   "recent_same_channel_case": false,
+   "prior_fraud_case_ids": [],
+   "prior_cleared_case_ids": [],
+   "cleared_precedent_case_ids": [],
+   "conflict": false,
+   "floor": 0.55,
+   "families_conflict": true,
+   "mixed_channel": false,
+   "any_new_member": false,
+   "all_in_modal_region": false,
+   "card_testing_chain": false,
+   "candidate_chain_ids": [
+    "3581141"
+   ],
+   "escalated": false
+  },
+  "chain": [
+   {
+    "id": "3581141",
+    "ts": "2016-12-28 12:10:53",
+    "amt": 30.02,
+    "product_cd": "S",
+    "channel": "online",
+    "addr1": "203.0",
+    "p_email": "",
+    "device_id": "",
+    "device_new": "Found",
+    "cms_p": 0.8586526455181834,
+    "sig_match": false
+   }
+  ],
+  "episode_ids": [
+   "3581141"
+  ],
+  "first_suspicious_txn_id": "3581141",
+  "exposure_usd": 30.02,
+  "connected_card_ids": [],
+  "connected_device_profiles": [],
+  "pattern": "card_not_present_fraud",
+  "pattern_description": "",
+  "verdict": "fraud",
+  "similar_prior_cases": [],
+  "evidence": [
+   {
+    "claim": "Amount $30.02 sits inside the card's baseline (prior median $49.97, prior maximum $343.94 over 46 transactions)",
+    "source": "graph",
+    "ref": "query:case_context(txn=3581141)",
+    "entity_ids": [
+     "3581141",
+     "C08299-K1"
+    ],
+    "family": "history",
+    "direction": "legit"
+   },
+   {
+    "claim": "Case-memory scorer (LightGBM over the bank's 5,565 closed cases; October holdout AUC 0.956) puts the flagged transaction at 0.86 (calibrated 0.78); the real-time risk score was 0.28",
+    "source": "graph",
+    "ref": "query:case_context(txn=3581141)",
+    "entity_ids": [
+     "3581141"
+    ],
+    "family": "memory",
+    "direction": "fraud"
+   },
+   {
+    "claim": "Customer C08299 reports they did not make the $30.02 purchase 3581141 (the denial is evidence: 4,665/4,665 customer-reported closed cases were confirmed fraud, 0 denials were cleared)",
+    "source": "customer",
+    "ref": "trigger",
+    "entity_ids": [
+     "3581141",
+     "C08299"
+    ],
+    "family": "customer",
+    "direction": "fraud"
+   }
+  ]
+ },
+ "scorecard_post": {
+  "cms_p": 0.8587,
+  "cal_p": 0.7784,
+  "adjustments": [
+   [
+    "customer denial corroborated by the scorer (calibrated >= 0.5)",
+    1.1
+   ],
+   [
+    "customer denial not explained by R7 \u2192 floor",
+    0.55
+   ]
+  ],
+  "p_engine": 0.9134,
+  "families_fraud": [
+   "customer",
+   "memory"
+  ],
+  "families_legit": [
+   "history"
+  ],
+  "flags": {
+   "denial": true,
+   "analyst_request": false,
+   "risk_alert": false,
+   "trigger_type": "customer_report",
+   "flagged_ts": "2016-12-28 12:10:53",
+   "flagged_txn_id": "3581141",
+   "flagged_amt": 30.02,
+   "flagged_addr1": "203.0",
+   "flagged_device_id": "",
+   "flagged_device_new": "Found",
+   "flagged_device_cards": 0,
+   "flagged_device_strong": false,
+   "channel": "online",
+   "modal_region": "441.0",
+   "card_n_txns": 56,
+   "two_cards_confirmed_fraud": false,
+   "outcome": "",
+   "asked": false,
+   "pending": false,
+   "ring_hit": false,
+   "ring_id": "",
+   "ring_txn_ids": [],
+   "ring_rows": [],
+   "wave_cards": [],
+   "pre_open_cards": [],
+   "ring_cases": [],
+   "burst_hit": false,
+   "burst_txn_ids": [],
+   "burst": {},
+   "burst_lookalikes": [],
+   "r5_run": false,
+   "card_testing_run_ids": [],
+   "r5_cleared_over_big": false,
+   "r5": {
+    "run": {},
+    "larger_purchase": {},
+    "cleared_over_big": false,
+    "chain": {
+     "n_members": 1,
+     "n_small": 0
+    }
+   },
+   "recurring_match": false,
+   "recurring_group": {
+    "place": "",
+    "n": 4,
+    "median_gap_days": 55.981,
+    "gap_cv": 0.588,
+    "first_ts": "2016-07-11 20:27:14",
+    "last_ts": "2016-12-15 16:07:11"
+   },
+   "recurring_total_n": 4,
+   "recurring_neighbour_hi": false,
+   "recurring_place": "",
+   "scorer_unreliable": false,
+   "roaming_card": false,
+   "rulebook_chain_ids": [
+    "3581141"
+   ],
+   "rulebook_chain_sum": 30.02,
+   "conflict_chain": false,
+   "conflict_chain_ids": [],
+   "shared_fraud_cards": [],
+   "shared_device_fraud": false,
+   "device_known": false,
+   "shared_recipient_email": [],
+   "recent_same_channel_case": false,
+   "prior_fraud_case_ids": [],
+   "prior_cleared_case_ids": [],
+   "cleared_precedent_case_ids": [],
+   "conflict": false,
+   "floor": 0.55,
+   "families_conflict": true,
+   "mixed_channel": false,
+   "any_new_member": false,
+   "all_in_modal_region": false,
+   "card_testing_chain": false,
+   "candidate_chain_ids": [
+    "3581141"
+   ],
+   "escalated": false
+  },
+  "chain": [
+   {
+    "id": "3581141",
+    "ts": "2016-12-28 12:10:53",
+    "amt": 30.02,
+    "product_cd": "S",
+    "channel": "online",
+    "addr1": "203.0",
+    "p_email": "",
+    "device_id": "",
+    "device_new": "Found",
+    "cms_p": 0.8586526455181834,
+    "sig_match": false
+   }
+  ],
+  "episode_ids": [
+   "3581141"
+  ],
+  "first_suspicious_txn_id": "3581141",
+  "exposure_usd": 30.02,
+  "connected_card_ids": [],
+  "connected_device_profiles": [],
+  "pattern": "card_not_present_fraud",
+  "pattern_description": "",
+  "verdict": "fraud",
+  "similar_prior_cases": [],
+  "evidence": [
+   {
+    "claim": "Amount $30.02 sits inside the card's baseline (prior median $49.97, prior maximum $343.94 over 46 transactions)",
+    "source": "graph",
+    "ref": "query:case_context(txn=3581141)",
+    "entity_ids": [
+     "3581141",
+     "C08299-K1"
+    ],
+    "family": "history",
+    "direction": "legit"
+   },
+   {
+    "claim": "Case-memory scorer (LightGBM over the bank's 5,565 closed cases; October holdout AUC 0.956) puts the flagged transaction at 0.86 (calibrated 0.78); the real-time risk score was 0.28",
+    "source": "graph",
+    "ref": "query:case_context(txn=3581141)",
+    "entity_ids": [
+     "3581141"
+    ],
+    "family": "memory",
+    "direction": "fraud"
+   },
+   {
+    "claim": "Customer C08299 reports they did not make the $30.02 purchase 3581141 (the denial is evidence: 4,665/4,665 customer-reported closed cases were confirmed fraud, 0 denials were cleared)",
+    "source": "customer",
+    "ref": "trigger",
+    "entity_ids": [
+     "3581141",
+     "C08299"
+    ],
+    "family": "customer",
+    "direction": "fraud"
+   }
+  ]
+ },
+ "branches": {},
+ "adm_initial": {
+  "required": [
+   "CREATE_CASE",
+   "BLOCK_CARD"
+  ],
+  "allowed": [
+   "ALLOW_TRANSACTION",
+   "DECLINE_TRANSACTION",
+   "MONITOR_CARD",
+   "MONITOR_CONNECTED_CARDS",
+   "WARN_CUSTOMER",
+   "VERIFY_WITH_CUSTOMER",
+   "STEP_UP_AUTH",
+   "BLOCK_CARD",
+   "GENERATE_REPORT",
+   "CREATE_CASE",
+   "FILE_REPORT",
+   "ESCALATE_TO_ANALYST",
+   "CLOSE_NO_FRAUD"
+  ],
+  "forbidden": [
+   "BLOCK_ALL_CARDS"
+  ],
+  "routes": {
+   "ALLOW_TRANSACTION": "auto",
+   "DECLINE_TRANSACTION": "L1",
+   "MONITOR_CARD": "auto",
+   "MONITOR_CONNECTED_CARDS": "auto",
+   "WARN_CUSTOMER": "auto",
+   "VERIFY_WITH_CUSTOMER": "auto",
+   "STEP_UP_AUTH": "auto",
+   "BLOCK_CARD": "L1",
+   "BLOCK_ALL_CARDS": "L2",
+   "GENERATE_REPORT": "auto",
+   "CREATE_CASE": "auto",
+   "FILE_REPORT": "L2",
+   "ESCALATE_TO_ANALYST": "auto",
+   "CLOSE_NO_FRAUD": "auto"
+  },
+  "citations": {
+   "CREATE_CASE": [
+    "3a_case",
+    "R2",
+    "fraud_band"
+   ],
+   "BLOCK_CARD": [
+    "R2",
+    "fraud_band"
+   ],
+   "_forbidden": {
+    "BLOCK_ALL_CARDS": [
+     "R10"
+    ]
+   },
+   "_conflicts": {}
+  },
+  "fired": [
+   "3a_case",
+   "R2",
+   "R10",
+   "fraud_band"
+  ]
+ },
+ "violations": [],
+ "errors": []
+}

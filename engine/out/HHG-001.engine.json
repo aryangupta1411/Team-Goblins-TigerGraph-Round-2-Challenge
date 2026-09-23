@@ -1,0 +1,703 @@
+{
+ "scorecard_pre": {
+  "cms_p": 0.2245,
+  "cal_p": 0.2959,
+  "adjustments": [],
+  "p_engine": 0.2959,
+  "families_fraud": [],
+  "families_legit": [
+   "history"
+  ],
+  "flags": {
+   "denial": false,
+   "analyst_request": false,
+   "risk_alert": true,
+   "trigger_type": "risk_score",
+   "flagged_ts": "2016-12-04 19:55:28",
+   "flagged_txn_id": "3514030",
+   "flagged_amt": 77.07,
+   "flagged_addr1": "444.0",
+   "flagged_device_id": "",
+   "flagged_device_new": "",
+   "flagged_device_cards": 0,
+   "flagged_device_strong": false,
+   "channel": "in_person",
+   "modal_region": "204.0",
+   "card_n_txns": 422,
+   "two_cards_confirmed_fraud": false,
+   "outcome": "",
+   "asked": true,
+   "pending": false,
+   "ring_hit": false,
+   "ring_id": "",
+   "ring_txn_ids": [],
+   "ring_rows": [],
+   "wave_cards": [],
+   "pre_open_cards": [],
+   "ring_cases": [],
+   "burst_hit": false,
+   "burst_txn_ids": [],
+   "burst": {},
+   "burst_lookalikes": [],
+   "r5_run": false,
+   "card_testing_run_ids": [],
+   "r5_cleared_over_big": false,
+   "r5": {
+    "run": {},
+    "larger_purchase": {},
+    "cleared_over_big": false,
+    "chain": {
+     "n_members": 9,
+     "n_small": 0
+    }
+   },
+   "recurring_match": false,
+   "recurring_group": {
+    "place": "444.0",
+    "n": 2,
+    "median_gap_days": 7.177,
+    "gap_cv": -1.0,
+    "first_ts": "2016-11-19 18:39:50",
+    "last_ts": "2016-11-26 22:54:37"
+   },
+   "recurring_total_n": 7,
+   "recurring_neighbour_hi": false,
+   "recurring_place": "444.0",
+   "scorer_unreliable": false,
+   "roaming_card": true,
+   "rulebook_chain_ids": [
+    "3510115",
+    "3510225",
+    "3510464",
+    "3510612",
+    "3511596",
+    "3512936",
+    "3513814",
+    "3514030",
+    "3514461"
+   ],
+   "rulebook_chain_sum": 654.41,
+   "conflict_chain": false,
+   "conflict_chain_ids": [],
+   "shared_fraud_cards": [],
+   "shared_device_fraud": false,
+   "device_known": false,
+   "shared_recipient_email": [],
+   "recent_same_channel_case": false,
+   "prior_fraud_case_ids": [
+    "CC-1066",
+    "CC-1673",
+    "CC-2964",
+    "CC-3587"
+   ],
+   "prior_cleared_case_ids": [],
+   "cleared_precedent_case_ids": [],
+   "conflict": false,
+   "floor": 0.0,
+   "families_conflict": false,
+   "mixed_channel": false,
+   "any_new_member": false,
+   "all_in_modal_region": false,
+   "card_testing_chain": false,
+   "candidate_chain_ids": [],
+   "request_type": "customer_validation"
+  },
+  "chain": [
+   {
+    "id": "3510115",
+    "ts": "2016-12-03 15:53:45",
+    "amt": 23.99,
+    "product_cd": "W",
+    "channel": "in_person",
+    "addr1": "433.0",
+    "p_email": "",
+    "device_id": "",
+    "device_new": "",
+    "cms_p": 0.0023947935645270034,
+    "sig_match": false
+   },
+   {
+    "id": "3510225",
+    "ts": "2016-12-03 16:32:25",
+    "amt": 35.92,
+    "product_cd": "W",
+    "channel": "in_person",
+    "addr1": "204.0",
+    "p_email": "gmail.com",
+    "device_id": "",
+    "device_new": "",
+    "cms_p": 0.0013746519034487092,
+    "sig_match": false
+   },
+   {
+    "id": "3510464",
+    "ts": "2016-12-03 17:47:05",
+    "amt": 107.96,
+    "product_cd": "W",
+    "channel": "in_person",
+    "addr1": "191.0",
+    "p_email": "",
+    "device_id": "",
+    "device_new": "",
+    "cms_p": 0.005697615578408099,
+    "sig_match": false
+   },
+   {
+    "id": "3510612",
+    "ts": "2016-12-03 18:24:53",
+    "amt": 34.52,
+    "product_cd": "W",
+    "channel": "in_person",
+    "addr1": "204.0",
+    "p_email": "",
+    "device_id": "",
+    "device_new": "",
+    "cms_p": 0.003718519672264852,
+    "sig_match": false
+   },
+   {
+    "id": "3511596",
+    "ts": "2016-12-03 23:03:54",
+    "amt": 59.06,
+    "product_cd": "W",
+    "channel": "in_person",
+    "addr1": "433.0",
+    "p_email": "gmail.com",
+    "device_id": "",
+    "device_new": "",
+    "cms_p": 0.008138084801500476,
+    "sig_match": false
+   },
+   {
+    "id": "3512936",
+    "ts": "2016-12-04 14:28:34",
+    "amt": 160.0,
+    "product_cd": "W",
+    "channel": "in_person",
+    "addr1": "485.0",
+    "p_email": "",
+    "device_id": "",
+    "device_new": "",
+    "cms_p": 0.002181417363801225,
+    "sig_match": false
+   },
+   {
+    "id": "3513814",
+    "ts": "2016-12-04 18:51:28",
+    "amt": 116.97,
+    "product_cd": "W",
+    "channel": "in_person",
+    "addr1": "203.0",
+    "p_email": "gmail.com",
+    "device_id": "",
+    "device_new": "",
+    "cms_p": 0.005986166118864297,
+    "sig_match": false
+   },
+   {
+    "id": "3514030",
+    "ts": "2016-12-04 19:55:28",
+    "amt": 77.07,
+    "product_cd": "W",
+    "channel": "in_person",
+    "addr1": "444.0",
+    "p_email": "",
+    "device_id": "",
+    "device_new": "",
+    "cms_p": 0.22454233260418735,
+    "sig_match": false
+   },
+   {
+    "id": "3514461",
+    "ts": "2016-12-04 22:08:43",
+    "amt": 38.92,
+    "product_cd": "W",
+    "channel": "in_person",
+    "addr1": "203.0",
+    "p_email": "",
+    "device_id": "",
+    "device_new": "",
+    "cms_p": 0.004505209108535092,
+    "sig_match": false
+   }
+  ],
+  "episode_ids": [
+   "3514030"
+  ],
+  "first_suspicious_txn_id": "3514030",
+  "exposure_usd": 77.07,
+  "connected_card_ids": [],
+  "connected_device_profiles": [],
+  "pattern": "out_of_region_use",
+  "pattern_description": "",
+  "verdict": "uncertain",
+  "similar_prior_cases": [
+   "CC-3587",
+   "CC-2964",
+   "CC-1673",
+   "CC-1066"
+  ],
+  "evidence": [
+   {
+    "claim": "Amount $77.07 sits inside the card's baseline (prior median $83.94, prior maximum $845.01 over 358 transactions)",
+    "source": "graph",
+    "ref": "query:case_context(txn=3514030)",
+    "entity_ids": [
+     "3514030",
+     "C12382-K1"
+    ],
+    "family": "history",
+    "direction": "legit"
+   },
+   {
+    "claim": "Billing region 444.0 is known to the card: 10 prior purchases on 9 days since 2016-09-13 (modal region 204.0, 40 regions used)",
+    "source": "graph",
+    "ref": "query:region_history(card=C12382-K1, addr1=444.0)",
+    "entity_ids": [
+     "3514030",
+     "C12382-K1"
+    ],
+    "family": "history",
+    "direction": "legit"
+   },
+   {
+    "claim": "$77.07 +-1% under product code W is a recurring price point on this card: 7 prior purchases, 2 of them at 444.0 (median gap 7.2 days, gap CV -1.00; R7's monthly-cadence test fails)",
+    "source": "graph",
+    "ref": "query:recurring_charge_check(txn=3514030)",
+    "entity_ids": [
+     "3514030",
+     "C12382-K1"
+    ],
+    "family": "history",
+    "direction": "legit"
+   },
+   {
+    "claim": "Case-memory scorer (LightGBM over the bank's 5,565 closed cases; October holdout AUC 0.956) puts the flagged transaction at 0.22 (calibrated 0.30); the real-time risk score was 0.61",
+    "source": "graph",
+    "ref": "query:case_context(txn=3514030)",
+    "entity_ids": [
+     "3514030"
+    ],
+    "family": "memory",
+    "direction": "neutral"
+   },
+   {
+    "claim": "4 prior confirmed-fraud case(s) on this card (card_not_present_new_device, out_of_region_use), most recent 2016-09-17",
+    "source": "graph",
+    "ref": "query:prior_cases_for_customer(customer=C12382)",
+    "entity_ids": [
+     "CC-1066",
+     "CC-1673",
+     "CC-2964",
+     "CC-3587",
+     "C12382-K1"
+    ],
+    "family": "memory",
+    "direction": "fraud"
+   }
+  ]
+ },
+ "scorecard_post": {
+  "cms_p": 0.2245,
+  "cal_p": 0.2959,
+  "adjustments": [
+   [
+    "customer confirmation \u2192 ceiling",
+    0.1
+   ]
+  ],
+  "p_engine": 0.1,
+  "families_fraud": [],
+  "families_legit": [
+   "customer",
+   "history"
+  ],
+  "flags": {
+   "denial": false,
+   "analyst_request": false,
+   "risk_alert": true,
+   "trigger_type": "risk_score",
+   "flagged_ts": "2016-12-04 19:55:28",
+   "flagged_txn_id": "3514030",
+   "flagged_amt": 77.07,
+   "flagged_addr1": "444.0",
+   "flagged_device_id": "",
+   "flagged_device_new": "",
+   "flagged_device_cards": 0,
+   "flagged_device_strong": false,
+   "channel": "in_person",
+   "modal_region": "204.0",
+   "card_n_txns": 422,
+   "two_cards_confirmed_fraud": false,
+   "outcome": "confirm",
+   "asked": true,
+   "pending": false,
+   "ring_hit": false,
+   "ring_id": "",
+   "ring_txn_ids": [],
+   "ring_rows": [],
+   "wave_cards": [],
+   "pre_open_cards": [],
+   "ring_cases": [],
+   "burst_hit": false,
+   "burst_txn_ids": [],
+   "burst": {},
+   "burst_lookalikes": [],
+   "r5_run": false,
+   "card_testing_run_ids": [],
+   "r5_cleared_over_big": false,
+   "r5": {
+    "run": {},
+    "larger_purchase": {},
+    "cleared_over_big": false,
+    "chain": {
+     "n_members": 9,
+     "n_small": 0
+    }
+   },
+   "recurring_match": false,
+   "recurring_group": {
+    "place": "444.0",
+    "n": 2,
+    "median_gap_days": 7.177,
+    "gap_cv": -1.0,
+    "first_ts": "2016-11-19 18:39:50",
+    "last_ts": "2016-11-26 22:54:37"
+   },
+   "recurring_total_n": 7,
+   "recurring_neighbour_hi": false,
+   "recurring_place": "444.0",
+   "scorer_unreliable": false,
+   "roaming_card": true,
+   "rulebook_chain_ids": [
+    "3510115",
+    "3510225",
+    "3510464",
+    "3510612",
+    "3511596",
+    "3512936",
+    "3513814",
+    "3514030",
+    "3514461"
+   ],
+   "rulebook_chain_sum": 654.41,
+   "conflict_chain": false,
+   "conflict_chain_ids": [],
+   "shared_fraud_cards": [],
+   "shared_device_fraud": false,
+   "device_known": false,
+   "shared_recipient_email": [],
+   "recent_same_channel_case": false,
+   "prior_fraud_case_ids": [
+    "CC-1066",
+    "CC-1673",
+    "CC-2964",
+    "CC-3587"
+   ],
+   "prior_cleared_case_ids": [],
+   "cleared_precedent_case_ids": [],
+   "conflict": false,
+   "floor": 0.0,
+   "families_conflict": false,
+   "mixed_channel": false,
+   "any_new_member": false,
+   "all_in_modal_region": false,
+   "card_testing_chain": false,
+   "candidate_chain_ids": [],
+   "request_type": "customer_validation",
+   "request_seq": 1,
+   "escalated": false
+  },
+  "chain": [
+   {
+    "id": "3510115",
+    "ts": "2016-12-03 15:53:45",
+    "amt": 23.99,
+    "product_cd": "W",
+    "channel": "in_person",
+    "addr1": "433.0",
+    "p_email": "",
+    "device_id": "",
+    "device_new": "",
+    "cms_p": 0.0023947935645270034,
+    "sig_match": false
+   },
+   {
+    "id": "3510225",
+    "ts": "2016-12-03 16:32:25",
+    "amt": 35.92,
+    "product_cd": "W",
+    "channel": "in_person",
+    "addr1": "204.0",
+    "p_email": "gmail.com",
+    "device_id": "",
+    "device_new": "",
+    "cms_p": 0.0013746519034487092,
+    "sig_match": false
+   },
+   {
+    "id": "3510464",
+    "ts": "2016-12-03 17:47:05",
+    "amt": 107.96,
+    "product_cd": "W",
+    "channel": "in_person",
+    "addr1": "191.0",
+    "p_email": "",
+    "device_id": "",
+    "device_new": "",
+    "cms_p": 0.005697615578408099,
+    "sig_match": false
+   },
+   {
+    "id": "3510612",
+    "ts": "2016-12-03 18:24:53",
+    "amt": 34.52,
+    "product_cd": "W",
+    "channel": "in_person",
+    "addr1": "204.0",
+    "p_email": "",
+    "device_id": "",
+    "device_new": "",
+    "cms_p": 0.003718519672264852,
+    "sig_match": false
+   },
+   {
+    "id": "3511596",
+    "ts": "2016-12-03 23:03:54",
+    "amt": 59.06,
+    "product_cd": "W",
+    "channel": "in_person",
+    "addr1": "433.0",
+    "p_email": "gmail.com",
+    "device_id": "",
+    "device_new": "",
+    "cms_p": 0.008138084801500476,
+    "sig_match": false
+   },
+   {
+    "id": "3512936",
+    "ts": "2016-12-04 14:28:34",
+    "amt": 160.0,
+    "product_cd": "W",
+    "channel": "in_person",
+    "addr1": "485.0",
+    "p_email": "",
+    "device_id": "",
+    "device_new": "",
+    "cms_p": 0.002181417363801225,
+    "sig_match": false
+   },
+   {
+    "id": "3513814",
+    "ts": "2016-12-04 18:51:28",
+    "amt": 116.97,
+    "product_cd": "W",
+    "channel": "in_person",
+    "addr1": "203.0",
+    "p_email": "gmail.com",
+    "device_id": "",
+    "device_new": "",
+    "cms_p": 0.005986166118864297,
+    "sig_match": false
+   },
+   {
+    "id": "3514030",
+    "ts": "2016-12-04 19:55:28",
+    "amt": 77.07,
+    "product_cd": "W",
+    "channel": "in_person",
+    "addr1": "444.0",
+    "p_email": "",
+    "device_id": "",
+    "device_new": "",
+    "cms_p": 0.22454233260418735,
+    "sig_match": false
+   },
+   {
+    "id": "3514461",
+    "ts": "2016-12-04 22:08:43",
+    "amt": 38.92,
+    "product_cd": "W",
+    "channel": "in_person",
+    "addr1": "203.0",
+    "p_email": "",
+    "device_id": "",
+    "device_new": "",
+    "cms_p": 0.004505209108535092,
+    "sig_match": false
+   }
+  ],
+  "episode_ids": [],
+  "first_suspicious_txn_id": "",
+  "exposure_usd": 0.0,
+  "connected_card_ids": [],
+  "connected_device_profiles": [],
+  "pattern": "none",
+  "pattern_description": "",
+  "verdict": "legitimate",
+  "similar_prior_cases": [
+   "CC-3587",
+   "CC-2964",
+   "CC-1673",
+   "CC-1066"
+  ],
+  "evidence": [
+   {
+    "claim": "Amount $77.07 sits inside the card's baseline (prior median $83.94, prior maximum $845.01 over 358 transactions)",
+    "source": "graph",
+    "ref": "query:case_context(txn=3514030)",
+    "entity_ids": [
+     "3514030",
+     "C12382-K1"
+    ],
+    "family": "history",
+    "direction": "legit"
+   },
+   {
+    "claim": "Billing region 444.0 is known to the card: 10 prior purchases on 9 days since 2016-09-13 (modal region 204.0, 40 regions used)",
+    "source": "graph",
+    "ref": "query:region_history(card=C12382-K1, addr1=444.0)",
+    "entity_ids": [
+     "3514030",
+     "C12382-K1"
+    ],
+    "family": "history",
+    "direction": "legit"
+   },
+   {
+    "claim": "$77.07 +-1% under product code W is a recurring price point on this card: 7 prior purchases, 2 of them at 444.0 (median gap 7.2 days, gap CV -1.00; R7's monthly-cadence test fails)",
+    "source": "graph",
+    "ref": "query:recurring_charge_check(txn=3514030)",
+    "entity_ids": [
+     "3514030",
+     "C12382-K1"
+    ],
+    "family": "history",
+    "direction": "legit"
+   },
+   {
+    "claim": "Case-memory scorer (LightGBM over the bank's 5,565 closed cases; October holdout AUC 0.956) puts the flagged transaction at 0.22 (calibrated 0.30); the real-time risk score was 0.61",
+    "source": "graph",
+    "ref": "query:case_context(txn=3514030)",
+    "entity_ids": [
+     "3514030"
+    ],
+    "family": "memory",
+    "direction": "neutral"
+   },
+   {
+    "claim": "4 prior confirmed-fraud case(s) on this card (card_not_present_new_device, out_of_region_use), most recent 2016-09-17",
+    "source": "graph",
+    "ref": "query:prior_cases_for_customer(customer=C12382)",
+    "entity_ids": [
+     "CC-1066",
+     "CC-1673",
+     "CC-2964",
+     "CC-3587",
+     "C12382-K1"
+    ],
+    "family": "memory",
+    "direction": "fraud"
+   },
+   {
+    "claim": "Customer confirmed the activity when asked (assumed reply)",
+    "source": "customer",
+    "ref": "evidence_request:1",
+    "entity_ids": [],
+    "family": "customer",
+    "direction": "legit"
+   }
+  ]
+ },
+ "branches": {
+  "confirm": [
+   "CREATE_CASE",
+   "ALLOW_TRANSACTION",
+   "CLOSE_NO_FRAUD"
+  ],
+  "deny": [
+   "CREATE_CASE",
+   "MONITOR_CARD",
+   "DECLINE_TRANSACTION"
+  ],
+  "no_reply": [
+   "CREATE_CASE",
+   "MONITOR_CARD",
+   "DECLINE_TRANSACTION"
+  ]
+ },
+ "adm_initial": {
+  "required": [
+   "CREATE_CASE",
+   "VERIFY_WITH_CUSTOMER",
+   "MONITOR_CARD"
+  ],
+  "allowed": [
+   "ALLOW_TRANSACTION",
+   "DECLINE_TRANSACTION",
+   "MONITOR_CARD",
+   "MONITOR_CONNECTED_CARDS",
+   "WARN_CUSTOMER",
+   "VERIFY_WITH_CUSTOMER",
+   "STEP_UP_AUTH",
+   "GENERATE_REPORT",
+   "CREATE_CASE",
+   "FILE_REPORT",
+   "ESCALATE_TO_ANALYST",
+   "CLOSE_NO_FRAUD"
+  ],
+  "forbidden": [
+   "BLOCK_ALL_CARDS",
+   "BLOCK_CARD"
+  ],
+  "routes": {
+   "ALLOW_TRANSACTION": "auto",
+   "DECLINE_TRANSACTION": "L1",
+   "MONITOR_CARD": "auto",
+   "MONITOR_CONNECTED_CARDS": "auto",
+   "WARN_CUSTOMER": "auto",
+   "VERIFY_WITH_CUSTOMER": "auto",
+   "STEP_UP_AUTH": "auto",
+   "BLOCK_CARD": "L1",
+   "BLOCK_ALL_CARDS": "L2",
+   "GENERATE_REPORT": "auto",
+   "CREATE_CASE": "auto",
+   "FILE_REPORT": "L2",
+   "ESCALATE_TO_ANALYST": "auto",
+   "CLOSE_NO_FRAUD": "auto"
+  },
+  "citations": {
+   "CREATE_CASE": [
+    "3a_case",
+    "uncertain_initial"
+   ],
+   "MONITOR_CARD": [
+    "uncertain_initial"
+   ],
+   "VERIFY_WITH_CUSTOMER": [
+    "R1",
+    "uncertain_initial"
+   ],
+   "_forbidden": {
+    "BLOCK_CARD": [
+     "R1",
+     "uncertain_initial"
+    ],
+    "BLOCK_ALL_CARDS": [
+     "R1",
+     "R10",
+     "uncertain_initial"
+    ]
+   },
+   "_conflicts": {}
+  },
+  "fired": [
+   "3a_case",
+   "R1",
+   "R10",
+   "uncertain_initial"
+  ]
+ },
+ "violations": [],
+ "errors": []
+}

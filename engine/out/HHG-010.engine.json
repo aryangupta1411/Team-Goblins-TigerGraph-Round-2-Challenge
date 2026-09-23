@@ -1,0 +1,595 @@
+{
+ "scorecard_pre": {
+  "cms_p": 0.02,
+  "cal_p": 0.0227,
+  "adjustments": [],
+  "p_engine": 0.0227,
+  "families_fraud": [],
+  "families_legit": [
+   "memory"
+  ],
+  "flags": {
+   "denial": false,
+   "analyst_request": false,
+   "risk_alert": true,
+   "trigger_type": "risk_score",
+   "flagged_ts": "2016-12-02 15:18:27",
+   "flagged_txn_id": "3506725",
+   "flagged_amt": 1000.03,
+   "flagged_addr1": "469.0",
+   "flagged_device_id": "Windows | Windows 10 | edge 16.0 | 1366x768",
+   "flagged_device_new": "New",
+   "flagged_device_cards": 208,
+   "flagged_device_strong": false,
+   "channel": "online",
+   "modal_region": "469.0",
+   "card_n_txns": 36,
+   "two_cards_confirmed_fraud": false,
+   "outcome": "",
+   "asked": true,
+   "pending": false,
+   "ring_hit": false,
+   "ring_id": "Windows | Windows 10 | chrome 61.0 | 1920x1080",
+   "ring_txn_ids": [
+    "3078052"
+   ],
+   "ring_rows": [
+    {
+     "id": "3078052",
+     "ts": "2016-07-21 16:49:52",
+     "amt": 49.91
+    }
+   ],
+   "wave_cards": [
+    "C00854-K2",
+    "C01688-K1",
+    "C01721-K2",
+    "C01983-K1",
+    "C02055-K1",
+    "C02566-K1",
+    "C02716-K2",
+    "C03019-K2",
+    "C03218-K2",
+    "C03235-K1",
+    "C03341-K2",
+    "C03933-K1",
+    "C04798-K2",
+    "C05174-K1",
+    "C05245-K2",
+    "C05487-K1",
+    "C05704-K2",
+    "C06279-K1",
+    "C06286-K1",
+    "C07265-K1",
+    "C07919-K2",
+    "C07925-K1",
+    "C09521-K2",
+    "C10605-K1",
+    "C11496-K2",
+    "C11936-K1",
+    "C12036-K2"
+   ],
+   "pre_open_cards": [
+    "C00854-K2",
+    "C01688-K1",
+    "C01721-K2",
+    "C01983-K1",
+    "C02055-K1",
+    "C02566-K1",
+    "C02716-K2",
+    "C03019-K2",
+    "C03218-K2",
+    "C03235-K1",
+    "C03341-K2",
+    "C03933-K1",
+    "C04798-K2",
+    "C05174-K1",
+    "C05245-K2",
+    "C05487-K1",
+    "C05704-K2",
+    "C06279-K1",
+    "C06286-K1",
+    "C07265-K1",
+    "C07919-K2",
+    "C07925-K1",
+    "C09521-K2",
+    "C10605-K1",
+    "C11496-K2",
+    "C11936-K1",
+    "C12036-K2"
+   ],
+   "ring_cases": [
+    "CC-0136",
+    "CC-0277",
+    "CC-0728",
+    "CC-1189"
+   ],
+   "burst_hit": false,
+   "burst_txn_ids": [],
+   "burst": {},
+   "burst_lookalikes": [],
+   "r5_run": false,
+   "card_testing_run_ids": [],
+   "r5_cleared_over_big": false,
+   "r5": {
+    "run": {},
+    "larger_purchase": {},
+    "cleared_over_big": false,
+    "chain": {
+     "n_members": 1,
+     "n_small": 0
+    }
+   },
+   "recurring_match": false,
+   "recurring_group": null,
+   "recurring_total_n": 0,
+   "recurring_neighbour_hi": false,
+   "recurring_place": "anonymous.com",
+   "scorer_unreliable": false,
+   "roaming_card": false,
+   "rulebook_chain_ids": [
+    "3506725"
+   ],
+   "rulebook_chain_sum": 1000.03,
+   "conflict_chain": false,
+   "conflict_chain_ids": [],
+   "shared_fraud_cards": [],
+   "shared_device_fraud": false,
+   "device_known": false,
+   "shared_recipient_email": [],
+   "recent_same_channel_case": false,
+   "prior_fraud_case_ids": [],
+   "prior_cleared_case_ids": [
+    "CC-0873"
+   ],
+   "cleared_precedent_case_ids": [],
+   "conflict": false,
+   "floor": 0.0,
+   "families_conflict": false,
+   "mixed_channel": false,
+   "any_new_member": false,
+   "all_in_modal_region": false,
+   "card_testing_chain": false,
+   "request_type": "customer_validation"
+  },
+  "chain": [
+   {
+    "id": "3506725",
+    "ts": "2016-12-02 15:18:27",
+    "amt": 1000.03,
+    "product_cd": "R",
+    "channel": "online",
+    "addr1": "469.0",
+    "p_email": "anonymous.com",
+    "device_id": "Windows | Windows 10 | edge 16.0 | 1366x768",
+    "device_new": "New",
+    "cms_p": 0.020038470329804783,
+    "sig_match": true
+   }
+  ],
+  "episode_ids": [],
+  "first_suspicious_txn_id": "",
+  "exposure_usd": 0.0,
+  "connected_card_ids": [],
+  "connected_device_profiles": [],
+  "pattern": "none",
+  "pattern_description": "",
+  "verdict": "legitimate",
+  "similar_prior_cases": [
+   "CC-0873",
+   "CC-0136",
+   "CC-0277",
+   "CC-0728",
+   "CC-1189"
+  ],
+  "evidence": [
+   {
+    "claim": "Amount $1,000.03 exceeds the card's prior maximum ($670.04); prior median $68.98",
+    "source": "graph",
+    "ref": "query:case_context(txn=3506725)",
+    "entity_ids": [
+     "3506725",
+     "C10434-K1"
+    ],
+    "family": "history",
+    "direction": "fraud"
+   },
+   {
+    "claim": "Billing region 469.0 on the online purchase is the card's modal region (24 prior purchases on 19 days)",
+    "source": "graph",
+    "ref": "query:region_history(card=C10434-K1, addr1=469.0)",
+    "entity_ids": [
+     "3506725",
+     "C10434-K1"
+    ],
+    "family": "history",
+    "direction": "legit"
+   },
+   {
+    "claim": "Device profile `Windows | Windows 10 | edge 16.0 | 1366x768` is marked New for this account; the profile is generic (208 cards use it) and is not a shared-origin signal; a New device is not by itself a fraud signal in this history (cleared 'new phone' alerts are New-device ones)",
+    "source": "graph",
+    "ref": "query:case_context(txn=3506725)",
+    "entity_ids": [
+     "Windows | Windows 10 | edge 16.0 | 1366x768",
+     "3506725"
+    ],
+    "family": "device",
+    "direction": "neutral"
+   },
+   {
+    "claim": "Case-memory scorer (LightGBM over the bank's 5,565 closed cases; October holdout AUC 0.956) puts the flagged transaction at 0.02 (calibrated 0.02); the real-time risk score was 0.90",
+    "source": "graph",
+    "ref": "query:case_context(txn=3506725)",
+    "entity_ids": [
+     "3506725"
+    ],
+    "family": "memory",
+    "direction": "legit"
+   },
+   {
+    "claim": "1 prior risk-score alert(s) on this card were cleared after the customer confirmed the activity (CC-0873); that alert was a different shape (travel), so it is a weak precedent",
+    "source": "graph",
+    "ref": "query:prior_cases_for_customer(customer=C10434)",
+    "entity_ids": [
+     "CC-0873",
+     "C10434-K1"
+    ],
+    "family": "memory",
+    "direction": "legit"
+   }
+  ]
+ },
+ "scorecard_post": {
+  "cms_p": 0.02,
+  "cal_p": 0.0227,
+  "adjustments": [
+   [
+    "customer confirmation \u2192 ceiling",
+    0.1
+   ]
+  ],
+  "p_engine": 0.0227,
+  "families_fraud": [],
+  "families_legit": [
+   "customer",
+   "memory"
+  ],
+  "flags": {
+   "denial": false,
+   "analyst_request": false,
+   "risk_alert": true,
+   "trigger_type": "risk_score",
+   "flagged_ts": "2016-12-02 15:18:27",
+   "flagged_txn_id": "3506725",
+   "flagged_amt": 1000.03,
+   "flagged_addr1": "469.0",
+   "flagged_device_id": "Windows | Windows 10 | edge 16.0 | 1366x768",
+   "flagged_device_new": "New",
+   "flagged_device_cards": 208,
+   "flagged_device_strong": false,
+   "channel": "online",
+   "modal_region": "469.0",
+   "card_n_txns": 36,
+   "two_cards_confirmed_fraud": false,
+   "outcome": "confirm",
+   "asked": true,
+   "pending": false,
+   "ring_hit": false,
+   "ring_id": "Windows | Windows 10 | chrome 61.0 | 1920x1080",
+   "ring_txn_ids": [
+    "3078052"
+   ],
+   "ring_rows": [
+    {
+     "id": "3078052",
+     "ts": "2016-07-21 16:49:52",
+     "amt": 49.91
+    }
+   ],
+   "wave_cards": [
+    "C00854-K2",
+    "C01688-K1",
+    "C01721-K2",
+    "C01983-K1",
+    "C02055-K1",
+    "C02566-K1",
+    "C02716-K2",
+    "C03019-K2",
+    "C03218-K2",
+    "C03235-K1",
+    "C03341-K2",
+    "C03933-K1",
+    "C04798-K2",
+    "C05174-K1",
+    "C05245-K2",
+    "C05487-K1",
+    "C05704-K2",
+    "C06279-K1",
+    "C06286-K1",
+    "C07265-K1",
+    "C07919-K2",
+    "C07925-K1",
+    "C09521-K2",
+    "C10605-K1",
+    "C11496-K2",
+    "C11936-K1",
+    "C12036-K2"
+   ],
+   "pre_open_cards": [
+    "C00854-K2",
+    "C01688-K1",
+    "C01721-K2",
+    "C01983-K1",
+    "C02055-K1",
+    "C02566-K1",
+    "C02716-K2",
+    "C03019-K2",
+    "C03218-K2",
+    "C03235-K1",
+    "C03341-K2",
+    "C03933-K1",
+    "C04798-K2",
+    "C05174-K1",
+    "C05245-K2",
+    "C05487-K1",
+    "C05704-K2",
+    "C06279-K1",
+    "C06286-K1",
+    "C07265-K1",
+    "C07919-K2",
+    "C07925-K1",
+    "C09521-K2",
+    "C10605-K1",
+    "C11496-K2",
+    "C11936-K1",
+    "C12036-K2"
+   ],
+   "ring_cases": [
+    "CC-0136",
+    "CC-0277",
+    "CC-0728",
+    "CC-1189"
+   ],
+   "burst_hit": false,
+   "burst_txn_ids": [],
+   "burst": {},
+   "burst_lookalikes": [],
+   "r5_run": false,
+   "card_testing_run_ids": [],
+   "r5_cleared_over_big": false,
+   "r5": {
+    "run": {},
+    "larger_purchase": {},
+    "cleared_over_big": false,
+    "chain": {
+     "n_members": 1,
+     "n_small": 0
+    }
+   },
+   "recurring_match": false,
+   "recurring_group": null,
+   "recurring_total_n": 0,
+   "recurring_neighbour_hi": false,
+   "recurring_place": "anonymous.com",
+   "scorer_unreliable": false,
+   "roaming_card": false,
+   "rulebook_chain_ids": [
+    "3506725"
+   ],
+   "rulebook_chain_sum": 1000.03,
+   "conflict_chain": false,
+   "conflict_chain_ids": [],
+   "shared_fraud_cards": [],
+   "shared_device_fraud": false,
+   "device_known": false,
+   "shared_recipient_email": [],
+   "recent_same_channel_case": false,
+   "prior_fraud_case_ids": [],
+   "prior_cleared_case_ids": [
+    "CC-0873"
+   ],
+   "cleared_precedent_case_ids": [],
+   "conflict": false,
+   "floor": 0.0,
+   "families_conflict": false,
+   "mixed_channel": false,
+   "any_new_member": false,
+   "all_in_modal_region": false,
+   "card_testing_chain": false,
+   "request_type": "customer_validation",
+   "request_seq": 1,
+   "escalated": false
+  },
+  "chain": [
+   {
+    "id": "3506725",
+    "ts": "2016-12-02 15:18:27",
+    "amt": 1000.03,
+    "product_cd": "R",
+    "channel": "online",
+    "addr1": "469.0",
+    "p_email": "anonymous.com",
+    "device_id": "Windows | Windows 10 | edge 16.0 | 1366x768",
+    "device_new": "New",
+    "cms_p": 0.020038470329804783,
+    "sig_match": true
+   }
+  ],
+  "episode_ids": [],
+  "first_suspicious_txn_id": "",
+  "exposure_usd": 0.0,
+  "connected_card_ids": [],
+  "connected_device_profiles": [],
+  "pattern": "none",
+  "pattern_description": "",
+  "verdict": "legitimate",
+  "similar_prior_cases": [
+   "CC-0873",
+   "CC-0136",
+   "CC-0277",
+   "CC-0728",
+   "CC-1189"
+  ],
+  "evidence": [
+   {
+    "claim": "Amount $1,000.03 exceeds the card's prior maximum ($670.04); prior median $68.98",
+    "source": "graph",
+    "ref": "query:case_context(txn=3506725)",
+    "entity_ids": [
+     "3506725",
+     "C10434-K1"
+    ],
+    "family": "history",
+    "direction": "fraud"
+   },
+   {
+    "claim": "Billing region 469.0 on the online purchase is the card's modal region (24 prior purchases on 19 days)",
+    "source": "graph",
+    "ref": "query:region_history(card=C10434-K1, addr1=469.0)",
+    "entity_ids": [
+     "3506725",
+     "C10434-K1"
+    ],
+    "family": "history",
+    "direction": "legit"
+   },
+   {
+    "claim": "Device profile `Windows | Windows 10 | edge 16.0 | 1366x768` is marked New for this account; the profile is generic (208 cards use it) and is not a shared-origin signal; a New device is not by itself a fraud signal in this history (cleared 'new phone' alerts are New-device ones)",
+    "source": "graph",
+    "ref": "query:case_context(txn=3506725)",
+    "entity_ids": [
+     "Windows | Windows 10 | edge 16.0 | 1366x768",
+     "3506725"
+    ],
+    "family": "device",
+    "direction": "neutral"
+   },
+   {
+    "claim": "Case-memory scorer (LightGBM over the bank's 5,565 closed cases; October holdout AUC 0.956) puts the flagged transaction at 0.02 (calibrated 0.02); the real-time risk score was 0.90",
+    "source": "graph",
+    "ref": "query:case_context(txn=3506725)",
+    "entity_ids": [
+     "3506725"
+    ],
+    "family": "memory",
+    "direction": "legit"
+   },
+   {
+    "claim": "1 prior risk-score alert(s) on this card were cleared after the customer confirmed the activity (CC-0873); that alert was a different shape (travel), so it is a weak precedent",
+    "source": "graph",
+    "ref": "query:prior_cases_for_customer(customer=C10434)",
+    "entity_ids": [
+     "CC-0873",
+     "C10434-K1"
+    ],
+    "family": "memory",
+    "direction": "legit"
+   },
+   {
+    "claim": "Customer confirmed the activity when asked (assumed reply)",
+    "source": "customer",
+    "ref": "evidence_request:1",
+    "entity_ids": [],
+    "family": "customer",
+    "direction": "legit"
+   }
+  ]
+ },
+ "branches": {
+  "confirm": [
+   "CREATE_CASE",
+   "ALLOW_TRANSACTION",
+   "CLOSE_NO_FRAUD"
+  ],
+  "deny": [
+   "CREATE_CASE",
+   "ALLOW_TRANSACTION",
+   "CLOSE_NO_FRAUD"
+  ],
+  "no_reply": [
+   "CREATE_CASE",
+   "MONITOR_CARD",
+   "DECLINE_TRANSACTION",
+   "ESCALATE_TO_ANALYST"
+  ]
+ },
+ "adm_initial": {
+  "required": [
+   "CREATE_CASE",
+   "VERIFY_WITH_CUSTOMER"
+  ],
+  "allowed": [
+   "ALLOW_TRANSACTION",
+   "MONITOR_CARD",
+   "MONITOR_CONNECTED_CARDS",
+   "WARN_CUSTOMER",
+   "VERIFY_WITH_CUSTOMER",
+   "STEP_UP_AUTH",
+   "GENERATE_REPORT",
+   "CREATE_CASE",
+   "ESCALATE_TO_ANALYST"
+  ],
+  "forbidden": [
+   "BLOCK_ALL_CARDS",
+   "BLOCK_CARD",
+   "CLOSE_NO_FRAUD",
+   "DECLINE_TRANSACTION",
+   "FILE_REPORT"
+  ],
+  "routes": {
+   "ALLOW_TRANSACTION": "auto",
+   "DECLINE_TRANSACTION": "L1",
+   "MONITOR_CARD": "auto",
+   "MONITOR_CONNECTED_CARDS": "auto",
+   "WARN_CUSTOMER": "auto",
+   "VERIFY_WITH_CUSTOMER": "auto",
+   "STEP_UP_AUTH": "auto",
+   "BLOCK_CARD": "L1",
+   "BLOCK_ALL_CARDS": "L2",
+   "GENERATE_REPORT": "auto",
+   "CREATE_CASE": "auto",
+   "FILE_REPORT": "L2",
+   "ESCALATE_TO_ANALYST": "auto",
+   "CLOSE_NO_FRAUD": "auto"
+  },
+  "citations": {
+   "CREATE_CASE": [
+    "3a_case",
+    "legit_leaning_initial"
+   ],
+   "VERIFY_WITH_CUSTOMER": [
+    "R1",
+    "legit_leaning_initial"
+   ],
+   "_forbidden": {
+    "BLOCK_CARD": [
+     "R1",
+     "legit_leaning_initial"
+    ],
+    "BLOCK_ALL_CARDS": [
+     "R1",
+     "R10",
+     "legit_leaning_initial"
+    ],
+    "DECLINE_TRANSACTION": [
+     "legit_leaning_initial"
+    ],
+    "FILE_REPORT": [
+     "legit_leaning_initial"
+    ],
+    "CLOSE_NO_FRAUD": [
+     "legit_leaning_initial"
+    ]
+   },
+   "_conflicts": {}
+  },
+  "fired": [
+   "3a_case",
+   "R1",
+   "R10",
+   "legit_leaning_initial"
+  ]
+ },
+ "violations": [],
+ "errors": []
+}

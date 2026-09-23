@@ -5,10 +5,66 @@ An agent that takes an alert from the HHGOA case pack, investigates it through *
 | Deliverable | Where |
 |---|---|
 | 20 answer files | [`cases/`](cases/) (`HHG-001.json` … `HHG-020.json`, [`cases/MANIFEST.md`](cases/MANIFEST.md)) |
-| Demo video (3–5 min) | **TODO link** |
-| Technical blog | **TODO link** (outline: [`docs/blog_outline.md`](docs/blog_outline.md)) |
-| Social post (tags @TigerGraphDB) | **TODO link** ([`docs/social.md`](docs/social.md)) |
-| Optional monitoring cases | [`cases_monitoring/`](cases_monitoring/) |
+| Demo video (3–5 min) | `<DEMO_URL>` (script: [`docs/demo_script.md`](docs/demo_script.md)) |
+| Technical blog | [`docs/blog.md`](docs/blog.md) (published copy: `<BLOG_URL>`) |
+| Social post (tags @TigerGraphDB and @247pmstudio) | [`docs/social.md`](docs/social.md) (posted copy: `<SOCIAL_URL>`) |
+| Architecture diagram | [`docs/architecture.svg`](docs/architecture.svg) |
+
+## Judge quick-start (mock mode: no TigerGraph workspace, no API keys)
+
+Everything below runs offline on a fresh clone. The dataset CSVs under `data/raw/` are not in the
+repository (they are gitignored), so the checked-in `data/ids.duckdb` (id tables for the validator) and
+`data/hhgoa_engine.duckdb` (the engine's facts) stand in for the graph. You need
+[uv](https://docs.astral.sh/uv/) and Python 3.12. Tested on macOS; CI runs the same steps on Ubuntu.
+
+Clone the repository:
+
+```bash
+git clone <REPO_URL> Tiger-graph && cd Tiger-graph
+```
+
+Install the dependencies and create `.env` from `.env.example` (`RUN_MODE=mock`, no keys needed):
+
+```bash
+make install
+```
+
+Check the 20 submitted answer files against the README answer schema and the dataset ids:
+
+```bash
+make validate
+```
+
+Run one case end to end in mock mode (recorded model replies, DuckDB facts instead of the graph). The
+one-row case pack fixture replaces `data/raw/case_pack.csv`; the answer lands in `runs/judge/HHG-014/answer.json`:
+
+```bash
+CASE_PACK_CSV=tests/fixtures/case_pack_HHG-014.csv uv run python -m agent.bench --cases HHG-014 --run-id judge --mock
+```
+
+Build a mock run from the 20 answer files so the dashboard has something to show:
+
+```bash
+make mock-run
+```
+
+Open the analyst dashboard at http://localhost:8501 and pick run `mock` in the sidebar:
+
+```bash
+RUN_MODE=mock make ui
+```
+
+The unit tests and the linter (data-backed tests skip without the full DuckDB):
+
+```bash
+make test lint
+```
+
+## Results
+
+_To be filled in from the final live run of all 20 cases (verdicts, patterns, SARs filed, final actions,
+tool calls, tokens and latency per case), made with the ordered commands in [`docs/RERUN.md`](docs/RERUN.md).
+Until then, [`cases/MANIFEST.md`](cases/MANIFEST.md) lists the run that produced the files in `cases/`._
 
 ## The two documents
 
@@ -44,7 +100,7 @@ python sync_spec.py
 ![architecture](docs/architecture.svg)
 
 ```
-case_pack.csv ─► agent/bench.py ─► agent/phase_machine.py (Anthropic SDK, P0–P10)
+case_pack.csv ─► agent/bench.py ─► agent/phase_machine.py (P0–P10; LLM = claude-agent-sdk, LLM_BACKEND=cli)
                                       │  12 typed read-only tools = installed GSQL queries via
                                       │  mcp/tg_mcp_launcher.py → tigergraph-mcp 1.0.3 (stdio)  ──HTTPS──► Savanna TG-00 (4.2.x)
                                       ▼                                                                    FraudGraph + TigerVector
@@ -275,4 +331,4 @@ make ids
 
 ## Data and licensing
 
-IEEE-CIS Fraud Detection (Vesta) via the HHGOA re-cut. The public Kaggle files are **never** used (a repo lint fails on Kaggle/IEEE-outcome references). Regulatory chunks carry url + sha256 + page provenance; full FATF/FFIEC documents are not vendored.
+IEEE-CIS Fraud Detection (Vesta) via the HHGOA re-cut. The public Kaggle files are **never** used, and the answer validator (`engine/validator.py`) rejects any answer whose free text mentions Kaggle or the outcome label (`isFraud`). Regulatory chunks carry url + sha256 + page provenance; full FATF/FFIEC documents are not vendored.

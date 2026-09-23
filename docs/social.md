@@ -1,17 +1,17 @@
 # Social posts: final copy
 
-Tag @TigerGraphDB and link the blog in every version. Replace `<BLOG_URL>`, `<DEMO_URL>` and `<REPO_URL>` before posting.
+Tag both @TigerGraphDB and @247pmstudio and link the blog in every version. Replace `<BLOG_URL>`, `<DEMO_URL>` and `<REPO_URL>` before posting.
 
 ## X: single post
 
-> A $74.96 purchase, bank risk score 0.05. My agent on @TigerGraphDB followed its device to 52 cards and 4 confirmed-fraud cases, drafted a SAR, and sent it and the card block to humans. The graph and a deterministic engine decide; the LLM investigates. <BLOG_URL>
+> A $74.96 purchase, risk score 0.05. My agent on @TigerGraphDB traced its device to 52 cards and 4 confirmed-fraud cases, then sent a SAR draft and a card block to humans. The graph and a deterministic engine decide; the LLM investigates. @247pmstudio <BLOG_URL>
 
-Length: 262 characters as written. X counts any link as 23 characters, so the post is 275 once the real URL goes in. Keep the limit in mind if you edit it.
+Length: 261 characters as written (with the 10-character `<BLOG_URL>` placeholder). X counts any link as 23 characters, so the post is 274 of 280 once the real URL goes in. Keep the limit in mind if you edit it.
 
 ## X: optional thread (4 posts)
 
-**1/4** (268 characters with the link)
-> A $74.96 purchase, bank risk score 0.05. My fraud agent on @TigerGraphDB followed its device to 52 cards and 4 confirmed-fraud cases. The graph and a deterministic engine decide; the LLM investigates and explains. 20 alerts ran live end to end. <BLOG_URL>
+**1/4** (274 characters with the link)
+> A $74.96 purchase, risk score 0.05. My fraud agent on @TigerGraphDB traced its device to 52 cards and 4 confirmed-fraud cases. The graph and a deterministic engine decide; the LLM investigates and explains. 20 alerts ran live end to end. @247pmstudio <BLOG_URL>
 
 **2/4** (233)
 > The LLM reaches the graph only through the official TigerGraph MCP server, as 16 typed tools over my GSQL queries, time-bounded to when the case opened. It can move the engine's fraud probability by at most 0.10, with a cited reason.
@@ -28,7 +28,7 @@ Length: 262 characters as written. X counts any link as 23 characters, so the po
 >
 > My agent followed that purchase's device through the graph to 52 cards, 114 anonymous-proxy uses and four earlier confirmed-fraud cases. It drafted a suspicious activity report and sent the card block and the filing to human approvers.
 >
-> I built it for the TigerGraph x Hacker House Goa 2026 hackathon on @TigerGraph.
+> I built it for the TigerGraph x Hacker House Goa 2026 hackathon (@TigerGraph, @247pmstudio).
 >
 > An alert comes in: a bank risk score, a customer dispute or an analyst request. The agent investigates through typed GSQL queries exposed via the official TigerGraph MCP server. It retrieves precedents from 5,565 closed cases and grounds itself in FinCEN, FFIEC and FATF guidance, all stored in TigerVector. It asks the customer only when the answer could change the action. It writes the case back into the graph.
 >
@@ -44,7 +44,7 @@ Length: 262 characters as written. X counts any link as 23 characters, so the po
 >
 > #TigerGraph #GraphRAG #FraudDetection #AgenticAI #HackerHouseGoa
 
-On LinkedIn, type "@TigerGraph" and choose the company page from the mention picker so the tag links.
+On LinkedIn, type "@TigerGraph" and "@247pmstudio" and choose each company page from the mention picker so the tags link.
 
 ## Pre-posting checklist
 
@@ -53,5 +53,5 @@ On LinkedIn, type "@TigerGraph" and choose the company page from the mention pic
 - [ ] Upload the demo video and copy its URL
 - [ ] Replace every `<BLOG_URL>`, `<DEMO_URL>` and `<REPO_URL>` above (repo: https://github.com/aryangupta1411/Tiger-graph)
 - [ ] Re-check the X post is 280 characters or fewer after editing (a link counts as 23)
-- [ ] Confirm @TigerGraphDB is tagged on X and the TigerGraph page is tagged on LinkedIn
-- [ ] Paste the blog, demo and social-post URLs into the three "TODO link" rows in `README.md`
+- [ ] Confirm @TigerGraphDB and @247pmstudio are tagged on X and both company pages are tagged on LinkedIn
+- [ ] Replace `<DEMO_URL>`, `<BLOG_URL>` and `<SOCIAL_URL>` in the deliverables table of `README.md`, and `<REPO_URL>` in its quick-start

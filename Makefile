@@ -8,6 +8,8 @@
 SHELL := /bin/bash
 .DEFAULT_GOAL := help
 PY := uv run python
+# RUN_ID_GIVEN is non-empty only when RUN_ID came from the command line or the environment (rerun-live requires it)
+RUN_ID_GIVEN := $(filter-out undefined default,$(origin RUN_ID))
 RUN_ID ?= $(shell date +%Y%m%d-%H%M%S)
 # CASES: "all" or a comma list: HHG-014,HHG-006
 CASES ?= all
@@ -104,7 +106,8 @@ SAY = C=; B=; D=; G=; Y=; RD=; R=; \
 
 .PHONY: help status install env db features cms facts chunks ids load algos install-queries describe \
         corpus embed vectors replay sheet engine-drafts bench bench-one bench-free promote validate ui mock-run \
-        test test-data test-live lint lint-gsql lint-contracts fmt keepalive awake rebuild demo-warm clean
+        test test-data test-live lint lint-gsql lint-contracts fmt keepalive awake rebuild demo-warm clean \
+        clear-writebacks rerun-live
 
 ##@ Start here
 help: ## this list, grouped by build stage (the default target)
@@ -278,6 +281,34 @@ promote: ## copy runs/<RUN_ID>/*/answer.json -> cases/ after validation, write c
 
 validate: ## validate cases/*.json against the README schema + id existence (VALIDATOR_DB)
 	$(PY) -m $(AGENT_VALIDATE) --db $(VALIDATOR_DB) cases/*.json
+
+##@ Live re-run (docs/RERUN.md)
+clear-writebacks: ## list the agent's own AgentCase / CaseEvent / Approval write-backs for HHG-001..020 (dry run); APPLY=1 deletes exactly those
+	$(PY) -m ops.clear_case_writebacks $(if $(filter 1 yes true,$(APPLY)),--apply,) $(if $(strip $(RUN_ID_GIVEN)),--run-id $(RUN_ID),)
+
+rerun-live: ## RUN_ID=<id> required: wake, install-queries, describe, then the 20 cases one at a time (opened_at order, --resume), validating each
+	@$(SAY) \
+	 if [ -z "$(RUN_ID_GIVEN)" ]; then faill "RUN_ID is required: make rerun-live RUN_ID=live-final"; exit 2; fi; \
+	 banner "rerun-live $(RUN_ID)" "live graph + claude-agent-sdk (LLM_BACKEND=cli, RUN_MODE=live from the environment; .env is not edited)"; \
+	 if [ -n "$$(git status --porcelain --untracked-files=no 2>/dev/null)" ]; then \
+	   warnl "the working tree has uncommitted changes: the manifest will record git_dirty=true (commit first for a clean sha)"; fi
+	$(MAKE) --no-print-directory awake
+	$(MAKE) --no-print-directory install-queries
+	$(MAKE) --no-print-directory describe
+	@$(SAY) \
+	 CASES_ORDERED=$$($(PY) -c "from agent.bench import load_case_pack; from agent.config import SETTINGS; print(' '.join(c.case_id for c in load_case_pack(SETTINGS.case_pack_csv)))"); \
+	 n=0; for c in $$CASES_ORDERED; do \
+	   n=$$((n+1)); banner "case $$n/20: $$c" "runs/$(RUN_ID)/$$c/answer.json"; \
+	   LLM_BACKEND=cli RUN_MODE=live $(PY) -m $(AGENT_BENCH) --cases $$c --run-id $(RUN_ID) --resume $(MODEL_FLAG) \
+	     || { faill "$$c: the agent run failed; fix the cause, then re-run 'make rerun-live RUN_ID=$(RUN_ID)' (--resume skips finished cases)"; exit 1; }; \
+	   $(PY) -m $(AGENT_VALIDATE) --db $(VALIDATOR_DB) runs/$(RUN_ID)/$$c/answer.json \
+	     || { faill "$$c: answer failed validation; inspect runs/$(RUN_ID)/$$c/, delete that case directory, then re-run the target"; exit 1; }; \
+	 done; \
+	 banner "rerun-live $(RUN_ID): summary" "every answer re-validated together"; \
+	 $(PY) -m $(AGENT_VALIDATE) --db $(VALIDATOR_DB) runs/$(RUN_ID)/HHG-*/answer.json || exit 1; \
+	 k=$$(ls runs/$(RUN_ID)/HHG-*/answer.json 2>/dev/null | wc -l | tr -d ' '); \
+	 if [ "$$k" = 20 ]; then okl "20/20 answers in runs/$(RUN_ID); next: make promote RUN_ID=$(RUN_ID)"; \
+	 else faill "$$k/20 answers in runs/$(RUN_ID)"; exit 1; fi
 
 ##@ UI and demo
 ui: ## Streamlit analyst dashboard (queue / case / approvals / graph / runs)

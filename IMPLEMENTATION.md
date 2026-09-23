@@ -577,6 +577,8 @@ import sys
 
 import yaml
 
+# the key renames mcp/normalize.py applies to raw query output before any reader sees it
+PRINT_RENAMES = {"best_run": "run"}
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 os.environ.setdefault("RUN_MODE", "mock")
@@ -643,6 +645,8 @@ def main() -> int:
             if ye != params:
                 errors.append(("yaml example", name, f"yaml example keys {ye} != gsql {params}"))
                 bad["yaml"] = True
+            # mcp/normalize renames GSQL print keys that cannot carry the contract name (card_testing_check: best_run -> run)
+            prints = [PRINT_RENAMES.get(k, k) for k in prints]
             if yk is not None and set(yk) != set(prints):
                 errors.append(("yaml prints", name, f"yaml {yk} != gsql {sorted(set(prints))}"))
                 bad["yaml"] = True
@@ -6456,6 +6460,119 @@ graph-test: ## offline unit tests of this module (contracts, loader plan/counts/
 	uv run pytest tests/unit/test_graph_contracts.py -q
 ```
 
+#### `tests/unit/test_graph_queries_asof.py`
+Static checks that the fixed GSQL queries are time-boxed: card_profile / case_context history fields over ts <= as_of,
+AgentCase memory strictly before as_of, and HHG-018's chain reaching its first suspicious transaction.
+```python
+"""Offline guards for the read-query time-box and bounds (no workspace).
+
+  * episode_candidates.gsql keeps the same chain bounds as engine/facts_duckdb.py (the engine of record), so the live
+    chain reaches HHG-018's first suspicious transaction 3485990 (97 rows before the flag; the old 85-row cap cut it);
+  * card_profile / case_context print the card's history counts over ts <= as_of, not the all-time Card attributes
+    (HHG-014: 73 transactions / max $225.94 at opened_at, not 85 / $252.28);
+  * memory queries never return the case's own AgentCase or a later one (strict opened_at < as_of / < to_ts).
+
+The DuckDB checks run the checked-in expected/<query>.sql mirrors on the tracked expected/_model.duckdb.
+
+    uv run pytest tests/unit/test_graph_queries_asof.py -q
+"""
+from __future__ import annotations
+
+import re
+from pathlib import Path
+
+import pytest
+
+ROOT = Path(__file__).resolve().parents[2]
+QUERIES = ROOT / "graph" / "queries"
+EXPECTED = QUERIES / "expected"
+MODEL = EXPECTED / "_model.duckdb"
+
+
+def _code(name: str) -> str:
+    """Query text without // comments and /* */ blocks."""
+    text = (QUERIES / f"{name}.gsql").read_text()
+    text = re.sub(r"/\*.*?\*/", "", text, flags=re.S)
+    return "\n".join(line.split("//", 1)[0] for line in text.splitlines())
+
+
+# ------------------------------------------------------------------ static
+def test_episode_candidates_bounds_match_duckfacts():
+    fd = (ROOT / "engine" / "facts_duckdb.py").read_text()
+    span = int(re.search(r"^CHAIN_SPAN_DAYS\s*=\s*(\d+)", fd, re.M).group(1))
+    rows = int(re.search(r"^CHAIN_MAX_ROWS\s*=\s*(\d+)", fd, re.M).group(1))
+    code = _code("episode_candidates")
+    assert f"@@t_e - {span} * 86400" in code and f"@@t_e + {span} * 86400" in code
+    assert f"IF hi - lo + 1 > {rows} THEN" in code
+    assert f"ai - {rows // 2}" in code and f"ai + {rows // 2}" in code
+    assert "> 85" not in code and "45 * 86400" not in code
+
+
+def test_card_profile_history_fields_are_time_boxed():
+    code = _code("card_profile")
+    row = code[code.index("@@card += CardRow("):]
+    row = row[: row.index(");")]
+    for loaded in ("s.n_txns", "s.first_ts", "s.last_ts", "s.median_amt", "s.p90_amt", "s.max_amt", "s.max_in_person_amt",
+                   "s.n_online", "s.n_in_person", "s.n_regions", "s.n_devices_seen"):
+        assert loaded not in row, f"card_profile prints the all-time Card attribute {loaded}"
+    assert "@@h_n" in row and "@@h_max" in row and "@@h_med" in row
+
+
+def test_case_context_card_n_txns_is_time_boxed():
+    code = _code("case_context")
+    row = code[code.index("@@card += CardRow("):]
+    assert "c.n_txns" not in row[: row.index(");")] and "@@card_n" in row
+
+
+@pytest.mark.parametrize("name", ["similar_prior_cases", "similar_prior_cases_agent", "similar_cases_structural", "card_profile",
+                                  "prior_cases_for_customer"])
+def test_agent_case_memory_is_strictly_before_as_of(name):
+    code = _code(name)
+    assert "a.opened_at <= as_of" not in code
+    assert "a.opened_at < as_of" in code
+
+
+def test_device_neighbors_agent_cases_before_to_ts():
+    code = _code("device_neighbors")
+    block = code[code.index("A = SELECT a FROM (k:C)-[:REV_CASE_ON_CARD]->(a:AgentCase)"):]
+    assert "WHERE a.opened_at < to_ts" in block[: block.index(";")]
+
+
+# ------------------------------------------------------------------ DuckDB mirrors
+@pytest.fixture(scope="module")
+def con():
+    duckdb = pytest.importorskip("duckdb")
+    if not MODEL.exists():
+        pytest.skip("graph/queries/expected/_model.duckdb absent")
+    c = duckdb.connect(str(MODEL), read_only=True)
+    yield c
+    c.close()
+
+
+def _run(con, name: str, params: dict) -> dict:
+    sql = (EXPECTED / f"{name}.sql").read_text()
+    code = "\n".join(ln for ln in sql.splitlines() if not ln.lstrip().startswith("--"))
+    used = {k: v for k, v in params.items() if re.search(rf"\${k}\b", code)}
+    cur = con.execute(sql, used)
+    return dict(zip([d[0] for d in cur.description], cur.fetchone()))
+
+
+def test_hhg018_chain_reaches_first_suspicious(con):
+    out = _run(con, "episode_candidates", {"t": "3491361", "as_of": "2016-11-27 14:41:26", "gap_h": 48})
+    ids = [r["id"] for r in out["chain"]]
+    assert {"3485990", "3490180", "3491361"} <= set(ids)
+    assert len(ids) <= 201
+
+
+def test_hhg014_card_history_at_opened_at(con):
+    out = _run(con, "card_profile", {"c": "C13487-K1", "as_of": "2016-11-22 20:11:00"})
+    card = out["card"]
+    assert card["n_txns"] == 73 and abs(card["max_amt"] - 225.94) < 1e-6
+    assert card["last_ts"] <= "2016-11-22 20:11:00"
+    ctx = _run(con, "case_context", {"t": "3478561", "as_of": "2016-11-22 20:11:00"})
+    assert ctx["card"]["n_txns"] == 73
+```
+
 #### `tests/unit/test_graph_contracts.py`
 
 ```python
@@ -7013,8 +7130,9 @@ Spec for `graph/queries/*.gsql`, `mcp/query_descriptions.yaml`, `mcp/normalize.p
 // case_context — first look at the flagged transaction: its attributes, card, customer, device profile.
 // Contract: interfaces.md §A. Output keys: txn{}, card{}, customer{}, device{} (device.id == "" when the
 // transaction has no FROM_DEVICE edge). Single objects are MaxAccum<TUPLE> so they print as JSON objects.
-// as_of is accepted for uniformity with every read query; the flagged transaction is always <= opened_at,
-// so it is returned regardless of as_of (the harness never asks about a later transaction).
+// The flagged transaction is always <= opened_at, so it is returned regardless of as_of (the harness never asks
+// about a later transaction). card.n_txns counts the card's transactions with ts <= as_of (the loaded Card.n_txns is
+// all-time and includes activity after the case opened); the other card / device fields are the loaded profile.
 USE GRAPH FraudGraph
 CREATE OR REPLACE QUERY case_context(VERTEX<Transaction> t, DATETIME as_of) FOR GRAPH FraudGraph SYNTAX v3 {
   TYPEDEF TUPLE<STRING id, STRING ts, FLOAT amt, STRING product_cd, STRING channel, STRING addr1, STRING addr2,
@@ -7028,6 +7146,7 @@ CREATE OR REPLACE QUERY case_context(VERTEX<Transaction> t, DATETIME as_of) FOR 
   MaxAccum<CardRow> @@card;
   MaxAccum<CustRow> @@customer;
   MaxAccum<DevRow> @@device;
+  SumAccum<INT> @@card_n;
 
   S = {t};
   S = SELECT s FROM (s:S)
@@ -7035,8 +7154,12 @@ CREATE OR REPLACE QUERY case_context(VERTEX<Transaction> t, DATETIME as_of) FOR 
                                  s.p_email, s.r_email, s.risk_score, s.has_identity, s.device_new, s.proxy_type,
                                  s.device_type, s.device_id, s.cms_p, s.card_seq, s.prior_in_region, s.prior_on_dev,
                                  s.prior_pem, s.prior_pcd, s.prior_med_amt, s.prior_max_amt, s.ring_hit, s.burst_id);
-  C = SELECT c FROM (s:S)-[:REV_MADE]->(c:Card)
-      POST-ACCUM @@card += CardRow(c.id, c.card_type, c.card_network, c.modal_region, c.n_txns, c.ring_id);
+  C = SELECT c FROM (s:S)-[:REV_MADE]->(c:Card);
+  N = SELECT x FROM (c:C)-[:MADE]->(x:Transaction)
+      WHERE x.ts <= as_of
+      ACCUM @@card_n += 1;
+  C = SELECT c FROM (c:C)
+      POST-ACCUM @@card += CardRow(c.id, c.card_type, c.card_network, c.modal_region, @@card_n, c.ring_id);
   U = SELECT u FROM (c:C)-[:REV_OWNS]->(u:Customer)
       POST-ACCUM @@customer += CustRow(u.id, u.n_cards);
   D = SELECT d FROM (s:S)-[:FROM_DEVICE]->(d:DeviceProfile)
@@ -7190,6 +7313,14 @@ SELECT
 // Region / device / email aggregates use vertex-attached accumulators on BillingRegion / DeviceProfile /
 // EmailDomain vertices reached from the card's transactions (no whole-graph scan; HHG-011's 10k txns ~1 s).
 // Prior agent cases use opened_at < as_of (strict) so the case being investigated (opened at as_of) is excluded.
+// Time-box (contract: every read query applies ts <= as_of): the card{} history fields n_txns, first_ts, last_ts,
+// median_amt, p90_amt (quantile_cont, linear interpolation — as etl/features.py), max_amt, max_in_person_amt (-1 when
+// none), n_online, n_in_person, n_regions and n_devices_seen are recomputed from the card's transactions <= as_of.
+// The loaded Card attributes are all-time (they include activity after the case opened: HHG-014's card has 85
+// transactions / max $252.28 all-time vs 73 / $225.94 at opened_at), which the SAR drafts quoted. The remaining
+// card{} attributes are printed as loaded (profile / algorithm outputs: modal_region, home_regions, usual_*,
+// known_device_ids, recurring_amounts, ring_id, burst_lookalike_ids, region_cluster_30d, wcc_id, device_degree,
+// fraud_ppr; n_prior_*_cases count closed cases, all opened before the first exam case).
 USE GRAPH FraudGraph
 CREATE OR REPLACE QUERY card_profile(VERTEX<Card> c, DATETIME as_of) FOR GRAPH FraudGraph SYNTAX v3 {
   TYPEDEF TUPLE<STRING id, STRING customer_id, STRING card_type, STRING card_network, INT n_txns, STRING first_ts,
@@ -7206,6 +7337,7 @@ CREATE OR REPLACE QUERY card_profile(VERTEX<Card> c, DATETIME as_of) FOR GRAPH F
   TYPEDEF TUPLE<STRING id, STRING opened_at, STRING outcome, STRING pattern, FLOAT exposure_usd, BOOL report_filed,
                 STRING template_id> ClosedRow;
   TYPEDEF TUPLE<STRING id, STRING opened_at, STRING verdict, STRING pattern, FLOAT exposure_usd> AgentRow;
+  TYPEDEF TUPLE<FLOAT amt, STRING id> AmtRow;
 
   MaxAccum<CardRow> @@card;
   MaxAccum<Last30> @@last30;
@@ -7223,28 +7355,72 @@ CREATE OR REPLACE QUERY card_profile(VERTEX<Card> c, DATETIME as_of) FOR GRAPH F
   SetAccum<STRING> @days;
   MinAccum<INT> @first_e = 9999999999;
   MaxAccum<INT> @last_e = 0;
+  // as_of-bounded history of the card (card{} fields; see header)
+  SumAccum<INT> @@h_n, @@h_online, @@h_in_person;
+  MinAccum<INT> @@h_first_e = 9999999999;
+  MaxAccum<INT> @@h_last_e = 0;
+  MaxAccum<FLOAT> @@h_max = 0.0;
+  MaxAccum<FLOAT> @@h_max_ip = -1.0;                    // -1 = no in-person transaction (etl/features.py)
+  SetAccum<STRING> @@h_regions, @@h_devices;
+  HeapAccum<AmtRow>(20000, amt ASC, id ASC) @@h_heap;   // largest card: 14,891 transactions all-time
+  ListAccum<AmtRow> @@h_amts;
+  MaxAccum<FLOAT> @@h_med = 0.0;
+  MaxAccum<FLOAT> @@h_p90 = 0.0;
+  MaxAccum<STRING> @@h_first, @@h_last;
 
   DATETIME from30 = epoch_to_datetime(datetime_to_epoch(as_of) - 30 * 86400);
 
   S = {c};
-  S = SELECT s FROM (s:S)
-      POST-ACCUM @@card += CardRow(s.id, s.customer_id, s.card_type, s.card_network, s.n_txns,
-                                   datetime_format(s.first_ts), datetime_format(s.last_ts), s.median_amt, s.p90_amt,
-                                   s.max_amt, s.max_in_person_amt, s.n_online, s.n_in_person, s.modal_region,
-                                   s.n_regions, s.home_regions, s.usual_products, s.usual_p_email, s.n_devices_seen,
-                                   s.known_device_ids, s.recurring_amounts, s.n_prior_fraud_cases,
-                                   s.n_prior_cleared_cases, s.ring_id, s.burst_lookalike_ids, s.region_cluster_30d,
-                                   s.wcc_id, s.device_degree, s.fraud_ppr);
 
   T = SELECT t FROM (s:S)-[:MADE]->(t:Transaction)
       WHERE t.ts <= as_of
       ACCUM
+        @@h_n += 1, @@h_first_e += datetime_to_epoch(t.ts), @@h_last_e += datetime_to_epoch(t.ts),
+        @@h_max += t.amt, @@h_heap += AmtRow(t.amt, t.id),
+        IF t.channel == "online" THEN @@h_online += 1 END,
+        IF t.channel == "in_person" THEN @@h_in_person += 1, @@h_max_ip += t.amt END,
+        IF t.addr1 != "" THEN @@h_regions += t.addr1 END,
+        IF t.device_id != "" THEN @@h_devices += t.device_id END,
         IF t.ts > from30 THEN
           @@n30 += 1, @@sum30 += t.amt, @@products30 += t.product_cd,
           IF t.channel == "online" THEN @@n30_online += 1 END,
           IF t.addr1 != "" THEN @@regions30 += t.addr1 END,
           IF t.device_id != "" THEN @@devices30 += t.device_id END
         END;
+
+  // median / p90 = quantile_cont over the ascending amounts: v[i] + (pos - i) * (v[i + 1] - v[i]), pos = (n - 1) * q
+  WHILE @@h_heap.size() > 0 DO
+    @@h_amts += @@h_heap.pop();
+  END;
+  INT hn = @@h_amts.size();
+  IF hn > 0 THEN
+    FLOAT pos = (hn - 1) * 0.5;
+    INT i0 = floor(pos);
+    IF i0 + 1 < hn THEN
+      @@h_med += @@h_amts.get(i0).amt + (pos - i0) * (@@h_amts.get(i0 + 1).amt - @@h_amts.get(i0).amt);
+    ELSE
+      @@h_med += @@h_amts.get(i0).amt;
+    END;
+    pos = (hn - 1) * 0.9;
+    i0 = floor(pos);
+    IF i0 + 1 < hn THEN
+      @@h_p90 += @@h_amts.get(i0).amt + (pos - i0) * (@@h_amts.get(i0 + 1).amt - @@h_amts.get(i0).amt);
+    ELSE
+      @@h_p90 += @@h_amts.get(i0).amt;
+    END;
+  END;
+  IF @@h_n > 0 THEN
+    @@h_first += datetime_format(epoch_to_datetime(@@h_first_e));
+    @@h_last += datetime_format(epoch_to_datetime(@@h_last_e));
+  END;
+  S = SELECT s FROM (s:S)
+      POST-ACCUM @@card += CardRow(s.id, s.customer_id, s.card_type, s.card_network, @@h_n,
+                                   @@h_first, @@h_last, @@h_med, @@h_p90,
+                                   @@h_max, @@h_max_ip, @@h_online, @@h_in_person, s.modal_region,
+                                   @@h_regions.size(), s.home_regions, s.usual_products, s.usual_p_email, @@h_devices.size(),
+                                   s.known_device_ids, s.recurring_amounts, s.n_prior_fraud_cases,
+                                   s.n_prior_cleared_cases, s.ring_id, s.burst_lookalike_ids, s.region_cluster_30d,
+                                   s.wcc_id, s.device_degree, s.fraud_ppr);
 
   R = SELECT r FROM (t:T)-[:BILLED_IN]->(r:BillingRegion)
       ACCUM r.@n += 1, r.@days += datetime_format(t.ts, "%Y-%m-%d"),
@@ -7982,7 +8158,8 @@ SELECT count(*) AS prior_n, coalesce(strftime(min(ts), '%Y-%m-%d %H:%M:%S'), '')
 // transactions used THIS profile (all-time memory, not time-boxed) -- the same set engine/facts_duckdb.py (the
 // engine of record) returns. Taking every case on those cards instead let a hub card's unrelated fraud history
 // read as "this device carries fraud" (HHG-019: 40 cases on a 5-card profile). agent_cases are the agent cases
-// on those cards; the calling case's own AgentCase may appear — ignore it.
+// on those cards opened STRICTLY before to_ts (the harness clamps to_ts to opened_at, so the calling case's own
+// AgentCase — written at intake with opened_at = the case's opened_at — and every later case are excluded).
 USE GRAPH FraudGraph
 CREATE OR REPLACE QUERY device_neighbors(VERTEX<DeviceProfile> d, DATETIME from_ts, DATETIME to_ts, INT max_cards) FOR GRAPH FraudGraph SYNTAX v3 {
   TYPEDEF TUPLE<STRING id, BOOL is_strong, INT n_cards_alltime, INT n_cards_30d, INT n_proxy, INT n_fraud_cases> DevRow;
@@ -8018,6 +8195,7 @@ CREATE OR REPLACE QUERY device_neighbors(VERTEX<DeviceProfile> d, DATETIME from_
     P = SELECT p FROM (x:D)-[:REV_FROM_DEVICE]->(t:Transaction)-[:REV_INVOLVES]->(p:ClosedCase)
         POST-ACCUM @@closed_cases += ClosedRow(p.id, p.card_id, p.pattern, p.outcome, p.report_filed);
     A = SELECT a FROM (k:C)-[:REV_CASE_ON_CARD]->(a:AgentCase)
+        WHERE a.opened_at < to_ts
         POST-ACCUM @@agent_cases += AgentRow(a.id, a.card_id, a.verdict, a.pattern);
   END;
 
@@ -8907,10 +9085,13 @@ SELECT (SELECT coalesce(list(struct_pack(place, n, median_gap_days := round(medi
 // ts <= as_of, with the fields the episode rule needs (cms_p, device, email, amount, channel) and a signature
 // flag: sig_match = same STRONG device profile as t, OR same purchaser email + ProductCD with the amount within
 // 5 % of t inside 2 hours of t. The flagged transaction is always a member.
-// Scan window: 45 days ending at as_of (heap capacity 8000; HHG-011's card has ~1,400 txns/month).
-// Output cap: if the chain has more than 85 members (chronically busy cards where every gap is < 48 h) the
-// 85 members nearest to t (60 before, 25 after) are printed (~6k tokens); the engine treats the rest as
-// "chain continues" — busy cards are scorer-unreliable anyway (PLAN §4.5) and the episode rule keeps cms_p >= 0.5.
+// Bounds (the same two caps as engine/facts_duckdb.py DuckFacts._chain, the engine of record, so the live chain
+// and the expectation sheet see the same rows): the walk stays inside +-7 days of t (CHAIN_SPAN_DAYS) and, when
+// the chain still has more than 200 members (CHAIN_MAX_ROWS), keeps the 100 before t and the 100 after it.
+// Sized from the data: every closed-case episode except 1 % spans <= 8.7 days, and HHG-018's first suspicious
+// transaction (3485990) sits 97 rows before its flag -- the old 60-before/85-row cap cut it off. With as_of =
+// opened_at at most ~5 rows follow t, so the printed chain is <= ~106 rows (~6k tokens) on the busiest card.
+// Scan window: [t - 7 d, min(as_of, t + 7 d)] (heap capacity 8000; HHG-011's card has ~330 txns/week).
 USE GRAPH FraudGraph
 CREATE OR REPLACE QUERY episode_candidates(VERTEX<Transaction> t, DATETIME as_of, INT gap_h) FOR GRAPH FraudGraph SYNTAX v3 {
   TYPEDEF TUPLE<INT ts_e, STRING id, STRING ts, FLOAT amt, STRING product_cd, STRING channel, STRING addr1,
@@ -8932,9 +9113,10 @@ CREATE OR REPLACE QUERY episode_candidates(VERTEX<Transaction> t, DATETIME as_of
                  @@t_pem += s.p_email, @@t_pcd += s.product_cd;
   D = SELECT d FROM (s:S)-[:FROM_DEVICE]->(d:DeviceProfile) POST-ACCUM @@t_strong += d.is_strong;
 
-  DATETIME from_ts = epoch_to_datetime(datetime_to_epoch(as_of) - 45 * 86400);
+  DATETIME from_ts = epoch_to_datetime(@@t_e - 7 * 86400);
+  DATETIME to_ts = epoch_to_datetime(@@t_e + 7 * 86400);
   X = SELECT x FROM (s:S)-[:REV_MADE]->(c:Card)-[:MADE]->(x:Transaction)
-      WHERE x.ts <= as_of AND x.ts >= from_ts
+      WHERE x.ts <= as_of AND x.ts >= from_ts AND x.ts <= to_ts
       ACCUM BOOL sig = false,
             IF @@t_strong AND x.device_id != "" AND x.device_id == @@t_dev THEN sig = true END,
             IF x.p_email != "" AND x.p_email == @@t_pem AND x.product_cd == @@t_pcd
@@ -8957,9 +9139,9 @@ CREATE OR REPLACE QUERY episode_candidates(VERTEX<Transaction> t, DATETIME as_of
     INT hi = ai;
     WHILE lo > 0 AND @@rows.get(lo).ts_e - @@rows.get(lo - 1).ts_e <= gap_s DO lo = lo - 1; END;
     WHILE hi + 1 < m AND @@rows.get(hi + 1).ts_e - @@rows.get(hi).ts_e <= gap_s DO hi = hi + 1; END;
-    IF hi - lo + 1 > 85 THEN
-      IF ai - 60 > lo THEN lo = ai - 60; END;
-      IF ai + 25 < hi THEN hi = ai + 25; END;
+    IF hi - lo + 1 > 200 THEN
+      IF ai - 100 > lo THEN lo = ai - 100; END;
+      IF ai + 100 < hi THEN hi = ai + 100; END;
     END;
     FOREACH k IN RANGE[lo, hi] DO
       @@chain += Out(@@rows.get(k).id, @@rows.get(k).ts, @@rows.get(k).amt, @@rows.get(k).product_cd,
@@ -9768,7 +9950,8 @@ queries:
     mandatory: true
     description: >
       Baselines and memory for one card up to as_of: every Card attribute (medians, max, modal region, ring_id,
-      burst look-alikes, WCC / degree / PPR), last-30-day aggregates, top-5 regions (with distinct days),
+      burst look-alikes, WCC / degree / PPR; the history counts n_txns, first/last_ts, median/p90/max amounts,
+      online / in-person counts, n_regions and n_devices_seen are recomputed over ts <= as_of), last-30-day aggregates, top-5 regions (with distinct days),
       top-5 device profiles (with strength), top-10 purchaser email domains, the customer's other cards,
       prior closed cases (with template_id: fraud_reported / cleared_travel / cleared_new_phone / cleared_amount /
       undoc_ring / undoc_burst — the cleared-precedent rule D9 matches on it) and prior agent-written cases on this
@@ -9819,8 +10002,9 @@ queries:
   device_neighbors:
     description: >
       Every card that used device profile d between from_ts and to_ts (R6 shared origin, rings): per card
-      n_txns, sum_amt, proxy and New counts, first/last use; plus the closed and agent-written cases on those
-      cards. If the profile is not strong (generic, e.g. "NULL | NULL | chrome 66.0 | NULL") only device{} is
+      n_txns, sum_amt, proxy and New counts, first/last use; plus the closed cases whose transactions used THIS
+      profile (not every case on those cards) and the agent-written cases on those cards opened before to_ts
+      (never the calling case itself). If the profile is not strong (generic, e.g. "NULL | NULL | chrome 66.0 | NULL") only device{} is
       returned and the lists are empty — generic profiles are never shared-device evidence.
       Wave scope for a ring: from_ts = first day of the month, to_ts = end of the exam period.
     parameters:
@@ -9898,8 +10082,9 @@ queries:
     description: >
       The <= gap_h-hour-gap chain of transactions on the card that contains the flagged transaction, up to
       as_of, with cms_p, device, email, amount, channel and sig_match (same strong device profile, or same
-      email + product with the amount within 5 % inside 2 h). Input to affected_txn_ids. Very busy cards
-      return the 85 members nearest the flagged transaction (60 before, 25 after).
+      email + product with the amount within 5 % inside 2 h). Input to affected_txn_ids. The chain stays within
+      7 days of the flagged transaction; a chain of more than 200 members prints the 100 before it and up to 100
+      after it (the same caps as the engine's DuckFacts).
     parameters:
       t: 'VERTEX<Transaction> — {"id": "3514948"}.'
       as_of: 'DATETIME — evidence cut-off.'
@@ -9958,7 +10143,8 @@ queries:
     harness_only: true
     description: >
       Case memory (GraphRAG): structurally related ClosedCase / AgentCase (same card, customer, device profile,
-      billing region or pattern in the 120 days before as_of) re-ranked by note-embedding similarity; at least
+      billing region or pattern in the 120 days before as_of; agent-written cases strictly before as_of, so a case
+      never retrieves its own AgentCase) re-ranked by note-embedding similarity; at least
       one cleared case when available. Harness-side tool find_similar_cases embeds the query text with
       rag.embed and calls it — the LLM never sees the 1024-float q.
     parameters:
@@ -11408,29 +11594,41 @@ engine:                                       # PLAN §4.5 (calibrated engine), 
 
 # §3 rules as when / require / forbid / add_if templates. Condition names are computed by
 # engine/policy.conditions(); `stage` is initial or final. A rule fires when every `when` holds.
+# `cite` is the README rule or section a rule (or one add_if branch) implements; policy.admissible reports
+# citations and fired rules by `cite`, never by the internal key (D-REASON: an action reason names R1-R10 or a
+# README section). A rule without `cite` is cited by its key (the R-rules).
 rules:
   3a_case:
+    cite: "3a"
     text: "Open a case whenever fraud probability reaches 0.30, whenever evidence is requested, or on any customer dispute."
     when: [case_open]
     require: [CREATE_CASE]
   3a_report_only:
+    cite: "3a"
     text: "Write up the investigation for the internal record without opening a case."
     when: [not_case_open]
     require: [GENERATE_REPORT]
-  R1:
+  R1:                                         # not on a customer denial: the denial is the customer's answer and R2 governs
     text: "Single signal and probability below 0.70: VERIFY_WITH_CUSTOMER or STEP_UP_AUTH before any block."
-    when: [single_signal, p_below_r1, not_settled]
+    when: [single_signal, p_below_r1, not_settled, not_r2_denial]
     require_one_of: [VERIFY_WITH_CUSTOMER, STEP_UP_AUTH]
     forbid: [BLOCK_CARD, BLOCK_ALL_CARDS]
-  R2:
+  R2:                                         # README §3b worked example: R1 governs BEFORE a denial; once the customer denies, the
+                                              # actions become BLOCK_CARD + CREATE_CASE (+ FILE_REPORT). A customer_report trigger IS
+                                              # the denial, so R2 applies from intake at any verdict, unless R7 matches (r2_denial).
+                                              # R2 is an action rule: it does not move the probability or the verdict.
     text: "Customer denies: BLOCK_CARD and CREATE_CASE; FILE_REPORT if exposure > $1,000 or shared device / another card's fraud."
-    when: [denial, verdict_fraud]
+    when: [r2_denial]
     require: [BLOCK_CARD, CREATE_CASE]
     add_if:
       - when: [sar_required]
         actions: [FILE_REPORT]
       - when: [shared_origin]
+        cite: "R6"
         actions: [MONITOR_CONNECTED_CARDS]
+      - when: [not_settled, stage_initial, channel_online]   # online dispute: possession check on further activity while the block awaits approval
+        cite: "§3b"
+        actions: [STEP_UP_AUTH]
   R3:
     text: "Customer confirms: CLOSE_NO_FRAUD and note the confirmation."
     when: [customer_confirmed]
@@ -11479,40 +11677,50 @@ rules:
     when: [not_two_cards_confirmed_fraud]
     forbid: [BLOCK_ALL_CARDS]
   uncertain_initial:                          # README notes: uncertain earns credit only with R1 / R8 actions → no block before evidence
+                                              # (not on a customer denial: R2 governs there)
+    cite: "§3b"
     text: "Uncertain verdict before evidence: CREATE_CASE, a verification (STEP_UP_AUTH online / VERIFY_WITH_CUSTOMER in person), MONITOR_CARD; no block."
-    when: [verdict_uncertain, stage_initial]
+    when: [verdict_uncertain, stage_initial, not_r2_denial]
     require: [CREATE_CASE, MONITOR_CARD]
     require_one_of: [VERIFY_WITH_CUSTOMER, STEP_UP_AUTH]
     forbid: [BLOCK_CARD, BLOCK_ALL_CARDS]
   uncertain_final:                            # verification came back but did not settle it (failed / not completed): R4 set; R8 only when gated (D3),
                                               # otherwise the case stays `open` with the reply pending
+    cite: "R4"
     text: "Uncertain verdict after the requested evidence: MONITOR_CARD and DECLINE_TRANSACTION for pending authorizations; escalate when R8 holds."
-    when: [verdict_uncertain, stage_final, not_customer_confirmed]
+    when: [verdict_uncertain, stage_final, not_customer_confirmed, requested]   # only after a request (a settled R2 denial asks none)
     require: [CREATE_CASE, MONITOR_CARD, DECLINE_TRANSACTION]
     add_if:
       - when: [r8_trigger]
+        cite: "R8"
         actions: [ESCALATE_TO_ANALYST]
   fraud_band:                                 # PLAN §4.5 / D1: the fraud set; one §3b verification is still asked while the case is not settled
-                                              # (§6 test 1: p >= 0.85 with two families), never once it is
+                                              # (§6 test 1: p >= 0.85 with two families), never once it is. R1 does not apply at p >= 0.70.
+    cite: "§3b"
     text: "Fraud verdict: CREATE_CASE, BLOCK_CARD; FILE_REPORT when 3a holds; MONITOR_CONNECTED_CARDS when a shared origin exists."
     when: [verdict_fraud]
     require: [CREATE_CASE, BLOCK_CARD]
     add_if:
       - when: [sar_required]
+        cite: "3a"
         actions: [FILE_REPORT]
       - when: [shared_origin]
+        cite: "R6"
         actions: [MONITOR_CONNECTED_CARDS]
       - when: [not_settled, stage_initial, not_analyst_request]
         actions_one_of: [VERIFY_WITH_CUSTOMER, STEP_UP_AUTH]
   legit_band:
+    cite: "§6"
     text: "Legitimate verdict: CLOSE_NO_FRAUD (and ALLOW_TRANSACTION for a risk alert)."
     when: [verdict_legit, settled]
     require: [CLOSE_NO_FRAUD]
     forbid: [BLOCK_CARD, BLOCK_ALL_CARDS, DECLINE_TRANSACTION, FILE_REPORT, MONITOR_CARD]
     add_if:
       - when: [risk_alert]
+        cite: "R3"
         actions: [ALLOW_TRANSACTION]
   legit_leaning_initial:                      # p <= 0.15 with one family: still verify (§6 needs two independent pieces)
+    cite: "§6"
     text: "Legitimate-leaning on a single family: verify before closing."
     when: [verdict_legit, not_settled, stage_initial]
     require: [CREATE_CASE]
@@ -11532,13 +11740,16 @@ sar:
   recipient_email_files: false
   reason_templates:
     file_exposure: "3a: fraud confirmed/strongly suspected and exposure ${exposure:,.2f} exceeds $1,000"
+    file_r2_exposure: "R2 / 3a: the customer denied the transaction (fraud strongly suspected) and exposure ${exposure:,.2f} exceeds $1,000"
     file_shared_device: "3a / R6: fraud connects to the shared device profile `{profile}` used by {n_cards} other cards, {n_fraud} of them with confirmed fraud"
     file_ring: "3a / R6 / R9: coordinated undocumented pattern — anonymous-proxy device ring `{profile}` spanning {n_cards} other cards"
     file_undocumented: "3a / R9: undocumented coordinated pattern ({description})"
     file_other_customer: "3a / R2: the episode connects to another customer's confirmed fraud ({cases})"
     not_fraud: "3a not met: verdict {verdict} (fraud not confirmed or strongly suspected), exposure ${exposure:,.2f}; no report"
     not_met: "3a not met: exposure ${exposure:,.2f} <= $1,000; {device_clause}; no shared region cluster; no other customer's fraud connected; documented pattern"
-    device_generic: "the {new_word}profile `{profile}` is used by {n_cards} cards with no fraud linkage strong enough to be a shared-origin signal"
+    not_met_r2: "R2 / 3a not met: the customer denied the transaction, but exposure ${exposure:,.2f} <= $1,000; {device_clause}; no other card's fraud connected; documented pattern; no report"
+    device_generic: "the {new_word}profile `{profile}` is used by {n_cards} cards (this one included) in the 30 days before the case opened, with no fraud linkage strong enough to be a shared-origin signal"
+    device_common: "the {new_word}profile `{profile}` is a common, non-distinctive profile (not a strong device profile), so it is not a shared-origin signal"
     device_none: "no device profile shared with other cards' fraud"
 
 # Simulated replies (README §5: replies are not provided; state the assumption). Text templates come
@@ -11587,6 +11798,11 @@ label(chain_members, card_modal_region, flags) -> pattern
             ring_hit            strong anonymous-proxy ring profile on the episode      → undocumented
             burst_hit           >= 4 x $450-499.99 online within 40 min                  → undocumented
             card_testing_chain  all-online episode, >= 5 members, >= 1 sub-$5 member    → card_testing
+
+out_of_region_use = an all-card-present episode that leaves the card's modal (home) region. "No history" in the
+README's wording is read as "away from home", which is how the bank labels it: 581 of the 955 confirmed
+out_of_region_use closed cases had every transaction in a region the card had used >= 5 times before, and only 173
+touched a never-used region (tests/unit/test_engine_r2.py). A "region must be new" rule would mislabel most of them.
 """
 from __future__ import annotations
 
@@ -11919,7 +12135,9 @@ def compute(ctx: CaseContext, facts: Facts, evidence: list[Evidence]) -> Scoreca
         "flagged_addr1": txn["addr1"],
         "flagged_device_id": txn["device_id"],
         "flagged_device_new": txn["device_new"],
-        "flagged_device_cards": int(dev.get("n_cards_alltime", 0) or 0),
+        # cards on the flagged profile in device_neighbors' window (30 days before the flag up to as_of; the card itself
+        # included), the count the evidence cites; the profile's all-time n_cards reaches past opened_at (D-MISC HHG-019)
+        "flagged_device_cards": len(dn.get("cards", []) or []),
         "flagged_device_strong": bool(dev.get("is_strong")),
         "channel": txn["channel"],
         "modal_region": modal,
@@ -12077,7 +12295,7 @@ def compute(ctx: CaseContext, facts: Facts, evidence: list[Evidence]) -> Scoreca
         if n48 >= 2 and n_online <= 0.1 * n_txns and seq >= 10:
             led.append(
                 Evidence(
-                    f"{n48 + 1} online purchases within 48 h on a card that is {100 * n_online / n_txns:.0f}% in-person",
+                    f"{n48 + 1} online purchases within 48 h on a card that is {100 - 100 * n_online / n_txns:.0f}% in-person",
                     "graph",
                     _q("card_window", card=cid, hours=72),
                     [txn["id"], cid],
@@ -12172,10 +12390,10 @@ def compute(ctx: CaseContext, facts: Facts, evidence: list[Evidence]) -> Scoreca
     in_person = [m for m in raw48 if m["channel"] == "in_person"]
     online = [m for m in raw48 if m["channel"] == "online"]
     med_all = float(pcard.get("median_amt", 0) or 0)
-    max_ip_alltime = float(pcard.get("max_in_person_amt", 0) or 0)
+    max_ip_asof = float(pcard.get("max_in_person_amt", 0) or 0)
     ip_max = max((float(m["amt"]) for m in in_person), default=0.0)
     # clause A: a mixed-channel spree whose in-person members hold the card's in-person record and dwarf its median
-    spree = bool(in_person and online and med_all > 0 and ip_max > 3 * med_all and ip_max >= max_ip_alltime - 0.01 and sum(float(m["amt"]) for m in raw48) > P["conflict_min_exposure"])
+    spree = bool(in_person and online and med_all > 0 and ip_max > 3 * med_all and ip_max >= max_ip_asof - 0.01 and sum(float(m["amt"]) for m in raw48) > P["conflict_min_exposure"])
     # clause B: a New device from a never-seen region; the online New-device activity itself must exceed the threshold
     new_dev_new_region = bool(
         txn["channel"] == "online" and txn["device_new"] == "New" and int(txn.get("prior_on_dev", 0)) == 0 and txn["addr1"] and int(txn.get("prior_in_region", 0)) == 0 and seq >= 10
@@ -12708,6 +12926,14 @@ its `when` names hold; `not_<name>` negates. Fired rules contribute require / re
 add_if; the deterministic recommendation is required ∪ (one representative of each require_one_of),
 minus forbidden, ordered. Conflicts between a require and a forbid are resolved in favour of the
 forbid (R1 / R7 / the uncertain band protect the customer) and reported in `citations["_conflicts"]`.
+
+Citations and `fired` name the README rule or section each YAML rule implements (its `cite`, e.g. `§3b`
+for the fraud band, `R4` for the uncertain final set), never an internal key such as `fraud_band`.
+
+R2 (a customer denial) is an action rule that applies from intake at any verdict, unless R7 matches
+(`r2_denial`): the README §3b worked example has R1 govern BEFORE a denial and R2 once the customer has
+denied, and a customer_report trigger is the denial itself. An in-person denial is settled at intake
+(`settled_pre`): the customer has already answered, so there is no customer_validation to ask.
 """
 from __future__ import annotations
 
@@ -12740,14 +12966,36 @@ def order(actions: list[dict]) -> list[dict]:
 
 
 # ----------------------------------------------------------------------------- conditions
+def r2_denial(sc: Scorecard) -> bool:
+    """R2 applies: the customer denied the transaction (the customer_report trigger, or a denial returned by a
+    customer_validation request), the charge does not match the customer's own recurring pattern (R7 is the only
+    exception) and the customer has not since withdrawn the dispute. A failed step-up on a fraud verdict keeps the
+    earlier R2 path (`denial ∧ verdict_fraud` in conditions)."""
+    f = sc.flags
+    outcome = f.get("outcome", "")
+    if f.get("recurring_match"):
+        return False
+    pattern_hit = bool(f.get("ring_hit") or f.get("burst_hit"))
+    if outcome in ("confirm", "pass") and not pattern_hit:
+        return False
+    return bool(f.get("denial")) or outcome == "deny"
+
+
+def denial_settles(sc: Scorecard) -> bool:
+    """§6 test 2 at intake: an in-person R2 denial needs no request — the customer already answered the
+    customer_validation question in the trigger, and step-up authentication is an online possession check."""
+    return r2_denial(sc) and not sc.flags.get("outcome") and sc.flags.get("channel") != "online"
+
+
 def settled_pre(sc: Scorecard) -> bool:
-    """§6 test 1 before any request. With the verify_before_close house rule the low side never
-    settles pre-evidence (a legit-leaning alert is verified first, as every cleared alert in history was)."""
+    """§6 test 1 before any request (or §6 test 2 on an in-person customer denial, `denial_settles`). With the
+    verify_before_close house rule the low side never settles pre-evidence (a legit-leaning alert is verified
+    first, as every cleared alert in history was)."""
     P = params()
     T, E = P["thresholds"], P["engine"]
     high = sc.p_engine >= T["stop_high"] and len(sc.families_fraud) >= T["stop_min_families"]
     low = sc.p_engine <= T["stop_low"] and len(sc.families_legit) >= T["stop_min_families"] and not E.get("verify_before_close", True)
-    return bool(high or low)
+    return bool(high or low or denial_settles(sc))
 
 
 def conditions(ctx: CaseContext, sc: Scorecard, stage: str) -> dict:
@@ -12769,12 +13017,14 @@ def conditions(ctx: CaseContext, sc: Scorecard, stage: str) -> dict:
     F_, L_ = set(sc.families_fraud) - {"customer"}, set(sc.families_legit) - {"customer"}
     conflict = bool(f.get("conflict") or (F_ and L_))
     c = {
-        "stage_initial": stage == "initial", "stage_final": stage == "final",
+        "stage_initial": stage == "initial", "stage_final": stage == "final", "requested": asked,
         "verdict_fraud": sc.verdict == "fraud", "verdict_uncertain": sc.verdict == "uncertain", "verdict_legit": sc.verdict == "legitimate",
         "p_below_r1": p < T["r1_probability"], "p_below_stop_high": p < T["stop_high"],
         "single_signal": n_f < 2,
         "settled": bool(settled), "case_open": p >= T["case_open_probability"] or f.get("denial", False) or asked or ctx.trigger_type == "analyst_request",
         "denial": bool(f.get("denial")) or outcome == "deny" or outcome == "fail",
+        # README R2 + §3b example: a customer denial (not R7) takes R2 at any verdict; a failed step-up on a fraud verdict keeps R2 too
+        "r2_denial": r2_denial(sc) or ((bool(f.get("denial")) or outcome in ("deny", "fail")) and sc.verdict == "fraud"),
         "customer_confirmed": cleared,
         "no_reply": outcome in ("no_reply", "inconclusive") or (outcome in ("confirm", "pass") and pattern_hit),
         "risk_alert": ctx.trigger_type == "risk_score", "analyst_request": ctx.trigger_type == "analyst_request",
@@ -12813,6 +13063,12 @@ def _pick_one(options: list[str], c: dict, chosen: set[str]) -> str:
     return "VERIFY_WITH_CUSTOMER" if "VERIFY_WITH_CUSTOMER" in options else options[0]
 
 
+def cite(name: str, branch: dict | None = None) -> str:
+    """The README rule / section a YAML rule (or one of its add_if branches) implements (D-REASON)."""
+    rule = params()["rules"][name]
+    return str((branch or {}).get("cite") or rule.get("cite") or name)
+
+
 def admissible(ctx: CaseContext, sc: Scorecard, stage: str) -> dict:
     P = params()
     c = conditions(ctx, sc, stage)
@@ -12823,19 +13079,22 @@ def admissible(ctx: CaseContext, sc: Scorecard, stage: str) -> dict:
     for name, rule in P["rules"].items():
         if not all(c.get(w, False) for w in rule.get("when", [])):
             continue
-        fired.append(name)
+        label = cite(name)
+        if label not in fired:
+            fired.append(label)
         for a in rule.get("require", []):
-            required.setdefault(a, []).append(name)
+            required.setdefault(a, []).append(label)
         if rule.get("require_one_of"):
-            one_of.append((name, rule["require_one_of"]))
+            one_of.append((label, rule["require_one_of"]))
         for a in rule.get("forbid", []):
-            forbidden.setdefault(a, []).append(name)
+            forbidden.setdefault(a, []).append(label)
         for extra in rule.get("add_if", []):
             if all(c.get(w, False) for w in extra.get("when", [])):
+                blabel = cite(name, extra)
                 for a in extra.get("actions", []):
-                    required.setdefault(a, []).append(name)
+                    required.setdefault(a, []).append(blabel)
                 if extra.get("actions_one_of"):
-                    one_of.append((name, extra["actions_one_of"]))
+                    one_of.append((blabel, extra["actions_one_of"]))
     chosen = set(required)
     for name, opts in one_of:
         a = _pick_one(opts, c, chosen)
@@ -12895,7 +13154,14 @@ def sar_required(sc: Scorecard) -> tuple[bool, str]:
     f = sc.flags
     exp = sc.exposure_usd
     if sc.verdict != "fraud":
-        return False, S["not_fraud"].format(verdict=sc.verdict, exposure=exp)
+        # R2: "Add FILE_REPORT if exposure exceeds $1,000" — the customer's denial is the strong suspicion 3a asks for, so an
+        # R2 case files on exposure even while the graph evidence leaves the verdict uncertain (the bank filed on every
+        # customer-reported case above $1,000). The shared-device / other-card clause keeps the ring-grade reading below.
+        if not r2_denial(sc):
+            return False, S["not_fraud"].format(verdict=sc.verdict, exposure=exp)
+        if exp > T["r2_report_exposure"]:
+            return True, S["file_r2_exposure"].format(exposure=exp)
+        return False, S["not_met_r2"].format(exposure=exp, device_clause=_device_clause(sc))
     if f.get("ring_hit"):
         return True, S["file_ring"].format(profile=f["ring_id"], n_cards=len(f.get("wave_cards", [])))
     if sc.pattern == "undocumented":
@@ -12906,16 +13172,22 @@ def sar_required(sc: Scorecard) -> tuple[bool, str]:
         return True, S["file_shared_device"].format(profile=f.get("flagged_device_id", ""), n_cards=len(f["shared_fraud_cards"]), n_fraud=len(f["shared_fraud_cards"]))
     if f.get("shared_recipient_email") and P["sar"].get("recipient_email_files", False):
         return True, S["file_other_customer"].format(cases=", ".join(f["shared_recipient_email"]))
+    return False, S["not_met"].format(exposure=exp, device_clause=_device_clause(sc))
+
+
+def _device_clause(sc: Scorecard) -> str:
+    S = params()["sar"]["reason_templates"]
+    f = sc.flags
     dev_id = f.get("flagged_device_id", "")
     if f.get("shared_fraud_cards"):
-        clause = (f"the strong profile `{dev_id}` is shared with {len(f['shared_fraud_cards'])} other cards' fraud (monitored under R6) but is not a "
-                  f"ring-grade link: the bank's 397 filed reports were all exposure > $1,000 or the anonymous-proxy ring")
-    elif dev_id:
-        n_cards = f.get("flagged_device_cards", 0)
-        clause = S["device_generic"].format(new_word="New " if f.get("flagged_device_new") == "New" else "", profile=dev_id, n_cards=n_cards)
-    else:
-        clause = S["device_none"]
-    return False, S["not_met"].format(exposure=exp, device_clause=clause)
+        return (f"the strong profile `{dev_id}` is shared with {len(f['shared_fraud_cards'])} other cards' fraud (monitored under R6) but is not a "
+                f"ring-grade link: the bank's 397 filed reports were all exposure > $1,000 or the anonymous-proxy ring")
+    if dev_id:
+        new_word = "New " if f.get("flagged_device_new") == "New" else ""
+        if not f.get("flagged_device_strong"):
+            return S["device_common"].format(new_word=new_word, profile=dev_id)
+        return S["device_generic"].format(new_word=new_word, profile=dev_id, n_cards=f.get("flagged_device_cards", 0))
+    return S["device_none"]
 ```
 
 
@@ -12929,7 +13201,8 @@ should_ask(ctx, sc, request_type) -> (ask, branches)
 A request is worth making only if at least one assumed outcome changes the FINAL action set.
 branches = {outcome: [action names]} for every outcome the request type can produce, computed by
 running policy.admissible on the post-evidence scorecard of each branch. The stop rule (§6 test 1)
-is checked by the caller before this: a settled case never asks.
+is checked by the caller before this: a settled case never asks. A customer_validation request is never
+made on an R2 denial (the customer already answered it in the trigger).
 """
 from __future__ import annotations
 
@@ -12954,6 +13227,10 @@ def request_type_for(ctx: CaseContext, sc: Scorecard) -> str:
 
 
 def should_ask(ctx: CaseContext, sc: Scorecard, request_type: str) -> tuple[bool, dict]:
+    # R2: a customer who has denied the charge has already answered the customer_validation question; asking it again
+    # cannot change the R2 action set (only R7, a recurring-charge match, re-asks — r2_denial is False there).
+    if request_type == "customer_validation" and policy.r2_denial(sc) and not sc.flags.get("outcome"):
+        return False, {}
     branches: dict[str, list[str]] = {}
     for outcome in OUTCOMES[request_type]:
         post = scorecard.post_evidence(sc, outcome)
@@ -13114,6 +13391,11 @@ def stop_reason(sc_pre: Scorecard, sc_post: Scorecard | None, asked: bool, voi_z
         if sc_pre.p_engine <= T["stop_low"] and len(sc_pre.families_legit) >= T["stop_min_families"]:
             return (f"Policy §6 test 1: fraud probability {sc_pre.p_engine:.2f} is at or below {T['stop_low']} with {len(sc_pre.families_legit)} independent "
                     f"evidence families ({fam(sc_pre)}); further steps would not change the decision.")
+        from engine.policy import denial_settles
+        if denial_settles(sc_pre):
+            return ("Policy §6 test 2: the customer's own denial in the trigger is the verification response, and R2 fixes the action set "
+                    "(BLOCK_CARD and CREATE_CASE, as in the README §3b example once a customer denies); re-asking the customer would repeat "
+                    "the question already answered and step-up authentication does not apply to a card-present purchase, so no evidence request was made.")
         return "Policy §6 test 3: no admissible evidence request could change the recommended actions (value of information zero), so the investigation stopped at a defensible decision."
     assert sc_post is not None
     out = sc_post.flags.get("outcome", "")
@@ -13134,7 +13416,9 @@ def stop_reason(sc_pre: Scorecard, sc_post: Scorecard | None, asked: bool, voi_z
         return (f"Policy §6 test 3: the verification was not completed within the window and the probability stayed at {sc_post.p_engine:.2f}; "
                 "the fraud-band actions (block pending approval) already apply, so no further automated step would change the recommendation.")
     escalated = "the case is escalated to an analyst (R8)" if sc_post.flags.get("escalated") else "the case stays open for the reply"
-    return (f"Policy §6 test 3: the verification was not answered within the window; R4 applies (monitor + decline pending authorisations) and {escalated}, "
+    from engine.policy import r2_denial
+    block = "R2's block on the customer's denial stands pending approval, " if r2_denial(sc_post) else ""
+    return (f"Policy §6 test 3: the verification was not answered within the window; {block}R4 applies (monitor + decline pending authorisations) and {escalated}, "
             "so no further automated step would change the recommendation until a reply arrives.")
 ```
 
@@ -13153,10 +13437,12 @@ before the validator runs again on the file.
 """
 from __future__ import annotations
 
+import re
 from datetime import datetime
 
 from engine import policy
 from engine.types import CaseContext, Evidence, Scorecard
+from engine.validator import uncertain_block_violation
 
 TS_FMT = "%Y-%m-%d %H:%M:%S"
 
@@ -13190,6 +13476,11 @@ def reasons_for(actions: list[str], adm: dict, ctx: CaseContext, sc: Scorecard, 
             what = "ask the cardholder which of the transactions were theirs" if a == "VERIFY_WITH_CUSTOMER" else "one-time passcode / app confirmation as a possession check before further activity"
             if "R7" in cites:
                 r = "R7: the disputed charge matches the card's own recurring pattern; verify the recurrence with the customer"
+            elif a == "STEP_UP_AUTH" and "R5" in cites:
+                r = "R5: card-testing sequence observed; require a one-time passcode / app confirmation before further activity"
+            elif a == "STEP_UP_AUTH" and policy.r2_denial(sc) and "R1" not in cites:
+                r = (f"§3b / §5: the customer denied this online purchase; {what}, while the R2 block awaits "
+                     f"{adm['routes']['BLOCK_CARD']} approval")
             elif single and "R1" in cites:
                 r = f"R1: probability {p:.2f} rests on a single evidence family ({_fams(sc.families_fraud) if sc.families_fraud else _fams(sc.families_legit)}); {what} before any block"
             elif sc.verdict == "uncertain":
@@ -13202,7 +13493,7 @@ def reasons_for(actions: list[str], adm: dict, ctx: CaseContext, sc: Scorecard, 
             elif sc.verdict == "uncertain":
                 r = "§3b / §5: verdict uncertain; raise monitoring for 72 h while the verification is pending"
             else:
-                r = f"fraud verdict at {p:.2f}: monitor further activity on the card until the block is approved"
+                r = f"§3b: fraud verdict at {p:.2f}; monitor further activity on the card until the block is approved"
         elif a == "MONITOR_CONNECTED_CARDS":
             if f.get("ring_hit"):
                 r = f"R6: {len(f.get('wave_cards', []))} other cards share the device profile `{f.get('ring_id')}` in this wave; every sharing card goes under monitoring"
@@ -13213,11 +13504,15 @@ def reasons_for(actions: list[str], adm: dict, ctx: CaseContext, sc: Scorecard, 
         elif a == "BLOCK_CARD":
             rt = adm["routes"]["BLOCK_CARD"]
             if "R2" in cites:
-                r = f"R2: customer denied the transaction; exposure ${exp:,.2f} {'is under' if rt == 'L1' else 'exceeds'} $2,500 so route {rt}"
+                r = f"R2: customer denied the transaction; exposure ${exp:,.2f} {'is at or under' if rt == 'L1' else 'exceeds'} $2,500 so route {rt}"
+                if sc.verdict != "fraud":
+                    r += (f"; the denial is the customer's answer, so R2 governs from intake (README §3b example) although the graph evidence "
+                          f"leaves the verdict {sc.verdict} at {p:.2f}")
             elif "R5" in cites:
                 r = f"R5: a purchase over $100 already cleared after the testing run; exposure ${exp:,.2f}, route {rt}"
             else:
-                r = f"fraud verdict: probability {p:.2f} with {n_f} independent evidence families ({_fams(sc.families_fraud)}); R1 not applicable; exposure ${exp:,.2f} routes {rt}"
+                r = (f"§3b: fraud verdict at probability {p:.2f} with {n_f} independent evidence famil{'y' if n_f == 1 else 'ies'} "
+                     f"({_fams(sc.families_fraud)}), so R1 does not apply (probability at or above 0.70); exposure ${exp:,.2f} routes {rt}")
         elif a == "FILE_REPORT":
             r = policy.sar_required(sc)[1]
         elif a == "ESCALATE_TO_ANALYST":
@@ -13279,18 +13574,26 @@ def draft_summary(ctx: CaseContext, sc_pre: Scorecard, sc_post: Scorecard, initi
         trig = f"Customer {ctx.customer_id} disputed transaction {ctx.flagged_txn_id} ({amt_ch}) on card {ctx.card_id}"
     else:
         trig = f"Analyst request on transaction {ctx.flagged_txn_id} ({amt_ch}) on card {ctx.card_id}"
-    top = sorted([e for e in sc_post.evidence if e.direction != "neutral"], key=lambda e: -e.weight)[:2]
-    key = " ".join((e.claim if len(e.claim) <= 220 else e.claim[:217].rsplit(" ", 1)[0] + "...").rstrip(".") + "." for e in top)
+    # README: "Two to six sentences an analyst could read" / "Keep summary short" (agent.validator: <= 700 characters);
+    # the evidence list carries the detail, so the summary names only the strongest item
+    top = sorted([e for e in sc_post.evidence if e.direction != "neutral"], key=lambda e: -e.weight)[:1]
+    key = " ".join(_clip(e.claim, 200) for e in top)
     verdict = f"Verdict {sc_post.verdict} at probability {sc_post.p_engine:.2f}"
     if sc_post.verdict != "legitimate":
         verdict += f", pattern {sc_post.pattern}, {len(sc_post.episode_ids)} affected transaction(s) worth ${sc_post.exposure_usd:,.2f}"
-    verdict += f" (families for fraud: {_fams(sc_post.families_fraud)}; for legitimacy: {_fams(sc_post.families_legit)})."
-    acts = "Initial actions: " + ", ".join(a["action"] for a in initial) + "."
-    if request:
-        acts += f" Assumed {request['type']} reply: {request['assumed_response'].replace('ASSUMED (simulated): ', '')}. Final actions: " + ", ".join(a["action"] for a in final) + "."
-    else:
-        acts += " No evidence request was needed; final equals initial."
-    return f"{trig}. {key} {verdict} {acts} Status {status}."
+    verdict += "."
+    acts = "Final actions: " + ", ".join(a["action"] for a in final)
+    acts += (f" after the assumed {request['type']} reply" if request else "; no evidence request was needed") + f"; status {status}."
+    out = f"{trig}. {key} {verdict} {acts}"
+    return out if len(out) <= 700 else f"{trig}. {verdict} {acts}"
+
+
+def _clip(text: str, n: int) -> str:
+    """The first sentence of `text`, cut at a word boundary to at most n characters, ending in one full stop."""
+    first = re.split(r"(?<=[.!?])\s+(?=[A-Z(])", " ".join(text.split()))[0]
+    if len(first) > n:
+        return first[: n - 3].rsplit(" ", 1)[0].rstrip(",;:") + "..."
+    return first.rstrip(".") + "."
 
 
 def draft_sar(ctx: CaseContext, sc: Scorecard, facts: dict, graph_case_id: str) -> dict:
@@ -13340,7 +13643,8 @@ def draft_sar(ctx: CaseContext, sc: Scorecard, facts: dict, graph_case_id: str) 
     prior_sar = [c for c in (facts.get("prior_cases_for_customer") or {}).get("closed_cases", []) if c.get("report_filed")]
     s.append(f"{len(prior_sar)} prior report(s) were filed on this customer ({', '.join(c['id'] for c in prior_sar)})." if prior_sar else "No prior report has been filed on this customer.")
     s.append("OFAC SDN screening of the customer identifier: no match (anonymised identifiers; screening result recorded from the sdn.csv lookup in the live run).")
-    s.append("Recommended actions: card blocked and reissued pending team-lead approval, internal case opened" +
+    approver = "team-lead" if sc.exposure_usd <= 2500 else "fraud-manager"      # BLOCK_CARD route L1 / L2 (README §8)
+    s.append(f"Recommended actions: a block and reissue of the card, not yet done and awaiting {approver} approval, internal case opened" +
              (f", {len(sc.connected_card_ids)} connected cards placed under monitoring" if sc.connected_card_ids else "") + ", case escalated to an analyst.")
     narrative = " ".join(s)
     return {"file": True, "reason": reason, "narrative": narrative, "subjects": subjects,
@@ -13410,7 +13714,7 @@ def assert_invariants(ans: dict) -> None:
     if "BLOCK_CARD" in fin:
         assert c["verdict"] != "legitimate"
     if c["verdict"] == "uncertain":
-        assert not any(a in ("BLOCK_CARD", "BLOCK_ALL_CARDS") for a in ini), "uncertain ⇒ no block in initial"
+        assert not uncertain_block_violation(nba["initial"]), "uncertain ⇒ no block in initial (except an R2 BLOCK_CARD on a customer denial)"
         assert c["status"] in ("escalated", "open"), "uncertain ⇒ status escalated or open"
     assert (nba["what_changed"] == "nothing") == (ini == fin), "what_changed == 'nothing' ⇔ initial == final"
     if ini != fin:
@@ -13454,6 +13758,19 @@ FRAUD_CONTAINMENT = {"BLOCK_CARD", "DECLINE_TRANSACTION", "ESCALATE_TO_ANALYST",
 _CARD = re.compile(r"C\d{5}-K\d")
 _CUST = re.compile(r"C\d{5}")
 _CC = re.compile(r"CC-\d{4}")
+_R2_CITE = re.compile(r"\bR2\b")
+
+
+def uncertain_block_violation(initial: list[dict]) -> bool:
+    """`uncertain ⇒ no block in initial` (PLAN §4.7), with the README R2 exception: a customer denial takes BLOCK_CARD from
+    intake at any verdict (README §3b example), so an initial BLOCK_CARD whose reason cites R2 is allowed. BLOCK_ALL_CARDS
+    never is (R10)."""
+    for a in initial:
+        if a["action"] == "BLOCK_ALL_CARDS":
+            return True
+        if a["action"] == "BLOCK_CARD" and not _R2_CITE.search(a.get("reason") or ""):
+            return True
+    return False
 
 
 class FactsResolver:
@@ -13708,8 +14025,8 @@ def validate(answer: dict, db, meta: dict | None = None) -> list[str]:
     if "CLOSE_NO_FRAUD" in fin and c["verdict"] != "legitimate":
         e.append("CLOSE_NO_FRAUD in final ⇒ verdict legitimate")
     if c["verdict"] == "uncertain":
-        if any(a in ("BLOCK_CARD", "BLOCK_ALL_CARDS") for a in ini):
-            e.append("uncertain ⇒ no block in initial")
+        if uncertain_block_violation(nba["initial"]):
+            e.append("uncertain ⇒ no block in initial (except an R2 BLOCK_CARD on a customer denial)")
         if c["status"] not in ("escalated", "open"):
             e.append("uncertain ⇒ status escalated or open")
     if c["verdict"] != "legitimate" and not c["affected_txn_ids"]:
@@ -13918,6 +14235,8 @@ class DuckFacts:
                 "has_identity", "device_new", "proxy", "device_type", "device_id", "cms_p", "card_seq", "prior_in_region",
                 "prior_on_dev", "prior_pem", "prior_pcd", "prior_med_amt", "prior_max_amt", "ring_hit", "burst_id"]
         card = _rows(self.q("SELECT id, card_type, card_network, modal_region, n_txns, ring_id, customer_id FROM card_feat WHERE id = ?", txn["card_id"]))[0]
+        # n_txns time-boxed to ts <= as_of, as case_context.gsql counts it (card_feat.n_txns is whole-history)
+        card["n_txns"] = int(self.q("SELECT count(*) n FROM txc WHERE card_id=? AND ts <= ?::TIMESTAMP", txn["card_id"], as_of).n[0])
         cust = _rows(self.q("SELECT id, n_cards FROM customer_feat WHERE id = ?", card["customer_id"]))[0]
         return {"txn": {k: txn[k] for k in keys},
                 "card": {k: card[k] for k in ("id", "card_type", "card_network", "modal_region", "n_txns", "ring_id")},
@@ -13926,6 +14245,15 @@ class DuckFacts:
     def card_profile(self, c, as_of: str) -> dict:
         cid = _vid(c)
         card = _rows(self.q("SELECT * FROM card_feat WHERE id = ?", cid))[0]
+        # the history fields are recomputed over ts <= as_of, as card_profile.gsql does (card_feat holds whole-history values)
+        hist = _rows(self.q("""SELECT count(*) n_txns, min(ts) first_ts, max(ts) last_ts, coalesce(quantile_cont(amt, 0.5), 0) median_amt,
+                                 coalesce(quantile_cont(amt, 0.9), 0) p90_amt, coalesce(max(amt), 0) max_amt,
+                                 coalesce(max(amt) FILTER (WHERE channel='in_person'), -1) max_in_person_amt,
+                                 count(*) FILTER (WHERE channel='online') n_online, count(*) FILTER (WHERE channel='in_person') n_in_person,
+                                 count(DISTINCT addr1) FILTER (WHERE addr1<>'') n_regions,
+                                 count(DISTINCT device_id) FILTER (WHERE device_id<>'') n_devices_seen
+                                 FROM txc WHERE card_id=? AND ts <= ?::TIMESTAMP""", cid, as_of))[0]
+        card.update(hist)
         card["first_ts"], card["last_ts"] = _ts(card["first_ts"]), _ts(card["last_ts"])
         last30 = _rows(self.q("""SELECT count(*) n, round(coalesce(sum(amt),0),2) sum_amt, count(*) FILTER (WHERE channel='online') n_online,
                                   count(DISTINCT addr1) FILTER (WHERE addr1<>'') n_regions,
@@ -14683,7 +15011,9 @@ Samples (seeded, reproducible):
   100 cleared cases replayed as risk_score triggers          (flagged = the alert transaction)
   150 confirmed_fraud cases replayed as customer_report      (flagged = first_fraud_txn_id)
    30 confirmed_fraud cases replayed as risk_score triggers where the first fraud txn had risk >= 0.5
-   30 cleared cases replayed as SYNTHETIC customer disputes  (the R7 / uncertain gate must not block them)
+   30 cleared cases replayed as SYNTHETIC customer disputes  (a denial takes R2's BLOCK_CARD at any verdict — README R2 and
+                                                             the §3b example — so these are blocked unless R7 matches; the
+                                                             guardrail is that an R7-matched dispute is never blocked)
 
 Scorer probabilities for Jul-Oct rows are the ETL's month-wise out-of-fold cms_p (etl/cms_train.py step 3,
 `txn_feat.cms_fold = oof-2016-MM`), so the flagged transaction's own label never leaks into its score; the
@@ -14693,8 +15023,8 @@ to opened_at by the facts layer and the replayed case itself is stripped from ev
 and Card.ring_id are all-time attributes (as in the graph) — the one known optimism of this replay.
 
 Metrics: pattern accuracy, SAR decision accuracy, episode Jaccard, verdict accuracy per trigger,
-Brier / ECE of the final probability, action-set F1 vs actions_taken per trigger, synthetic disputes
-blocked in initial (target 0). Writes out/replay_metrics.json and out/replay_rows.csv.
+Brier / ECE of the final probability, action-set F1 vs actions_taken per trigger, R7-matched disputes
+blocked in initial (target 0; synthetic disputes blocked is a diagnostic). Writes out/replay_metrics.json and out/replay_rows.csv.
 
 Run:  python -m engine.replay           (~2 min)
 """
@@ -14722,14 +15052,17 @@ TARGETS: list[tuple[str, str, str | None, float, str]] = [
     ("SAR decision accuracy", "sar_accuracy_fraud_all", "sar_accuracy_fraud_verdict_fraud", 1.00, "min"),
     ("episode Jaccard", "episode_jaccard_fraud_all", "episode_jaccard_fraud_verdict_fraud", 0.85, "min"),
 ]
-# The only count with a target in the module docstring: the R7 / uncertain gate must not block a
-# synthetic dispute. Everything else that is merely diagnostic goes in the diagnostics table, with
+# The only count with a target in the module docstring: R7 ("disputed but legitimate: do not block") must hold on
+# every dispute whose charge matches the customer's own recurring pattern. The former guardrail "no synthetic dispute
+# blocked in initial" contradicted README R2 (a customer denial is answered with BLOCK_CARD at any verdict; R7 is the
+# only exception), so it is reported as a diagnostic. Everything merely diagnostic goes in the diagnostics table, with
 # no pass/fail mark, so "targets met" stays an honest count of the stated targets.
 GUARDRAILS: list[tuple[str, str, float, str]] = [
-    ("synthetic disputes blocked in initial", "synthetic_disputes_blocked_initial", 0, "max"),
+    ("R7-matched disputes blocked in initial", "r7_disputes_blocked_initial", 0, "max"),
 ]
 DIAGNOSTICS: list[tuple[str, str]] = [
-    ("synthetic disputes blocked in final", "synthetic_disputes_blocked_final"),
+    ("synthetic disputes blocked in initial (R2)", "synthetic_disputes_blocked_initial"),
+    ("synthetic disputes blocked in final (R2)", "synthetic_disputes_blocked_final"),
     ("cleared cases given a false episode", "cleared_false_episodes"),
     ("cases that raised and were skipped", "n_failed"),
 ]
@@ -14985,6 +15318,8 @@ def main() -> None:
     m["per_group"] = per
     m["synthetic_disputes_blocked_initial"] = per.get("cleared_as_synthetic_dispute", {}).get("blocked_initial")
     m["synthetic_disputes_blocked_final"] = per.get("cleared_as_synthetic_dispute", {}).get("blocked_final")
+    disputes = good[good.trigger == "customer_report"]
+    m["r7_disputes_blocked_initial"] = int((disputes.r7.astype(bool) & disputes.blocked_initial.astype(bool)).sum())
     json.dump(m, open(config.OUT_DIR / "replay_metrics.json", "w"), indent=1, default=str)
 
     # ---- report (display only; `m` above is already on disk, untouched by anything below) ----
@@ -15021,6 +15356,203 @@ if __name__ == "__main__":
 
 
 ---
+
+#### `tests/unit/test_engine_r2.py`
+README R2 from intake at any verdict (R7 the only exception), rule-id citations that the agent's reason validator
+accepts, and the out_of_region_use labelling convention, pinned on the policy table and the exam pack.
+```python
+"""R2 from intake, rule-id citations and the out_of_region_use convention (engine fix pass, D-R2 / D-REASON / D-LABEL).
+
+README R2: "Customer denies the transaction. Recommend BLOCK_CARD and CREATE_CASE. Add FILE_REPORT if exposure exceeds
+$1,000 or the case connects to a shared device profile or another card's fraud." The README §3b example has R1 govern
+BEFORE a denial and R2 once the customer denies; a customer_report trigger IS the denial, so R2 applies from intake at
+any verdict, unless R7 (the disputed charge matches the customer's own recurring pattern) applies.
+
+The policy-table tests need no data; the exam-pack tests need the facts DB and are skipped without it (CI, M10).
+"""
+from __future__ import annotations
+
+import re
+from pathlib import Path
+
+import pytest
+
+from agent.validator import reason_problems
+from engine import answer_writer, config, policy, stop, validator, voi
+from engine.types import CaseContext, Scorecard
+
+CTX = CaseContext("T-1", "risk_score", "", "1", "C00001-K1", "C00001", "2016-12-01 00:00:00", 0.8)
+DISP = CaseContext("T-2", "customer_report", "", "1", "C00001-K1", "C00001", "2016-12-01 00:00:00", None)
+RULE_ID = re.compile(r"^(R([1-9]|10)|3a|§\d[a-z]?)$")          # README rule number or README section, nothing internal
+INTERNAL = re.compile(r"fraud_band|uncertain_initial|uncertain_final|legit_band|legit_leaning|3a_case|3a_report")
+needs_db = pytest.mark.skipif(not Path(config.FACTS_DB).exists(), reason=f"needs the facts DB ({config.FACTS_DB})")
+
+
+def _sc(p, fams_f, fams_l=(), verdict="uncertain", exposure=100.0, **flags) -> Scorecard:
+    base = {"denial": False, "outcome": "", "asked": False, "channel": "online", "ring_hit": False, "burst_hit": False,
+            "shared_device_fraud": False, "shared_recipient_email": [], "r5_run": False, "recurring_match": False, "conflict": False}
+    base.update(flags)
+    return Scorecard(cms_p=p, cal_p=p, adjustments=[], p_engine=p, families_fraud=set(fams_f), families_legit=set(fams_l), flags=base, chain=[],
+                     episode_ids=["1"], first_suspicious_txn_id="1", exposure_usd=exposure, connected_card_ids=[], connected_device_profiles=[],
+                     pattern="card_not_present_fraud", pattern_description="", verdict=verdict, similar_prior_cases=[])
+
+
+# ----------------------------------------------------------------------------- R2 at intake
+def test_in_person_denial_blocks_at_intake_without_asking_the_customer_again():
+    sc = _sc(0.55, ["customer"], ["history"], denial=True, channel="in_person")
+    assert policy.r2_denial(sc) and policy.settled_pre(sc) and stop.settled_pre(sc)
+    adm = policy.admissible(DISP, sc, "initial")
+    assert adm["required"] == ["CREATE_CASE", "BLOCK_CARD"] and adm["routes"]["BLOCK_CARD"] == "L1"
+    assert "R2" in adm["citations"]["BLOCK_CARD"] and "R1" not in adm["fired"] and "BLOCK_CARD" not in adm["forbidden"]
+    assert "VERIFY_WITH_CUSTOMER" not in adm["required"]
+    assert voi.should_ask(DISP, sc, "customer_validation") == (False, {})     # the customer already answered
+    assert policy.check(answer_writer.reasons_for(adm["required"], adm, DISP, sc, "initial"), DISP, sc, "final") == []   # final == initial
+    assert stop.stop_reason(sc, None, False, True).startswith("Policy §6 test 2")
+
+
+def test_online_denial_blocks_at_intake_and_steps_up():
+    sc = _sc(0.55, ["customer"], [], denial=True, channel="online")
+    assert not policy.settled_pre(sc)
+    adm = policy.admissible(DISP, sc, "initial")
+    assert adm["required"] == ["CREATE_CASE", "STEP_UP_AUTH", "BLOCK_CARD"] and "MONITOR_CARD" not in adm["required"]
+    ask, branches = voi.should_ask(DISP, sc, voi.request_type_for(DISP, sc))
+    assert ask and "BLOCK_CARD" in branches["fail"] and "BLOCK_CARD" in branches["inconclusive"]
+    post = _sc(0.55, ["customer"], [], denial=True, outcome="inconclusive", asked=True)
+    fin = policy.admissible(DISP, post, "final")
+    assert fin["required"] == ["CREATE_CASE", "MONITOR_CARD", "DECLINE_TRANSACTION", "BLOCK_CARD"]
+    assert "R2's block" in stop.stop_reason(sc, post, True, False)
+
+
+def test_r2_route_report_and_r8_on_a_denial():
+    adm = policy.admissible(DISP, _sc(0.55, ["customer"], [], denial=True, channel="in_person", exposure=2600.0), "initial")
+    assert adm["routes"]["BLOCK_CARD"] == "L2" and "FILE_REPORT" in adm["required"] and adm["routes"]["FILE_REPORT"] == "L2"
+    assert "ESCALATE_TO_ANALYST" in adm["required"]                                            # R8: uncertain and exposure > $500
+    file_, reason = policy.sar_required(_sc(0.55, ["customer"], [], denial=True, exposure=1000.01))
+    assert file_ and reason.startswith("R2 / 3a")
+    file_, reason = policy.sar_required(_sc(0.55, ["customer"], [], denial=True, exposure=1000.0))
+    assert not file_ and reason.startswith("R2 / 3a not met")
+    assert policy.sar_required(_sc(0.55, ["memory"], [], exposure=5000.0))[0] is False           # no denial: uncertain never files
+
+
+def test_r7_is_the_only_exception():
+    sc = _sc(0.2, ["customer"], ["history"], denial=True, recurring_match=True, channel="in_person")
+    assert not policy.r2_denial(sc) and not policy.settled_pre(sc)
+    adm = policy.admissible(DISP, sc, "initial")
+    assert "BLOCK_CARD" in adm["forbidden"] and "BLOCK_CARD" not in adm["required"]
+    assert {"CREATE_CASE", "VERIFY_WITH_CUSTOMER", "WARN_CUSTOMER"} <= set(adm["required"])
+    assert voi.should_ask(DISP, sc, "customer_validation")[0]                                  # R7 re-asks about the recurrence
+    withdrawn = _sc(0.1, ["customer"], ["history"], verdict="legitimate", denial=True, outcome="confirm", asked=True)
+    assert not policy.r2_denial(withdrawn)                                                      # a withdrawn dispute is not a denial
+
+
+def test_no_denial_keeps_r1():
+    adm = policy.admissible(CTX, _sc(0.55, ["memory"], [], channel="in_person"), "initial")
+    assert "R1" in adm["fired"] and "BLOCK_CARD" in adm["forbidden"] and "BLOCK_CARD" not in adm["required"]
+
+
+def test_uncertain_block_invariant_allows_only_an_r2_block():
+    r2 = [{"action": "CREATE_CASE", "reason": "3a"}, {"action": "BLOCK_CARD", "reason": "R2: customer denied the transaction"}]
+    assert not validator.uncertain_block_violation(r2)
+    assert validator.uncertain_block_violation([{"action": "BLOCK_CARD", "reason": "§3b: fraud verdict"}])
+    assert validator.uncertain_block_violation([{"action": "BLOCK_ALL_CARDS", "reason": "R2"}])
+    ans = {"case": {"verdict": "uncertain", "affected_txn_ids": ["1"], "exposure_usd": 10.0, "pattern": "out_of_region_use", "pattern_description": "",
+                    "status": "open"},
+           "next_best_actions": {"initial": r2, "final": r2, "what_changed": "nothing"},
+           "sar": {"file": False, "reason": "R2 / 3a not met", "narrative": "", "subjects": [], "total_amount_usd": 0, "activity_dates": []},
+           "evidence_requests": []}
+    answer_writer.assert_invariants(ans)
+    ans["next_best_actions"]["initial"] = ans["next_best_actions"]["final"] = [{"action": "BLOCK_CARD", "reason": "§3b"}]
+    with pytest.raises(AssertionError):
+        answer_writer.assert_invariants(ans)
+
+
+# ----------------------------------------------------------------------------- D-REASON: citations are README rule ids
+def test_citations_and_fired_name_readme_rules_only():
+    scs = [(CTX, _sc(0.45, ["memory"])), (CTX, _sc(0.8, ["memory"], verdict="fraud")), (CTX, _sc(0.9, ["memory", "history"], verdict="fraud")),
+           (CTX, _sc(0.05, [], ["history"], verdict="legitimate")), (CTX, _sc(0.05, [], ["history", "memory"], verdict="legitimate", outcome="confirm", asked=True)),
+           (CTX, _sc(0.55, ["memory"], ["history"], outcome="no_reply", asked=True, exposure=900.0)), (CTX, _sc(0.2, [])),
+           (DISP, _sc(0.55, ["customer"], [], denial=True)), (DISP, _sc(0.9, ["customer", "memory"], verdict="fraud", denial=True, exposure=1500.0)),
+           (DISP, _sc(0.2, ["customer"], ["history"], denial=True, recurring_match=True))]
+    for ctx, sc in scs:
+        for stage in ("initial", "final"):
+            adm = policy.admissible(ctx, sc, stage)
+            labels = set(adm["fired"]) | {x for k, v in adm["citations"].items() if not k.startswith("_") for x in v}
+            labels |= {x for v in adm["citations"]["_forbidden"].values() for x in v}
+            assert labels and all(RULE_ID.match(x) for x in labels), (stage, sorted(labels))
+            for a in answer_writer.reasons_for(adm["required"], adm, ctx, sc, stage):
+                assert re.search(r"\bR([1-9]|10)\b|§\d|\b3a\b", a["reason"]) and not INTERNAL.search(a["reason"]), a
+                assert reason_problems([a]) == [], a                                 # the agent's reason validator agrees
+
+
+def test_engine_cite_labels_pass_the_agent_citation_path_unchanged():
+    """Every `cite` label the policy YAML can emit (rule or add_if branch) passes the agent's policy_cite through unchanged
+    and satisfies agent.validator.reason_problems, so the engine's rule ids and the agent's reason check agree."""
+    from types import SimpleNamespace
+
+    from agent.phase_machine import policy_cite
+    rules = policy.params()["rules"]
+    labels = {policy.cite(n) for n in rules} | {policy.cite(n, b) for n, r in rules.items() for b in r.get("add_if", [])}
+    assert {"3a", "§3b", "§6", "R2", "R4", "R8"} <= labels
+    sc = SimpleNamespace(p_engine=0.55, families_fraud=["customer"], flags={"denial": True})
+    for label in sorted(labels):
+        assert RULE_ID.match(label), label
+        assert policy_cite("MONITOR_CARD", [label], sc) == label, label
+        assert reason_problems([{"action": "MONITOR_CARD", "reason": f"{label}: reason text"}]) == [], label
+
+
+# ----------------------------------------------------------------------------- the exam pack
+@pytest.fixture(scope="module")
+def runs():
+    from engine.facts_duckdb import DuckFacts
+    from engine.run_cases import contexts, run_one
+    fx = DuckFacts()
+    return {ctx.case_id: (ctx, run_one(ctx, fx)) for ctx in contexts(fx)}
+
+
+@needs_db
+def test_every_exam_denial_blocks_from_intake(runs):
+    for cid, (ctx, r) in runs.items():
+        if ctx.trigger_type != "customer_report":
+            continue
+        a = r["answer"]
+        nba = a["next_best_actions"]
+        for stage in ("initial", "final"):
+            blk = [x for x in nba[stage] if x["action"] == "BLOCK_CARD"]
+            assert blk and blk[0]["route"] == "L1" and blk[0]["reason"].startswith("R2"), (cid, stage)
+            assert "CREATE_CASE" in [x["action"] for x in nba[stage]], (cid, stage)
+        assert not any(q["type"] == "customer_validation" for q in a["evidence_requests"]), cid
+        assert r["errors"] == [] and r["violations"] == [], (cid, r["errors"], r["violations"])
+    for cid in ("HHG-003", "HHG-018"):                                                          # in person: settled by the denial
+        a = runs[cid][1]["answer"]
+        assert a["evidence_requests"] == [] and a["next_best_actions"]["what_changed"] == "nothing" and a["stop_reason"].startswith("Policy §6 test 2")
+        assert a["case"]["verdict"] == "uncertain" and a["case"]["fraud_probability"] == 0.55                     # R2 moves actions, not p
+    assert runs["HHG-003"][1]["answer"]["case"]["status"] == "open" and runs["HHG-018"][1]["answer"]["case"]["status"] == "escalated"
+    for cid in ("HHG-004", "HHG-011"):                                                          # online: step-up, block awaits L1
+        a = runs[cid][1]["answer"]
+        assert [q["type"] for q in a["evidence_requests"]] == ["step_up_auth"] and a["case"]["verdict"] == "uncertain", cid
+
+
+@needs_db
+def test_exam_reasons_cite_readme_rules(runs):
+    for cid, (_ctx, r) in runs.items():
+        for stage in ("initial", "final"):
+            for a in r["answer"]["next_best_actions"][stage]:
+                assert re.search(r"\bR([1-9]|10)\b|§\d|\b3a\b", a["reason"]) and not INTERNAL.search(a["reason"]), (cid, a)
+            assert reason_problems(r["answer"]["next_best_actions"][stage]) == [], (cid, stage)
+
+
+@needs_db
+def test_out_of_region_label_follows_the_banks_convention():
+    """D-LABEL (no rule change): the bank's closed cases label card-present fraud away from the card's home region
+    out_of_region_use even when the region is well known to the card — 581 of 955 confirmed out_of_region_use cases
+    had every transaction in a region the card had used at least 5 times before; only 173 touched a never-used region."""
+    from engine.facts_duckdb import DuckFacts
+    d = DuckFacts().q("""SELECT count(*) n, sum(CASE WHEN k THEN 1 ELSE 0 END) known, sum(CASE WHEN z THEN 1 ELSE 0 END) new_region FROM (
+                           SELECT c.case_id, bool_and(t.prior_in_region >= 5) k, bool_or(t.prior_in_region = 0) z
+                           FROM cc c JOIN cc_txn x USING(case_id) JOIN txc t ON t.TransactionID = x.TransactionID
+                           WHERE c.outcome = 'confirmed_fraud' AND c.pattern = 'out_of_region_use' GROUP BY 1)""").iloc[0]
+    assert (int(d.n), int(d.known), int(d.new_region)) == (955, 581, 173)
+```
 
 #### `tests/unit/test_engine.py`
 
@@ -15188,9 +15720,12 @@ def test_r1_single_signal_forbids_block():
 
 
 def test_uncertain_initial_never_blocks_and_r8_is_gated():
-    """D3: R8 only when uncertain AND (exposure > $500 OR conflict); conflict excludes the customer's own statement."""
-    adm = policy.admissible(DISP, _sc(0.55, ["customer"], ["history"], denial=True, channel="in_person"), "initial")
+    """D3: R8 only when uncertain AND (exposure > $500 OR conflict); conflict excludes the customer's own statement.
+    Without a customer denial the uncertain band never blocks before evidence (R1 / §3b); a denial takes R2's block from
+    intake instead (tests/unit/test_engine_r2.py), and R8 is gated the same way there."""
+    adm = policy.admissible(CTX, _sc(0.55, ["memory"], ["history"], channel="in_person"), "initial")
     assert "BLOCK_CARD" in adm["forbidden"] and "MONITOR_CARD" in adm["required"] and "VERIFY_WITH_CUSTOMER" in adm["required"]
+    adm = policy.admissible(DISP, _sc(0.55, ["customer"], ["history"], denial=True, channel="in_person"), "initial")
     assert "ESCALATE_TO_ANALYST" not in adm["required"] and "R8" not in adm["fired"]          # F' = {}, exposure 100: no R8
     adm = policy.admissible(DISP, _sc(0.55, ["customer"], ["history"], denial=True, channel="in_person", exposure=600.0), "initial")
     assert "ESCALATE_TO_ANALYST" in adm["required"] and "R8" in adm["fired"]                    # exposure > 500
@@ -17850,6 +18385,91 @@ class ToolContext:
     max_chars: int = SETTINGS.tool_result_max_chars
     on_result: Callable[[str, dict, dict], None] | None = None
     graph_unavailable: str = ''       # name of the P2 query the resume budget ran out on (the phase machine fails the case)
+    # memory time-box (client side, whatever the installed query does): AgentCase rows with one of these ids, or
+    # opened at/after `opened_at`, are dropped from every result before the model or the engine sees them
+    exclude_case_ids: frozenset = field(default_factory=frozenset)
+
+
+# ---------------------------------------------------------------- memory time-box
+
+# Card attributes the ETL precomputed over all six months include activity AFTER opened_at. The fixed card_profile /
+# case_context queries recompute the history fields as of `as_of`; an installed query that predates that fix is
+# detected by card.last_ts > opened_at (impossible for a time-boxed result) and its history fields are withheld from
+# the model's view (the engine still gets the raw facts). known_device_ids / recurring_amounts are never recomputed.
+WHOLE_HISTORY_CARD_FIELDS = ("n_txns", "last_ts", "median_amt", "p90_amt", "max_amt", "max_in_person_amt", "n_online",
+                             "n_in_person", "n_regions", "n_devices_seen")
+ALWAYS_ALL_TIME_CARD_FIELDS = ("known_device_ids", "recurring_amounts")
+WHOLE_HISTORY_NOTE = ("card statistics that include activity after opened_at are withheld; use case_context.txn.card_seq - 1 "
+                      "(prior transactions), prior_med_amt, prior_max_amt and card_profile regions / devices / last30, all as of opened_at")
+
+
+def card_profile_stale(result: Any, opened_at: str) -> bool:
+    """True when a card_profile result carries whole-history card statistics (an installed query without the as-of fix)."""
+    card = (result or {}).get("card") if isinstance(result, dict) else None
+    last = str((card or {}).get("last_ts") or "") if isinstance(card, dict) else ""
+    return bool(last and opened_at and last[:19] > opened_at[:19])
+
+
+def _row_field(row: dict, key: str) -> Any:
+    if key in row:
+        return row[key]
+    attrs = row.get("attributes") or {}
+    return attrs.get(key, attrs.get("@" + key))
+
+
+def _is_agent_row(row: dict) -> bool:
+    rid = str(row.get("id") or row.get("v_id") or row.get("case_id") or "")
+    kind = str(_row_field(row, "kind") or "")
+    return rid.startswith("AC-") or kind == "agent" or row.get("v_type") == "AgentCase"
+
+
+def memory_timebox(result: Any, opened_at: str, exclude_ids: frozenset | set = frozenset()) -> tuple[Any, list[str]]:
+    """Drop AgentCase rows that are the case itself (`exclude_ids`, e.g. AC-HHG-014 from an earlier run) or were
+    opened at/after `opened_at`, from every list in a query result. Returns (result, dropped ids)."""
+    dropped: list[str] = []
+
+    def keep(row: Any) -> bool:
+        if not isinstance(row, dict) or not _is_agent_row(row):
+            return True
+        rid = str(row.get("id") or row.get("v_id") or row.get("case_id") or "")
+        opened = str(_row_field(row, "opened_at") or "")
+        if rid in exclude_ids or (opened and opened_at and opened[:19] >= opened_at[:19]):
+            dropped.append(rid)
+            return False
+        return True
+
+    def walk(o: Any) -> Any:
+        if isinstance(o, dict):
+            return {k: walk(v) for k, v in o.items()}
+        if isinstance(o, list):
+            return [walk(v) for v in o if keep(v)]
+        return o
+
+    return walk(result), dropped
+
+
+def llm_view(qname: str, result: dict, opened_at: str = "", facts: dict | None = None) -> dict:
+    """The model's copy of a result: card statistics that are not as of opened_at withheld (see above)."""
+    if qname not in ("card_profile", "case_context") or not isinstance(result, dict):
+        return result
+    card = result.get("card")
+    if not isinstance(card, dict):
+        return result
+    if qname == "card_profile":
+        hidden = [k for k in ALWAYS_ALL_TIME_CARD_FIELDS if k in card]
+        if card_profile_stale(result, opened_at):
+            hidden += [k for k in WHOLE_HISTORY_CARD_FIELDS if k in card]
+    else:   # case_context.card.n_txns: trusted only when it agrees with a time-boxed card_profile
+        prof = (facts or {}).get("card_profile") or {}
+        ok = (isinstance(prof.get("card"), dict) and not card_profile_stale(prof, opened_at)
+              and prof["card"].get("n_txns") == card.get("n_txns"))
+        hidden = [] if ok or "n_txns" not in card else ["n_txns"]
+    if not hidden:
+        return result
+    out = dict(result)
+    out["card"] = {k: v for k, v in card.items() if k not in hidden}
+    out["card"]["_note"] = WHOLE_HISTORY_NOTE
+    return out
 
 
 def clamp_params(params: dict, opened_at: str) -> tuple[dict, list[str]]:
@@ -17914,8 +18534,9 @@ async def call_query_tool(session: Any, tctx: ToolContext, qname: str, params: d
         return json.dumps({"error": f"{qname} failed: {str(e)[:400]}", "hint": "Check the parameter encoding (VERTEX → {\"id\": ...}, DATETIME → 'YYYY-MM-DD HH:MM:SS') or choose another query."})
     finally:
         current_caller.reset(token)
+    result = _timebox(tctx, qname, result)
     record_result(tctx, qname, params, result)
-    payload = {"query": qname, "params": params, "result": result}
+    payload = {"query": qname, "params": params, "result": llm_view(qname, result, tctx.opened_at, tctx.facts)}
     if notes:
         payload["notes"] = notes
     return compact_json(payload, tctx.max_chars)
@@ -17935,9 +18556,17 @@ def record_result(tctx: ToolContext, qname: str, params: dict, result: dict) -> 
 async def harness_query(session: Any, tctx: ToolContext, qname: str, params: dict) -> dict:
     """Mandatory / engine re-run query by the harness (counted in tool_calls, logged as caller=harness)."""
     params, _ = clamp_params(params, tctx.opened_at)
-    result = await run_query(session, qname, params)
+    result = _timebox(tctx, qname, await run_query(session, qname, params))
     record_result(tctx, qname, params, result)
     return result
+
+
+def _timebox(tctx: ToolContext, qname: str, result: Any) -> Any:
+    out, dropped = memory_timebox(result, tctx.opened_at, tctx.exclude_case_ids)
+    log = current_runlog.get()
+    if dropped and log is not None:
+        log.note(f"memory time-box: dropped agent cases from {qname}", dropped=sorted(set(dropped)))
+    return out
 ````
 
 #### `agent/tools_local.py`
@@ -18189,6 +18818,9 @@ Facts established on the data that you must respect:
 - An evidence claim is one sentence, states the concrete numbers, cites its `ref` (`query:<name>(<params>)`, `document:<doc>#<section>`, `evidence_request:<n>`) and lists the ids it rests on in `entity_ids`.
 - `entity_ids` may only contain ids that appeared in a tool result: transaction ids, card ids, customer ids, `CC-` ids, device-profile strings. Never put `AC-` ids or invented ids there; name agent cases in the claim text instead.
 - Evidence families: (1) card history and baseline, (2) device / ring / shared origin, (3) case memory (prior cases, similar cases, the calibrated score), (4) customer or analyst reply. Documents ground rules; they are not evidence of fraud.
+- `source` is `customer` only for what the customer said. An analyst's request or reply is `source: external` (`ref: trigger` for the analyst's request that opened the case).
+- Card statistics are as of opening: use `case_context.txn.card_seq − 1` (prior transactions), `prior_med_amt`, `prior_max_amt` and the `card_profile` regions / devices / last30 aggregates. The Card vertex's lifetime totals include activity after `opened_at`; they are withheld from you and must never be quoted.
+- An `L1` / `L2` action is a recommendation waiting for a human: never write that the card "was blocked" or a transaction "was declined". The data has no names, genders, merchants or time zones: say "the customer" / "the cardholder" and give times without a zone.
 - Never cite the seconds of a timestamp as a signal.
 
 # Fraud Policy v1.0 (verbatim identifiers)
@@ -18261,11 +18893,11 @@ When you are done, reply with a short plain-text note (three to eight sentences)
 
 ## Playbook C — `customer_report` trigger (the customer denies the flagged transaction)
 
-1. The denial is evidence #1 (`source: customer`, `ref: trigger`) and the harness floors the probability at 0.55 (no denial was ever cleared in the bank's history) unless the R7 gate fires. R2 applies once the verdict is fraud; R1 / R8 govern while it is uncertain; R7 if the charge is recurring.
+1. The denial is evidence #1 (`source: customer`, `ref: trigger`) and the harness floors the probability at 0.55 (no denial was ever cleared in the bank's history) unless the R7 gate fires. The denial is the trigger, so **R2 applies from intake**: README 3b resolves R1 versus R2 — R1 governs *before* a denial, and once the customer denies, the actions become `BLOCK_CARD`, `CREATE_CASE` and possibly `FILE_REPORT`. R7 (the charge matches the customer's own recurring pattern) is the only exception: then do not block.
 2. Run `recurring_charge_check(txn)` **first**. R7 gate: ≥ 5 prior purchases within ±1 % of the amount, same product code, same billing region (in person) or purchaser email domain (online), median gap 5–35 days with gap CV ≤ 0.6, `cms_p` < 0.30 and no ≤ 48 h chain member with `cms_p` ≥ 0.5. There is no merchant field: recurrence is inferred from product code, amount, place and cadence, and the claim must say so.
 3. Then `episode_candidates(txn)`, `card_window(card, opened_at − 48 h, opened_at)`, `device_history` and, for online, `device_neighbors` (strong profiles only), `card_testing_check`, `under_threshold_burst`, `shared_origin_scan`.
-4. Fraud band (p ≥ 0.70 with ≥ 2 families) → R2: `CREATE_CASE`, `BLOCK_CARD` (L1 ≤ $2,500 else L2), `FILE_REPORT` (L2) when 3a holds, `MONITOR_CONNECTED_CARDS` when a strong shared element exists; no request unless it can change the scope.
-5. Uncertain band (0.55 ≤ p < 0.70, or a conflict) → `CREATE_CASE`, `STEP_UP_AUTH` (online) or `VERIFY_WITH_CUSTOMER` (in person, asking which of the transactions were theirs), `MONITOR_CARD`, `ESCALATE_TO_ANALYST` (R8). **No block in the initial set**; `BLOCK_CARD` enters `final` only if the assumed step-up fails or the denial is repeated (R2).
+4. R2 (no R7 match) → `CREATE_CASE`, `BLOCK_CARD` (L1 ≤ $2,500 else L2), `FILE_REPORT` (L2) when exposure > $1,000 or the case connects to a shared device profile or another card's fraud (3a), `MONITOR_CONNECTED_CARDS` when a strong shared element exists. Never ask the customer who has just denied the charge to confirm it; a step-up or analyst request is only for the scope (which other transactions belong to the episode).
+5. The probability still has to be honest: a denial with a weak graph picture can stay `uncertain` (0.55 ≤ p < 0.70); R8 then adds `ESCALATE_TO_ANALYST` when exposure > $500 or the evidence conflicts. The admissible set the harness gives you is authoritative for the exact actions.
 6. A card with thousands of transactions or a very short history makes the scorer unreliable; say so and lean on the graph facts.
 
 ## Playbook D — `analyst_request` trigger (an analyst names a shared element)
@@ -18289,10 +18921,12 @@ Rules:
 
 - `fraud_probability` must lie within `p_engine ± 0.10`. State in `calibration_basis` which scorecard components you rely on and, if you moved away from `p_engine`, which cited evidence justifies the move. Be honest: this number is scored for calibration.
 - `verdict`: `fraud` when your probability is ≥ 0.70, `legitimate` when ≤ 0.15, otherwise `uncertain` (a customer denial can never yield `legitimate` before a confirmation). Keep the engine's verdict unless your probability crosses a band.
-- `pattern`: follow the convention rule given in the scorecard (`pattern` field) unless a tool result contradicts it; `none` when legitimate; `pattern_description` only when `undocumented` (two or three sentences: what the pattern is, who it affects, how you found it), otherwise "".
+- `pattern`: follow the convention rule given in the scorecard (`pattern` field) unless a tool result contradicts it; `none` when legitimate; `pattern_description` only when `undocumented` (two or three sentences: what the pattern is, who it affects, how you found it), otherwise "". The bank labels card-present fraud away from the card's home (modal) region `out_of_region_use` even when the region is known to the card (581 of its 955 confirmed `out_of_region_use` closed cases were in regions the card had used five or more times before). When you use that label on a region the card knows, say so in one evidence claim (the convention, the modal region, the prior use count) instead of calling the region "known, so ordinary use".
 - `affected_txn_ids`: the episode transactions on the case card with `ts ≤ opened_at` (start from `episode_ids`; add a chain member only if a cited claim supports it). Empty when legitimate. `first_suspicious_txn_id` = the earliest affected id, or "".
 - `connected_card_ids` / `connected_device_profiles`: only strong shared profiles and the cards on them as returned by `device_neighbors` / `ring_profile`; empty when legitimate. Never include burst look-alike cards (name them in `pattern_description` instead).
-- `evidence`: 4–10 claims, each with source, ref and entity_ids as described in the system prompt; include the customer denial (`source: customer`, `ref: trigger`) for a dispute; include the strongest legitimacy evidence too. Every id must come from a tool result.
+- `evidence`: 4–10 claims, each with source, ref and entity_ids as described in the system prompt; include the customer denial (`source: customer`, `ref: trigger`) for a dispute and the analyst's request (`source: external`, `ref: trigger` — an analyst is not the customer) for an analyst request; include the strongest legitimacy evidence too. Every id must come from a tool result.
+- Counts and amounts in claims are as of opening: the card's prior-transaction count is `case_context.txn.card_seq − 1`, its prior median / maximum are `prior_med_amt` / `prior_max_amt`; the Card vertex's lifetime `n_txns`, `max_amt`, `n_online`, `n_in_person` include later activity and are withheld — never reconstruct them. A count must say what it counts (e.g. "3 cards on the profile in the 30 days before opening"), and the same fact must carry the same number in every claim.
+- Never describe a transaction in `episode_ids` as normal, legitimate or "consistent with normal use": the engine counts it in the episode and in exposure. If some episode members look ordinary (for example in-person purchases in the home region inside a chain), say so as the legitimacy reading of the episode, not as a fact about it.
 - `wanted_requests`: the evidence requests that could change the action set (`customer_validation` for in-person or risk alerts, `step_up_auth` for online activity, `analyst_info` for shared-element counts); empty when §6 test 1 is already met or a reply could not change the actions.
 - `sufficient`: true only if §6 is met now.
 
@@ -18305,13 +18939,16 @@ SCORECARD:
 ```markdown
 # Phase {phase} — Next best action ({stage}) (structured output: ActionChoice)
 
-Choose the recommendation for this stage from the admissible set below. The policy gate computed it from the current scorecard and the Fraud Policy; you may not add a forbidden action or omit a required one. Give each action its route exactly as listed and a one-sentence reason that cites the rule (for example `R2: customer denied; exposure $166.97 ≤ $2,500`, `3a: exposure $1,906.07 > $1,000 and undocumented pattern`, `R8: evidence conflicts (recurrence vs. the card's fraud history in region 126.0)`). Cite R1 only when the probability is below 0.70 with a single evidence family; when a verification is still asked at 0.70 ≤ p < 0.85 cite §3b / §5. Order the actions by what happens first.
+Choose the recommendation for this stage from the admissible set below. The policy gate computed it from the current scorecard and the Fraud Policy; you may not add a forbidden action or omit a required one. Give each action its route exactly as listed and a one-sentence reason that **starts with the Fraud Policy rule given for that action in RULE TO CITE** (for example `R2: customer denied; exposure $166.97 ≤ $2,500`, `3a: exposure $1,906.07 > $1,000 and undocumented pattern`, `R8: evidence conflicts (recurrence vs. the card's fraud history in region 126.0)`). If the admissible set's `citations` or `fired` lists show a policy-gate label (`fraud_band`, `uncertain_initial`, `uncertain_final`, `legit_band`, `3a_case`, ...), never write it in a reason — RULE TO CITE gives the README rule it implements. Cite R1 only when the probability is below 0.70 with a single evidence family; when a verification is still asked at 0.70 ≤ p < 0.85 cite §3b / §5. A reason describes an L1 / L2 action as recommended (it waits for approval), never as done. Order the actions by what happens first.
 
 Optional actions from the `allowed` list should be added only when a cited claim supports them (for example `MONITOR_CARD` while a reply is pending, `GENERATE_REPORT` when no case was opened and p < 0.30, `WARN_CUSTOMER` under R7).
 
 Stage: {stage}
 Probability now: {p} (verdict {verdict}, families for fraud: {families_fraud}; for legitimacy: {families_legit}; exposure ${exposure})
 {post_evidence_note}
+
+RULE TO CITE (per allowed action):
+{rule_hints}
 
 ADMISSIBLE SET:
 {admissible_json}
@@ -18322,18 +18959,25 @@ ADMISSIBLE SET:
 ```markdown
 # Phase P8 — Suspicious activity report narrative (structured output: SarDraft)
 
-The policy gate decided that a report must be filed ({sar_reason}). Write the narrative a regulator will read. It must stand on its own: **who** (customer, cards, device profiles, merchants where known), **what** happened, **when** (dates), **where** (billing regions, channels), **how** it was carried out, and **why** it is suspicious. Six to twelve sentences, one paragraph, plain prose. Use only facts from the case data below; every amount, date and id must appear there. Do not use headings, tables, tabs or the phrase "see attached".
+The policy gate decided that a report must be filed ({sar_reason}). Write the narrative a regulator will read. It must stand on its own: **who** (customer, cards, device profiles), **what** happened, **when** (dates), **where** (billing regions, channels), **how** it was carried out, and **why** it is suspicious. Six to twelve sentences, one paragraph, plain prose, no headings, lists, tables, tabs or line breaks, and never "see attached".
+
+Use only the facts in CASE DATA below; every amount, date, id and count you write must appear there. In particular:
+
+- **Status of each action.** CASE DATA `actions` gives each action with its route and `status`. Only actions whose status says `done` have happened. Every L1 / L2 action (a card block, a decline, the report itself) is **recommended and awaiting approval**: write "a block of card {card_id} is recommended and awaits team-lead approval", never "the bank blocked the card", "the card was blocked" or "card blocked".
+- **Card statistics are as of the case opening.** Use only `baseline_as_of_opening` (counts and amounts before the flagged transaction). Do not write any other total, lifetime count, maximum or median for the card; there is none that is time-boxed.
+- **Prior reports.** State the prior-report status exactly as `prior_reports` gives it, for this card and, separately, for the device profile or connected cards. Do not write "no prior report" for a scope where `prior_reports` lists a filed report.
+- **No invented attributes.** The data has no names, genders, merchants, addresses or time zones: refer to "the customer" / "the cardholder" (never he, she, his or her), write dates as YYYY-MM-DD and times as HH:MM with no time zone, and never name a merchant.
+- **Subjects.** `subjects` = every customer id, card id and full device-profile string you name in the narrative (exact strings, no others). If you name a device profile, write the full string from CASE DATA.
+- Reserve "On YYYY-MM-DD" for transactions; write the opening date as "opened YYYY-MM-DD". Do not mention timestamp seconds, model internals, simulations or assumptions; describe a customer reply as the customer's statement.
 
 Follow this skeleton, one or two sentences each:
 
 S1. Typology and the internal case id ({graph_case_id}).
 S2. Who: customer {customer_id}, card {card_id}, the device profile(s) and any connected cards.
-S3–S5. What / when / how, chronologically: each affected transaction with date, amount, channel, region and device; the shared element and how the graph connects it to other cards or prior cases.
-S6. Why unusual against the cardholder's baseline (median amount, usual regions, usual devices, prior online history).
-S7. Prior reports on this card ({prior_sar_note}) and the OFAC screening result ({ofac_note}).
-S8. Actions taken or recommended (case opened, card block pending approval, connected cards monitored) and the total unauthorised amount ${exposure}.
-
-`subjects` = the ids of the customer, cards and device profiles you name (exact strings).
+S3–S5. What / when / how, chronologically: each affected transaction with date, time, amount, channel, region and device; the shared element and how the graph connects it to other cards or prior cases.
+S6. Why unusual against the cardholder's as-of baseline.
+S7. Prior reports ({prior_sar_note}) and the OFAC screening result ({ofac_note}).
+S8. Actions: what was done (case opened, monitoring) and what is recommended pending approval (card block, this filing), and the total suspicious amount ${exposure}.
 
 FinCEN guidance retrieved for this report:
 {chunks}
@@ -18347,7 +18991,9 @@ Case data:
 ```markdown
 # Phase P9 — Explain (structured output: Closing)
 
-Write the case summary an analyst reads first: two to six sentences that state the verdict and probability, the pattern (in your own words if undocumented), the episode and exposure, the decisive evidence with its family, what was asked and what was assumed, and what the bank should do now with the approval route. If the answer key could reasonably read the case the other way (for example dispute-as-fraud versus recurring charge), state the alternative reading in one clause. Name prior cases in prose (`CC-2649`, or an earlier agent case such as `AC-HHG-006`) when they informed the decision.
+Write the case summary an analyst reads first. The README asks for two to six sentences and says: keep the summary short, the evidence list carries the detail. Write **two to four sentences, under 550 characters**: the verdict and probability, the pattern (in your own words if undocumented), the episode and exposure, the one or two decisive facts, what was asked and assumed (if anything), and the recommended action with its approval route. Do not restate the stop reason, list every action, or repeat the evidence list. If the case could reasonably be read the other way (for example dispute-as-fraud versus recurring charge), give the alternative reading in one clause. Name a prior case (`CC-2649`) only when it decided the outcome.
+
+Facts to respect: an L1 / L2 action (a card block, a decline, a report) is recommended and awaits approval — never write that it was done. `affected_txn_ids` is the engine's candidate episode and `exposure_usd` is its sum: never describe a member of it as normal or legitimate use (if some members look ordinary, say the episode is scoped by the chain rule and that is why exposure includes them). Card statistics come only from as-of-opening facts; never quote a card's lifetime totals.
 
 `stop_reason` must name the policy §6 test that fired, in one or two sentences; the harness's own determination is: "{engine_stop_reason}". Keep that meaning; you may make it more specific.
 
@@ -18705,7 +19351,9 @@ thinking blocks) and every tool_result is appended and never edited.
 
 from __future__ import annotations
 
+import csv
 import json
+import re
 from dataclasses import asdict, is_dataclass
 from datetime import datetime, timedelta
 from typing import Any
@@ -18722,12 +19370,14 @@ from agent.mcp_client import (
     current_caller,
     extract_ids,
     harness_query,
+    llm_view,
     load_query_descriptions,
     make_query_tools,
     run_query,
 )
 from agent.runlog import RunLog, current_runlog
 from agent.schemas import ActionChoice, Assessment, Closing, SarDraft
+from agent.validator import HOUSE_RULE_NAMES, SUMMARY_MAX_CHARS, reason_problems, summary_problems, text_sentences
 
 
 def _resolve_builder():
@@ -18799,6 +19449,58 @@ def _norm_ids(xs: Any) -> list[str]:
         if v and str(v) not in out:
             out.append(str(v))
     return out
+
+
+# ----------------------------------------------------------------------------- rule citations (§7)
+
+_BLOCKS = ("BLOCK_CARD", "BLOCK_ALL_CARDS")
+_R1_CLAIM = re.compile(r"\bR1\b(?!\s*(?:not|does not|is not|n/a))")  # same reading as engine.policy.check
+_VERIFY = ("VERIFY_WITH_CUSTOMER", "STEP_UP_AUTH")
+_ACTION_DEFAULT_CITE = {
+    "CREATE_CASE": "3a", "FILE_REPORT": "3a", "GENERATE_REPORT": "3a", "MONITOR_CONNECTED_CARDS": "R6",
+    "ESCALATE_TO_ANALYST": "R8", "DECLINE_TRANSACTION": "R4", "MONITOR_CARD": "R4", "VERIFY_WITH_CUSTOMER": "§5",
+    "STEP_UP_AUTH": "§5", "CLOSE_NO_FRAUD": "R3", "ALLOW_TRANSACTION": "R3", "WARN_CUSTOMER": "R7",
+    "BLOCK_CARD": "§3b", "BLOCK_ALL_CARDS": "R10",
+}
+
+
+def policy_cite(action: str, gate_rules: list[str], sc: Any) -> str:
+    """The Fraud Policy rule an action's reason should cite, translated from the policy gate's rule names
+    (engine policy YAML). README rules (R1-R10, 3a, 3b) pass through; the gate's own bands (`fraud_band`,
+    `uncertain_initial`, `uncertain_final`, `legit_band`, `legit_leaning_initial`, `3a_case`) are mapped to the
+    README rule they implement, so no answer file cites an internal label."""
+    p = float(getattr(sc, "p_engine", 0.0) or 0.0)
+    fams = len(getattr(sc, "families_fraud", []) or [])
+    flags = getattr(sc, "flags", {}) or {}
+    denial = bool(flags.get("denial")) or flags.get("post_outcome") in ("deny", "fail")
+    out: list[str] = []
+    for g in gate_rules or []:
+        if re.fullmatch(r"R(?:[1-9]|10)|3a|3b|§\s?[1-7][ab]?", g):     # already a README rule / section (policy YAML `cite`)
+            c = g
+        elif g in ("3a_case", "3a_report_only"):
+            c = "3a"
+        elif g == "uncertain_initial":
+            c = ("R1" if p < 0.70 and fams < 2 else "§3b/§5") if action in _VERIFY else "3a" if action == "CREATE_CASE" else "§3b"
+        elif g == "uncertain_final":
+            c = {"ESCALATE_TO_ANALYST": "R8", "CREATE_CASE": "3a"}.get(action, "R4")
+        elif g == "fraud_band":
+            c = {"CREATE_CASE": "3a", "FILE_REPORT": "3a", "MONITOR_CONNECTED_CARDS": "R6"}.get(action) or (
+                ("R2" if denial else "R1 not applicable (p >= 0.70)") if action in _BLOCKS else "§3b/§5" if action in _VERIFY else "§3b")
+        elif g in ("legit_band", "legit_leaning_initial"):
+            c = "3a" if action == "CREATE_CASE" else ("R3" if flags.get("post_outcome") in ("confirm", "pass") else "§6") if g == "legit_band" else "§6/§3b"
+        else:
+            continue
+        if c not in out:
+            out.append(c)
+    return "/".join(out) or _ACTION_DEFAULT_CITE.get(action, "§7")
+
+
+def _family(e: dict) -> str:
+    """Evidence family 4 is 'customer or analyst reply': the analyst's trigger (source external, ref trigger) and an
+    analyst_info reply belong to it just as a customer statement does."""
+    if e.get("source") == "customer" or (e.get("source") == "external" and str(e.get("ref", "")).startswith(("trigger", "evidence_request"))):
+        return "customer"
+    return "history"
 
 
 def _norm_scorecard(sc: Any) -> Any:
@@ -18920,16 +19622,20 @@ class PhaseMachine:
         note = ""
         if ctx.trigger_type == "customer_report":
             note = (
-                f"The customer has already denied transaction {ctx.flagged_txn_id}: the denial is evidence (source customer, ref trigger); "
-                "R2 applies once the verdict is fraud, R1/R8 govern while it is uncertain, R7 if the charge is recurring."
+                f"The customer has already denied transaction {ctx.flagged_txn_id}: the denial is evidence (source customer, ref trigger) "
+                "and it is the trigger, so R2 applies from intake (BLOCK_CARD + CREATE_CASE, FILE_REPORT when exposure > $1,000 or a "
+                "shared device profile / another card's fraud connects); R1 governs only before a denial (README 3b). The one exception "
+                "is R7: a charge that matches the customer's own recurring pattern is not blocked. Follow Playbook C."
             )
         elif ctx.trigger_type == "analyst_request":
-            note = "An analyst asked for related activity on a shared element: follow Playbook D."
+            note = ("An analyst asked for related activity on a shared element: follow Playbook D. The analyst's request is not a "
+                    "customer statement: cite it as source external, ref trigger.")
         else:
             note = f"Risk-score alert ({'in-person' if txn.get('channel') == 'in_person' else 'online'}): follow Playbook {'A' if txn.get('channel') == 'in_person' else 'B'}."
         brief = ["CASE:", json.dumps(head, sort_keys=True), note, "", "MANDATORY QUERY RESULTS (ts <= opened_at):"]
         for name in ("case_context", "card_profile", "card_window", "prior_cases_for_customer"):
-            brief.append(f"## {name}\n" + json.dumps(F[name], separators=(",", ":"), sort_keys=True, default=str)[: self.s.tool_result_max_chars // 2])
+            view = llm_view(name, F[name], ctx.opened_at, F)   # card statistics that include post-opening activity withheld
+            brief.append(f"## {name}\n" + json.dumps(view, separators=(",", ":"), sort_keys=True, default=str)[: self.s.tool_result_max_chars // 2])
         return "\n".join(brief)
 
     # ------------------------------------------------------------------ P1
@@ -19041,6 +19747,14 @@ class PhaseMachine:
                     sc.connected_card_ids, sc.connected_device_profiles = [], []
         known = self._known_ids()
         evidence = self._clean_evidence(a.evidence, known)
+        if self.ctx.trigger_type == "analyst_request":
+            # an analyst's request is not a customer statement (README sources: graph | document | customer | external)
+            for e in evidence:
+                if e["source"] == "customer":
+                    e["source"] = "external"
+                    if not str(e.get("ref", "")).startswith(("trigger", "evidence_request")):
+                        e["ref"] = "trigger"
+                    self.log.note("analyst-request evidence relabelled source customer -> external", ref=e["ref"])
         if self.ctx.trigger_type == "customer_report" and not any(e["source"] == "customer" for e in evidence):
             evidence.insert(
                 0,
@@ -19053,7 +19767,7 @@ class PhaseMachine:
             )
         for e in evidence:  # every claim also lands in the engine ledger (direction from the verdict context is neutral)
             self.tctx.ledger.append(
-                Evidence(claim=e["claim"], source=e["source"], ref=e["ref"], entity_ids=e["entity_ids"], family="customer" if e["source"] == "customer" else "history", direction="neutral")
+                Evidence(claim=e["claim"], source=e["source"], ref=e["ref"], entity_ids=e["entity_ids"], family=_family(e), direction="neutral")
             )
         # M22: `fraud_probability` at the top level of the payload (ui/common.probability_pre_post)
         self.log.record_phase(
@@ -19070,6 +19784,28 @@ class PhaseMachine:
         return sc, evidence, list(a.wanted_requests)
 
     # ------------------------------------------------------------------ P5 / P7
+    def _rule_hints(self, adm: dict, sc: Any) -> dict[str, str]:
+        """{action: the Fraud Policy rule its reason must cite} for every action the gate allows."""
+        cites = adm.get("citations", {}) or {}
+        return {a: policy_cite(a, list(cites.get(a, []) or []), sc) for a in adm.get("allowed", []) or []}
+
+    def _fix_reasons(self, actions: list[dict], adm: dict, sc: Any) -> list[dict]:
+        """Deterministic last step (§7): a reason that cites an internal gate label gets the README rule in its
+        place; a reason that names no rule is prefixed with the rule the gate applied."""
+        hints = self._rule_hints(adm, sc)
+        for a in actions:
+            if not reason_problems([a]):
+                continue
+            cite = hints.get(a["action"]) or policy_cite(a["action"], [], sc)
+            r = str(a.get("reason", "") or "")
+            for h in HOUSE_RULE_NAMES:
+                r = re.sub(rf"(?<![\w-]){re.escape(h)}(?![\w-])", cite, r)
+            if reason_problems([dict(a, reason=r)]):
+                r = f"{cite}: {r}" if r else f"{cite}: required by policy"
+            self.log.note("action reason given its policy citation", action=a["action"], before=a.get("reason", "")[:160], after=r[:160])
+            a["reason"] = r
+        return actions
+
     async def _decide(self, phase: str, stage: str, sc: Any, post_note: str = "") -> list[dict]:
         adm = self.E.policy.admissible(self.ctx, sc, stage)
         text = _fill(
@@ -19083,14 +19819,19 @@ class PhaseMachine:
             exposure=f"{sc.exposure_usd:,.2f}",
             post_evidence_note=post_note,
             admissible_json=json.dumps(adm, sort_keys=True),
+            rule_hints=json.dumps(self._rule_hints(adm, sc), sort_keys=True),
         )
         choice: ActionChoice = await self._parse(phase, ActionChoice, text)
         actions = self._actions_dicts(choice)
         violations = self.E.policy.check(actions, self.ctx, sc, stage)
-        if violations:
-            self.log.note(f"{phase}: policy violations, re-prompting", violations=violations)
+        cite_problems = reason_problems(actions)
+        if violations or cite_problems:
+            self.log.note(f"{phase}: policy violations, re-prompting", violations=violations + cite_problems)
             choice = await self._parse(
-                phase + "-retry", ActionChoice, "Your action list violates the policy gate:\n- " + "\n- ".join(violations) + "\nReply with a corrected ActionChoice inside the admissible set."
+                phase + "-retry", ActionChoice,
+                "Your action list violates the policy gate:\n- " + "\n- ".join(violations + cite_problems)
+                + "\nReply with a corrected ActionChoice inside the admissible set; every reason cites the Fraud Policy rule "
+                  "(R1-R10, 3a, 3b, §5, §6) given for that action in RULE TO CITE, never an internal label such as fraud_band.",
             )
             actions = self._actions_dicts(choice)
             violations = self.E.policy.check(actions, self.ctx, sc, stage)
@@ -19098,6 +19839,7 @@ class PhaseMachine:
             actions = self._correct(actions, adm, sc)
             self.events.append({"kind": "policy_override", "payload": {"stage": stage, "violations": violations, "corrected": actions}})
             self.log.note(f"{phase}: deterministic policy correction applied", violations=violations)
+        actions = self._fix_reasons(actions, adm, sc)
         actions = self.E.policy.order(actions)
         for a in actions:
             a["route"] = self.E.policy.route(a["action"], sc.exposure_usd)
@@ -19123,15 +19865,16 @@ class PhaseMachine:
         by_name = {a["action"]: a for a in actions}
         out: list[dict] = []
         for r in adm["required"]:
-            a = by_name.get(r) or {"action": r, "route": adm["routes"].get(r, "auto"), "reason": "/".join(adm["citations"].get(r, ["policy"])) + ": required by policy (deterministic correction)"}
+            a = by_name.get(r) or {"action": r, "route": adm["routes"].get(r, "auto"),
+                                   "reason": policy_cite(r, list(adm["citations"].get(r, []) or []), sc) + ": required by policy (deterministic correction)"}
             out.append(a)
         for a in actions:
             if a["action"] in adm["allowed"] and a["action"] not in adm["required"]:
                 out.append(a)
         for a in out:
             a["route"] = adm["routes"].get(a["action"], a.get("route", "auto"))
-            if "R1" in a.get("reason", "") and not (sc.p_engine < 0.70 and len(sc.families_fraud) < 2):
-                a["reason"] = a["reason"].replace("R1", "§3b/§5")
+            if _R1_CLAIM.search(a.get("reason", "")) and not (sc.p_engine < 0.70 and len(sc.families_fraud) < 2):
+                a["reason"] = _R1_CLAIM.sub("§3b/§5", a["reason"])
         return out
 
     # ------------------------------------------------------------------ P6
@@ -19239,7 +19982,8 @@ class PhaseMachine:
             connected_device_profiles=list(sc.connected_device_profiles),
             card_type=str(card.get("card_type", "")),
             card_network=str(card.get("card_network", "")),
-            baseline={k: card[k] for k in ("n_txns", "median_amt", "max_amt", "n_online", "n_in_person", "modal_region", "first_ts", "n_devices_seen") if k in card},
+            # as of the flagged transaction, never the Card vertex's whole-history n_txns / max_amt / n_online ...
+            baseline={k: v for k, v in self._baseline_as_of().items() if k in ("n_txns", "median_amt", "max_amt", "modal_region", "first_ts")},
             prior_cases=[{"id": c.get("id"), "pattern": c.get("pattern"), "outcome": c.get("outcome"), "report_filed": c.get("report_filed"), "opened_at": c.get("opened_at")} for c in prior],
             customer_reply=reply,
             ofac=ofac,
@@ -19249,10 +19993,140 @@ class PhaseMachine:
             trigger_type=self.ctx.trigger_type,
         )
 
+    def _baseline_as_of(self) -> dict:
+        """Card statistics as of the flagged transaction (strictly before it), from case_context.txn: card_seq is the
+        transaction's 1-based position on the card, prior_med_amt / prior_max_amt are over the earlier ones
+        (-1 when there are none). The Card vertex's n_txns / median_amt / max_amt / n_online / n_in_person are
+        whole-history (they include activity after opened_at) and are never used in a report."""
+        cc = self.tctx.facts.get("case_context", {}) or {}
+        txn = cc.get("txn", {}) or {}
+        prof = self.tctx.facts.get("card_profile", {}) or {}
+        card = prof.get("card", {}) or {}
+        out: dict[str, Any] = {}
+        try:
+            seq = int(txn.get("card_seq") or 0)
+        except (TypeError, ValueError):
+            seq = 0
+        if seq > 0:
+            out["n_txns"] = seq - 1
+            out["as_of"] = f"before the flagged transaction {self.ctx.flagged_txn_id} ({txn.get('ts', '')})"
+            for key, src in (("median_amt", "prior_med_amt"), ("max_amt", "prior_max_amt")):
+                try:
+                    v = float(txn.get(src, -1))
+                except (TypeError, ValueError):
+                    v = -1.0
+                if v >= 0 and seq > 1:
+                    out[key] = round(v, 2)
+        regions = prof.get("regions", []) or []            # as-of heap (ts <= opened_at)
+        if regions and isinstance(regions[0], dict) and regions[0].get("addr1"):
+            out["modal_region"] = str(regions[0]["addr1"])
+            out["top_regions_as_of_opening"] = [{"addr1": r.get("addr1"), "n": r.get("n")} for r in regions[:3] if isinstance(r, dict)]
+        devices = prof.get("devices", []) or []
+        if devices:
+            out["top_devices_as_of_opening"] = [{"device_id": d.get("device_id"), "n": d.get("n"), "first_ts": d.get("first_ts")}
+                                                for d in devices[:3] if isinstance(d, dict)]
+        if prof.get("last30"):
+            out["last_30_days_as_of_opening"] = prof["last30"]
+        if card.get("first_ts"):
+            out["first_ts"] = card["first_ts"]
+        # a time-boxed card_profile (the as-of query) may also be quoted: its count / median / maximum are as of opening
+        from agent.mcp_client import card_profile_stale
+
+        if card and not card_profile_stale(prof, self.ctx.opened_at):
+            for key, src in (("n_txns_at_opening", "n_txns"), ("median_amt_at_opening", "median_amt"), ("max_amt_at_opening", "max_amt")):
+                if card.get(src) not in (None, ""):
+                    out[key] = card[src]
+        return out
+
+    def _prior_reports(self, facts: Any) -> tuple[list[str], list[str]]:
+        """(this card, related) CC- ids with a report filed: the card's own closed cases; the closed cases on the
+        ring / device profile (ring_profile) plus any the evidence claims were reported."""
+        from rag.validate_sar import reported_cases_from_evidence
+
+        def filed(v: Any) -> bool:
+            return str(v).lower() in ("true", "yes", "1")
+
+        card = [str(c.get("id")) for c in facts.prior_cases if filed(c.get("report_filed")) and c.get("id")]
+        rel = [str(c.get("id")) for c in ((self.tctx.facts.get("ring_profile", {}) or {}).get("closed_cases", []) or [])
+               if isinstance(c, dict) and filed(c.get("report_filed")) and c.get("id") and c.get("card_id") != self.ctx.card_id]
+        ev_card, ev_rel = reported_cases_from_evidence(self.evidence, self.ctx.card_id)
+        card += [i for i in ev_card if i not in card]
+        rel += [i for i in ev_rel if i not in rel and i not in card]
+        return card, rel
+
+    def _sar_known_devices(self, facts: Any) -> list[str]:
+        devs = list(facts.connected_device_profiles) + [str(t.get("device_id")) for t in facts.affected if t.get("device_id")]
+        devs += [str(i) for e in self.evidence for i in (e.get("entity_ids", []) or []) if " | " in str(i)]
+        return [d for d in dict.fromkeys(devs) if " | " in d]
+
+    def _sar_case_json(self, facts: Any, reports: tuple[list[str], list[str]]) -> dict:
+        """CASE DATA for the P8 prompt: what happened, what is only recommended, and statistics as of opening."""
+        from rag import sar as rag_sar
+
+        def status(a: dict) -> str:
+            if a.get("action") == "FILE_REPORT":
+                return "this report: recommended, awaiting fraud-manager (L2) approval"
+            if a.get("route") == "auto":
+                return "done by the agent (auto route)"
+            who = "team-lead (L1)" if a.get("route") == "L1" else "fraud-manager (L2)"
+            return f"recommended, NOT yet done: awaiting {who} approval"
+
+        card_r, rel_r = reports
+        if card_r:
+            card_note = f"a prior suspicious activity report was filed on this card under closed case {', '.join(card_r)}"
+        elif facts.prior_cases:
+            card_note = f"no prior suspicious activity report has been filed on this card ({len(facts.prior_cases)} earlier closed case(s), none reported)"
+        else:
+            card_note = "no prior suspicious activity report has been filed on this card"
+        rel_note = (f"closed cases {', '.join(rel_r)} on the same device profile or connected cards were confirmed fraud with reports filed"
+                    if rel_r else "")
+        ofac = facts.ofac or {}
+        ofac_note = ("OFAC screening of the customer and card identifiers against the SDN list returned no match" if not ofac.get("matches")
+                     else f"OFAC screening returned a possible SDN match ({ofac['matches'][0]['name']}, score {ofac.get('best_score')}) under review")
+        txns = [{k: t.get(k) for k in ("id", "ts", "amt", "channel", "product_cd", "addr1", "device_id", "device_new", "proxy") if t.get(k) not in (None, "")}
+                for t in facts.affected]
+        base = self._baseline_as_of()
+        return {
+            "graph_case_id": facts.graph_case_id, "alert_id": facts.case_id, "opened": facts.opened_at[:10],
+            "customer_id": facts.customer_id, "card_id": facts.card_id, "card_type": facts.card_type, "card_network": facts.card_network,
+            "typology": rag_sar.TYPOLOGY.get(facts.pattern, rag_sar.TYPOLOGY["none"]), "pattern": facts.pattern,
+            "pattern_description": facts.pattern_description, "trigger_type": facts.trigger_type,
+            "transactions": txns, "affected_txn_ids": [str(t.get("id")) for t in facts.affected],
+            "activity_dates": rag_sar.activity_dates(facts.affected), "exposure_usd": round(facts.exposure_usd, 2),
+            "connected_card_ids": list(facts.connected_card_ids), "connected_device_profiles": list(facts.connected_device_profiles),
+            "shared_element": facts.shared_element,
+            "baseline_as_of_opening": base, "median_amt": base.get("median_amt", 0),
+            "prior_reports": {"this_card": card_r, "device_profile_or_connected_cards": rel_r},
+            "prior_sar_note": card_note[0].upper() + card_note[1:] + (f"; {rel_note}" if rel_note else ""),
+            "ofac_note": ofac_note, "customer_reply": facts.customer_reply,
+            "similar_prior_cases": [c for c in (getattr(self, "_sar_similar", []) or []) if str(c).startswith("CC-")],
+            "actions": [{"action": a.get("action"), "route": a.get("route"), "status": status(a)} for a in facts.final_actions],
+            "sar_reason": facts.sar_reason,
+        }
+
+    @staticmethod
+    def _complete_subjects(sar: dict, drafted: list[str], known_devices: list[str], lead: tuple[str, str]) -> dict:
+        """subjects = every customer id, card id and known device-profile string the narrative names (README),
+        customer and card first. The model's own list is kept only where the narrative names the id verbatim."""
+        from rag.validate_sar import CARD_ID, CUST_ID
+
+        nar = sar.get("narrative", "")
+        subs = [s for s in lead if s and s in nar]
+        cands = list(sar.get("subjects", []) or []) + list(drafted or []) + CUST_ID.findall(nar) + CARD_ID.findall(nar)
+        cands += [d for d in known_devices if d in nar]
+        for s in cands:
+            s = str(s)
+            if s and s in nar and s not in subs and (CARD_ID.fullmatch(s) or CUST_ID.fullmatch(s) or " | " in s):
+                subs.append(s)
+        sar["subjects"] = subs
+        return sar
+
     async def p8_sar(self, sc: Any, final: list[dict]) -> dict:
-        """M15 / M16 / D10: grounded on the two FinCEN documents by id, drafted through `rag.sar.build_prompt`,
-        assembled by `rag.sar.assemble` and checked by `rag.validate_sar.validate_sar` — the single SAR validator.
-        After two failed LLM drafts the deterministic `rag.sar.fallback_narrative` is used."""
+        """M15 / M16 / D10: grounded on the two FinCEN documents by id, drafted from agent/prompts/sar.md (actions with
+        their approval status, card statistics as of opening, prior reports per scope), assembled by
+        `rag.sar.assemble`, subjects completed from the narrative, and checked by `rag.validate_sar.validate_sar` with
+        the fact checks V14-V19 — a failed check re-prompts; after three failed drafts the deterministic
+        `rag.sar.fallback_narrative` is used."""
         from rag import sar as rag_sar
         from rag.validate_sar import validate_sar
 
@@ -19263,6 +20137,7 @@ class PhaseMachine:
         ofac = tools_local.ofac_screen(self.ctx.customer_id)
         ofac = dict(ofac, best_score=max([m["score"] for m in ofac.get("matches", [])] or [0.0]))
         facts = self._sar_facts(sc, final, reason, ofac)
+        self._sar_similar = list(sc.similar_prior_cases or [])
         # M15: the Document ids are `sar_guidance_narrative` (the narrative guidance) and `sar_tti_19`
         # (the effective / less-effective narrative examples); an unknown filter searches everything.
         chunks: list[dict] = []
@@ -19275,52 +20150,58 @@ class PhaseMachine:
                 chunks += list(got.get("chunks", []) or [])
             except Exception as e:
                 self.log.note(f"grounding_chunks({doc}) failed", error=str(e)[:200])
-        for c in chunks:  # rag.sar.build_prompt reads doc_id/section/page/text
+        for c in chunks:
             c.setdefault("doc_id", str(c.get("id", "")).split("#")[0])
             c.setdefault("section", "")
             c.setdefault("page", 0)
         resolver = self._sar_resolver()
         affected_ts = [str(t.get("ts", "")) for t in facts.affected if t.get("ts")]
-        sys_text, user_text = rag_sar.build_prompt(facts, chunks)
-        text = sys_text + "\n\n" + user_text
+        reports = self._prior_reports(facts)
+        known_devices = self._sar_known_devices(facts)
+        base = self._baseline_as_of()
+        fact_context = {
+            "final_actions": [dict(a) for a in final], "known_devices": known_devices,
+            "prior_reports_card": reports[0], "prior_reports_related": reports[1],
+            "baseline_as_of": ({"n_prior_txns": base["n_txns"], "max_amt": base.get("max_amt"), "median_amt": base.get("median_amt"),
+                                "n_txns_at_opening": base.get("n_txns_at_opening"), "max_amt_at_opening": base.get("max_amt_at_opening"),
+                                "median_amt_at_opening": base.get("median_amt_at_opening")}
+                               if "n_txns" in base else None),
+            "affected_amounts": [float(t.get("amt", 0) or 0) for t in facts.affected],
+        }
+        case_json = self._sar_case_json(facts, reports)
+        excerpts = "\n\n".join(f"[{c['doc_id']}#{c['section']} p.{c.get('page', 0)}]\n{c.get('text', '')}" for c in chunks[:5]) or "(none retrieved)"
+        text = _fill(self.prompts["sar"], sar_reason=reason, graph_case_id=facts.graph_case_id, customer_id=facts.customer_id,
+                     card_id=facts.card_id, prior_sar_note=case_json["prior_sar_note"], ofac_note=case_json["ofac_note"],
+                     exposure=f"{facts.exposure_usd:,.2f}", chunks=excerpts, case_json=json.dumps(case_json, indent=1, default=str))
+
+        def check(cand: dict) -> list[str]:
+            return validate_sar(cand, exposure_usd=facts.exposure_usd, affected_ts=affected_ts,
+                                case_ids=(self.ctx.case_id, self.graph_case_id), customer_id=self.ctx.customer_id,
+                                card_id=self.ctx.card_id, resolver=resolver, file_report_in_final=True, fact_context=fact_context)
+
+        lead = (self.ctx.customer_id, self.ctx.card_id)
         sar: dict | None = None
         problems: list[str] = []
-        for attempt in range(2):
+        for attempt in range(3):
             d: SarDraft = await self._parse(
                 "P8" if attempt == 0 else f"P8-retry{attempt}",
                 SarDraft,
-                text if attempt == 0 else "The narrative failed validation: " + "; ".join(problems) + ". Rewrite the SarDraft.",
+                text if attempt == 0 else ("The narrative failed validation: " + "; ".join(problems)
+                                           + ". Rewrite the SarDraft from the CASE DATA, fixing every problem listed."),
                 model=self.s.sar_model,
             )
-            cand = rag_sar.assemble(facts, d.narrative, reason)
-            problems = validate_sar(
-                cand,
-                exposure_usd=facts.exposure_usd,
-                affected_ts=affected_ts,
-                case_ids=(self.ctx.case_id, self.graph_case_id),
-                customer_id=self.ctx.customer_id,
-                card_id=self.ctx.card_id,
-                resolver=resolver,
-                file_report_in_final=True,
-            )
+            cand = self._complete_subjects(rag_sar.assemble(facts, d.narrative, reason), list(d.subjects), known_devices, lead)
+            problems = check(cand)
             if not problems:
                 sar = cand
                 break
             self.log.note("SAR validation failed", attempt=attempt + 1, problems=problems)
         if sar is None:
-            sar = rag_sar.assemble(facts, rag_sar.fallback_narrative(facts), reason)
-            residual = validate_sar(
-                sar,
-                exposure_usd=facts.exposure_usd,
-                affected_ts=affected_ts,
-                case_ids=(self.ctx.case_id, self.graph_case_id),
-                customer_id=self.ctx.customer_id,
-                card_id=self.ctx.card_id,
-                resolver=resolver,
-                file_report_in_final=True,
-            )
-            self.log.note("SAR: rag.sar.fallback_narrative used after two failed drafts", residual=residual)
-        self.events.append({"kind": "sar", "payload": {"reason": reason, "ofac": ofac, "chunks": [c.get("id") for c in chunks]}})
+            nar = rag_sar.fallback_narrative(facts)
+            sar = self._complete_subjects(rag_sar.assemble(facts, nar, reason), [], known_devices, lead)
+            self.log.note("SAR: rag.sar.fallback_narrative used after three failed drafts", residual=check(sar))
+        self.events.append({"kind": "sar", "payload": {"reason": reason, "ofac": ofac, "chunks": [c.get("id") for c in chunks],
+                                                       "prior_reports": {"card": reports[0], "related": reports[1]}}})
         return sar
 
     def _ts_lookup(self) -> dict[str, str]:
@@ -19341,6 +20222,20 @@ class PhaseMachine:
             walk(rows)
         return out
 
+    def _memory_exclusions(self, ctx: CaseContext) -> set[str]:
+        """AgentCase ids case memory must never return for this case: its own AC-<case_id> (written by an earlier
+        run) and the agent case of every exam case opened at or after this one (some query rows, e.g.
+        device_neighbors.agent_cases, carry no opened_at to filter on)."""
+        out = {f"AC-{ctx.case_id}"}
+        try:
+            with self.s.case_pack_csv.open(encoding="utf-8", newline="") as fh:
+                for r in csv.DictReader(fh):
+                    if r.get("case_id") and str(r.get("opened_at", "")) >= ctx.opened_at:
+                        out.add(f"AC-{r['case_id']}")
+        except OSError:
+            pass
+        return out
+
     # ------------------------------------------------------------------ run
     async def run_case(self, ctx: CaseContext, log: RunLog) -> dict:
         self.ctx, self.log = ctx, log
@@ -19356,7 +20251,8 @@ class PhaseMachine:
         self.events: list[dict] = []
         self.evidence: list[dict] = []
         self.post_open: dict = {}
-        self.tctx = ToolContext(opened_at=ctx.opened_at)
+        excluded = self._memory_exclusions(ctx)
+        self.tctx = ToolContext(opened_at=ctx.opened_at, exclude_case_ids=frozenset(excluded))
         self.tctx.budget.limit = self.s.max_tool_calls
         tools_local.bind(self.session, self.tctx)
         self.tools = make_query_tools(self.session, self.tctx, self.descriptions) + tools_local.make_local_tools(ctx, self.tctx)
@@ -19395,6 +20291,7 @@ class PhaseMachine:
         self.log.record_phase("P5-voi", {"settled_pre": settled, "request_type": rt, "ask": ask, "voi_zero": voi_zero, "branches": branches, "llm_wanted": list(wanted)})
         initial = await self._decide("P5", "initial", sc)  # P5
         self.events.append({"kind": "nba_initial", "payload": initial})
+        p_pre, verdict_pre = float(sc.p_engine), sc.verdict   # before P6 (post_evidence may update sc in place)
         if ask:  # P6 — only the request type the engine chose
             requests, sc_post = await self.p6_evidence(sc, rt, branches)
         else:
@@ -19402,7 +20299,7 @@ class PhaseMachine:
         if requests:  # P7
             sc_final = sc_post
             final = await self._decide("P7", "final", sc_final, post_note=f"Post-evidence: assumed {requests[0]['type']} outcome '{sc_post.flags.get('post_outcome')}'.")
-            what_changed = self._what_changed(requests[0], sc, sc_post, initial, final)
+            what_changed = self._what_changed(requests[0], sc, sc_post, initial, final, p_pre, verdict_pre)
             if what_changed == "nothing":  # same actions and routes: keep initial verbatim so final == initial exactly
                 final = [dict(a) for a in initial]
         else:
@@ -19429,6 +20326,7 @@ class PhaseMachine:
             "counterfactual": (sc_post.flags.get("counterfactual") if sc_post else ""),
         }
         closing: Closing = await self._parse("P9", Closing, _fill(self.prompts["explain"], engine_stop_reason=stop, final_json=json.dumps(final_json, sort_keys=True, default=str)))
+        closing = await self._short_summary(closing)
         closing_d = closing.model_dump()
         closing_d["stop_reason"] = closing.stop_reason if "§6" in closing.stop_reason else f"{stop} {closing.stop_reason}".strip()
         closing_d["what_changed"] = what_changed
@@ -19439,7 +20337,7 @@ class PhaseMachine:
         written = await persist.persist_case(self, ctx, sc_final, initial, final, requests, sar, closing_d, self.evidence)
         closing_d["written_to_graph"] = written
         ev_objs = [
-            Evidence(claim=e["claim"], source=e["source"], ref=e["ref"], entity_ids=list(e["entity_ids"]), family="customer" if e["source"] == "customer" else "history", direction="neutral")
+            Evidence(claim=e["claim"], source=e["source"], ref=e["ref"], entity_ids=list(e["entity_ids"]), family=_family(e), direction="neutral")
             for e in self.evidence
         ]
         if requests and sc_post is not None:
@@ -19474,24 +20372,65 @@ class PhaseMachine:
         self.log.record_phase("P9", {"validation": problems, "totals": self.log.totals()})
         return answer
 
-    def _what_changed(self, req: dict, sc: Any, sc_post: Any, initial: list[dict], final: list[dict]) -> str:
+    async def _short_summary(self, closing: Closing) -> Closing:
+        """README: the summary is 'two to six sentences' and 'short' (the evidence list carries the detail). One
+        re-prompt on a violation, then a deterministic trim to the leading sentences that fit."""
+        problems = summary_problems(closing.summary)
+        if not problems:
+            return closing
+        self.log.note("P9: summary too long, re-prompting", problems=problems)
+        retry: Closing = await self._parse(
+            "P9-retry", Closing,
+            "The summary fails the README format: " + "; ".join(problems) + f". Rewrite the Closing with a summary of two to four "
+            f"sentences and under {SUMMARY_MAX_CHARS - 150} characters: verdict and probability, pattern, episode and exposure, the "
+            "decisive evidence, and the recommended action with its route. Keep stop_reason and similar_prior_cases_used.",
+        )
+        if not summary_problems(retry.summary):
+            return retry
+        sents = text_sentences(retry.summary if len(retry.summary) < len(closing.summary) else closing.summary)
+        keep: list[str] = []
+        for x in sents:
+            if len(keep) >= 6 or (len(keep) >= 2 and len(" ".join(keep + [x])) > SUMMARY_MAX_CHARS):
+                break
+            keep.append(x)
+        trimmed = " ".join(keep)
+        if len(trimmed) > SUMMARY_MAX_CHARS:            # two very long sentences: cut at the last word boundary
+            trimmed = trimmed[: SUMMARY_MAX_CHARS - 1].rsplit(" ", 1)[0].rstrip(",;:") + "."
+        self.log.note("P9: summary trimmed deterministically", before=len(closing.summary), after=len(trimmed))
+        return closing.model_copy(update={"summary": trimmed})
+
+    def _what_changed(self, req: dict, sc: Any, sc_post: Any, initial: list[dict], final: list[dict],
+                      p_pre: float | None = None, verdict_pre: str | None = None) -> str:
+        """README: one or two sentences on why `final` differs from `initial`, or "nothing". Never "from X to X":
+        an unchanged probability / verdict is said to have stayed."""
         ini, fin = [(a["action"], a["route"]) for a in initial], [(a["action"], a["route"]) for a in final]
         if ini == fin:
             return "nothing"
+        p0 = float(sc.p_engine if p_pre is None else p_pre)
+        v0 = sc.verdict if verdict_pre is None else verdict_pre
+        p1, v1 = float(sc_post.p_engine), sc_post.verdict
         added = [a for a, _ in fin if a not in {x for x, _ in ini}]
         removed = [a for a, _ in ini if a not in {x for x, _ in fin}]
-        parts = [
-            f"The assumed {req['type'].replace('_', ' ')} reply ({sc_post.flags.get('post_outcome')}) moved the probability from {sc.p_engine:.2f} to {sc_post.p_engine:.2f} and the verdict to {sc_post.verdict}"
-        ]
+        rerouted = [a for a, r in fin if (a, r) not in ini and a in {x for x, _ in ini}]
+        reply = f"The assumed {req['type'].replace('_', ' ')} reply ({sc_post.flags.get('post_outcome')})"
+        if f"{p0:.2f}" != f"{p1:.2f}":
+            move = f"moved the probability from {p0:.2f} to {p1:.2f}"
+        else:
+            move = f"left the probability at {p1:.2f}"
+        move += f" and kept the verdict {v1}" if v1 == v0 else f" and changed the verdict from {v0} to {v1}"
+        parts = [f"{reply} {move}"]
         if added:
             parts.append(f"adding {', '.join(added)}")
         if removed:
             parts.append(f"removing {', '.join(removed)}")
-        cf = sc_post.flags.get("counterfactual")
-        s = ", ".join(parts) + "."
+        if rerouted:
+            parts.append(f"re-routing {', '.join(rerouted)}")
+        out = ", ".join(parts) + "."
+        cf = " ".join(str(sc_post.flags.get("counterfactual") or "").split()).rstrip(".")
         if cf:
-            s += f" Counterfactual: {cf}."
-        return s
+            first = text_sentences(cf + ".")[0].rstrip(".")      # one sentence: the README allows two in all
+            out += f" Counterfactual: {first}."
+        return out
 ```
 
 #### `agent/persist.py`
@@ -19697,6 +20636,7 @@ from __future__ import annotations
 import json
 
 from agent.schemas import Answer
+from engine.validator import uncertain_block_violation
 
 # D10: a fraud verdict must contain the activity with at least one of these in `final`.
 FRAUD_CONTAINMENT = {"BLOCK_CARD", "DECLINE_TRANSACTION", "ESCALATE_TO_ANALYST", "BLOCK_ALL_CARDS"}
@@ -19799,8 +20739,9 @@ def check_invariants(answer: dict) -> list[str]:
             v.append("fraud ⇒ at least one of BLOCK_CARD / DECLINE_TRANSACTION / ESCALATE_TO_ANALYST / BLOCK_ALL_CARDS in final")
     if "CLOSE_NO_FRAUD" in fin and c["verdict"] != "legitimate":
         v.append("CLOSE_NO_FRAUD in final ⇒ verdict legitimate")
-    if c["verdict"] == "uncertain" and (ini & {"BLOCK_CARD", "BLOCK_ALL_CARDS"} or c["status"] not in ("escalated", "open")):
-        v.append("uncertain: no block in initial and status escalated/open")
+    # README R2: a customer denial takes BLOCK_CARD from intake at any verdict, so an initial BLOCK_CARD citing R2 is allowed
+    if c["verdict"] == "uncertain" and (uncertain_block_violation(nba["initial"]) or c["status"] not in ("escalated", "open")):
+        v.append("uncertain: no block in initial (except an R2 BLOCK_CARD) and status escalated/open")
     if nba["initial"] != nba["final"] and not answer["evidence_requests"]:
         v.append("initial != final without an evidence request")
     if (nba["what_changed"] == "nothing") != (nba["initial"] == nba["final"]):
@@ -19874,6 +20815,7 @@ import csv
 import glob
 import json
 import os
+import re
 from pathlib import Path
 from typing import Any
 
@@ -19932,8 +20874,78 @@ def meta_for(answer: dict, case_pack: dict[str, dict] | None = None) -> dict:
 # ----------------------------------------------------------------------------- API
 
 def validate(answer: dict, db: Any, meta: dict | None = None) -> list[str]:
-    """`engine.validator.validate` with `meta` filled in from the case pack when the caller has none."""
-    return engine_validator.validate(answer, db, meta if meta is not None else meta_for(answer))
+    """`engine.validator.validate` with `meta` filled in from the case pack when the caller has none, plus the
+    agent-side checks the engine validator does not make:
+
+      * the SAR fact checks V14-V19 (`rag.validate_sar.check_answer_sar_facts`: a pending block written as done,
+        gendered pronouns, time-zone claims, named ids missing from subjects, a "no prior report" claim the
+        evidence contradicts);
+      * `answer_text_problems`: every action reason cites a Fraud Policy rule, the summary is short, and
+        `what_changed` never reports a move "from X to X".
+    """
+    meta = meta if meta is not None else meta_for(answer)
+    problems = list(engine_validator.validate(answer, db, meta))
+    have = set(problems)
+    from rag.validate_sar import check_answer_sar_facts
+
+    problems += [f"sar: {p}" for p in check_answer_sar_facts(answer, str(meta.get("card_id", "") or "")) if f"sar: {p}" not in have]
+    problems += answer_text_problems(answer)
+    return problems
+
+
+# ----------------------------------------------------------------------------- agent-side text checks
+
+RULE_REF = re.compile(r"\b(?:R(?:[1-9]|10)|3a|3b)\b|§\s?[1-7]\b")
+HOUSE_RULE_NAMES = ("fraud_band", "uncertain_initial", "uncertain_final", "legit_band", "legit_leaning_initial",
+                    "3a_case", "3a_report_only")
+SUMMARY_MAX_CHARS = 700
+SUMMARY_SENTENCES = (2, 6)
+_SENT = re.compile(r"(?<=[.!?])\s+(?=[A-Z(\"'$])")
+_SAME_MOVE = re.compile(r"\bfrom (\d+(?:\.\d+)?) to (\d+(?:\.\d+)?)\b")
+
+
+def text_sentences(text: str) -> list[str]:
+    return [s for s in _SENT.split(" ".join(str(text).split())) if s.strip()]
+
+
+def reason_problems(actions: list[dict], where: str = "") -> list[str]:
+    """Every action reason names a Fraud Policy rule (R1-R10, 3a, 3b, §1-§7) and none cites an internal
+    policy-gate label (`fraud_band`, `uncertain_initial`, ...) in its place."""
+    out = []
+    for a in actions or []:
+        r = str(a.get("reason", "") or "")
+        house = [h for h in HOUSE_RULE_NAMES if re.search(rf"(?<![\w-]){re.escape(h)}(?![\w-])", r)]
+        if house:
+            out.append(f"{where}{a.get('action')} reason cites the internal label {house[0]!r}; cite the Fraud Policy rule instead")
+        elif not RULE_REF.search(r):
+            out.append(f"{where}{a.get('action')} reason names no policy rule (R1-R10, 3a, 3b, §5, §6)")
+    return out
+
+
+def summary_problems(summary: str) -> list[str]:
+    """README: 'Two to six sentences an analyst could read' and 'Keep summary short'."""
+    s = " ".join(str(summary or "").split())
+    n = len(text_sentences(s))
+    out = []
+    if not SUMMARY_SENTENCES[0] <= n <= SUMMARY_SENTENCES[1]:
+        out.append(f"summary has {n} sentences; must be {SUMMARY_SENTENCES[0]}-{SUMMARY_SENTENCES[1]}")
+    if len(s) > SUMMARY_MAX_CHARS:
+        out.append(f"summary is {len(s)} characters; keep it under {SUMMARY_MAX_CHARS} (the evidence list carries the detail)")
+    return out
+
+
+def what_changed_problems(text: str) -> list[str]:
+    for m in _SAME_MOVE.finditer(str(text or "")):
+        if float(m.group(1)) == float(m.group(2)):
+            return [f"what_changed reports a move {m.group(0)!r} although nothing moved"]
+    return []
+
+
+def answer_text_problems(answer: dict) -> list[str]:
+    nba = answer.get("next_best_actions", {}) or {}
+    case = answer.get("case", {}) or {}
+    return (reason_problems(nba.get("initial", []), "initial: ") + reason_problems(nba.get("final", []), "final: ")
+            + summary_problems(case.get("summary", "")) + what_changed_problems(nba.get("what_changed", "")))
 
 
 # ----------------------------------------------------------------------------- CLI
@@ -20512,7 +21524,8 @@ class FakeSession:
   task runs a trivial MCP call every KEEP_ALIVE_S seconds so the workspace does not auto-stop
   mid-benchmark.
 - `--resume` skips cases whose runs/<run_id>/<case>/answer.json already exists.
-- Writes runs/<run_id>/run_manifest.json (model, effort, prompt hashes, versions, git sha).
+- Writes runs/<run_id>/run_manifest.json (model, effort, prompt hashes, versions, git sha); a `--resume`
+  invocation extends it: every invocation is kept, and `case_runs` records the git sha each case ran on.
 
 Terminal output goes through `ops.console`: a run header, then one block per case (the case and its
 trigger, the P0-P10 phases as the phase machine writes them, the tools it called, the result), then a
@@ -20598,14 +21611,69 @@ def _resolve_backend(settings: Settings) -> str:
     return llm.resolve_backend(settings)
 
 
-def write_manifest(run_dir: Path, settings: Settings, model: str, case_ids: list[str]) -> None:
-    prompts = {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(settings.prompts_dir.glob("*.md"))}
-    manifest = {"run_id": run_dir.name, "started": time.strftime("%Y-%m-%dT%H:%M:%S"), "model": model, "sar_model": settings.sar_model,
-                "effort": settings.effort, "run_mode": settings.run_mode, "llm_backend": _resolve_backend(settings), "engine": ENGINE.source, "max_tool_calls": settings.max_tool_calls,
-                "prompt_sha256": prompts, "versions": _versions(), "git_sha": _git_sha(), "cases": case_ids,
-                "embed_model": settings.embed_model, "embed_dim": settings.embed_dim}
+def _git_dirty() -> bool | None:
+    """True when tracked files differ from HEAD (the cases then did not run on exactly `git_sha`)."""
+    try:
+        out = subprocess.check_output(["git", "status", "--porcelain", "--untracked-files=no"], stderr=subprocess.DEVNULL, text=True)
+        return bool(out.strip())
+    except Exception:
+        return None
+
+
+def _read_manifest(run_dir: Path) -> dict:
+    try:
+        return json.loads((run_dir / "run_manifest.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
+def _write_manifest_file(run_dir: Path, manifest: dict) -> None:
     run_dir.mkdir(parents=True, exist_ok=True)
     (run_dir / "run_manifest.json").write_text(json.dumps(manifest, indent=2, sort_keys=True), encoding="utf-8")
+
+
+def write_manifest(run_dir: Path, settings: Settings, model: str, case_ids: list[str], resume: bool = False) -> dict:
+    """Start (or, on `--resume` / a re-invocation of the same run id, extend) runs/<run_id>/run_manifest.json.
+
+    The top-level fields describe the latest invocation (what `agent.promote` reads); `invocations` keeps every
+    invocation of the run id, `cases` is the union of the cases any invocation selected, and `case_runs`
+    (filled by `record_case_run`) records, per completed case, the git sha / prompt hashes / model it ran on.
+    Returns the invocation record."""
+    prompts = {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(settings.prompts_dir.glob("*.md"))}
+    prev = _read_manifest(run_dir)
+    invocation = {"started": time.strftime("%Y-%m-%dT%H:%M:%S"), "git_sha": _git_sha(), "git_dirty": _git_dirty(),
+                  "model": model, "sar_model": settings.sar_model, "effort": settings.effort, "run_mode": settings.run_mode,
+                  "llm_backend": _resolve_backend(settings), "engine": ENGINE.source, "resume": bool(resume),
+                  "cases_selected": list(case_ids), "prompt_sha256": prompts}
+    invocations = list(prev.get("invocations") or [])
+    if prev and not invocations:           # a manifest written before invocations were recorded
+        invocations.append({k: prev.get(k) for k in ("started", "git_sha", "model", "sar_model", "effort", "run_mode",
+                                                      "llm_backend", "engine", "prompt_sha256")} | {"cases_selected": prev.get("cases", [])})
+    invocations.append(invocation)
+    cases = list(dict.fromkeys([*(prev.get("cases") or []), *case_ids]))
+    manifest = {"run_id": run_dir.name, "started": invocation["started"], "first_started": prev.get("first_started") or prev.get("started") or invocation["started"],
+                "model": model, "sar_model": settings.sar_model,
+                "effort": settings.effort, "run_mode": settings.run_mode, "llm_backend": invocation["llm_backend"], "engine": ENGINE.source, "max_tool_calls": settings.max_tool_calls,
+                "prompt_sha256": prompts, "versions": _versions(), "git_sha": invocation["git_sha"], "git_dirty": invocation["git_dirty"],
+                "cases": cases, "invocations": invocations, "case_runs": dict(prev.get("case_runs") or {}),
+                "embed_model": settings.embed_model, "embed_dim": settings.embed_dim}
+    _write_manifest_file(run_dir, manifest)
+    return invocation
+
+
+def record_case_run(run_dir: Path, case_id: str, invocation: dict, answer: dict | None = None) -> None:
+    """Record in run_manifest.json that `case_id` completed under `invocation` (git sha, prompts, model)."""
+    manifest = _read_manifest(run_dir)
+    runs = dict(manifest.get("case_runs") or {})
+    runs[case_id] = {"finished": time.strftime("%Y-%m-%dT%H:%M:%S"), "invocation_started": invocation.get("started"),
+                     "git_sha": invocation.get("git_sha"), "git_dirty": invocation.get("git_dirty"), "model": invocation.get("model"),
+                     "sar_model": invocation.get("sar_model"), "llm_backend": invocation.get("llm_backend"),
+                     "prompt_sha256": {k: str(v)[:12] for k, v in (invocation.get("prompt_sha256") or {}).items()},
+                     "tool_calls": (answer or {}).get("tool_calls"), "tokens": (answer or {}).get("tokens")}
+    manifest["case_runs"] = dict(sorted(runs.items()))
+    manifest["cases"] = list(dict.fromkeys([*(manifest.get("cases") or []), case_id]))
+    manifest["git_shas"] = sorted({str(r.get("git_sha") or "") for r in runs.values()} - {""})
+    _write_manifest_file(run_dir, manifest)
 
 
 def ensure_awake(settings: Settings = SETTINGS, max_wait_s: int = 240) -> None:
@@ -20832,7 +21900,7 @@ async def run(args: argparse.Namespace) -> int:
             "out": run_dir,
         },
     )
-    write_manifest(run_dir, settings, settings.model, [c.case_id for c in cases])
+    invocation = write_manifest(run_dir, settings, settings.model, [c.case_id for c in cases], resume=bool(args.resume))
     ok(f"manifest -> {run_dir / 'run_manifest.json'}")
     ensure_awake(settings)
     client = make_client(settings)
@@ -20866,6 +21934,9 @@ async def run(args: argparse.Namespace) -> int:
                     totals["skipped"] += 1
                     warn(f"{ctx.case_id} resume: {out} exists, skipping")
                     board.add_row(ctx.case_id, ctx.trigger_type, "(resumed)", "-", "-", "-", "-", "-", "-", "-", "-", "-", style="dim")
+                    if ctx.case_id not in (_read_manifest(run_dir).get("case_runs") or {}):
+                        # an answer from before case_runs existed: provenance unknown, say so rather than guess
+                        record_case_run(run_dir, ctx.case_id, {"started": None, "git_sha": "unknown (resumed; predates case_runs)"})
                     continue
                 if settings.mock and hasattr(session, "use_case"):
                     session.use_case(ctx.case_id)
@@ -20910,6 +21981,7 @@ async def run(args: argparse.Namespace) -> int:
                         break
                     continue
                 try:
+                    record_case_run(run_dir, ctx.case_id, invocation, answer)
                     c = answer["case"]
                     actions = [a["action"] for a in answer["next_best_actions"]["final"]]
                     problems = answer.get("_validation", []) or []
@@ -21020,6 +22092,54 @@ def _on_stderr() -> Iterator[None]:
         sys.stderr.flush()
 
 
+MANIFEST_COLS = ["case", "verdict", "p", "pattern", "sar", "tool_calls", "tokens", "latency_s", "notes", "run_id", "git"]
+
+
+def _existing_rows(path) -> dict[str, tuple]:
+    """Rows of an existing cases/MANIFEST.md table keyed by case id (older 9-column tables get run/git '')."""
+    out: dict[str, tuple] = {}
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return out
+    header_cols: list[str] = []
+    for ln in lines:
+        if not ln.startswith("|") or ln.startswith("|---"):
+            continue
+        cells = [c.strip() for c in ln.strip().strip("|").split("|")]
+        if cells and cells[0] == "case":
+            header_cols = cells
+            continue
+        if header_cols and cells and cells[0].startswith("HHG-"):
+            row = dict(zip(header_cols, cells))
+            out[cells[0]] = tuple(row.get(c, "") for c in MANIFEST_COLS)
+    return out
+
+
+def manifest_markdown(rows: list[tuple], run_id: str, manifest: dict, existing_path=None) -> str:
+    """cases/MANIFEST.md: every case file in cases/, one row each with the run and git sha it came from. Rows for
+    cases not promoted by this invocation are carried over from the previous MANIFEST.md, so a partial promotion
+    (`--cases HHG-014`) never drops the other nineteen."""
+    existing = _existing_rows(existing_path or (SETTINGS.cases_dir / "MANIFEST.md"))
+    merged = dict(existing)
+    for r in rows:
+        merged[r[0]] = tuple(r)
+    present = {p.stem for p in SETTINGS.cases_dir.glob("HHG-*.json")}
+    table = [merged[k] for k in sorted(merged) if k in present or k in {r[0] for r in rows}]
+    runs = sorted({str(r[9]) for r in table if len(r) > 9 and r[9]})
+    shas = sorted({str(r[10]) for r in table if len(r) > 10 and r[10]})
+    lines = ["# cases/ manifest", "",
+             f"- cases: {len(table)} ({', '.join(r[0] for r in table)})",
+             f"- runs: {', '.join(f'`{x}`' for x in runs) or '-'}; last promoted: `{run_id}`",
+             f"- model: `{manifest.get('model', '')}` (effort {manifest.get('effort', '')}), llm backend `{manifest.get('llm_backend', '')}`",
+             f"- engine: `{manifest.get('engine', '')}`",
+             f"- git (per case below): {', '.join(f'`{x}`' for x in shas) or '-'}",
+             "- prompt sha256: " + ", ".join(f"`{k}`={v[:12]}" for k, v in (manifest.get("prompt_sha256") or {}).items()), "",
+             "| " + " | ".join(MANIFEST_COLS) + " |", "|" + "---|" * len(MANIFEST_COLS)]
+    lines += ["| " + " | ".join(str(x) for x in (list(r) + [""] * len(MANIFEST_COLS))[: len(MANIFEST_COLS)]) + " |" for r in table]
+    return "\n".join(lines) + "\n"
+
+
 def promote(run_id: str, cases: str = "all", force: bool = False) -> int:
     run_dir = SETTINGS.runs_dir / run_id
     manifest = json.loads((run_dir / "run_manifest.json").read_text(encoding="utf-8")) if (run_dir / "run_manifest.json").exists() else {}
@@ -21091,8 +22211,13 @@ def promote(run_id: str, cases: str = "all", force: bool = False) -> int:
         dst = SETTINGS.cases_dir / f"{case_dir.name}.json"
         shutil.copyfile(src, dst)
         c = answer["case"]
+        prov = (manifest.get("case_runs") or {}).get(case_dir.name) or {}
+        sha = str(prov.get("git_sha") or (manifest.get("git_sha", "") + " (run start)" if manifest.get("git_sha") else ""))
+        if prov.get("git_dirty"):
+            sha += " +uncommitted changes"
         rows.append((case_dir.name, c["verdict"], c["fraud_probability"], c["pattern"], answer["sar"]["file"],
-                     answer["tool_calls"], answer["tokens"], answer["latency_s"], "; ".join(problems) if problems else ""))
+                     answer["tool_calls"], answer["tokens"], answer["latency_s"], "; ".join(problems) if problems else "",
+                     run_id, sha[:40] if " " not in sha else sha))
         table.add_row(case_dir.name, "forced" if problems else "promoted", *cells,
                       joinlist(problems, sep="; ") if problems else "-", style="yellow" if problems else None)
         if problems:
@@ -21100,12 +22225,7 @@ def promote(run_id: str, cases: str = "all", force: bool = False) -> int:
                 warn(f"{case_dir.name} promoted with --force despite {len(problems)} problem(s)")
                 for p in problems:
                     detail(p)
-    lines = ["# cases/ manifest", "", f"- run_id: `{run_id}`", f"- model: `{manifest.get('model', '')}` (effort {manifest.get('effort', '')})",
-             f"- engine: `{manifest.get('engine', '')}`", f"- git: `{manifest.get('git_sha', '')}`",
-             "- prompt sha256: " + ", ".join(f"`{k}`={v[:12]}" for k, v in (manifest.get("prompt_sha256") or {}).items()), "",
-             "| case | verdict | p | pattern | sar | tool_calls | tokens | latency_s | notes |", "|---|---|---|---|---|---|---|---|---|"]
-    lines += [f"| {r[0]} | {r[1]} | {r[2]} | {r[3]} | {r[4]} | {r[5]} | {r[6]} | {r[7]} | {r[8]} |" for r in rows]
-    (SETTINGS.cases_dir / "MANIFEST.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    (SETTINGS.cases_dir / "MANIFEST.md").write_text(manifest_markdown(rows, run_id, manifest), encoding="utf-8")
     table.print()
     if rows:
         ok(f"{len(rows)} case(s) copied to {SETTINGS.cases_dir}: {joinlist([r[0] for r in rows], max_items=10)}")
@@ -23972,9 +25092,11 @@ CREATE OR REPLACE QUERY similar_prior_cases(LIST<FLOAT> q, INT k, STRING card_id
                 IF addr1 != "" AND c.note_region == addr1 THEN c.@overlap_reasons += "same_region" END,
                 IF pattern_sig != "" AND c.pattern == pattern_sig THEN c.@overlap_reasons += "same_pattern" END;
 
-  // ---- candidates among agent-written cases (cases run in opened_at order, so earlier ones qualify) ----
+  // ---- candidates among agent-written cases (cases run in opened_at order, so earlier ones qualify). STRICT
+  //      opened_at < as_of: the case under investigation (its AgentCase is written at intake with opened_at = as_of,
+  //      and a superseded run's copy has the same id / opened_at) and any later case never retrieve themselves ----
   ac_all = SELECT a FROM (a:AgentCase)
-           WHERE a.opened_at <= as_of AND datetime_diff(as_of, a.opened_at) <= window_s
+           WHERE a.opened_at < as_of AND datetime_diff(as_of, a.opened_at) <= window_s
            ACCUM a.@kind += "agent", a.@outcome_or_verdict += a.verdict, a.@pattern += a.pattern,
                  a.@exposure_usd += a.exposure_usd, a.@opened_at += datetime_format(a.opened_at, "%Y-%m-%d %H:%M:%S");
   ac_struct = SELECT a FROM (a:ac_all)
@@ -23996,7 +25118,7 @@ CREATE OR REPLACE QUERY similar_prior_cases(LIST<FLOAT> q, INT k, STRING card_id
              ACCUM c.@overlap_reasons += "same_device", c.@kind += "closed", c.@outcome_or_verdict += c.outcome,
                    c.@pattern += c.pattern, c.@exposure_usd += c.exposure_usd, c.@opened_at += datetime_format(c.opened_at, "%Y-%m-%d %H:%M:%S");
     ac_dev = SELECT a FROM (d:DeviceProfile WHERE d.id == device_id)<-[:CASE_DEVICE]-(a:AgentCase)
-             WHERE a.opened_at <= as_of AND datetime_diff(as_of, a.opened_at) <= window_s
+             WHERE a.opened_at < as_of AND datetime_diff(as_of, a.opened_at) <= window_s
              ACCUM a.@overlap_reasons += "same_device", a.@kind += "agent", a.@outcome_or_verdict += a.verdict,
                    a.@pattern += a.pattern, a.@exposure_usd += a.exposure_usd, a.@opened_at += datetime_format(a.opened_at, "%Y-%m-%d %H:%M:%S");
     cand = cand UNION cc_dev UNION ac_dev;
@@ -24094,6 +25216,8 @@ USE GRAPH FraudGraph
  FALLBACK 2/2 - AgentCase-only twin of similar_prior_cases_closed (see that file). Returns an empty set
  until the first AgentCase carries a note_emb whose index has been rebuilt.
 */
+// AgentCase rows use STRICT opened_at < as_of: the case under investigation (written at intake with opened_at =
+// as_of) and any later case are never returned as its own precedent.
 CREATE OR REPLACE QUERY similar_prior_cases_agent(LIST<FLOAT> q, INT k, STRING card_id, STRING customer_id,
                                                   STRING device_id, STRING addr1, STRING pattern_sig,
                                                   DATETIME as_of) FOR GRAPH FraudGraph SYNTAX v3 {
@@ -24109,7 +25233,7 @@ CREATE OR REPLACE QUERY similar_prior_cases_agent(LIST<FLOAT> q, INT k, STRING c
   INT kk = k * 3;
 
   ac_all = SELECT a FROM (a:AgentCase)
-           WHERE a.opened_at <= as_of AND datetime_diff(as_of, a.opened_at) <= window_s
+           WHERE a.opened_at < as_of AND datetime_diff(as_of, a.opened_at) <= window_s
            ACCUM a.@kind += "agent", a.@outcome_or_verdict += a.verdict, a.@pattern += a.pattern,
                  a.@exposure_usd += a.exposure_usd, a.@opened_at += datetime_format(a.opened_at, "%Y-%m-%d %H:%M:%S");
   cand = SELECT a FROM (a:ac_all)
@@ -24122,7 +25246,7 @@ CREATE OR REPLACE QUERY similar_prior_cases_agent(LIST<FLOAT> q, INT k, STRING c
            IF pattern_sig != "" AND a.pattern == pattern_sig THEN a.@overlap_reasons += "same_pattern" END;
   IF device_id != "" THEN
     ac_dev = SELECT a FROM (d:DeviceProfile WHERE d.id == device_id)<-[:CASE_DEVICE]-(a:AgentCase)
-             WHERE a.opened_at <= as_of AND datetime_diff(as_of, a.opened_at) <= window_s
+             WHERE a.opened_at < as_of AND datetime_diff(as_of, a.opened_at) <= window_s
              ACCUM a.@overlap_reasons += "same_device", a.@kind += "agent", a.@outcome_or_verdict += a.verdict,
                    a.@pattern += a.pattern, a.@exposure_usd += a.exposure_usd, a.@opened_at += datetime_format(a.opened_at, "%Y-%m-%d %H:%M:%S");
     cand = cand UNION ac_dev;
@@ -24191,6 +25315,8 @@ USE GRAPH FraudGraph
  Weights (research/gap4 recommendation): same_device 3.0, same_card 2.5, same_customer 2.0,
  same_pattern 1.5, same_region 1.0, plus a recency bonus of up to 0.5 inside the 120-day window.
 */
+// AgentCase rows use STRICT opened_at < as_of: the case under investigation (written at intake with opened_at =
+// as_of) and any later case are never returned as its own precedent.
 CREATE OR REPLACE QUERY similar_cases_structural(INT k, STRING card_id, STRING customer_id, STRING device_id,
                                                  STRING addr1, STRING pattern_sig, DATETIME as_of)
     FOR GRAPH FraudGraph SYNTAX v3 {
@@ -24220,7 +25346,7 @@ CREATE OR REPLACE QUERY similar_cases_structural(INT k, STRING card_id, STRING c
          IF pattern_sig != "" AND c.pattern == pattern_sig THEN c.@score += 1.5, c.@overlap_reasons += "same_pattern" END;
 
   ac = SELECT a FROM (a:AgentCase)
-       WHERE a.opened_at <= as_of AND datetime_diff(as_of, a.opened_at) <= window_s
+       WHERE a.opened_at < as_of AND datetime_diff(as_of, a.opened_at) <= window_s
          AND ((card_id != "" AND a.card_id == card_id)
            OR (customer_id != "" AND a.customer_id == customer_id)
            OR (pattern_sig != "" AND a.pattern == pattern_sig))
@@ -24244,7 +25370,7 @@ CREATE OR REPLACE QUERY similar_cases_structural(INT k, STRING card_id, STRING c
     cd = SELECT c FROM (c:cd)
          POST-ACCUM c.@opened_at += datetime_format(c.opened_at, "%Y-%m-%d %H:%M:%S");
     ad = SELECT a FROM (d:DeviceProfile WHERE d.id == device_id)<-[:CASE_DEVICE]-(a:AgentCase)
-         WHERE a.opened_at <= as_of AND datetime_diff(as_of, a.opened_at) <= window_s
+         WHERE a.opened_at < as_of AND datetime_diff(as_of, a.opened_at) <= window_s
          ACCUM a.@score += 3.0, a.@overlap_reasons += "same_device", a.@kind += "agent",
                a.@outcome_or_verdict += a.verdict, a.@pattern += a.pattern, a.@exposure_usd += a.exposure_usd;
     ad = SELECT a FROM (a:ad)
@@ -24347,6 +25473,21 @@ def _norm_case_row(row: dict) -> dict:
     }
 
 
+def timebox_cases(rows: list[dict], as_of: str, exclude_ids: Iterable[str] = ()) -> list[dict]:
+    """Case memory never includes the case itself or the future: drop the given ids (the case's own AC-<case_id>
+    from an earlier run) and every agent case opened at or after `as_of`. Enforced here whatever the installed
+    query's own filter does (the GSQL twins use `opened_at <= as_of`, which admits a re-run's own write-back)."""
+    ex = set(exclude_ids)
+    out = []
+    for r in rows:
+        rid = str(r.get("id", ""))
+        agent = r.get("kind") == "agent" or rid.startswith("AC-")
+        if rid in ex or (agent and as_of and str(r.get("opened_at", ""))[:19] >= as_of[:19] and r.get("opened_at")):
+            continue
+        out.append(r)
+    return out
+
+
 def diversify(rows: list[dict], k: int) -> list[dict]:
     """Nearest k, but guarantee one cleared/legitimate case when any exists (same rule as the GSQL)."""
     rows = sorted(rows, key=lambda r: (r["distance"], r["id"]))
@@ -24380,8 +25521,13 @@ def _vector_error(e: Exception) -> bool:
 
 def similar_prior_cases(run: RunFn, embedder, query_text: str, *, card_id: str = "", customer_id: str = "",
                         device_id: str = "", addr1: str = "", pattern_sig: str = "", as_of: str, k: int = 8,
-                        index_ready: Callable[[], bool] | None = None, prefer: str = "hybrid") -> dict:
-    """Returns {"cases": [contract rows], "meta": {"source": ..., "k": k}}."""
+                        index_ready: Callable[[], bool] | None = None, prefer: str = "hybrid",
+                        exclude_ids: Iterable[str] = ()) -> dict:
+    """Returns {"cases": [contract rows], "meta": {"source": ..., "k": k}}. Agent cases opened at/after `as_of` and
+    `exclude_ids` (the case's own AC- id) are dropped before diversification (timebox_cases)."""
+    def pick(rows: list[dict]) -> list[dict]:
+        return diversify(timebox_cases([_norm_case_row(r) for r in rows], as_of, exclude_ids), k)
+
     struct_params = {"k": k, "card_id": card_id, "customer_id": customer_id, "device_id": device_id,
                      "addr1": addr1, "pattern_sig": pattern_sig, "as_of": as_of}
     if prefer != "structural" and (index_ready is None or index_ready()):
@@ -24390,7 +25536,7 @@ def similar_prior_cases(run: RunFn, embedder, query_text: str, *, card_id: str =
         if prefer in ("hybrid", "auto"):
             try:
                 rows = flatten_rows(_first_key(run("similar_prior_cases", params), "cases"))
-                return {"cases": diversify([_norm_case_row(r) for r in rows], k), "meta": {"source": "similar_prior_cases", "k": k}}
+                return {"cases": pick(rows), "meta": {"source": "similar_prior_cases", "k": k}}
             except Exception as e:  # noqa: BLE001
                 if not _vector_error(e):
                     raise
@@ -24401,12 +25547,12 @@ def similar_prior_cases(run: RunFn, embedder, query_text: str, *, card_id: str =
             except Exception as e:  # noqa: BLE001 - agent twin may not exist yet
                 if not _vector_error(e):
                     raise
-            return {"cases": diversify([_norm_case_row(r) for r in rows], k), "meta": {"source": "two_query", "k": k}}
+            return {"cases": pick(rows), "meta": {"source": "two_query", "k": k}}
         except Exception as e:  # noqa: BLE001
             if not _vector_error(e):
                 raise
     rows = flatten_rows(_first_key(run("similar_cases_structural", struct_params), "cases"))
-    return {"cases": diversify([_norm_case_row(r) for r in rows], k), "meta": {"source": "similar_cases_structural", "k": k}}
+    return {"cases": pick(rows), "meta": {"source": "similar_cases_structural", "k": k}}
 
 
 # ----------------------------------------------------------------------------- grounding_chunks
@@ -24570,13 +25716,14 @@ def skeleton(facts: SarFacts) -> list[dict]:
 SYSTEM = """You draft the narrative section of a Suspicious Activity Report for a card issuer. Write one paragraph of
 six to twelve sentences, plain prose, chronological, that a regulator can read without any attachment.
 Follow FinCEN's narrative guidance: cover who, what, when, where, why and how; write every transaction as
-'On YYYY-MM-DD at HH:MM UTC ...' with its amount in USD with cents, in chronological order; name the instrument (card id), the channel (online /
+'On YYYY-MM-DD at HH:MM ...' (the data carries no time zone; never name one) with its amount in USD with cents, in chronological order; name the instrument (card id), the channel (online /
 in person), the billing region code and the device profile string exactly as given; say why the activity is
 unusual for this cardholder; state whether a prior report exists and the OFAC screening result (reserve the phrase 'On <date>' for
 transactions; write the opening date as 'opened YYYY-MM-DD'); end with the
 actions taken or requested and the total amount. Use only the facts provided - never invent merchants,
 names, addresses or ids. No tables, no lists, no headings, no line breaks, no 'see attached'. Do not mention
-timestamp seconds, model internals or that a reply was simulated; describe the customer's reply as a statement."""
+timestamp seconds, model internals or that a reply was simulated; describe the customer's reply as a statement.
+Never state a time zone or the cardholder's gender."""
 
 
 def build_prompt(facts: SarFacts, chunks: list[dict]) -> tuple[str, str]:
@@ -24628,7 +25775,7 @@ def fallback_narrative(facts: SarFacts) -> str:
             parts = []
             for t in group:
                 ch = "online" if t.get("channel") == "online" else "in-person"
-                p = f"on {_date(t.get('ts'))} at {_time(t.get('ts'))} UTC a {usd(float(t.get('amt', 0)))} {ch} purchase"
+                p = f"on {_date(t.get('ts'))} at {_time(t.get('ts'))} a {usd(float(t.get('amt', 0)))} {ch} purchase"
                 if t.get("product_cd"):
                     p += f" (product code {t['product_cd']})"
                 if t.get("addr1"):
@@ -24648,7 +25795,9 @@ def fallback_narrative(facts: SarFacts) -> str:
     if b.get("modal_region") and facts.pattern == "out_of_region_use":
         why.append(f"the cardholder's normal in-person activity is in billing region {b['modal_region']}")
     if facts.pattern == "card_not_present_new_device" or any(t.get("device_new") == "New" for t in txns):
-        why.append("the device profile had never been seen on this account")
+        # the identity record's own flag (id_15), not a claim about the device's history: a profile marked New can still
+        # have earlier uses on the card (HHG-006: Trident prior_n=3)
+        why.append("the identity record marked the device as New for this account")
     if facts.pattern_description:
         pd = facts.pattern_description.rstrip(".").replace("\n", " ")
         why.append(pd[0].lower() + pd[1:])
@@ -24759,6 +25908,17 @@ Checks when sar.file is true:
   V13 no tables: a '|' is allowed inside a device-profile string ("SM-G935F ... | Android 7.0 | ..."); only a
       leading-pipe table row (`^|` / `\n|`), a `|---` rule line or a tab is rejected (D10)
 When sar.file is false: narrative == "", subjects == [], total_amount_usd == 0, activity_dates == [], reason cites a rule.
+
+Fact checks (V14-V19, `check_sar_facts`) - run when the caller passes `fact_context` (the agent's P8 re-prompt loop,
+agent.validator, validate_answer_sar and so the UI); they need to know what was actually done and what was known:
+  V14 a pending (L1/L2-routed) or absent block is described as done ("blocked card X", "the card has been blocked")
+  V15 gendered pronouns / honorifics (the dataset has no gender)
+  V16 a time-zone claim (UTC, GMT, EST, "time zone"): the dataset timestamps carry no zone
+  V17 a card id, customer id or known device-profile string named in the narrative is missing from subjects
+  V18 a "no prior report" claim contradicted by prior reports on the card (card scope) or on the device profile /
+      connected cards (related scope)
+  V19 card statistics that are not as of opened_at: a history count above the as-of count, or a baseline
+      maximum / median that differs from the as-of value
 """
 from __future__ import annotations
 
@@ -24828,9 +25988,182 @@ def sentences(text: str) -> list[str]:
     return [s for s in _SENT.split(text.strip()) if s.strip()]
 
 
+# ----------------------------------------------------------------------------- fact checks (V14-V19)
+
+# V14: a block described as already done. Only past/perfect/present-state forms are claims; "be blocked",
+# "to block", "block ... pending approval", "has not been blocked" are not matched.
+_DONE_STATE = re.compile(
+    r"\b(?:has|have|had|was|were|is|are)\s+(?:now\s+|already\s+|since\s+)?(?:been\s+)?(?:now\s+|already\s+)?"
+    r"(?:blocked|frozen|suspended|deactivated|reissued|cancell?ed)\b", re.I)
+_DONE_VERB_CARD = re.compile(
+    r"\b(?:blocked|froze|frozen|suspended|deactivated|cancell?ed|closed|reissued)\s+(?:the\s+|all\s+|both\s+|its\s+)?"
+    r"(?:customer's\s+|cardholder's\s+)?cards?\b", re.I)
+_CARD_STATE = re.compile(
+    r"\bcards?(?:\s+C\d{5}-K\d)?\s+(?:(?:was|were|is|are|has been|have been)\s+(?:now\s+|already\s+)?closed|blocked)\b", re.I)
+_EXECUTED_BLOCK = {"BLOCK_CARD", "BLOCK_ALL_CARDS"}
+_HISTORIC_CASE = re.compile(r"\b(?:closed|prior|earlier|previous) (?:fraud )?cases?\b", re.I)
+GENDERED = re.compile(r"\b(?:[Ss]he|[Hh]ers?|[Hh]erself|[Hh]e|[Hh]im|[Hh]is|[Hh]imself|Mr|Mrs|Ms)\b")
+TIME_ZONE = re.compile(r"\b(?:UTC|GMT|EST|EDT|CST|CDT|MST|MDT|PST|PDT|CET|CEST|BST|IST|AEST|JST)\b|\btime[ -]?zone\b|\bZulu\b")
+# V18: "no prior report" style claims
+_NO_PRIOR = re.compile(
+    r"\bno\s+(?:prior|previous|earlier|other)\s+(?:suspicious activity reports?|SARs?|reports?|filings?)\b"
+    r"|\bno\s+(?:suspicious activity reports?|SARs?|reports?)\s+(?:has|have|had|was|were)\s+(?:ever\s+|previously\s+|yet\s+)?(?:been\s+)?(?:filed|submitted|made)\b"
+    r"|\b(?:has|have|had|was|were)\s+not\s+(?:previously\s+|yet\s+)?(?:been\s+)?(?:previously\s+)?(?:reported|the subject of (?:a|any) (?:prior |previous )?(?:SAR|suspicious activity report|report))\b"
+    r"|\bnever\s+(?:been\s+)?(?:reported|the subject of)\b", re.I)
+_CLAUSE_END = re.compile(r";|\.(?=\s|$)|,\s|\s(?:and|but|while|whereas|although|however)\s")
+_SCOPE_CARD = re.compile(r"\b(?:card|account|cardholder|customer)\b|\bC\d{5}(?:-K\d)?\b", re.I)
+_SCOPE_RELATED = re.compile(r"device|profile|\bring\b|connected|other cards|\bwave\b|same (?:pattern|shape)", re.I)
+# V19: history statistics
+_HISTORY_WORDS = re.compile(r"\b(?:history|prior|previous|baseline|account|cardholder|since|lifetime|established)\b", re.I)
+_NOT_CARD_HISTORY = re.compile(r"device|profile|\bring\b|\bwave\b|other cards|closed cases|look-?alike|connected", re.I)
+_TXN_COUNT = re.compile(r"\b(\d{1,3}(?:,\d{3})*|\d+)(?:-|\s+)(?:prior\s+|previous\s+|total\s+|earlier\s+|recorded\s+)?transactions?\b", re.I)
+_MAX_AMT = re.compile(r"\b(?:maximum|max|largest|highest)\b[^$.;]{0,40}?\$(\d{1,3}(?:,\d{3})*(?:\.\d{2})?|\d+(?:\.\d{2})?)", re.I)
+_MED_AMT = re.compile(r"\bmedian\b[^$.;]{0,40}?\$(\d{1,3}(?:,\d{3})*(?:\.\d{2})?|\d+(?:\.\d{2})?)", re.I)
+
+
+def _num(s: str) -> float:
+    return float(s.replace(",", ""))
+
+
+def _prose_sentences(nar: str) -> list[str]:
+    # split on a period followed by whitespace so '7.0' / '62.0' inside device strings do not split
+    return [s for s in re.split(r"(?<=[.!?])\s+", nar) if s.strip()]
+
+
+def check_sar_facts(sar: dict, *, final_actions: list[dict] | None = None, known_devices: list[str] | None = None,
+                    prior_reports_card: list[str] | None = None, prior_reports_related: list[str] | None = None,
+                    baseline_as_of: dict | None = None, affected_amounts: list[float] | None = None) -> list[str]:
+    """V14-V19 on a filed SAR. [] when sar.file is false or every check passes.
+
+    final_actions      the answer's next_best_actions.final ({action, route}); a block counts as done only when it
+                       is routed `auto` (it never is: BLOCK_CARD is L1/L2), so any "blocked" claim is a V14.
+    known_devices      device-profile strings the case knows (connected profiles, the affected transactions' devices,
+                       evidence entity ids); each one named in the narrative must be a subject.
+    prior_reports_*    CC- ids of prior closed cases with a report filed, on this card / on the device profile or
+                       connected cards; a "no prior report" clause in that scope is a V18.
+    baseline_as_of     {"n_prior_txns": int, "max_amt": float, "median_amt": float} as of the flagged transaction
+                       (case_context.txn card_seq - 1 / prior_max_amt / prior_med_amt), optionally with the
+                       *_at_opening values of a time-boxed card_profile; None skips V19.
+    affected_amounts   episode amounts (a "maximum" equal to an episode amount is not a baseline claim).
+    """
+    if not sar.get("file"):
+        return []
+    nar = " ".join(str(sar.get("narrative", "")).split())
+    if not nar:
+        return []
+    errs: list[str] = []
+    final_actions = final_actions or []
+    executed = {a.get("action") for a in final_actions if a.get("route") == "auto"}
+    if not (_EXECUTED_BLOCK & executed):
+        # a sentence about the bank's earlier closed cases may report what was done then; only this case's claims count
+        claims = [m for s in _prose_sentences(nar) if not (CC_ID.search(s) or _HISTORIC_CASE.search(s))
+                  for rx in (_DONE_STATE, _DONE_VERB_CARD, _CARD_STATE) for m in [rx.search(s)] if m]
+        if claims:
+            pend = [f"{a.get('action')} ({a.get('route')})" for a in final_actions if a.get("action") in _EXECUTED_BLOCK]
+            errs.append(f"V14 narrative states the card was blocked/closed ({claims[0].group(0)!r}) but the block is "
+                        + (f"only recommended and awaiting approval: {', '.join(pend)}" if pend else "not among the final actions")
+                        + "; write 'a card block is recommended, pending team-lead approval'")
+    g = GENDERED.search(nar)
+    if g:
+        errs.append(f"V15 gendered pronoun or honorific {g.group(0)!r}: the dataset carries no gender; write 'the cardholder' / 'the customer'")
+    tz = TIME_ZONE.search(nar)
+    if tz:
+        errs.append(f"V16 time-zone claim {tz.group(0)!r}: the dataset timestamps carry no time zone; give the date and time only")
+    subs = set(sar.get("subjects", []) or [])
+    missing = [i for i in dict.fromkeys(CARD_ID.findall(nar) + CUST_ID.findall(nar)) if i not in subs]
+    missing += [d for d in dict.fromkeys(known_devices or []) if d and " | " in d and d in nar and d not in subs]
+    if missing:
+        errs.append(f"V17 ids named in the narrative are missing from subjects: {missing}")
+    card_r, rel_r = list(prior_reports_card or []), list(prior_reports_related or [])
+    if card_r or rel_r:
+        for m in _NO_PRIOR.finditer(nar):
+            end = _CLAUSE_END.search(nar, m.end())
+            clause = nar[m.start(): end.start() if end else len(nar)]
+            on_card, on_rel = bool(_SCOPE_CARD.search(clause)), bool(_SCOPE_RELATED.search(clause))
+            if not on_card and not on_rel:
+                on_card = on_rel = True
+            hit = (card_r if on_card else []) + (rel_r if on_rel else [])
+            if hit:
+                errs.append(f"V18 prior-report claim {clause!r} contradicts the evidence: reports were filed on "
+                            f"{', '.join(sorted(set(hit)))}")
+                break
+    if baseline_as_of:
+        errs += _baseline_errors(nar, baseline_as_of, affected_amounts)
+    return errs
+
+
+def _baseline_errors(nar: str, b: dict, affected_amounts: list[float] | None) -> list[str]:
+    """V19. Accepted values: the counts / median / maximum before the flagged transaction (`n_prior_txns`,
+    `median_amt`, `max_amt`) and, when the caller has a time-boxed card profile, the same statistics at opening
+    (`n_txns_at_opening`, `median_amt_at_opening`, `max_amt_at_opening`). A maximum or median qualified by a channel,
+    a region or a period ('the in-person maximum', 'monthly median') is a different statistic and is not checked."""
+    def vals(*keys: str) -> list[float]:
+        out = []
+        for k in keys:
+            try:
+                if b.get(k) is not None and float(b[k]) >= 0:
+                    out.append(round(float(b[k]), 2))
+            except (TypeError, ValueError):
+                pass
+        return out
+
+    amts = {round(float(a), 2) for a in (affected_amounts or [])}
+    counts = vals("n_prior_txns", "n_txns_at_opening")
+    limit = max([counts[0] + len(affected_amounts or [])] + counts[1:]) if counts else None
+    maxes, meds = vals("max_amt", "max_amt_at_opening"), vals("median_amt", "median_amt_at_opening")
+    qualified = re.compile(r"in[- ]person|online|card[- ]not[- ]present|region|daily|weekly|monthly|per day|30[- ]day|single", re.I)
+    qualified_before = re.compile(r"(?:in[- ]person|online|card[- ]not[- ]present|regional|daily|weekly|monthly|30[- ]day|single[- ]day)\s+$", re.I)
+    errs: list[str] = []
+    for s in _prose_sentences(nar):
+        if not _HISTORY_WORDS.search(s):
+            continue
+
+        def other_entity(m: re.Match, s: str = s) -> bool:
+            # the statistic belongs to a device / ring / other cards when one is named before it or in its own clause
+            # ("the ring profile appears in 114 transactions"); a device named in a LATER clause does not exempt the
+            # card's own history (the live HHG-014 / HHG-006 sentences end with "... a brand-new mobile profile")
+            end = re.compile(r"[,;]|\s(?:and|but|while|whereas)\s").search(s, m.end())
+            return bool(_NOT_CARD_HISTORY.search(s[: end.start() if end else len(s)]))
+
+        if limit is not None:
+            for m in _TXN_COUNT.finditer(s):
+                if other_entity(m):
+                    continue
+                if _num(m.group(1)) > limit:
+                    errs.append(f"V19 card history count {m.group(0)!r} exceeds the {int(limit)} transactions on the card as of "
+                                "opening (it includes activity after opened_at); quote the as-of count")
+                    break
+        for rx, allowed, what in ((_MAX_AMT, maxes, "maximum"), (_MED_AMT, meds, "median")):
+            if not allowed or max(allowed) <= 0:
+                continue
+            for m in rx.finditer(s):
+                # a different statistic: 'in-person maximum', 'monthly median', 'maximum online purchase of $x'
+                if other_entity(m) or qualified.search(m.group(0)) or qualified_before.search(s[max(0, m.start() - 20): m.start()]):
+                    continue
+                x = round(_num(m.group(1)), 2)
+                if x not in amts and all(abs(x - v) > 0.005 for v in allowed):
+                    errs.append(f"V19 baseline {what} ${x:,.2f} is not the card's as-of {what} "
+                                f"({' / '.join(f'${v:,.2f}' for v in allowed)})")
+                    break
+    return errs
+
+
 def validate_sar(sar: dict, *, exposure_usd: float, affected_ts: list[str] | None = None,
                  case_ids: tuple[str, str] = ("", ""), customer_id: str = "", card_id: str = "",
-                 resolver: Resolver | None = None, file_report_in_final: bool | None = None) -> list[str]:
+                 resolver: Resolver | None = None, file_report_in_final: bool | None = None,
+                 fact_context: dict | None = None) -> list[str]:
+    """V00-V13 always; V14-V19 (`check_sar_facts(sar, **fact_context)`) when `fact_context` is given."""
+    errs = _validate_sar_core(sar, exposure_usd=exposure_usd, affected_ts=affected_ts, case_ids=case_ids,
+                              customer_id=customer_id, card_id=card_id, resolver=resolver,
+                              file_report_in_final=file_report_in_final)
+    if fact_context is not None and all(k in sar for k in ("file", "narrative", "subjects")):
+        errs += check_sar_facts(sar, **fact_context)
+    return errs
+
+
+def _validate_sar_core(sar: dict, *, exposure_usd: float, affected_ts: list[str] | None = None,
+                       case_ids: tuple[str, str] = ("", ""), customer_id: str = "", card_id: str = "",
+                       resolver: Resolver | None = None, file_report_in_final: bool | None = None) -> list[str]:
     errs: list[str] = []
     for k in ("file", "reason", "narrative", "subjects", "total_amount_usd", "activity_dates"):
         if k not in sar:
@@ -24963,18 +26296,59 @@ def answer_resolver(answer: dict, customer_id: str = "", card_id: str = "") -> S
     return StaticResolver(ids)
 
 
+_REPORTED = re.compile(
+    r"\breports?\s+(?:were\s+|was\s+|had\s+been\s+|have\s+been\s+)?filed\b|\breport_filed\s*[=:]\s*(?:true|yes|1)\b"
+    r"|\b(?:SAR|suspicious activity report)s?\s+(?:was|were|had been|have been)\s+filed\b", re.I)
+_NOT_REPORTED = re.compile(
+    r"\bno\s+(?:prior\s+)?(?:SAR|report)s?\b|\bnone\s+(?:were\s+)?reported\b|report_filed\s*[=:]\s*(?:false|no|0)\b"
+    r"|\bwithout\s+(?:a\s+)?(?:SAR|report)|\bnot\s+(?:been\s+)?(?:reported|filed)\b", re.I)
+
+
+def reported_cases_from_evidence(evidence: list[dict], card_id: str = "") -> tuple[list[str], list[str]]:
+    """(card-scope, related-scope) CC- ids that evidence claims say had a report filed. A claim about this card
+    ('on this card' / the card id without a device or profile word) is card scope; every other claim is related."""
+    card, rel = [], []
+    for e in evidence or []:
+        claim = str(e.get("claim", ""))
+        if not _REPORTED.search(claim) or _NOT_REPORTED.search(claim):
+            continue
+        ids = [i for i in dict.fromkeys(CC_ID.findall(claim) + [x for x in e.get("entity_ids", []) or [] if CC_ID.fullmatch(str(x))])]
+        on_card = (" this card" in claim.lower() or (card_id and card_id in claim)) and not _SCOPE_RELATED.search(claim)
+        (card if on_card else rel).extend(i for i in ids if i not in card and i not in rel)
+    return card, rel
+
+
+def answer_fact_context(answer: dict, card_id: str = "") -> dict:
+    """`fact_context` for check_sar_facts derived from a README-format answer alone (no as-of baseline: V19 is only
+    applied in the agent's P8 loop, which has case_context's as-of statistics)."""
+    case = answer.get("case", {}) or {}
+    ev = case.get("evidence", []) or []
+    devices = list(case.get("connected_device_profiles", []) or [])
+    devices += [str(i) for e in ev for i in (e.get("entity_ids", []) or []) if " | " in str(i)]
+    card_r, rel_r = reported_cases_from_evidence(ev, card_id)
+    return {"final_actions": list((answer.get("next_best_actions", {}) or {}).get("final", []) or []),
+            "known_devices": list(dict.fromkeys(devices)), "prior_reports_card": card_r, "prior_reports_related": rel_r}
+
+
+def check_answer_sar_facts(answer: dict, card_id: str = "") -> list[str]:
+    """V14-V19 only, over an answer file (agent.validator adds these to the engine validator's problems)."""
+    return check_sar_facts(answer.get("sar", {}) or {}, **answer_fact_context(answer, card_id))
+
+
 def validate_answer_sar(answer: dict, *, customer_id: str = "", card_id: str = "", affected_ts: list[str] | None = None,
                         resolver: Resolver | None = None) -> list[str]:
     """validate_sar over a README-format answer file: exposure, case ids and FILE_REPORT come from the answer.
     `customer_id` / `card_id` come from the case pack (the answer does not carry them); `affected_ts` from the facts
-    when the caller has them. Without a resolver the ids are checked against the answer's own lists (answer_resolver)."""
+    when the caller has them. Without a resolver the ids are checked against the answer's own lists (answer_resolver).
+    The V14-V19 fact checks run on the context the answer itself carries (answer_fact_context)."""
     case = answer.get("case", {}) or {}
     finals = [a.get("action") for a in (answer.get("next_best_actions", {}) or {}).get("final", []) or []]
     return validate_sar(answer.get("sar", {}) or {}, exposure_usd=float(case.get("exposure_usd", 0) or 0),
                         affected_ts=affected_ts, case_ids=(str(answer.get("case_id", "")), str(case.get("graph_case_id", ""))),
                         customer_id=customer_id, card_id=card_id,
                         resolver=resolver if resolver is not None else answer_resolver(answer, customer_id, card_id),
-                        file_report_in_final=("FILE_REPORT" in finals))
+                        file_report_in_final=("FILE_REPORT" in finals),
+                        fact_context=answer_fact_context(answer, card_id))
 
 
 CHECK_NAMES = {
@@ -24985,6 +26359,9 @@ CHECK_NAMES = {
     "V08": "every id in the narrative exists", "V09": "no forbidden text or markdown",
     "V10": "the internal case id is named", "V11": "OFAC result and prior-report status stated",
     "V12": "no seed tell", "V13": "prose only, no table markup",
+    "V14": "a pending block is not described as done", "V15": "no gendered pronouns",
+    "V16": "no time-zone claim", "V17": "every named id / device is a subject",
+    "V18": "prior-report claim agrees with the evidence", "V19": "card statistics as of opened_at (P8 loop only)",
 }
 
 
@@ -26615,6 +27992,156 @@ def progress(label: str, total: int | None = None, *, every: float = 5.0) -> Ite
         _done(tick)
 ````
 
+#### `ops/clear_case_writebacks.py`
+Lists (dry run by default) and with --apply deletes the agent's own AgentCase / CaseEvent / Approval write-backs for
+HHG-001..020 before a clean live pass; `make clear-writebacks [APPLY=1]`.
+```python
+"""ops/clear_case_writebacks.py — list, and with --apply delete, the agent's own graph write-backs for the exam cases.
+
+A re-run upserts the same AgentCase id but never removes what a superseded run wrote: CaseEvents past the new run's
+last seq, Approvals for actions it no longer recommends (a stale pending AP-AC-HHG-011-BLOCK_CARD), and the edges a
+different verdict drew (CASE_CONNECTED_TO on AC-HHG-019). This clears them before a clean live pass.
+
+What the agent writes (agent/persist.py; ids from contracts/schema.md) and so what this script may touch:
+  AgentCase  AC-<case>                    one upsertVertex per case; its CASE_* / HAS_* edges go with the vertex
+  CaseEvent  AC-<case>-NNN                append_case_event, case_id = AC-<case>
+  Approval   AP-AC-<case>-<ACTION>        record_approval (agent P10 and the UI), case_id = AC-<case>
+A vertex belongs to an exam case when its id has that shape or its case_id attribute is AC-<case>. Nothing else
+(ClosedCase, Card, Transaction, DeviceProfile, PolicyChunk, loaded edges, other AgentCases) is read for deletion.
+
+    uv run python -m ops.clear_case_writebacks                      # dry run: list + runs/<run>/stale_writebacks.json
+    uv run python -m ops.clear_case_writebacks --apply              # delete exactly the listed ids, then re-list
+    uv run python -m ops.clear_case_writebacks --cases HHG-011 HHG-019 --run-id clean-2
+
+Exit 0 on a dry run, or when nothing is left after --apply; 1 when a listed vertex survives the delete.
+The local UI approvals queue (ui/approvals.sqlite) is not the graph and is not touched.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import re
+import sys
+from datetime import datetime
+from pathlib import Path
+
+from ops.console import Col, Table, detail, fail, header, ok, summary, warn
+
+EXAM_CASES = [f"HHG-{i:03d}" for i in range(1, 21)]
+# delete order: children first, then the AgentCase vertex (which takes every attached edge with it)
+WRITEBACK_TYPES = ("CaseEvent", "Approval", "AgentCase")
+# attributes read for the listing (contracts/schema.md); AgentCase's note_emb vector is never fetched
+SELECT = {"CaseEvent": "case_id,kind", "Approval": "case_id,action,status", "AgentCase": "source_case_id,status"}
+
+
+def id_patterns(cases: list[str]) -> dict[str, re.Pattern]:
+    alt = "|".join(re.escape(c) for c in cases)
+    return {
+        "AgentCase": re.compile(rf"AC-(?:{alt})"),
+        "CaseEvent": re.compile(rf"AC-(?:{alt})-\d{{3}}"),
+        "Approval": re.compile(rf"AP-AC-(?:{alt})-[A-Z_]+"),
+    }
+
+
+def belongs(vtype: str, vid: str, attrs: dict, cases: list[str], pats: dict[str, re.Pattern] | None = None) -> bool:
+    pats = pats or id_patterns(cases)
+    if pats[vtype].fullmatch(vid):
+        return True
+    return vtype != "AgentCase" and str(attrs.get("case_id", "")) in {f"AC-{c}" for c in cases}
+
+
+def list_writebacks(conn, cases: list[str]) -> list[dict]:
+    """Every existing AgentCase / CaseEvent / Approval vertex of the given exam cases, children first."""
+    from ops.ensure_awake import ensure_awake
+
+    pats = id_patterns(cases)
+    out: list[dict] = []
+    for vtype in WRITEBACK_TYPES:
+        rows = ensure_awake()(conn.getVertices)(vtype, select=SELECT[vtype]) or []
+        for r in rows:
+            vid, attrs = str(r.get("v_id", "")), r.get("attributes", {}) or {}
+            if belongs(vtype, vid, attrs, cases, pats):
+                case_ref = attrs.get("case_id") or (vid if vtype == "AgentCase" else "")
+                out.append({"vertex_type": vtype, "id": vid, "case_id": case_ref,
+                            "status": attrs.get("status", ""), "action": attrs.get("action", attrs.get("kind", ""))})
+    return out
+
+
+def delete_writebacks(conn, rows: list[dict]) -> int:
+    from ops.ensure_awake import ensure_awake
+
+    n = 0
+    for vtype in WRITEBACK_TYPES:
+        ids = [r["id"] for r in rows if r["vertex_type"] == vtype]
+        for i in range(0, len(ids), 500):
+            n += int(ensure_awake()(conn.delVerticesById)(vtype, ids[i:i + 500]) or 0)
+    return n
+
+
+def _table(rows: list[dict], title: str) -> Table:
+    t = Table(Col("vertex type", max_width=10), Col("id", max_width=34), Col("case_id", max_width=12),
+              Col("kind / action", max_width=22), Col("status", max_width=10), title=title)
+    for r in rows:
+        t.add_row(r["vertex_type"], r["id"], r["case_id"], r["action"], r["status"])
+    return t
+
+
+def _counts(rows: list[dict]) -> dict[str, int]:
+    return {vt: sum(1 for r in rows if r["vertex_type"] == vt) for vt in WRITEBACK_TYPES}
+
+
+def main(argv: list[str] | None = None, conn=None) -> int:
+    ap = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
+    ap.add_argument("--apply", action="store_true", help="delete the listed vertices (default: dry run, list only)")
+    ap.add_argument("--cases", nargs="+", default=EXAM_CASES, help="exam case ids (default: HHG-001..HHG-020)")
+    ap.add_argument("--run-id", default="", help="runs/<run-id>/stale_writebacks.json (default: clear-writebacks-<timestamp>)")
+    args = ap.parse_args(argv)
+    cases = [c.strip() for c in args.cases if c.strip()]
+    bad = [c for c in cases if c not in EXAM_CASES]
+    if bad:
+        fail(f"not exam case ids: {', '.join(bad)} (this tool only clears HHG-001..HHG-020)")
+        return 2
+    run_id = args.run_id or f"clear-writebacks-{datetime.now():%Y%m%d-%H%M%S}"
+    out_path = Path(os.getenv("RUNS_DIR", "runs")) / run_id / "stale_writebacks.json"
+    header("ops.clear_case_writebacks", "the agent's own AgentCase / CaseEvent / Approval write-backs for the exam cases",
+           {"mode": "APPLY (delete)" if args.apply else "dry run (list only)", "cases": len(cases), "list file": str(out_path)})
+    if conn is None:
+        from ops.ensure_awake import tg_connection
+
+        conn = tg_connection()
+    rows = list_writebacks(conn, cases)
+    _table(rows, "write-backs found").print()
+    record = {"generated_at": datetime.now().isoformat(timespec="seconds"), "cases": cases, "applied": bool(args.apply),
+              "found": rows, "counts": _counts(rows)}
+    if not args.apply:
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_text(json.dumps(record, indent=2))
+        detail("dry run: nothing deleted; re-run with --apply (make clear-writebacks APPLY=1) to delete exactly these ids")
+        summary("dry run", {**_counts(rows), "total": len(rows), "list": str(out_path)}, status="ok")
+        return 0
+    deleted = delete_writebacks(conn, rows) if rows else 0
+    left = list_writebacks(conn, cases)
+    record.update({"deleted": deleted, "remaining": left})
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(json.dumps(record, indent=2))
+    if left:
+        _table(left, "still present after delete").print()
+        fail(f"{len(left)} write-back vertices still present")
+    elif deleted != len(rows):
+        warn(f"deleted {deleted} of {len(rows)} listed vertices, but none remain")
+    else:
+        ok("no agent write-backs left for these cases")
+    summary("cleared" if not left else "clear incomplete",
+            {"listed": len(rows), "deleted": deleted, "remaining": len(left), "list": str(out_path)},
+            status="ok" if not left else "fail")
+    return 0 if not left else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())
+```
+
 #### `ops/ensure_awake.py`
 ```python
 """Savanna auto-resume hygiene (PLAN §3.6): one shared retry decorator.
@@ -27784,11 +29311,16 @@ SAR_CHECK_LABELS = [
     ("V11", "OFAC result and prior-report status stated"),
     ("V12", "no seeding tell (':00 seconds')"),
     ("V13", "no tables (a '|' inside a device profile is fine)"),
+    ("V14", "a pending block is not described as done"),
+    ("V15", "no gendered pronouns"),
+    ("V16", "no time-zone claim"),
+    ("V17", "every named id / device is a subject"),
+    ("V18", "prior-report claim agrees with the evidence"),
 ]
 
 
 def sar_checks(answer: dict, meta: dict | None = None, resolver: Any | None = None) -> list[tuple[str, bool, str]]:
-    """[(check, ok, detail)] for the SAR tab, one row per rag.validate_sar code V00-V13, computed from the answer
+    """[(check, ok, detail)] for the SAR tab, one row per rag.validate_sar code V00-V18 (V19 needs the as-of baseline and runs only in P8), computed from the answer
     alone (plus the case pack's customer/card ids in `meta`). Ids resolve against the answer's own lists unless a
     `resolver` (rag.validate_sar.DuckResolver over data/ids.duckdb) is given; the run's P8 validator payload is
     merged in by the page. When sar.file is false only V00 applies."""
@@ -28942,7 +30474,7 @@ TG_HTTP_VALIDATE_TIMEOUT=30
 LLM_BACKEND=                                   # cli | api | mock   (empty = cli; mock under RUN_MODE=mock)
 # ANTHROPIC_API_KEY: ONLY needed when LLM_BACKEND=api.
 ANTHROPIC_API_KEY=
-MODEL=claude-sonnet-5                          # iteration / replay / monitoring; promoted run uses claude-opus-5
+MODEL=claude-sonnet-5                          # the model of record: the promoted run in cases/ used claude-sonnet-5 (cases/MANIFEST.md)
 # SAR_MODEL: model for the SAR narrative draft (P8); empty = MODEL (no inline comment - dotenv trap below).
 SAR_MODEL=
 # Embeddings: EMBED_BACKEND=local is the DEFAULT and needs NO API key and NO network at run time.
@@ -29020,6 +30552,8 @@ __pycache__/
 SHELL := /bin/bash
 .DEFAULT_GOAL := help
 PY := uv run python
+# RUN_ID_GIVEN is non-empty only when RUN_ID came from the command line or the environment (rerun-live requires it)
+RUN_ID_GIVEN := $(filter-out undefined default,$(origin RUN_ID))
 RUN_ID ?= $(shell date +%Y%m%d-%H%M%S)
 # CASES: "all" or a comma list: HHG-014,HHG-006
 CASES ?= all
@@ -29116,7 +30650,8 @@ SAY = C=; B=; D=; G=; Y=; RD=; R=; \
 
 .PHONY: help status install env db features cms facts chunks ids load algos install-queries describe \
         corpus embed vectors replay sheet engine-drafts bench bench-one bench-free promote validate ui mock-run \
-        test test-data test-live lint lint-gsql lint-contracts fmt keepalive awake rebuild demo-warm clean
+        test test-data test-live lint lint-gsql lint-contracts fmt keepalive awake rebuild demo-warm clean \
+        clear-writebacks rerun-live
 
 ##@ Start here
 help: ## this list, grouped by build stage (the default target)
@@ -29291,6 +30826,34 @@ promote: ## copy runs/<RUN_ID>/*/answer.json -> cases/ after validation, write c
 validate: ## validate cases/*.json against the README schema + id existence (VALIDATOR_DB)
 	$(PY) -m $(AGENT_VALIDATE) --db $(VALIDATOR_DB) cases/*.json
 
+##@ Live re-run (docs/RERUN.md)
+clear-writebacks: ## list the agent's own AgentCase / CaseEvent / Approval write-backs for HHG-001..020 (dry run); APPLY=1 deletes exactly those
+	$(PY) -m ops.clear_case_writebacks $(if $(filter 1 yes true,$(APPLY)),--apply,) $(if $(strip $(RUN_ID_GIVEN)),--run-id $(RUN_ID),)
+
+rerun-live: ## RUN_ID=<id> required: wake, install-queries, describe, then the 20 cases one at a time (opened_at order, --resume), validating each
+	@$(SAY) \
+	 if [ -z "$(RUN_ID_GIVEN)" ]; then faill "RUN_ID is required: make rerun-live RUN_ID=live-final"; exit 2; fi; \
+	 banner "rerun-live $(RUN_ID)" "live graph + claude-agent-sdk (LLM_BACKEND=cli, RUN_MODE=live from the environment; .env is not edited)"; \
+	 if [ -n "$$(git status --porcelain --untracked-files=no 2>/dev/null)" ]; then \
+	   warnl "the working tree has uncommitted changes: the manifest will record git_dirty=true (commit first for a clean sha)"; fi
+	$(MAKE) --no-print-directory awake
+	$(MAKE) --no-print-directory install-queries
+	$(MAKE) --no-print-directory describe
+	@$(SAY) \
+	 CASES_ORDERED=$$($(PY) -c "from agent.bench import load_case_pack; from agent.config import SETTINGS; print(' '.join(c.case_id for c in load_case_pack(SETTINGS.case_pack_csv)))"); \
+	 n=0; for c in $$CASES_ORDERED; do \
+	   n=$$((n+1)); banner "case $$n/20: $$c" "runs/$(RUN_ID)/$$c/answer.json"; \
+	   LLM_BACKEND=cli RUN_MODE=live $(PY) -m $(AGENT_BENCH) --cases $$c --run-id $(RUN_ID) --resume $(MODEL_FLAG) \
+	     || { faill "$$c: the agent run failed; fix the cause, then re-run 'make rerun-live RUN_ID=$(RUN_ID)' (--resume skips finished cases)"; exit 1; }; \
+	   $(PY) -m $(AGENT_VALIDATE) --db $(VALIDATOR_DB) runs/$(RUN_ID)/$$c/answer.json \
+	     || { faill "$$c: answer failed validation; inspect runs/$(RUN_ID)/$$c/, delete that case directory, then re-run the target"; exit 1; }; \
+	 done; \
+	 banner "rerun-live $(RUN_ID): summary" "every answer re-validated together"; \
+	 $(PY) -m $(AGENT_VALIDATE) --db $(VALIDATOR_DB) runs/$(RUN_ID)/HHG-*/answer.json || exit 1; \
+	 k=$$(ls runs/$(RUN_ID)/HHG-*/answer.json 2>/dev/null | wc -l | tr -d ' '); \
+	 if [ "$$k" = 20 ]; then okl "20/20 answers in runs/$(RUN_ID); next: make promote RUN_ID=$(RUN_ID)"; \
+	 else faill "$$k/20 answers in runs/$(RUN_ID)"; exit 1; fi
+
 ##@ UI and demo
 ui: ## Streamlit analyst dashboard (queue / case / approvals / graph / runs)
 	uv run streamlit run ui/app.py --server.headless true --server.port 8501
@@ -29425,7 +30988,13 @@ jobs:
       - name: Mock end-to-end case (RUN_MODE=mock, HHG-014)
         # agent/bench.py --mock (RUN_MODE=mock: FakeAnthropic + FakeSession, no keys) runs the engine + policy gate +
         # answer_writer + validator on the recorded facts and writes runs/ci/HHG-014/answer.json (agent/bench.py flags).
+        # data/raw/ is gitignored (708 MB, not redistributed), so a clean clone has no case_pack.csv: fall back to the
+        # checked-in one-row fixture tests/fixtures/case_pack_HHG-014.csv (the same row ui/common.py embeds).
         run: |
+          if [ ! -f data/raw/case_pack.csv ]; then
+            export CASE_PACK_CSV=tests/fixtures/case_pack_HHG-014.csv
+            echo "data/raw/case_pack.csv absent (gitignored) — using $CASE_PACK_CSV"
+          fi
           if [ -f agent/bench.py ]; then
             uv run python -m agent.bench --cases HHG-014 --run-id ci --mock
             test -f runs/ci/HHG-014/answer.json
@@ -29465,10 +31034,66 @@ An agent that takes an alert from the HHGOA case pack, investigates it through *
 | Deliverable | Where |
 |---|---|
 | 20 answer files | [`cases/`](cases/) (`HHG-001.json` … `HHG-020.json`, [`cases/MANIFEST.md`](cases/MANIFEST.md)) |
-| Demo video (3–5 min) | **TODO link** |
-| Technical blog | **TODO link** (outline: [`docs/blog_outline.md`](docs/blog_outline.md)) |
-| Social post (tags @TigerGraphDB) | **TODO link** ([`docs/social.md`](docs/social.md)) |
-| Optional monitoring cases | [`cases_monitoring/`](cases_monitoring/) |
+| Demo video (3–5 min) | `<DEMO_URL>` (script: [`docs/demo_script.md`](docs/demo_script.md)) |
+| Technical blog | [`docs/blog.md`](docs/blog.md) (published copy: `<BLOG_URL>`) |
+| Social post (tags @TigerGraphDB and @247pmstudio) | [`docs/social.md`](docs/social.md) (posted copy: `<SOCIAL_URL>`) |
+| Architecture diagram | [`docs/architecture.svg`](docs/architecture.svg) |
+
+## Judge quick-start (mock mode: no TigerGraph workspace, no API keys)
+
+Everything below runs offline on a fresh clone. The dataset CSVs under `data/raw/` are not in the
+repository (they are gitignored), so the checked-in `data/ids.duckdb` (id tables for the validator) and
+`data/hhgoa_engine.duckdb` (the engine's facts) stand in for the graph. You need
+[uv](https://docs.astral.sh/uv/) and Python 3.12. Tested on macOS; CI runs the same steps on Ubuntu.
+
+Clone the repository:
+
+```bash
+git clone <REPO_URL> Tiger-graph && cd Tiger-graph
+```
+
+Install the dependencies and create `.env` from `.env.example` (`RUN_MODE=mock`, no keys needed):
+
+```bash
+make install
+```
+
+Check the 20 submitted answer files against the README answer schema and the dataset ids:
+
+```bash
+make validate
+```
+
+Run one case end to end in mock mode (recorded model replies, DuckDB facts instead of the graph). The
+one-row case pack fixture replaces `data/raw/case_pack.csv`; the answer lands in `runs/judge/HHG-014/answer.json`:
+
+```bash
+CASE_PACK_CSV=tests/fixtures/case_pack_HHG-014.csv uv run python -m agent.bench --cases HHG-014 --run-id judge --mock
+```
+
+Build a mock run from the 20 answer files so the dashboard has something to show:
+
+```bash
+make mock-run
+```
+
+Open the analyst dashboard at http://localhost:8501 and pick run `mock` in the sidebar:
+
+```bash
+RUN_MODE=mock make ui
+```
+
+The unit tests and the linter (data-backed tests skip without the full DuckDB):
+
+```bash
+make test lint
+```
+
+## Results
+
+_To be filled in from the final live run of all 20 cases (verdicts, patterns, SARs filed, final actions,
+tool calls, tokens and latency per case), made with the ordered commands in [`docs/RERUN.md`](docs/RERUN.md).
+Until then, [`cases/MANIFEST.md`](cases/MANIFEST.md) lists the run that produced the files in `cases/`._
 
 ## The two documents
 
@@ -29504,7 +31129,7 @@ python sync_spec.py
 ![architecture](docs/architecture.svg)
 
 ```
-case_pack.csv ─► agent/bench.py ─► agent/phase_machine.py (Anthropic SDK, P0–P10)
+case_pack.csv ─► agent/bench.py ─► agent/phase_machine.py (P0–P10; LLM = claude-agent-sdk, LLM_BACKEND=cli)
                                       │  12 typed read-only tools = installed GSQL queries via
                                       │  mcp/tg_mcp_launcher.py → tigergraph-mcp 1.0.3 (stdio)  ──HTTPS──► Savanna TG-00 (4.2.x)
                                       ▼                                                                    FraudGraph + TigerVector
@@ -29735,7 +31360,7 @@ make ids
 
 ## Data and licensing
 
-IEEE-CIS Fraud Detection (Vesta) via the HHGOA re-cut. The public Kaggle files are **never** used (a repo lint fails on Kaggle/IEEE-outcome references). Regulatory chunks carry url + sha256 + page provenance; full FATF/FFIEC documents are not vendored.
+IEEE-CIS Fraud Detection (Vesta) via the HHGOA re-cut. The public Kaggle files are **never** used, and the answer validator (`engine/validator.py`) rejects any answer whose free text mentions Kaggle or the outcome label (`isFraud`). Regulatory chunks carry url + sha256 + page provenance; full FATF/FFIEC documents are not vendored.
 ````
 
 ---
@@ -30185,6 +31810,122 @@ def test_import_has_no_side_effects_and_does_not_import_rich_eagerly():
     assert r.stdout.strip() == "False", "importing ops.console must not pull in rich"
     assert r.stderr == ""
 ````
+
+#### `tests/unit/test_clear_case_writebacks.py`
+ops/clear_case_writebacks.py against a fake pyTigerGraph connection: only exam write-backs listed, exactly those deleted.
+```python
+"""ops/clear_case_writebacks.py against a fake pyTigerGraph connection (no workspace)."""
+from __future__ import annotations
+
+import json
+import re
+from pathlib import Path
+
+import pytest
+
+from ops import clear_case_writebacks as ccw
+
+ROOT = Path(__file__).resolve().parents[2]
+
+
+class FakeConn:
+    """The three write-back types plus rows that must survive (another agent case, a closed case)."""
+
+    def __init__(self, stuck: set[str] | None = None):
+        self.stuck = stuck or set()
+        self.deleted: list[tuple[str, list[str]]] = []
+        self.v = {
+            "AgentCase": {"AC-HHG-011": {"source_case_id": "HHG-011", "status": "escalated"},
+                          "AC-HHG-019": {"source_case_id": "HHG-019", "status": "open"},
+                          "AC-HHG-0190": {"source_case_id": "HHG-0190", "status": "open"},     # not an exam id
+                          "AC-OTHER": {"source_case_id": "OTHER", "status": "open"}},
+            "CaseEvent": {f"AC-HHG-011-{i:03d}": {"case_id": "AC-HHG-011", "kind": "evidence"} for i in range(1, 9)}
+            | {"AC-OTHER-001": {"case_id": "AC-OTHER", "kind": "evidence"}},
+            "Approval": {"AP-AC-HHG-011-BLOCK_CARD": {"case_id": "AC-HHG-011", "action": "BLOCK_CARD", "status": "pending"},
+                         "AP-AC-OTHER-BLOCK_CARD": {"case_id": "AC-OTHER", "action": "BLOCK_CARD", "status": "pending"}},
+            "ClosedCase": {"CC-2649": {}},
+        }
+
+    def getVertices(self, vertexType, select="", where="", limit=None, **_):
+        keep = [k for k in select.split(",") if k]
+        return [{"v_id": i, "v_type": vertexType, "attributes": {k: a[k] for k in keep if k in a}}
+                for i, a in self.v[vertexType].items()]
+
+    def delVerticesById(self, vertexType, vertexIds, permanent=False, timeout=0):
+        assert vertexType in ccw.WRITEBACK_TYPES
+        self.deleted.append((vertexType, list(vertexIds)))
+        n = 0
+        for i in vertexIds:
+            if i not in self.stuck:
+                n += self.v[vertexType].pop(i, None) is not None
+        return n
+
+
+def test_dry_run_lists_only_exam_writebacks_and_deletes_nothing(tmp_path, monkeypatch):
+    monkeypatch.setenv("RUNS_DIR", str(tmp_path))
+    conn = FakeConn()
+    assert ccw.main(["--run-id", "dry"], conn=conn) == 0
+    assert conn.deleted == []
+    rec = json.loads((tmp_path / "dry" / "stale_writebacks.json").read_text())
+    ids = [r["id"] for r in rec["found"]]
+    assert set(ids) == {f"AC-HHG-011-{i:03d}" for i in range(1, 9)} | {"AP-AC-HHG-011-BLOCK_CARD", "AC-HHG-011", "AC-HHG-019"}
+    assert rec["counts"] == {"CaseEvent": 8, "Approval": 1, "AgentCase": 2} and rec["applied"] is False
+    assert [r["vertex_type"] for r in rec["found"]][-1] == "AgentCase"          # children listed (and deleted) first
+
+
+def test_apply_deletes_exactly_the_listed_ids_and_confirms_zero(tmp_path, monkeypatch):
+    monkeypatch.setenv("RUNS_DIR", str(tmp_path))
+    conn = FakeConn()
+    assert ccw.main(["--apply", "--run-id", "clean"], conn=conn) == 0
+    assert [t for t, _ in conn.deleted] == ["CaseEvent", "Approval", "AgentCase"]
+    assert set(conn.v["AgentCase"]) == {"AC-HHG-0190", "AC-OTHER"}
+    assert set(conn.v["CaseEvent"]) == {"AC-OTHER-001"} and set(conn.v["Approval"]) == {"AP-AC-OTHER-BLOCK_CARD"}
+    assert conn.v["ClosedCase"] == {"CC-2649": {}}
+    rec = json.loads((tmp_path / "clean" / "stale_writebacks.json").read_text())
+    assert rec["deleted"] == 11 and rec["remaining"] == []
+
+
+def test_apply_fails_when_a_vertex_survives(tmp_path, monkeypatch):
+    monkeypatch.setenv("RUNS_DIR", str(tmp_path))
+    conn = FakeConn(stuck={"AP-AC-HHG-011-BLOCK_CARD"})
+    assert ccw.main(["--apply", "--run-id", "stuck"], conn=conn) == 1
+    rec = json.loads((tmp_path / "stuck" / "stale_writebacks.json").read_text())
+    assert [r["id"] for r in rec["remaining"]] == ["AP-AC-HHG-011-BLOCK_CARD"]
+
+
+def test_case_subset_and_non_exam_ids(tmp_path, monkeypatch):
+    monkeypatch.setenv("RUNS_DIR", str(tmp_path))
+    conn = FakeConn()
+    assert ccw.main(["--apply", "--cases", "HHG-019", "--run-id", "one"], conn=conn) == 0
+    assert "AC-HHG-011" in conn.v["AgentCase"] and "AC-HHG-019" not in conn.v["AgentCase"]
+    assert ccw.main(["--cases", "OTHER"], conn=FakeConn()) == 2
+
+
+def test_connects_through_ops_ensure_awake(tmp_path, monkeypatch):
+    monkeypatch.setenv("RUNS_DIR", str(tmp_path))
+    called = []
+    monkeypatch.setattr("ops.ensure_awake.tg_connection", lambda *a, **k: called.append(1) or FakeConn())
+    assert ccw.main(["--run-id", "conn"]) == 0 and called == [1]
+
+
+@pytest.mark.parametrize("vtype, vid", [("AgentCase", "AC-HHG-001"), ("CaseEvent", "AC-HHG-020-014"), ("Approval", "AP-AC-HHG-014-FILE_REPORT")])
+def test_id_shapes_match_the_schema_contract(vtype, vid):
+    assert ccw.belongs(vtype, vid, {}, ccw.EXAM_CASES)
+
+
+def test_writeback_types_are_what_the_agent_writes():
+    """contracts/schema.md documents the three agent-written vertex types and their id shapes; agent/persist.py writes
+    AgentCase by upsertVertex and CaseEvent / Approval through append_case_event / record_approval."""
+    schema = (ROOT / "contracts" / "schema.md").read_text()
+    for vtype, example in (("AgentCase", "AC-HHG-001"), ("CaseEvent", "AC-HHG-001-007"), ("Approval", "AP-AC-HHG-014-FILE_REPORT")):
+        row = re.search(rf"^\| `{vtype}` \| `id` \(`([^`]+)`\)", schema, re.M)
+        assert row and row.group(1) == example, vtype
+        assert ccw.belongs(vtype, example, {}, ccw.EXAM_CASES)
+    persist = (ROOT / "agent" / "persist.py").read_text()
+    assert 'upsertVertex), "AgentCase"' in persist
+    assert '"append_case_event"' in persist and '"record_approval"' in persist
+    assert set(re.findall(r'"HAS_(?:EVENT|APPROVAL)": \("AgentCase", "(\w+)"\)', persist)) == {"CaseEvent", "Approval"}
+```
 
 #### `tests/unit/test_ensure_awake.py`
 ```python
@@ -30639,6 +32380,443 @@ def test_load_vectors_ensure_awake_respects_budget(monkeypatch, slept):
     with pytest.raises(requests.HTTPError):
         load_vectors.ensure_awake(down)
     assert sum(slept) <= 3
+```
+
+#### `tests/unit/test_agent_answer_quality.py`
+SAR fact checks V14-V19 against the live HHG-014 / HHG-006 defects, reason citations, summary length, what_changed,
+the memory time-box and the accumulating run manifest.
+```python
+"""Agent-side answer-quality fixes (audit D-SAR, D-REASON, D-MISC, D-HHG015 wording): SAR fact checks V14-V19,
+rule citations, summary length, what_changed wording, analyst source label, memory time-box, run manifests.
+
+Every fixture is recorded text (the defective narratives of the first live run are quoted verbatim where they
+show a defect); nothing here touches the TigerGraph workspace or an LLM.
+"""
+from __future__ import annotations
+
+import asyncio
+import json
+from dataclasses import replace
+from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
+
+from agent import mcp_client
+from agent.phase_machine import PhaseMachine, policy_cite
+from agent.validator import answer_text_problems, reason_problems, summary_problems, what_changed_problems
+from rag.retrieval import similar_prior_cases, timebox_cases
+from rag.validate_sar import (
+    answer_fact_context,
+    check_answer_sar_facts,
+    check_sar_facts,
+    reported_cases_from_evidence,
+    validate_sar,
+)
+
+RING = "SM-G935F Build/NRD90M | Android 7.0 | chrome 62.0 for android | 1920x1080"
+TRIDENT = "Trident/7.0 | Windows 7 | ie 11.0 for desktop | 1920x1080"
+IOS = "iOS Device | iOS 11.2.1 | mobile safari 11.0 | 2208x1242"
+FINAL_014 = [{"action": "CREATE_CASE", "route": "auto"}, {"action": "MONITOR_CONNECTED_CARDS", "route": "auto"},
+             {"action": "BLOCK_CARD", "route": "L1"}, {"action": "FILE_REPORT", "route": "L2"},
+             {"action": "ESCALATE_TO_ANALYST", "route": "auto"}]
+RELATED_014 = ["CC-2649", "CC-2971", "CC-2985", "CC-3035"]
+BASE_014 = {"n_prior_txns": 71, "max_amt": 225.94, "median_amt": 55.92}
+
+
+def sar_of(narrative: str, subjects: list[str]) -> dict:
+    return {"file": True, "reason": "3a / R6 / R9", "narrative": narrative, "subjects": subjects,
+            "total_amount_usd": 187.33, "activity_dates": ["2016-11-15", "2016-11-22"]}
+
+
+def codes(errs: list[str]) -> set[str]:
+    return {e.split(" ", 1)[0] for e in errs}
+
+
+# ------------------------------------------------------------------------------------------------ V14 pending block
+
+# first live run, HHG-014 / HHG-006 (verbatim): the block is only an L1 recommendation
+LIVE_014_ACTIONS = ("Based on this evidence the bank opened case AC-HHG-014, blocked card C13487-K1, placed all 27 connected "
+                    "cards under monitoring for further activity on the shared device profile, and escalated the matter to an analyst.")
+LIVE_006_ACTIONS = "The bank opened case AC-HHG-006, blocked card C07297-K1, and is escalating the broader under-threshold burst pattern."
+
+
+@pytest.mark.parametrize("text", [
+    LIVE_014_ACTIONS,
+    LIVE_006_ACTIONS,
+    "The card C13487-K1 has been blocked and the connected cards are monitored.",
+    "Card C13487-K1 blocked and scheduled for reissue.",
+    "The card was closed on 2016-11-22.",
+])
+def test_v14_block_written_as_done_is_caught(text):
+    errs = check_sar_facts(sar_of(text, ["C13487", "C13487-K1"]), final_actions=FINAL_014)
+    assert "V14" in codes(errs), errs
+    assert "BLOCK_CARD (L1)" in next(e for e in errs if e.startswith("V14"))
+
+
+@pytest.mark.parametrize("text", [
+    "A block of card C13487-K1 is recommended and awaits team-lead approval; the connected cards have been placed under monitoring.",
+    "Actions: an internal fraud case, block and reissue of the card (team-lead approval requested), this filing.",
+    "The bank recommends that card C13487-K1 be blocked; the card has not been blocked yet.",
+    "Four closed cases on the profile (CC-2649, CC-2971, CC-2985, CC-3035), in which each card was blocked, were confirmed fraud.",
+    "The case was closed as confirmed fraud in closed case CC-2649.",
+])
+def test_v14_recommended_block_and_history_are_not_flagged(text):
+    assert "V14" not in codes(check_sar_facts(sar_of(text, ["C13487", "C13487-K1"]), final_actions=FINAL_014))
+
+
+def test_v14_block_absent_from_final_is_also_caught():
+    errs = check_sar_facts(sar_of("The bank blocked the card.", ["C13487"]), final_actions=[{"action": "CREATE_CASE", "route": "auto"}])
+    assert any(e.startswith("V14") and "not among the final actions" in e for e in errs)
+
+
+# ------------------------------------------------------------------------------------------------ V15 / V16
+
+def test_v15_gendered_pronoun():
+    live = "The customer disputed this transaction, stating she never made it."      # HHG-006 live narrative
+    assert "V15" in codes(check_sar_facts(sar_of(live, ["C07297"])))
+    for ok in ("The customer disputed this transaction, stating they never made it.", "The shell of the scheme is the device.",
+               "The cardholder's history shows the three purchases."):
+        assert "V15" not in codes(check_sar_facts(sar_of(ok, ["C07297"])))
+
+
+def test_v16_time_zone():
+    live = "On 2016-11-15 at 20:30 UTC, card C13487-K1 (transaction 3460634) was used online for $112.37."   # HHG-014 live
+    assert "V16" in codes(check_sar_facts(sar_of(live, ["C13487-K1"])))
+    ok = "On 2016-11-15 at 20:30, card C13487-K1 (transaction 3460634) was used online for $112.37 per the SDN LIST screening."
+    assert "V16" not in codes(check_sar_facts(sar_of(ok, ["C13487-K1"])))
+
+
+# ------------------------------------------------------------------------------------------------ V17 subjects
+
+def test_v17_named_devices_and_cards_must_be_subjects():
+    nar = (f"On 2016-11-21 at 20:00 a $478.95 purchase came from device profile {TRIDENT} and at 20:10 a $456.96 purchase "
+           f"from device profile {IOS} on card C07297-K1 of customer C07297.")
+    errs = check_sar_facts(sar_of(nar, ["C07297", "C07297-K1"]), known_devices=[TRIDENT, IOS])   # HHG-006 live subjects
+    assert "V17" in codes(errs) and TRIDENT in errs[0] and IOS in errs[0]
+    assert "V17" not in codes(check_sar_facts(sar_of(nar, ["C07297", "C07297-K1", TRIDENT, IOS]), known_devices=[TRIDENT, IOS]))
+    # a card id in the narrative is a subject too
+    assert "V17" in codes(check_sar_facts(sar_of(nar + " Card C06650-K2 shares it.", ["C07297", "C07297-K1", TRIDENT, IOS])))
+
+
+# ------------------------------------------------------------------------------------------------ V18 prior reports
+
+LIVE_014_PRIOR = ("No prior Suspicious Activity Report has been filed on this card or in connection with this device profile, "
+                  "and OFAC screening returned no OFAC/SDN match for any subject.")
+
+
+def test_v18_no_prior_report_claim_contradicting_the_evidence():
+    errs = check_sar_facts(sar_of(LIVE_014_PRIOR, ["C13487"]), prior_reports_related=RELATED_014)
+    assert "V18" in codes(errs) and "CC-2649" in next(e for e in errs if e.startswith("V18"))
+    # a bare claim covers every scope
+    assert "V18" in codes(check_sar_facts(sar_of("No prior report exists.", ["C13487"]), prior_reports_related=RELATED_014))
+    # card reports contradict a card-scoped claim
+    assert "V18" in codes(check_sar_facts(sar_of("No prior SAR has been filed on this card.", ["C13487"]), prior_reports_card=["CC-0141"]))
+
+
+@pytest.mark.parametrize("text", [
+    "No prior suspicious activity report has been filed on this card; closed cases CC-2649 and CC-2971 on the same device profile were reported.",
+    "No prior suspicious activity report has been filed on this card, and OFAC screening returned no match.",
+    "Reports were filed on the four closed cases on this device profile; none on this card before.",
+])
+def test_v18_scoped_or_true_claims_pass(text):
+    assert "V18" not in codes(check_sar_facts(sar_of(text, ["C13487"]), prior_reports_related=RELATED_014))
+
+
+def test_v18_without_reports_any_claim_passes():
+    assert check_sar_facts(sar_of(LIVE_014_PRIOR, ["C13487"])) == []
+
+
+def test_reported_cases_from_evidence_reads_the_hhg014_claim():
+    ev = [{"claim": "ring_profile lists four closed cases on this exact profile - CC-2649, CC-2971, CC-2985, CC-3035 - all "
+                    "confirmed_fraud with pattern undocumented and reports filed, on cards C03528-K1, C09998-K1.",
+           "source": "graph", "ref": "query:ring_profile", "entity_ids": ["CC-2649"]},
+          {"claim": "Card C13487-K1 has 2 earlier closed cases, none reported.", "source": "graph", "ref": "q", "entity_ids": ["CC-0001"]}]
+    card, rel = reported_cases_from_evidence(ev, "C13487-K1")
+    assert card == [] and rel == RELATED_014
+
+
+# ------------------------------------------------------------------------------------------------ V19 as-of statistics
+
+LIVE_014_BASELINE = ("This activity is unusual for the cardholder because the account's 85-transaction history dating to 2016-07-04 "
+                     "is overwhelmingly in-person (81 of 85 transactions) in home region 272.0, carries a median amount of $48.03 "
+                     "and a maximum of $252.28, and had used only two devices in total before these online purchases from a brand-new "
+                     "mobile profile appeared.")          # the full live sentence: a device named in a later clause
+LIVE_006_BASELINE = ("This activity is unusual for the cardholder, whose 261-transaction history since 2016-07-05 is overwhelmingly "
+                     "conducted in person (255 of 261 transactions) in billing region 264.0, with a median transaction amount of $58.98 "
+                     "and only six prior online transactions on two previously known devices; a same-day cluster of four online "
+                     "purchases near the $500 mark on newly flagged device profiles has no precedent on this account.")
+
+
+def test_v19_whole_history_statistics_are_caught():
+    errs = check_sar_facts(sar_of(LIVE_014_BASELINE, ["C13487"]), baseline_as_of=BASE_014, affected_amounts=[112.37, 74.96])
+    msgs = [e for e in errs if e.startswith("V19")]
+    assert any("85" in m for m in msgs) and any("$252.28" in m for m in msgs) and any("$48.03" in m for m in msgs), msgs
+    base_006 = {"n_prior_txns": 199, "max_amt": 1104.0, "median_amt": 62.93, "n_txns_at_opening": 201, "median_amt_at_opening": 63.04}
+    msgs = [e for e in check_sar_facts(sar_of(LIVE_006_BASELINE, ["C07297"]), baseline_as_of=base_006) if e.startswith("V19")]
+    assert any("261" in m for m in msgs) and any("$58.98" in m for m in msgs), msgs
+
+
+@pytest.mark.parametrize("text", [
+    "The card's 71 prior transactions had a median amount of $55.92 and a maximum of $225.94.",
+    "At opening the card had 73 transactions in its history, with a maximum of $225.94.",
+    "The ring profile appears in 114 transactions across 52 cards, far beyond this card's history.",
+    "The card's 71 prior transactions had a median of $55.92, while the device profile carries 114 transactions and a maximum of $900.00.",
+    "The $112.37 purchase is the largest in the episode and above the prior median of $55.92.",
+    "The card's prior in-person maximum of $180.00 was never exceeded online.",
+])
+def test_v19_as_of_statistics_pass(text):
+    errs = check_sar_facts(sar_of(text, ["C13487"]), baseline_as_of=dict(BASE_014, n_txns_at_opening=73),
+                           affected_amounts=[112.37, 74.96])
+    assert "V19" not in codes(errs), errs
+
+
+def test_fact_checks_run_inside_validate_sar_only_when_asked():
+    sar = sar_of(LIVE_014_ACTIONS + " " + LIVE_014_PRIOR, ["C13487", "C13487-K1"])
+    kw = dict(exposure_usd=187.33, case_ids=("HHG-014", "AC-HHG-014"))
+    assert not codes(validate_sar(sar, **kw)) & {"V14", "V18"}
+    assert {"V14", "V18"} <= codes(validate_sar(sar, **kw, fact_context={"final_actions": FINAL_014, "prior_reports_related": RELATED_014}))
+
+
+def test_answer_level_fact_checks_catch_the_live_hhg014_defects():
+    answer = {"case_id": "HHG-014", "case": {"connected_device_profiles": [RING], "evidence": [
+        {"claim": "Four closed cases on this exact profile - CC-2649, CC-2971, CC-2985, CC-3035 - confirmed fraud with reports filed.",
+         "source": "graph", "ref": "query:ring_profile", "entity_ids": ["CC-2649", RING]}]},
+        "next_best_actions": {"final": FINAL_014},
+        "sar": sar_of(LIVE_014_ACTIONS + " On 2016-11-15 at 20:30 UTC a purchase. " + LIVE_014_PRIOR, ["C13487", "C13487-K1", RING])}
+    assert {"V14", "V16", "V18"} <= codes(check_answer_sar_facts(answer, "C13487-K1"))
+    assert answer_fact_context(answer)["known_devices"] == [RING]
+    assert check_answer_sar_facts(dict(answer, sar={"file": False, "narrative": "", "subjects": []})) == []
+
+
+# ------------------------------------------------------------------------------------------------ reasons / summary / what_changed
+
+def test_reason_citations():
+    live = [{"action": "BLOCK_CARD", "reason": "fraud_band: p=0.90 on this shared anonymous-proxy device profile"},          # HHG-014 live
+            {"action": "MONITOR_CARD", "reason": "uncertain_initial: verdict is uncertain and no reply has been received yet"},  # HHG-004
+            {"action": "MONITOR_CARD", "reason": "Uncertain band, step-up reply pending: monitor card C11923-K2"},               # HHG-011
+            {"action": "CREATE_CASE", "reason": "3a_case: required by policy"}]
+    assert len(reason_problems(live)) == 4
+    good = [{"action": "BLOCK_CARD", "reason": "R2: customer denied; exposure $166.97 <= $2,500"},
+            {"action": "STEP_UP_AUTH", "reason": "§3b/§5: possession check while the block awaits approval"},
+            {"action": "BLOCK_CARD", "reason": "R1 not applicable (p >= 0.70): two families"},
+            {"action": "ESCALATE_TO_ANALYST", "reason": "R10 does not apply; R8: uncertain and exposure > $500"}]
+    assert reason_problems(good) == []
+
+
+def test_policy_cite_translates_gate_labels():
+    sc = SimpleNamespace(p_engine=0.90, families_fraud=["device", "memory"], flags={})
+    assert policy_cite("BLOCK_CARD", ["fraud_band"], sc) == "R1 not applicable (p >= 0.70)"
+    assert policy_cite("BLOCK_CARD", ["fraud_band", "R2"], SimpleNamespace(p_engine=0.9, families_fraud=[], flags={"denial": True})) == "R2"
+    assert policy_cite("CREATE_CASE", ["3a_case", "R6", "R9"], sc) == "3a/R6/R9"
+    assert policy_cite("MONITOR_CARD", ["uncertain_final"], sc) == "R4"
+    assert policy_cite("MONITOR_CARD", ["§3b"], sc) == "§3b"             # the policy YAML's own `cite`
+    low = SimpleNamespace(p_engine=0.45, families_fraud=["history"], flags={})
+    assert policy_cite("VERIFY_WITH_CUSTOMER", ["uncertain_initial"], low) == "R1"
+    assert policy_cite("ESCALATE_TO_ANALYST", [], sc) == "R8"
+    for a, g in (("BLOCK_CARD", ["fraud_band"]), ("MONITOR_CARD", ["uncertain_initial"]), ("CLOSE_NO_FRAUD", ["legit_band"])):
+        assert reason_problems([{"action": a, "reason": policy_cite(a, g, sc) + ": x"}]) == []
+
+
+def test_summary_length():
+    long_live = ("Verdict: fraud at probability 0.90. " * 3) + "x" * 1500          # the live summaries ran 1,400-1,950 chars
+    assert summary_problems(long_live)
+    assert summary_problems("One sentence only.")
+    readme = ("Textbook card testing: three sub-$3 online authorizations in 40 minutes, then a $259 purchase in a category the "
+              "cardholder has never used. All four share a device profile marked New for this account, which appears on a closed "
+              "case from August and on another card this month. Customer denied the activity. Card compromised; a second card is "
+              "likely compromised through the same device.")                 # the README's own example
+    assert summary_problems(readme) == []
+
+
+def test_what_changed_same_value():
+    assert what_changed_problems("The assumed customer validation reply (no_reply) moved the probability from 0.62 to 0.62 and the verdict to uncertain.")
+    assert what_changed_problems("Customer denial raised probability from 0.72 to 0.86 and confirmed the block.") == []
+    assert what_changed_problems("nothing") == []
+
+
+def _pm_stub() -> PhaseMachine:
+    pm = PhaseMachine.__new__(PhaseMachine)
+    return pm
+
+
+@pytest.mark.parametrize("p0,p1,v0,v1,expect,forbid", [
+    (0.62, 0.62, "uncertain", "uncertain", "left the probability at 0.62 and kept the verdict uncertain", "0.62 to 0.62"),
+    (0.04, 0.04, "legitimate", "legitimate", "left the probability at 0.04", "0.04 to 0.04"),
+    (0.30, 0.10, "uncertain", "legitimate", "moved the probability from 0.30 to 0.10 and changed the verdict from uncertain to legitimate", "kept"),
+])
+def test_what_changed_wording(p0, p1, v0, v1, expect, forbid):
+    pm = _pm_stub()
+    sc = SimpleNamespace(p_engine=p1, verdict=v1, flags={})     # post_evidence may update sc in place: p_pre is passed
+    post = SimpleNamespace(p_engine=p1, verdict=v1, flags={"post_outcome": "no_reply", "counterfactual": "a confirmation would have closed the alert (R3); a denial would add BLOCK_CARD (R2)"})
+    ini = [{"action": "CREATE_CASE", "route": "auto"}, {"action": "VERIFY_WITH_CUSTOMER", "route": "auto"}]
+    fin = [{"action": "CREATE_CASE", "route": "auto"}, {"action": "DECLINE_TRANSACTION", "route": "L1"}]
+    out = pm._what_changed({"type": "customer_validation"}, sc, post, ini, fin, p0, v0)
+    assert expect in out and forbid not in out and what_changed_problems(out) == []
+    assert out.count(". ") <= 2      # README: one or two sentences
+
+
+def test_answer_text_problems_on_a_live_style_answer():
+    answer = {"case": {"summary": "x " * 900},
+              "next_best_actions": {"initial": [{"action": "MONITOR_CARD", "reason": "uncertain_initial: pending"}], "final": [],
+                                    "what_changed": "moved the probability from 0.58 to 0.58"}}
+    probs = answer_text_problems(answer)
+    assert any("internal label" in p for p in probs) and any("summary" in p for p in probs) and any("0.58 to 0.58" in p for p in probs)
+
+
+# ------------------------------------------------------------------------------------------------ memory time-box
+
+OPENED_014 = "2016-11-22 20:11:00"
+MEMORY_ROWS = {"cases": [
+    {"id": "CC-2649", "kind": "closed", "outcome_or_verdict": "confirmed_fraud", "opened_at": "2016-08-19 10:00:00", "distance": 0.1},
+    {"id": "AC-HHG-014", "kind": "agent", "outcome_or_verdict": "fraud", "opened_at": OPENED_014, "distance": 0.0},        # itself, earlier run
+    {"id": "AC-HHG-004", "kind": "agent", "outcome_or_verdict": "uncertain", "opened_at": "2016-12-30 01:00:00", "distance": 0.2},  # future
+    {"id": "AC-HHG-006", "kind": "agent", "outcome_or_verdict": "fraud", "opened_at": "2016-11-22 02:30:00", "distance": 0.3},  # earlier: kept
+]}
+
+
+def test_memory_timebox_drops_self_and_future_agent_cases():
+    out, dropped = mcp_client.memory_timebox(MEMORY_ROWS, OPENED_014, frozenset({"AC-HHG-014"}))
+    assert [r["id"] for r in out["cases"]] == ["CC-2649", "AC-HHG-006"]
+    assert sorted(dropped) == ["AC-HHG-004", "AC-HHG-014"]
+    raw = {"agent_cases": [{"v_id": "AC-HHG-018", "v_type": "AgentCase", "attributes": {"@opened_at": "2016-12-01 00:00:00"}}],
+           "cards": ["C01289-K1"]}
+    out, _ = mcp_client.memory_timebox(raw, OPENED_014)
+    assert out == {"agent_cases": [], "cards": ["C01289-K1"]}
+    # rows without opened_at (device_neighbors.agent_cases) are dropped by id
+    out, _ = mcp_client.memory_timebox({"agent_cases": [{"id": "AC-HHG-004", "card_id": "C1"}]}, OPENED_014, frozenset({"AC-HHG-004"}))
+    assert out["agent_cases"] == []
+
+
+def test_harness_query_applies_the_timebox(monkeypatch):
+    async def fake_run(session, name, params):
+        return json.loads(json.dumps(MEMORY_ROWS))
+
+    monkeypatch.setattr(mcp_client, "run_query", fake_run)
+    tctx = mcp_client.ToolContext(opened_at=OPENED_014, exclude_case_ids=frozenset({"AC-HHG-014"}))
+    res = asyncio.run(mcp_client.harness_query(None, tctx, "similar_prior_cases", {"as_of": OPENED_014}))
+    assert "AC-HHG-014" not in json.dumps(res) and "AC-HHG-004" not in json.dumps(res)
+    assert "AC-HHG-014" not in json.dumps(tctx.facts["similar_prior_cases"])
+    out = asyncio.run(mcp_client.call_query_tool(None, tctx, "similar_prior_cases", {"as_of": OPENED_014}))
+    assert "AC-HHG-014" not in out and "CC-2649" in out
+
+
+def test_rag_retrieval_timebox():
+    rows = [dict(r, overlap_reasons=[]) for r in MEMORY_ROWS["cases"]]
+    assert [r["id"] for r in timebox_cases(rows, OPENED_014, ["AC-HHG-014"])] == ["CC-2649", "AC-HHG-006"]
+
+    class Emb:
+        def embed_query(self, _t):
+            return [0.0] * 4
+
+    got = similar_prior_cases(lambda n, p: {"cases": rows}, Emb(), "q", as_of=OPENED_014, k=8, exclude_ids=["AC-HHG-014"])
+    assert {r["id"] for r in got["cases"]} == {"CC-2649", "AC-HHG-006"}
+
+
+# ------------------------------------------------------------------------------------------------ as-of card statistics
+
+def test_llm_view_withholds_stale_whole_history_card_statistics():
+    stale = {"card": {"id": "C13487-K1", "n_txns": 85, "max_amt": 252.28, "median_amt": 48.03, "last_ts": "2016-12-29 10:00:00",
+                      "known_device_ids": "a,b", "modal_region": "272.0"}, "regions": []}
+    v = mcp_client.llm_view("card_profile", stale, OPENED_014)
+    assert "n_txns" not in v["card"] and "max_amt" not in v["card"] and "known_device_ids" not in v["card"]
+    assert v["card"]["modal_region"] == "272.0" and "_note" in v["card"] and stale["card"]["n_txns"] == 85   # facts untouched
+    fresh = {"card": {"id": "C13487-K1", "n_txns": 73, "max_amt": 225.94, "last_ts": "2016-11-22 16:11:00", "known_device_ids": "a"}}
+    v = mcp_client.llm_view("card_profile", fresh, OPENED_014)
+    assert v["card"]["n_txns"] == 73 and "known_device_ids" not in v["card"]
+    cc = {"txn": {"card_seq": 72}, "card": {"id": "C13487-K1", "n_txns": 85}}
+    assert "n_txns" not in mcp_client.llm_view("case_context", cc, OPENED_014, {"card_profile": stale})["card"]
+    cc_ok = {"txn": {"card_seq": 72}, "card": {"id": "C13487-K1", "n_txns": 73}}
+    assert mcp_client.llm_view("case_context", cc_ok, OPENED_014, {"card_profile": fresh})["card"]["n_txns"] == 73
+
+
+# ------------------------------------------------------------------------------------------------ manifests
+
+def test_run_manifest_accumulates_across_resume(tmp_path, monkeypatch):
+    from agent import bench
+
+    monkeypatch.setattr(bench, "_git_sha", lambda: "sha-one")
+    monkeypatch.setattr(bench, "_git_dirty", lambda: False)
+    settings = bench.SETTINGS
+    inv1 = bench.write_manifest(tmp_path / "r", settings, "claude-sonnet-5", ["HHG-017", "HHG-015"])
+    bench.record_case_run(tmp_path / "r", "HHG-017", inv1, {"tool_calls": 12, "tokens": 5})
+    monkeypatch.setattr(bench, "_git_sha", lambda: "sha-two")
+    inv2 = bench.write_manifest(tmp_path / "r", settings, "claude-sonnet-5", ["HHG-015", "HHG-004"], resume=True)
+    bench.record_case_run(tmp_path / "r", "HHG-015", inv2)
+    m = json.loads((tmp_path / "r" / "run_manifest.json").read_text())
+    assert m["cases"] == ["HHG-017", "HHG-015", "HHG-004"]
+    assert len(m["invocations"]) == 2 and m["invocations"][1]["resume"] is True
+    assert m["case_runs"]["HHG-017"]["git_sha"] == "sha-one" and m["case_runs"]["HHG-015"]["git_sha"] == "sha-two"
+    assert m["git_shas"] == ["sha-one", "sha-two"] and m["git_sha"] == "sha-two"
+
+
+def test_cases_manifest_keeps_every_case(tmp_path, monkeypatch):
+    from agent import promote
+
+    monkeypatch.setattr(promote, "SETTINGS", replace(promote.SETTINGS, cases_dir=tmp_path))
+    for c in ("HHG-001", "HHG-002", "HHG-014"):
+        (tmp_path / f"{c}.json").write_text("{}")
+    (tmp_path / "MANIFEST.md").write_text(
+        "# cases/ manifest\n\n| case | verdict | p | pattern | sar | tool_calls | tokens | latency_s | notes |\n|---|---|---|---|---|---|---|---|---|\n"
+        "| HHG-001 | legitimate | 0.1 | none | False | 15 | 1 | 1.0 |  |\n| HHG-002 | fraud | 0.92 | cnp | False | 17 | 1 | 1.0 |  |\n")
+    rows = [("HHG-014", "fraud", 0.9, "undocumented", True, 22, 1, 1.0, "", "final", "abc123")]
+    md = promote.manifest_markdown(rows, "final", {"model": "m", "prompt_sha256": {}})
+    body = [ln for ln in md.splitlines() if ln.startswith("| HHG-")]
+    assert [ln.split("|")[1].strip() for ln in body] == ["HHG-001", "HHG-002", "HHG-014"]
+    assert "abc123" in body[2] and "- cases: 3" in md
+
+
+# ------------------------------------------------------------------------------------------------ mock phase-machine run
+
+@pytest.fixture
+def hhg014_run(monkeypatch, tmp_path):
+    """HHG-014 through the whole phase machine in RUN_MODE=mock; the memory query also returns the case's own
+    AC-HHG-014 (an earlier run's write-back) and a later case's AC-HHG-004."""
+    monkeypatch.setenv("RUN_MODE", "mock")
+    monkeypatch.setenv("LLM_BACKEND", "mock")
+    from agent import tools_local
+    from agent.bench import load_case_pack, make_client
+    from agent.config import SETTINGS
+    from agent.mock_fixtures import FakeSession, format_like_mcp
+    from agent.runlog import RunLog
+
+    settings = replace(SETTINGS, run_mode="mock", llm_backend="mock")
+    monkeypatch.setattr(tools_local, "SETTINGS", settings)
+    if not settings.case_pack_csv.exists():
+        pytest.skip("case pack not present")
+    ctx = {c.case_id: c for c in load_case_pack(settings.case_pack_csv)}["HHG-014"]
+
+    class Session(FakeSession):
+        async def call_tool(self, name, arguments=None, **kw):
+            res = await super().call_tool(name, arguments, **kw)
+            if name == mcp_client.RUN_INSTALLED and (arguments or {}).get("query_name") == "similar_prior_cases":
+                payload = mcp_client.parse_tool_text(res.content[0].text)
+                merged = mcp_client.merge_printed((payload.get("data") or {}).get("result"), "similar_prior_cases")
+                cases = list(merged.get("cases", [])) + [dict(r) for r in MEMORY_ROWS["cases"] if r["id"].startswith("AC-")]
+                text = format_like_mcp("similar_prior_cases", arguments.get("params", {}), {"cases": cases})
+                return SimpleNamespace(content=[SimpleNamespace(type="text", text=text)], is_error=False, structured_content=None)
+            return res
+
+    pm = PhaseMachine(make_client(settings), Session("HHG-014"), "t", settings)
+    log = RunLog("t", ctx.case_id, tmp_path / ctx.case_id)
+    answer = asyncio.run(pm.run_case(ctx, log))
+    return answer, log, ctx
+
+
+def test_mock_hhg014_answer_passes_the_agent_checks(hhg014_run):
+    answer, log, ctx = hhg014_run
+    assert answer_text_problems(answer) == [], answer_text_problems(answer)
+    if answer["sar"]["file"]:
+        assert check_answer_sar_facts(answer, ctx.card_id) == []
+        assert " UTC" not in answer["sar"]["narrative"]
+    phases = [json.loads(ln) for ln in (log.root / "phases.jsonl").read_text().splitlines() if ln.strip()]
+    memory = next(p for p in phases if p.get("name") == "memory" or p.get("phase") == "P1")
+    ids = {c.get("id") for c in memory["payload"]["similar_prior_cases"]}
+    assert "AC-HHG-014" not in ids and "AC-HHG-004" not in ids and "AC-HHG-006" in ids
+    for e in answer["case"]["evidence"]:
+        if e["ref"] == "trigger":
+            assert e["source"] != "customer"          # an analyst request is not the customer's statement
+    assert Path(log.root / "answer.json").exists()
 ```
 
 #### `tests/unit/test_mcp_resume.py`
@@ -31112,6 +33290,13 @@ def test_pages_render_without_exceptions(mock_run, page):
     assert not at.exception, [e.value for e in at.exception]
 ```
 
+#### `tests/fixtures/case_pack_HHG-014.csv`
+One-row case pack (header + HHG-014) for the CI mock end-to-end step, since data/raw/ is not in the repository.
+```csv
+case_id,opened_at,trigger_type,trigger_text,flagged_txn_id,card_id,customer_id,risk_score
+HHG-014,2016-11-22 20:11:00,analyst_request,Analyst request: several cards this month show purchases from the same unusual device profile. Review transaction 3478561 on card C13487-K1 and look for related activity.,3478561,C13487-K1,C13487,
+```
+
 #### `tests/fixtures/answers/HHG-014.sample.json`
 Every id below was resolved against `hhgoa.duckdb` (27 wave cards, the two pre-open ring transactions, the four undocumented closed cases, the exact profile string). It is a **UI/test fixture**, not the day-3 hand-written file, but it is the right starting point for it.
 ```json
@@ -31555,6 +33740,167 @@ git add -A && git commit -m "day 0: scaffolding" && git push   # CI must be gree
 - Drop the smoke schema (`USE GLOBAL` → `DROP ALL`) so day 2 starts from a clean workspace.
 ````
 
+#### `docs/RERUN.md`
+The ordered commands for the clean live re-run of the 20 cases (clear write-backs, install queries, run, promote).
+````markdown
+# Live re-run: one clean pass over the 20 exam cases
+
+This is the ordered command list for the final live pass after the R2 / SAR / query fixes. It re-installs the
+fixed GSQL queries, clears the agent's write-backs from superseded runs, runs the 20 cases one at a time in
+`opened_at` order with the live graph and the free model backend (`LLM_BACKEND=cli`), then promotes the answers.
+Run it from the repo root. Everything before step 3 is offline.
+
+Budget: about 1-3 min to install the queries, then about 2-3 min per case (roughly one hour for all 20). Keep
+the machine awake for the whole run.
+
+## 0. Offline pre-flight
+
+The working tree must be committed, so each case in the run manifest records a clean git sha (`git_dirty: false`).
+
+```bash
+git status --short
+```
+
+Expect no output. If anything is listed, commit it first.
+
+```bash
+make test lint
+```
+
+Expect the unit tests and `All checks passed!` from ruff.
+
+Do not run `make sheet` here: it rewrites the `latency_s` field in `engine/out/*.json` and leaves the tree dirty.
+The committed sheet and drafts are the offline prediction this run is compared with in step 4.
+
+## 1. Wake the workspace
+
+```bash
+make awake
+```
+
+Expect the TigerGraph version to print. A suspended Savanna workspace can take up to 4 minutes to answer.
+
+## 2. Clear the agent's own write-backs from earlier runs
+
+Superseded runs left rows in the graph that a re-run's upserts do not remove. Known examples are a stale pending
+`AP-AC-HHG-011-BLOCK_CARD` approval and `CASE_CONNECTED_TO` edges on `AC-HHG-019`. The tool only touches
+`AgentCase AC-HHG-0NN`, `CaseEvent AC-HHG-0NN-###` and `Approval AP-AC-HHG-0NN-*`, and only for HHG-001 to HHG-020.
+Deleting an AgentCase vertex also drops its edges.
+
+Dry run first. This lists the rows and writes the list to `runs/live-final/stale_writebacks.json`:
+
+```bash
+make clear-writebacks RUN_ID=live-final
+```
+
+Expect a table of AgentCase, CaseEvent and Approval rows for the exam cases, and no row for any other id. Read it
+before you delete anything.
+
+```bash
+make clear-writebacks APPLY=1 RUN_ID=live-final
+```
+
+Expect `no agent write-backs left for these cases`, with `remaining : 0`. The command exits 1 if any listed
+vertex is still there.
+
+The Streamlit approvals queue (`ui/approvals.sqlite`) is a local file, not the graph, and this step leaves it alone. If
+it still shows decisions from earlier runs, move it aside before the demo (`mv ui/approvals.sqlite ui/approvals.old.sqlite`).
+
+## 3. Run the 20 cases
+
+`rerun-live` wakes the workspace, then runs `make install-queries` (every `graph/queries/*.gsql`, including the
+changed `card_profile`, `case_context`, `episode_candidates`, `device_neighbors`, `similar_prior_cases`,
+`similar_prior_cases_agent` and `similar_cases_structural`, plus the earlier `shared_origin_scan` fix) and
+`make describe`. It then runs each case with `--resume`, sets `LLM_BACKEND=cli RUN_MODE=live` in the environment
+(`.env` is not edited), and validates each answer as soon as it is written. It stops at the first failure.
+
+```bash
+make rerun-live RUN_ID=live-final
+```
+
+Expect 20 `case n/20` banners, each followed by an `OK HHG-0NN ...` line and a clean validator line, and then
+`20/20 answers in runs/live-final`. If a case fails, the target stops and names it. For an agent error, fix the
+cause and run the same command again, and `--resume` skips the finished cases. For a validation failure, inspect
+`runs/live-final/HHG-0NN/`, delete that one case directory, and run the command again.
+
+If `install-queries` fails to compile `card_profile` or `case_context` (they have new as-of code paths), the
+previously installed version stays live and would leak whole-history card statistics. Stop, fix the query, and
+start step 3 again.
+
+## 4. Compare with the engine's offline sheet
+
+The engine drafts in `engine/out/` are the offline prediction for every case. This check prints each case where the
+live answer differs on the compared fields:
+
+```bash
+uv run python -c "import json,glob,sys; R=sys.argv[1]; L=lambda p:json.load(open(p)); S=lambda xs:sorted((x['action'],x['route']) for x in xs); F=lambda a:(a['case']['verdict'],a['case']['pattern'],sorted(a['case']['affected_txn_ids']),a['case']['exposure_usd'],a['sar']['file'],a['case']['status'],S(a['next_best_actions']['initial']),S(a['next_best_actions']['final'])); [print(c,'live',F(a),'p',a['case']['fraud_probability'],'| sheet',F(e),'p',e['case']['fraud_probability']) for c,a,e in ((p.split('/')[-2],L(p),L('engine/out/'+p.split('/')[-2]+'.draft.json')) for p in sorted(glob.glob('runs/'+R+'/HHG-*/answer.json'))) if F(a)!=F(e) or abs(a['case']['fraud_probability']-e['case']['fraud_probability'])>0.10]" live-final
+```
+
+Expect no output: verdict, pattern, episode, exposure, SAR decision, status and both action sets (with routes, in any
+order) equal the sheet, and the probability is within 0.10 of it. Check any case it prints by hand.
+
+Things to check by eye in `runs/live-final/`:
+
+- HHG-003 and HHG-018: `CREATE_CASE` plus `BLOCK_CARD` (L1, reason cites R2) in both the initial and final sets, no
+  evidence request, and the customer is never asked to verify. HHG-018 also has `ESCALATE_TO_ANALYST`.
+- HHG-004 and HHG-011: one `step_up_auth` request, `BLOCK_CARD` (L1, R2) in both sets, and `MONITOR_CARD` plus
+  `DECLINE_TRANSACTION` added in final.
+- HHG-018: `affected_txn_ids` is `[3485990, 3490180, 3491361]`, exposure is `$197.11`, and the first suspicious
+  transaction is `3485990`.
+- HHG-014: the `device_neighbors` evidence cites 4 closed cases (CC-2649, CC-2971, CC-2985, CC-3035) and never "44".
+  The SAR says the block awaits team-lead approval, quotes the card's as-of history (71 prior transactions or 73 at
+  opening, maximum $225.94), and does not deny prior reports on the device profile.
+- HHG-015: no evidence line calls 3462385, 3462387 or 3462404 "normal continued use".
+- Every summary is 2-6 sentences and at most 700 characters. No `what_changed` says "from X to X". Every action
+  reason starts with R1-R10, 3a or a § section.
+- No case lists its own `AC-HHG-0NN` in its memory pack (`runs/live-final/HHG-0NN/phases.jsonl`, phase P1).
+
+## 5. Promote and validate
+
+```bash
+make promote RUN_ID=live-final
+```
+
+Expect the validator over `runs/live-final/*/answer.json` to report 20 clean, and then `cases/MANIFEST.md` to be
+rewritten with a run_id and git sha for all 20 cases.
+
+```bash
+make validate
+```
+
+Expect `clean : 20` and `problems : 0`. CI runs this same check on `cases/HHG-*.json`, so do not push until it passes.
+
+## 6. Refresh the numbers in the docs
+
+The run numbers and some replay figures in the docs predate this pass:
+
+- `docs/blog.md`: the run table (completion, agreement, latency, tokens), the run-provenance paragraph (all 20 now
+  come from one clean pass), the HHG-018 sentence (the episode now has three transactions), and the replay table
+  (from `engine/out/replay_metrics.json`: pattern 0.878, SAR decision 0.939, episode Jaccard 0.792).
+- `README.md`: fill in the `## Results` section from `cases/MANIFEST.md`.
+- `docs/social.md`: re-check "52 cards", "4 confirmed-fraud cases", "20/20 agreement" and "pattern accuracy 0.88".
+
+## 7. Commit, then push with the owner's go-ahead
+
+`runs/` is gitignored, so the answers travel in `cases/` and the run's provenance in `cases/MANIFEST.md`.
+
+```bash
+git add cases docs README.md
+```
+
+```bash
+git commit -m "Promote the clean live re-run of all 20 cases"
+```
+
+```bash
+git push origin main
+```
+
+After the push, GitHub Actions runs ruff, the unit tests, the validator on `cases/`, the mock end-to-end case
+(which uses `tests/fixtures/case_pack_HHG-014.csv` because `data/raw/` is not in the repo) and the UI smoke test.
+All of them should pass.
+````
+
 #### `docs/demo_script.md`
 ```markdown
 # Demo script — 3:30–4:30, recorded on day 13 (PLAN §5 storyline)
@@ -31565,7 +33911,7 @@ Pick the ambiguous alert at recording time from HHG-019 / HHG-002 / HHG-005: the
 
 | Time | Shot | What is on screen | Voice-over (short) |
 |---|---|---|---|
-| 0:00–0:30 | Title + architecture slide (`docs/architecture.svg`) | one diagram: case pack → agent (Anthropic SDK) → TigerGraph MCP → Savanna FraudGraph + TigerVector; engine/policy gate; runs/ + UI | "Fraud analysts gather history, trace devices, read policy, decide and document. We built an agent that does that through TigerGraph: 25 installed GSQL queries as MCP tools, GraphRAG over closed cases and FinCEN guidance, and a policy gate that decides who may approve what." |
+| 0:00–0:30 | Title + architecture slide (`docs/architecture.svg`) | one diagram: case pack → agent phase machine P0–P10 (claude-agent-sdk) → TigerGraph MCP → Savanna FraudGraph + TigerVector; engine/policy gate; runs/ + UI | "Fraud analysts gather history, trace devices, read policy, decide and document. We built an agent that does that through TigerGraph: 25 installed GSQL queries as MCP tools, GraphRAG over closed cases and FinCEN guidance, and a policy gate that decides who may approve what." |
 | 0:30–0:50 | UI → **Queue** | 20 cases, `opened_at` order, verdict mix roughly half legitimate | "Twenty exam alerts. Half are legitimate — an agent that blocks everything fails." |
 | 0:50–1:25 | Select the ambiguous risk-score alert → ▶ **Investigate** | tool calls stream: `case_context`, `card_profile`, `card_window`, `prior_cases_for_customer`, `similar_prior_cases`, `grounding_chunks`, then the playbook (`device_history`, `episode_candidates` …) | "Every call is `tigergraph__run_installed_query` through the TigerGraph MCP, time-boxed to the moment the alert opened." |
 | 1:25–1:50 | **Case** → Evidence tab | claims with source badges (graph / document / customer), refs, entity ids; then Families & score: probability with its evidence families, scorer + adjustments | "Evidence is typed and cited. The probability is calibrated on the bank's own 5,565 closed cases, then moved only by graph facts." |
@@ -31574,7 +33920,7 @@ Pick the ambiguous alert at recording time from HHG-019 / HHG-002 / HHG-005: the
 | 2:35–3:20 | **HHG-014** (analyst request) | Investigate → `device_neighbors` → **Graph** page: the profile-centric ring, 27 connected cards, 4 prior undocumented closed cases; pattern `undocumented` in the agent's own words; actions R6 / R9 with `FILE_REPORT` (L2) and `BLOCK_CARD` (L1) | "An analyst suspects a device. `device_neighbors` on the strong profile behind an anonymous proxy finds 27 other cards this wave and four closed cases from August. WCC alone would not have found this — hub devices join 5,000 cards — the strength-filtered profile rule does." |
 | 3:20–3:45 | **SAR** tab → **Approvals** | FinCEN-grounded narrative, validator badges green; `FILE_REPORT` L2 pending → **Approve** → toast "written to graph"; GraphStudio shows the `Approval` vertex | "The SAR is drafted on retrieved FinCEN guidance and validated. L2 actions wait for a fraud manager; approving writes an Approval vertex and a CaseEvent." |
 | 3:45–4:10 | **Runs** page + a later case's summary | tokens / tool calls / latency per case; agreement across two runs; a later case (or monitoring alert) naming `AC-HHG-006`; `qa/calibration.png` | "Memory compounds: a later case cites an earlier agent-written one. Twenty cases, about N tool calls and M tokens each; two runs agree on ≥ 90 % of verdicts and actions." |
-| 4:10–4:25 | Repo README | 20 files in `cases/`, blog link, social post | "Repo, twenty answer files, blog. Built on TigerGraph Savanna, TigerGraph MCP, TigerVector and the Anthropic SDK." |
+| 4:10–4:25 | Repo README | 20 files in `cases/`, blog link, social post | "Repo, twenty answer files, blog. Built on TigerGraph Savanna, TigerGraph MCP, TigerVector and the Claude Agent SDK." |
 
 **Cut list if over 4:30:** drop the GraphStudio shot at 2:15 (say it instead), shorten the runs page to one sentence.
 
@@ -31614,18 +33960,18 @@ Required sections from the brief: what you built · architecture · how TigerGra
 ```markdown
 # Social posts: final copy
 
-Tag @TigerGraphDB and link the blog in every version. Replace `<BLOG_URL>`, `<DEMO_URL>` and `<REPO_URL>` before posting.
+Tag both @TigerGraphDB and @247pmstudio and link the blog in every version. Replace `<BLOG_URL>`, `<DEMO_URL>` and `<REPO_URL>` before posting.
 
 ## X: single post
 
-> A $74.96 purchase, bank risk score 0.05. My agent on @TigerGraphDB followed its device to 52 cards and 4 confirmed-fraud cases, drafted a SAR, and sent it and the card block to humans. The graph and a deterministic engine decide; the LLM investigates. <BLOG_URL>
+> A $74.96 purchase, risk score 0.05. My agent on @TigerGraphDB traced its device to 52 cards and 4 confirmed-fraud cases, then sent a SAR draft and a card block to humans. The graph and a deterministic engine decide; the LLM investigates. @247pmstudio <BLOG_URL>
 
-Length: 262 characters as written. X counts any link as 23 characters, so the post is 275 once the real URL goes in. Keep the limit in mind if you edit it.
+Length: 261 characters as written (with the 10-character `<BLOG_URL>` placeholder). X counts any link as 23 characters, so the post is 274 of 280 once the real URL goes in. Keep the limit in mind if you edit it.
 
 ## X: optional thread (4 posts)
 
-**1/4** (268 characters with the link)
-> A $74.96 purchase, bank risk score 0.05. My fraud agent on @TigerGraphDB followed its device to 52 cards and 4 confirmed-fraud cases. The graph and a deterministic engine decide; the LLM investigates and explains. 20 alerts ran live end to end. <BLOG_URL>
+**1/4** (274 characters with the link)
+> A $74.96 purchase, risk score 0.05. My fraud agent on @TigerGraphDB traced its device to 52 cards and 4 confirmed-fraud cases. The graph and a deterministic engine decide; the LLM investigates and explains. 20 alerts ran live end to end. @247pmstudio <BLOG_URL>
 
 **2/4** (233)
 > The LLM reaches the graph only through the official TigerGraph MCP server, as 16 typed tools over my GSQL queries, time-bounded to when the case opened. It can move the engine's fraud probability by at most 0.10, with a cited reason.
@@ -31642,7 +33988,7 @@ Length: 262 characters as written. X counts any link as 23 characters, so the po
 >
 > My agent followed that purchase's device through the graph to 52 cards, 114 anonymous-proxy uses and four earlier confirmed-fraud cases. It drafted a suspicious activity report and sent the card block and the filing to human approvers.
 >
-> I built it for the TigerGraph x Hacker House Goa 2026 hackathon on @TigerGraph.
+> I built it for the TigerGraph x Hacker House Goa 2026 hackathon (@TigerGraph, @247pmstudio).
 >
 > An alert comes in: a bank risk score, a customer dispute or an analyst request. The agent investigates through typed GSQL queries exposed via the official TigerGraph MCP server. It retrieves precedents from 5,565 closed cases and grounds itself in FinCEN, FFIEC and FATF guidance, all stored in TigerVector. It asks the customer only when the answer could change the action. It writes the case back into the graph.
 >
@@ -31658,7 +34004,7 @@ Length: 262 characters as written. X counts any link as 23 characters, so the po
 >
 > #TigerGraph #GraphRAG #FraudDetection #AgenticAI #HackerHouseGoa
 
-On LinkedIn, type "@TigerGraph" and choose the company page from the mention picker so the tag links.
+On LinkedIn, type "@TigerGraph" and "@247pmstudio" and choose each company page from the mention picker so the tags link.
 
 ## Pre-posting checklist
 
@@ -31667,8 +34013,8 @@ On LinkedIn, type "@TigerGraph" and choose the company page from the mention pic
 - [ ] Upload the demo video and copy its URL
 - [ ] Replace every `<BLOG_URL>`, `<DEMO_URL>` and `<REPO_URL>` above (repo: https://github.com/aryangupta1411/Tiger-graph)
 - [ ] Re-check the X post is 280 characters or fewer after editing (a link counts as 23)
-- [ ] Confirm @TigerGraphDB is tagged on X and the TigerGraph page is tagged on LinkedIn
-- [ ] Paste the blog, demo and social-post URLs into the three "TODO link" rows in `README.md`
+- [ ] Confirm @TigerGraphDB and @247pmstudio are tagged on X and both company pages are tagged on LinkedIn
+- [ ] Replace `<DEMO_URL>`, `<BLOG_URL>` and `<SOCIAL_URL>` in the deliverables table of `README.md`, and `<REPO_URL>` in its quick-start
 ```
 
 #### `docs/BUILD_ORDER.md`
@@ -31758,7 +34104,7 @@ Follow `docs/day0_checklist.md`. Summary of the gates:
 | ☐ | Step | Command | Files | Check |
 |---|---|---|---|---|
 | ☐ | Engine unit tests on the ETL facts (scorecard + `data/models/isotonic.json`, pattern rule, episode, SAR rule, policy gate, simulator, VoI, status, stop, answer writer, validator incl. the D10 invariants) | `ENGINE_FACTS_DB=data/hhgoa_engine.duckdb uv run pytest tests/unit/test_engine.py` (part of `make test-data`) | `engine/*.py`, `policy/fraud_policy.yaml`, `tests/unit/test_engine.py` | all pass: ring 52/27/19, 12 burst cards, pattern replay on true members ≥ 0.95, episode / policy / simulator / status tables; verdict bands D1 (`fraud ≥ 0.70`, `legitimate ≤ 0.15`); R8 gated (D3); `verdict == fraud` ⇒ a block / decline / escalation in `final` and no `CLOSE_NO_FRAUD`; a confirmation never clears a ring / burst hit |
-| ☐ | 310-case replay | `make replay` = `ENGINE_FACTS_DB=… python -m engine.replay` (~25 s) | `engine/replay.py` → `engine/out/replay_metrics.json` | targets pattern ≥ 0.95, SAR decision 1.00, episode Jaccard ≥ 0.85, synthetic disputes blocked 0 (initial and final); the honest leak-free numbers after the fix pass and any shortfall are recorded in `impl/40-engine.md` (D12) with the day-6 tuning plan — do not silently accept |
+| ☐ | 310-case replay | `make replay` = `ENGINE_FACTS_DB=… python -m engine.replay` (~25 s) | `engine/replay.py` → `engine/out/replay_metrics.json` | targets pattern ≥ 0.95, SAR decision 1.00, episode Jaccard ≥ 0.85, R7-matched disputes blocked in initial 0 (a plain denial is blocked under README R2, so the synthetic-dispute block count is a diagnostic); the honest leak-free numbers after the fix pass and any shortfall are recorded in `impl/40-engine.md` (D12) with the day-6 tuning plan — do not silently accept |
 | ☐ | Schemas have no numeric bounds | `uv run pytest tests/unit/test_schemas.py` | `agent/schemas.py` | no `minimum/maximum/minLength/maxLength` in any `model_json_schema()` |
 
 ---

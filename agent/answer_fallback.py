@@ -7,6 +7,7 @@ from __future__ import annotations
 import json
 
 from agent.schemas import Answer
+from engine.validator import uncertain_block_violation
 
 # D10: a fraud verdict must contain the activity with at least one of these in `final`.
 FRAUD_CONTAINMENT = {"BLOCK_CARD", "DECLINE_TRANSACTION", "ESCALATE_TO_ANALYST", "BLOCK_ALL_CARDS"}
@@ -109,8 +110,9 @@ def check_invariants(answer: dict) -> list[str]:
             v.append("fraud ⇒ at least one of BLOCK_CARD / DECLINE_TRANSACTION / ESCALATE_TO_ANALYST / BLOCK_ALL_CARDS in final")
     if "CLOSE_NO_FRAUD" in fin and c["verdict"] != "legitimate":
         v.append("CLOSE_NO_FRAUD in final ⇒ verdict legitimate")
-    if c["verdict"] == "uncertain" and (ini & {"BLOCK_CARD", "BLOCK_ALL_CARDS"} or c["status"] not in ("escalated", "open")):
-        v.append("uncertain: no block in initial and status escalated/open")
+    # README R2: a customer denial takes BLOCK_CARD from intake at any verdict, so an initial BLOCK_CARD citing R2 is allowed
+    if c["verdict"] == "uncertain" and (uncertain_block_violation(nba["initial"]) or c["status"] not in ("escalated", "open")):
+        v.append("uncertain: no block in initial (except an R2 BLOCK_CARD) and status escalated/open")
     if nba["initial"] != nba["final"] and not answer["evidence_requests"]:
         v.append("initial != final without an evidence request")
     if (nba["what_changed"] == "nothing") != (nba["initial"] == nba["final"]):

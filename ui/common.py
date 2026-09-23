@@ -322,11 +322,16 @@ SAR_CHECK_LABELS = [
     ("V11", "OFAC result and prior-report status stated"),
     ("V12", "no seeding tell (':00 seconds')"),
     ("V13", "no tables (a '|' inside a device profile is fine)"),
+    ("V14", "a pending block is not described as done"),
+    ("V15", "no gendered pronouns"),
+    ("V16", "no time-zone claim"),
+    ("V17", "every named id / device is a subject"),
+    ("V18", "prior-report claim agrees with the evidence"),
 ]
 
 
 def sar_checks(answer: dict, meta: dict | None = None, resolver: Any | None = None) -> list[tuple[str, bool, str]]:
-    """[(check, ok, detail)] for the SAR tab, one row per rag.validate_sar code V00-V13, computed from the answer
+    """[(check, ok, detail)] for the SAR tab, one row per rag.validate_sar code V00-V18 (V19 needs the as-of baseline and runs only in P8), computed from the answer
     alone (plus the case pack's customer/card ids in `meta`). Ids resolve against the answer's own lists unless a
     `resolver` (rag.validate_sar.DuckResolver over data/ids.duckdb) is given; the run's P8 validator payload is
     merged in by the page. When sar.file is false only V00 applies."""

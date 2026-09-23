@@ -10,7 +10,8 @@
   task runs a trivial MCP call every KEEP_ALIVE_S seconds so the workspace does not auto-stop
   mid-benchmark.
 - `--resume` skips cases whose runs/<run_id>/<case>/answer.json already exists.
-- Writes runs/<run_id>/run_manifest.json (model, effort, prompt hashes, versions, git sha).
+- Writes runs/<run_id>/run_manifest.json (model, effort, prompt hashes, versions, git sha); a `--resume`
+  invocation extends it: every invocation is kept, and `case_runs` records the git sha each case ran on.
 
 Terminal output goes through `ops.console`: a run header, then one block per case (the case and its
 trigger, the P0-P10 phases as the phase machine writes them, the tools it called, the result), then a
@@ -96,14 +97,69 @@ def _resolve_backend(settings: Settings) -> str:
     return llm.resolve_backend(settings)
 
 
-def write_manifest(run_dir: Path, settings: Settings, model: str, case_ids: list[str]) -> None:
-    prompts = {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(settings.prompts_dir.glob("*.md"))}
-    manifest = {"run_id": run_dir.name, "started": time.strftime("%Y-%m-%dT%H:%M:%S"), "model": model, "sar_model": settings.sar_model,
-                "effort": settings.effort, "run_mode": settings.run_mode, "llm_backend": _resolve_backend(settings), "engine": ENGINE.source, "max_tool_calls": settings.max_tool_calls,
-                "prompt_sha256": prompts, "versions": _versions(), "git_sha": _git_sha(), "cases": case_ids,
-                "embed_model": settings.embed_model, "embed_dim": settings.embed_dim}
+def _git_dirty() -> bool | None:
+    """True when tracked files differ from HEAD (the cases then did not run on exactly `git_sha`)."""
+    try:
+        out = subprocess.check_output(["git", "status", "--porcelain", "--untracked-files=no"], stderr=subprocess.DEVNULL, text=True)
+        return bool(out.strip())
+    except Exception:
+        return None
+
+
+def _read_manifest(run_dir: Path) -> dict:
+    try:
+        return json.loads((run_dir / "run_manifest.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
+def _write_manifest_file(run_dir: Path, manifest: dict) -> None:
     run_dir.mkdir(parents=True, exist_ok=True)
     (run_dir / "run_manifest.json").write_text(json.dumps(manifest, indent=2, sort_keys=True), encoding="utf-8")
+
+
+def write_manifest(run_dir: Path, settings: Settings, model: str, case_ids: list[str], resume: bool = False) -> dict:
+    """Start (or, on `--resume` / a re-invocation of the same run id, extend) runs/<run_id>/run_manifest.json.
+
+    The top-level fields describe the latest invocation (what `agent.promote` reads); `invocations` keeps every
+    invocation of the run id, `cases` is the union of the cases any invocation selected, and `case_runs`
+    (filled by `record_case_run`) records, per completed case, the git sha / prompt hashes / model it ran on.
+    Returns the invocation record."""
+    prompts = {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(settings.prompts_dir.glob("*.md"))}
+    prev = _read_manifest(run_dir)
+    invocation = {"started": time.strftime("%Y-%m-%dT%H:%M:%S"), "git_sha": _git_sha(), "git_dirty": _git_dirty(),
+                  "model": model, "sar_model": settings.sar_model, "effort": settings.effort, "run_mode": settings.run_mode,
+                  "llm_backend": _resolve_backend(settings), "engine": ENGINE.source, "resume": bool(resume),
+                  "cases_selected": list(case_ids), "prompt_sha256": prompts}
+    invocations = list(prev.get("invocations") or [])
+    if prev and not invocations:           # a manifest written before invocations were recorded
+        invocations.append({k: prev.get(k) for k in ("started", "git_sha", "model", "sar_model", "effort", "run_mode",
+                                                      "llm_backend", "engine", "prompt_sha256")} | {"cases_selected": prev.get("cases", [])})
+    invocations.append(invocation)
+    cases = list(dict.fromkeys([*(prev.get("cases") or []), *case_ids]))
+    manifest = {"run_id": run_dir.name, "started": invocation["started"], "first_started": prev.get("first_started") or prev.get("started") or invocation["started"],
+                "model": model, "sar_model": settings.sar_model,
+                "effort": settings.effort, "run_mode": settings.run_mode, "llm_backend": invocation["llm_backend"], "engine": ENGINE.source, "max_tool_calls": settings.max_tool_calls,
+                "prompt_sha256": prompts, "versions": _versions(), "git_sha": invocation["git_sha"], "git_dirty": invocation["git_dirty"],
+                "cases": cases, "invocations": invocations, "case_runs": dict(prev.get("case_runs") or {}),
+                "embed_model": settings.embed_model, "embed_dim": settings.embed_dim}
+    _write_manifest_file(run_dir, manifest)
+    return invocation
+
+
+def record_case_run(run_dir: Path, case_id: str, invocation: dict, answer: dict | None = None) -> None:
+    """Record in run_manifest.json that `case_id` completed under `invocation` (git sha, prompts, model)."""
+    manifest = _read_manifest(run_dir)
+    runs = dict(manifest.get("case_runs") or {})
+    runs[case_id] = {"finished": time.strftime("%Y-%m-%dT%H:%M:%S"), "invocation_started": invocation.get("started"),
+                     "git_sha": invocation.get("git_sha"), "git_dirty": invocation.get("git_dirty"), "model": invocation.get("model"),
+                     "sar_model": invocation.get("sar_model"), "llm_backend": invocation.get("llm_backend"),
+                     "prompt_sha256": {k: str(v)[:12] for k, v in (invocation.get("prompt_sha256") or {}).items()},
+                     "tool_calls": (answer or {}).get("tool_calls"), "tokens": (answer or {}).get("tokens")}
+    manifest["case_runs"] = dict(sorted(runs.items()))
+    manifest["cases"] = list(dict.fromkeys([*(manifest.get("cases") or []), case_id]))
+    manifest["git_shas"] = sorted({str(r.get("git_sha") or "") for r in runs.values()} - {""})
+    _write_manifest_file(run_dir, manifest)
 
 
 def ensure_awake(settings: Settings = SETTINGS, max_wait_s: int = 240) -> None:
@@ -330,7 +386,7 @@ async def run(args: argparse.Namespace) -> int:
             "out": run_dir,
         },
     )
-    write_manifest(run_dir, settings, settings.model, [c.case_id for c in cases])
+    invocation = write_manifest(run_dir, settings, settings.model, [c.case_id for c in cases], resume=bool(args.resume))
     ok(f"manifest -> {run_dir / 'run_manifest.json'}")
     ensure_awake(settings)
     client = make_client(settings)
@@ -364,6 +420,9 @@ async def run(args: argparse.Namespace) -> int:
                     totals["skipped"] += 1
                     warn(f"{ctx.case_id} resume: {out} exists, skipping")
                     board.add_row(ctx.case_id, ctx.trigger_type, "(resumed)", "-", "-", "-", "-", "-", "-", "-", "-", "-", style="dim")
+                    if ctx.case_id not in (_read_manifest(run_dir).get("case_runs") or {}):
+                        # an answer from before case_runs existed: provenance unknown, say so rather than guess
+                        record_case_run(run_dir, ctx.case_id, {"started": None, "git_sha": "unknown (resumed; predates case_runs)"})
                     continue
                 if settings.mock and hasattr(session, "use_case"):
                     session.use_case(ctx.case_id)
@@ -408,6 +467,7 @@ async def run(args: argparse.Namespace) -> int:
                         break
                     continue
                 try:
+                    record_case_run(run_dir, ctx.case_id, invocation, answer)
                     c = answer["case"]
                     actions = [a["action"] for a in answer["next_best_actions"]["final"]]
                     problems = answer.get("_validation", []) or []

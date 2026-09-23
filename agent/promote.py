@@ -32,6 +32,54 @@ def _on_stderr() -> Iterator[None]:
         sys.stderr.flush()
 
 
+MANIFEST_COLS = ["case", "verdict", "p", "pattern", "sar", "tool_calls", "tokens", "latency_s", "notes", "run_id", "git"]
+
+
+def _existing_rows(path) -> dict[str, tuple]:
+    """Rows of an existing cases/MANIFEST.md table keyed by case id (older 9-column tables get run/git '')."""
+    out: dict[str, tuple] = {}
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return out
+    header_cols: list[str] = []
+    for ln in lines:
+        if not ln.startswith("|") or ln.startswith("|---"):
+            continue
+        cells = [c.strip() for c in ln.strip().strip("|").split("|")]
+        if cells and cells[0] == "case":
+            header_cols = cells
+            continue
+        if header_cols and cells and cells[0].startswith("HHG-"):
+            row = dict(zip(header_cols, cells))
+            out[cells[0]] = tuple(row.get(c, "") for c in MANIFEST_COLS)
+    return out
+
+
+def manifest_markdown(rows: list[tuple], run_id: str, manifest: dict, existing_path=None) -> str:
+    """cases/MANIFEST.md: every case file in cases/, one row each with the run and git sha it came from. Rows for
+    cases not promoted by this invocation are carried over from the previous MANIFEST.md, so a partial promotion
+    (`--cases HHG-014`) never drops the other nineteen."""
+    existing = _existing_rows(existing_path or (SETTINGS.cases_dir / "MANIFEST.md"))
+    merged = dict(existing)
+    for r in rows:
+        merged[r[0]] = tuple(r)
+    present = {p.stem for p in SETTINGS.cases_dir.glob("HHG-*.json")}
+    table = [merged[k] for k in sorted(merged) if k in present or k in {r[0] for r in rows}]
+    runs = sorted({str(r[9]) for r in table if len(r) > 9 and r[9]})
+    shas = sorted({str(r[10]) for r in table if len(r) > 10 and r[10]})
+    lines = ["# cases/ manifest", "",
+             f"- cases: {len(table)} ({', '.join(r[0] for r in table)})",
+             f"- runs: {', '.join(f'`{x}`' for x in runs) or '-'}; last promoted: `{run_id}`",
+             f"- model: `{manifest.get('model', '')}` (effort {manifest.get('effort', '')}), llm backend `{manifest.get('llm_backend', '')}`",
+             f"- engine: `{manifest.get('engine', '')}`",
+             f"- git (per case below): {', '.join(f'`{x}`' for x in shas) or '-'}",
+             "- prompt sha256: " + ", ".join(f"`{k}`={v[:12]}" for k, v in (manifest.get("prompt_sha256") or {}).items()), "",
+             "| " + " | ".join(MANIFEST_COLS) + " |", "|" + "---|" * len(MANIFEST_COLS)]
+    lines += ["| " + " | ".join(str(x) for x in (list(r) + [""] * len(MANIFEST_COLS))[: len(MANIFEST_COLS)]) + " |" for r in table]
+    return "\n".join(lines) + "\n"
+
+
 def promote(run_id: str, cases: str = "all", force: bool = False) -> int:
     run_dir = SETTINGS.runs_dir / run_id
     manifest = json.loads((run_dir / "run_manifest.json").read_text(encoding="utf-8")) if (run_dir / "run_manifest.json").exists() else {}
@@ -103,8 +151,13 @@ def promote(run_id: str, cases: str = "all", force: bool = False) -> int:
         dst = SETTINGS.cases_dir / f"{case_dir.name}.json"
         shutil.copyfile(src, dst)
         c = answer["case"]
+        prov = (manifest.get("case_runs") or {}).get(case_dir.name) or {}
+        sha = str(prov.get("git_sha") or (manifest.get("git_sha", "") + " (run start)" if manifest.get("git_sha") else ""))
+        if prov.get("git_dirty"):
+            sha += " +uncommitted changes"
         rows.append((case_dir.name, c["verdict"], c["fraud_probability"], c["pattern"], answer["sar"]["file"],
-                     answer["tool_calls"], answer["tokens"], answer["latency_s"], "; ".join(problems) if problems else ""))
+                     answer["tool_calls"], answer["tokens"], answer["latency_s"], "; ".join(problems) if problems else "",
+                     run_id, sha[:40] if " " not in sha else sha))
         table.add_row(case_dir.name, "forced" if problems else "promoted", *cells,
                       joinlist(problems, sep="; ") if problems else "-", style="yellow" if problems else None)
         if problems:
@@ -112,12 +165,7 @@ def promote(run_id: str, cases: str = "all", force: bool = False) -> int:
                 warn(f"{case_dir.name} promoted with --force despite {len(problems)} problem(s)")
                 for p in problems:
                     detail(p)
-    lines = ["# cases/ manifest", "", f"- run_id: `{run_id}`", f"- model: `{manifest.get('model', '')}` (effort {manifest.get('effort', '')})",
-             f"- engine: `{manifest.get('engine', '')}`", f"- git: `{manifest.get('git_sha', '')}`",
-             "- prompt sha256: " + ", ".join(f"`{k}`={v[:12]}" for k, v in (manifest.get("prompt_sha256") or {}).items()), "",
-             "| case | verdict | p | pattern | sar | tool_calls | tokens | latency_s | notes |", "|---|---|---|---|---|---|---|---|---|"]
-    lines += [f"| {r[0]} | {r[1]} | {r[2]} | {r[3]} | {r[4]} | {r[5]} | {r[6]} | {r[7]} | {r[8]} |" for r in rows]
-    (SETTINGS.cases_dir / "MANIFEST.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    (SETTINGS.cases_dir / "MANIFEST.md").write_text(manifest_markdown(rows, run_id, manifest), encoding="utf-8")
     table.print()
     if rows:
         ok(f"{len(rows)} case(s) copied to {SETTINGS.cases_dir}: {joinlist([r[0] for r in rows], max_items=10)}")

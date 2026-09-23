@@ -644,6 +644,91 @@ class ToolContext:
     max_chars: int = SETTINGS.tool_result_max_chars
     on_result: Callable[[str, dict, dict], None] | None = None
     graph_unavailable: str = ''       # name of the P2 query the resume budget ran out on (the phase machine fails the case)
+    # memory time-box (client side, whatever the installed query does): AgentCase rows with one of these ids, or
+    # opened at/after `opened_at`, are dropped from every result before the model or the engine sees them
+    exclude_case_ids: frozenset = field(default_factory=frozenset)
+
+
+# ---------------------------------------------------------------- memory time-box
+
+# Card attributes the ETL precomputed over all six months include activity AFTER opened_at. The fixed card_profile /
+# case_context queries recompute the history fields as of `as_of`; an installed query that predates that fix is
+# detected by card.last_ts > opened_at (impossible for a time-boxed result) and its history fields are withheld from
+# the model's view (the engine still gets the raw facts). known_device_ids / recurring_amounts are never recomputed.
+WHOLE_HISTORY_CARD_FIELDS = ("n_txns", "last_ts", "median_amt", "p90_amt", "max_amt", "max_in_person_amt", "n_online",
+                             "n_in_person", "n_regions", "n_devices_seen")
+ALWAYS_ALL_TIME_CARD_FIELDS = ("known_device_ids", "recurring_amounts")
+WHOLE_HISTORY_NOTE = ("card statistics that include activity after opened_at are withheld; use case_context.txn.card_seq - 1 "
+                      "(prior transactions), prior_med_amt, prior_max_amt and card_profile regions / devices / last30, all as of opened_at")
+
+
+def card_profile_stale(result: Any, opened_at: str) -> bool:
+    """True when a card_profile result carries whole-history card statistics (an installed query without the as-of fix)."""
+    card = (result or {}).get("card") if isinstance(result, dict) else None
+    last = str((card or {}).get("last_ts") or "") if isinstance(card, dict) else ""
+    return bool(last and opened_at and last[:19] > opened_at[:19])
+
+
+def _row_field(row: dict, key: str) -> Any:
+    if key in row:
+        return row[key]
+    attrs = row.get("attributes") or {}
+    return attrs.get(key, attrs.get("@" + key))
+
+
+def _is_agent_row(row: dict) -> bool:
+    rid = str(row.get("id") or row.get("v_id") or row.get("case_id") or "")
+    kind = str(_row_field(row, "kind") or "")
+    return rid.startswith("AC-") or kind == "agent" or row.get("v_type") == "AgentCase"
+
+
+def memory_timebox(result: Any, opened_at: str, exclude_ids: frozenset | set = frozenset()) -> tuple[Any, list[str]]:
+    """Drop AgentCase rows that are the case itself (`exclude_ids`, e.g. AC-HHG-014 from an earlier run) or were
+    opened at/after `opened_at`, from every list in a query result. Returns (result, dropped ids)."""
+    dropped: list[str] = []
+
+    def keep(row: Any) -> bool:
+        if not isinstance(row, dict) or not _is_agent_row(row):
+            return True
+        rid = str(row.get("id") or row.get("v_id") or row.get("case_id") or "")
+        opened = str(_row_field(row, "opened_at") or "")
+        if rid in exclude_ids or (opened and opened_at and opened[:19] >= opened_at[:19]):
+            dropped.append(rid)
+            return False
+        return True
+
+    def walk(o: Any) -> Any:
+        if isinstance(o, dict):
+            return {k: walk(v) for k, v in o.items()}
+        if isinstance(o, list):
+            return [walk(v) for v in o if keep(v)]
+        return o
+
+    return walk(result), dropped
+
+
+def llm_view(qname: str, result: dict, opened_at: str = "", facts: dict | None = None) -> dict:
+    """The model's copy of a result: card statistics that are not as of opened_at withheld (see above)."""
+    if qname not in ("card_profile", "case_context") or not isinstance(result, dict):
+        return result
+    card = result.get("card")
+    if not isinstance(card, dict):
+        return result
+    if qname == "card_profile":
+        hidden = [k for k in ALWAYS_ALL_TIME_CARD_FIELDS if k in card]
+        if card_profile_stale(result, opened_at):
+            hidden += [k for k in WHOLE_HISTORY_CARD_FIELDS if k in card]
+    else:   # case_context.card.n_txns: trusted only when it agrees with a time-boxed card_profile
+        prof = (facts or {}).get("card_profile") or {}
+        ok = (isinstance(prof.get("card"), dict) and not card_profile_stale(prof, opened_at)
+              and prof["card"].get("n_txns") == card.get("n_txns"))
+        hidden = [] if ok or "n_txns" not in card else ["n_txns"]
+    if not hidden:
+        return result
+    out = dict(result)
+    out["card"] = {k: v for k, v in card.items() if k not in hidden}
+    out["card"]["_note"] = WHOLE_HISTORY_NOTE
+    return out
 
 
 def clamp_params(params: dict, opened_at: str) -> tuple[dict, list[str]]:
@@ -708,8 +793,9 @@ async def call_query_tool(session: Any, tctx: ToolContext, qname: str, params: d
         return json.dumps({"error": f"{qname} failed: {str(e)[:400]}", "hint": "Check the parameter encoding (VERTEX → {\"id\": ...}, DATETIME → 'YYYY-MM-DD HH:MM:SS') or choose another query."})
     finally:
         current_caller.reset(token)
+    result = _timebox(tctx, qname, result)
     record_result(tctx, qname, params, result)
-    payload = {"query": qname, "params": params, "result": result}
+    payload = {"query": qname, "params": params, "result": llm_view(qname, result, tctx.opened_at, tctx.facts)}
     if notes:
         payload["notes"] = notes
     return compact_json(payload, tctx.max_chars)
@@ -729,6 +815,14 @@ def record_result(tctx: ToolContext, qname: str, params: dict, result: dict) -> 
 async def harness_query(session: Any, tctx: ToolContext, qname: str, params: dict) -> dict:
     """Mandatory / engine re-run query by the harness (counted in tool_calls, logged as caller=harness)."""
     params, _ = clamp_params(params, tctx.opened_at)
-    result = await run_query(session, qname, params)
+    result = _timebox(tctx, qname, await run_query(session, qname, params))
     record_result(tctx, qname, params, result)
     return result
+
+
+def _timebox(tctx: ToolContext, qname: str, result: Any) -> Any:
+    out, dropped = memory_timebox(result, tctx.opened_at, tctx.exclude_case_ids)
+    log = current_runlog.get()
+    if dropped and log is not None:
+        log.note(f"memory time-box: dropped agent cases from {qname}", dropped=sorted(set(dropped)))
+    return out

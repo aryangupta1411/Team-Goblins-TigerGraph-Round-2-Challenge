@@ -133,13 +133,14 @@ def skeleton(facts: SarFacts) -> list[dict]:
 SYSTEM = """You draft the narrative section of a Suspicious Activity Report for a card issuer. Write one paragraph of
 six to twelve sentences, plain prose, chronological, that a regulator can read without any attachment.
 Follow FinCEN's narrative guidance: cover who, what, when, where, why and how; write every transaction as
-'On YYYY-MM-DD at HH:MM UTC ...' with its amount in USD with cents, in chronological order; name the instrument (card id), the channel (online /
+'On YYYY-MM-DD at HH:MM ...' (the data carries no time zone; never name one) with its amount in USD with cents, in chronological order; name the instrument (card id), the channel (online /
 in person), the billing region code and the device profile string exactly as given; say why the activity is
 unusual for this cardholder; state whether a prior report exists and the OFAC screening result (reserve the phrase 'On <date>' for
 transactions; write the opening date as 'opened YYYY-MM-DD'); end with the
 actions taken or requested and the total amount. Use only the facts provided - never invent merchants,
 names, addresses or ids. No tables, no lists, no headings, no line breaks, no 'see attached'. Do not mention
-timestamp seconds, model internals or that a reply was simulated; describe the customer's reply as a statement."""
+timestamp seconds, model internals or that a reply was simulated; describe the customer's reply as a statement.
+Never state a time zone or the cardholder's gender."""
 
 
 def build_prompt(facts: SarFacts, chunks: list[dict]) -> tuple[str, str]:
@@ -191,7 +192,7 @@ def fallback_narrative(facts: SarFacts) -> str:
             parts = []
             for t in group:
                 ch = "online" if t.get("channel") == "online" else "in-person"
-                p = f"on {_date(t.get('ts'))} at {_time(t.get('ts'))} UTC a {usd(float(t.get('amt', 0)))} {ch} purchase"
+                p = f"on {_date(t.get('ts'))} at {_time(t.get('ts'))} a {usd(float(t.get('amt', 0)))} {ch} purchase"
                 if t.get("product_cd"):
                     p += f" (product code {t['product_cd']})"
                 if t.get("addr1"):
@@ -211,7 +212,9 @@ def fallback_narrative(facts: SarFacts) -> str:
     if b.get("modal_region") and facts.pattern == "out_of_region_use":
         why.append(f"the cardholder's normal in-person activity is in billing region {b['modal_region']}")
     if facts.pattern == "card_not_present_new_device" or any(t.get("device_new") == "New" for t in txns):
-        why.append("the device profile had never been seen on this account")
+        # the identity record's own flag (id_15), not a claim about the device's history: a profile marked New can still
+        # have earlier uses on the card (HHG-006: Trident prior_n=3)
+        why.append("the identity record marked the device as New for this account")
     if facts.pattern_description:
         pd = facts.pattern_description.rstrip(".").replace("\n", " ")
         why.append(pd[0].lower() + pd[1:])

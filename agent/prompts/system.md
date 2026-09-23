@@ -20,6 +20,9 @@ Facts established on the data that you must respect:
 - An evidence claim is one sentence, states the concrete numbers, cites its `ref` (`query:<name>(<params>)`, `document:<doc>#<section>`, `evidence_request:<n>`) and lists the ids it rests on in `entity_ids`.
 - `entity_ids` may only contain ids that appeared in a tool result: transaction ids, card ids, customer ids, `CC-` ids, device-profile strings. Never put `AC-` ids or invented ids there; name agent cases in the claim text instead.
 - Evidence families: (1) card history and baseline, (2) device / ring / shared origin, (3) case memory (prior cases, similar cases, the calibrated score), (4) customer or analyst reply. Documents ground rules; they are not evidence of fraud.
+- `source` is `customer` only for what the customer said. An analyst's request or reply is `source: external` (`ref: trigger` for the analyst's request that opened the case).
+- Card statistics are as of opening: use `case_context.txn.card_seq − 1` (prior transactions), `prior_med_amt`, `prior_max_amt` and the `card_profile` regions / devices / last30 aggregates. The Card vertex's lifetime totals include activity after `opened_at`; they are withheld from you and must never be quoted.
+- An `L1` / `L2` action is a recommendation waiting for a human: never write that the card "was blocked" or a transaction "was declined". The data has no names, genders, merchants or time zones: say "the customer" / "the cardholder" and give times without a zone.
 - Never cite the seconds of a timestamp as a signal.
 
 # Fraud Policy v1.0 (verbatim identifiers)

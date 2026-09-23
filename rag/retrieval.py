@@ -70,6 +70,21 @@ def _norm_case_row(row: dict) -> dict:
     }
 
 
+def timebox_cases(rows: list[dict], as_of: str, exclude_ids: Iterable[str] = ()) -> list[dict]:
+    """Case memory never includes the case itself or the future: drop the given ids (the case's own AC-<case_id>
+    from an earlier run) and every agent case opened at or after `as_of`. Enforced here whatever the installed
+    query's own filter does (the GSQL twins use `opened_at <= as_of`, which admits a re-run's own write-back)."""
+    ex = set(exclude_ids)
+    out = []
+    for r in rows:
+        rid = str(r.get("id", ""))
+        agent = r.get("kind") == "agent" or rid.startswith("AC-")
+        if rid in ex or (agent and as_of and str(r.get("opened_at", ""))[:19] >= as_of[:19] and r.get("opened_at")):
+            continue
+        out.append(r)
+    return out
+
+
 def diversify(rows: list[dict], k: int) -> list[dict]:
     """Nearest k, but guarantee one cleared/legitimate case when any exists (same rule as the GSQL)."""
     rows = sorted(rows, key=lambda r: (r["distance"], r["id"]))
@@ -103,8 +118,13 @@ def _vector_error(e: Exception) -> bool:
 
 def similar_prior_cases(run: RunFn, embedder, query_text: str, *, card_id: str = "", customer_id: str = "",
                         device_id: str = "", addr1: str = "", pattern_sig: str = "", as_of: str, k: int = 8,
-                        index_ready: Callable[[], bool] | None = None, prefer: str = "hybrid") -> dict:
-    """Returns {"cases": [contract rows], "meta": {"source": ..., "k": k}}."""
+                        index_ready: Callable[[], bool] | None = None, prefer: str = "hybrid",
+                        exclude_ids: Iterable[str] = ()) -> dict:
+    """Returns {"cases": [contract rows], "meta": {"source": ..., "k": k}}. Agent cases opened at/after `as_of` and
+    `exclude_ids` (the case's own AC- id) are dropped before diversification (timebox_cases)."""
+    def pick(rows: list[dict]) -> list[dict]:
+        return diversify(timebox_cases([_norm_case_row(r) for r in rows], as_of, exclude_ids), k)
+
     struct_params = {"k": k, "card_id": card_id, "customer_id": customer_id, "device_id": device_id,
                      "addr1": addr1, "pattern_sig": pattern_sig, "as_of": as_of}
     if prefer != "structural" and (index_ready is None or index_ready()):
@@ -113,7 +133,7 @@ def similar_prior_cases(run: RunFn, embedder, query_text: str, *, card_id: str =
         if prefer in ("hybrid", "auto"):
             try:
                 rows = flatten_rows(_first_key(run("similar_prior_cases", params), "cases"))
-                return {"cases": diversify([_norm_case_row(r) for r in rows], k), "meta": {"source": "similar_prior_cases", "k": k}}
+                return {"cases": pick(rows), "meta": {"source": "similar_prior_cases", "k": k}}
             except Exception as e:  # noqa: BLE001
                 if not _vector_error(e):
                     raise
@@ -124,12 +144,12 @@ def similar_prior_cases(run: RunFn, embedder, query_text: str, *, card_id: str =
             except Exception as e:  # noqa: BLE001 - agent twin may not exist yet
                 if not _vector_error(e):
                     raise
-            return {"cases": diversify([_norm_case_row(r) for r in rows], k), "meta": {"source": "two_query", "k": k}}
+            return {"cases": pick(rows), "meta": {"source": "two_query", "k": k}}
         except Exception as e:  # noqa: BLE001
             if not _vector_error(e):
                 raise
     rows = flatten_rows(_first_key(run("similar_cases_structural", struct_params), "cases"))
-    return {"cases": diversify([_norm_case_row(r) for r in rows], k), "meta": {"source": "similar_cases_structural", "k": k}}
+    return {"cases": pick(rows), "meta": {"source": "similar_cases_structural", "k": k}}
 
 
 # ----------------------------------------------------------------------------- grounding_chunks

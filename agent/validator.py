@@ -33,6 +33,7 @@ import csv
 import glob
 import json
 import os
+import re
 from pathlib import Path
 from typing import Any
 
@@ -91,8 +92,78 @@ def meta_for(answer: dict, case_pack: dict[str, dict] | None = None) -> dict:
 # ----------------------------------------------------------------------------- API
 
 def validate(answer: dict, db: Any, meta: dict | None = None) -> list[str]:
-    """`engine.validator.validate` with `meta` filled in from the case pack when the caller has none."""
-    return engine_validator.validate(answer, db, meta if meta is not None else meta_for(answer))
+    """`engine.validator.validate` with `meta` filled in from the case pack when the caller has none, plus the
+    agent-side checks the engine validator does not make:
+
+      * the SAR fact checks V14-V19 (`rag.validate_sar.check_answer_sar_facts`: a pending block written as done,
+        gendered pronouns, time-zone claims, named ids missing from subjects, a "no prior report" claim the
+        evidence contradicts);
+      * `answer_text_problems`: every action reason cites a Fraud Policy rule, the summary is short, and
+        `what_changed` never reports a move "from X to X".
+    """
+    meta = meta if meta is not None else meta_for(answer)
+    problems = list(engine_validator.validate(answer, db, meta))
+    have = set(problems)
+    from rag.validate_sar import check_answer_sar_facts
+
+    problems += [f"sar: {p}" for p in check_answer_sar_facts(answer, str(meta.get("card_id", "") or "")) if f"sar: {p}" not in have]
+    problems += answer_text_problems(answer)
+    return problems
+
+
+# ----------------------------------------------------------------------------- agent-side text checks
+
+RULE_REF = re.compile(r"\b(?:R(?:[1-9]|10)|3a|3b)\b|§\s?[1-7]\b")
+HOUSE_RULE_NAMES = ("fraud_band", "uncertain_initial", "uncertain_final", "legit_band", "legit_leaning_initial",
+                    "3a_case", "3a_report_only")
+SUMMARY_MAX_CHARS = 700
+SUMMARY_SENTENCES = (2, 6)
+_SENT = re.compile(r"(?<=[.!?])\s+(?=[A-Z(\"'$])")
+_SAME_MOVE = re.compile(r"\bfrom (\d+(?:\.\d+)?) to (\d+(?:\.\d+)?)\b")
+
+
+def text_sentences(text: str) -> list[str]:
+    return [s for s in _SENT.split(" ".join(str(text).split())) if s.strip()]
+
+
+def reason_problems(actions: list[dict], where: str = "") -> list[str]:
+    """Every action reason names a Fraud Policy rule (R1-R10, 3a, 3b, §1-§7) and none cites an internal
+    policy-gate label (`fraud_band`, `uncertain_initial`, ...) in its place."""
+    out = []
+    for a in actions or []:
+        r = str(a.get("reason", "") or "")
+        house = [h for h in HOUSE_RULE_NAMES if re.search(rf"(?<![\w-]){re.escape(h)}(?![\w-])", r)]
+        if house:
+            out.append(f"{where}{a.get('action')} reason cites the internal label {house[0]!r}; cite the Fraud Policy rule instead")
+        elif not RULE_REF.search(r):
+            out.append(f"{where}{a.get('action')} reason names no policy rule (R1-R10, 3a, 3b, §5, §6)")
+    return out
+
+
+def summary_problems(summary: str) -> list[str]:
+    """README: 'Two to six sentences an analyst could read' and 'Keep summary short'."""
+    s = " ".join(str(summary or "").split())
+    n = len(text_sentences(s))
+    out = []
+    if not SUMMARY_SENTENCES[0] <= n <= SUMMARY_SENTENCES[1]:
+        out.append(f"summary has {n} sentences; must be {SUMMARY_SENTENCES[0]}-{SUMMARY_SENTENCES[1]}")
+    if len(s) > SUMMARY_MAX_CHARS:
+        out.append(f"summary is {len(s)} characters; keep it under {SUMMARY_MAX_CHARS} (the evidence list carries the detail)")
+    return out
+
+
+def what_changed_problems(text: str) -> list[str]:
+    for m in _SAME_MOVE.finditer(str(text or "")):
+        if float(m.group(1)) == float(m.group(2)):
+            return [f"what_changed reports a move {m.group(0)!r} although nothing moved"]
+    return []
+
+
+def answer_text_problems(answer: dict) -> list[str]:
+    nba = answer.get("next_best_actions", {}) or {}
+    case = answer.get("case", {}) or {}
+    return (reason_problems(nba.get("initial", []), "initial: ") + reason_problems(nba.get("final", []), "final: ")
+            + summary_problems(case.get("summary", "")) + what_changed_problems(nba.get("what_changed", "")))
 
 
 # ----------------------------------------------------------------------------- CLI

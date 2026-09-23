@@ -30,6 +30,11 @@ def stop_reason(sc_pre: Scorecard, sc_post: Scorecard | None, asked: bool, voi_z
         if sc_pre.p_engine <= T["stop_low"] and len(sc_pre.families_legit) >= T["stop_min_families"]:
             return (f"Policy §6 test 1: fraud probability {sc_pre.p_engine:.2f} is at or below {T['stop_low']} with {len(sc_pre.families_legit)} independent "
                     f"evidence families ({fam(sc_pre)}); further steps would not change the decision.")
+        from engine.policy import denial_settles
+        if denial_settles(sc_pre):
+            return ("Policy §6 test 2: the customer's own denial in the trigger is the verification response, and R2 fixes the action set "
+                    "(BLOCK_CARD and CREATE_CASE, as in the README §3b example once a customer denies); re-asking the customer would repeat "
+                    "the question already answered and step-up authentication does not apply to a card-present purchase, so no evidence request was made.")
         return "Policy §6 test 3: no admissible evidence request could change the recommended actions (value of information zero), so the investigation stopped at a defensible decision."
     assert sc_post is not None
     out = sc_post.flags.get("outcome", "")
@@ -50,5 +55,7 @@ def stop_reason(sc_pre: Scorecard, sc_post: Scorecard | None, asked: bool, voi_z
         return (f"Policy §6 test 3: the verification was not completed within the window and the probability stayed at {sc_post.p_engine:.2f}; "
                 "the fraud-band actions (block pending approval) already apply, so no further automated step would change the recommendation.")
     escalated = "the case is escalated to an analyst (R8)" if sc_post.flags.get("escalated") else "the case stays open for the reply"
-    return (f"Policy §6 test 3: the verification was not answered within the window; R4 applies (monitor + decline pending authorisations) and {escalated}, "
+    from engine.policy import r2_denial
+    block = "R2's block on the customer's denial stands pending approval, " if r2_denial(sc_post) else ""
+    return (f"Policy §6 test 3: the verification was not answered within the window; {block}R4 applies (monitor + decline pending authorisations) and {escalated}, "
             "so no further automated step would change the recommendation until a reply arrives.")

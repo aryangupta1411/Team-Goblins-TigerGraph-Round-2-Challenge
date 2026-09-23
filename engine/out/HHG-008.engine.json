@@ -36,11 +36,11 @@
    "flagged_addr1": "",
    "flagged_device_id": "NULL | NULL | chrome 66.0 | NULL",
    "flagged_device_new": "Found",
-   "flagged_device_cards": 175,
+   "flagged_device_cards": 0,
    "flagged_device_strong": false,
    "channel": "online",
    "modal_region": "299.0",
-   "card_n_txns": 927,
+   "card_n_txns": 900,
    "two_cards_confirmed_fraud": false,
    "outcome": "",
    "asked": false,
@@ -933,11 +933,11 @@
    "flagged_addr1": "",
    "flagged_device_id": "NULL | NULL | chrome 66.0 | NULL",
    "flagged_device_new": "Found",
-   "flagged_device_cards": 175,
+   "flagged_device_cards": 0,
    "flagged_device_strong": false,
    "channel": "online",
    "modal_region": "299.0",
-   "card_n_txns": 927,
+   "card_n_txns": 900,
    "two_cards_confirmed_fraud": false,
    "outcome": "",
    "asked": false,
@@ -1835,13 +1835,13 @@
   },
   "citations": {
    "CREATE_CASE": [
-    "3a_case",
+    "3a",
     "R2",
-    "fraud_band"
+    "\u00a73b"
    ],
    "BLOCK_CARD": [
     "R2",
-    "fraud_band"
+    "\u00a73b"
    ],
    "_forbidden": {
     "BLOCK_ALL_CARDS": [
@@ -1851,10 +1851,10 @@
    "_conflicts": {}
   },
   "fired": [
-   "3a_case",
+   "3a",
    "R2",
    "R10",
-   "fraud_band"
+   "\u00a73b"
   ]
  },
  "violations": [],

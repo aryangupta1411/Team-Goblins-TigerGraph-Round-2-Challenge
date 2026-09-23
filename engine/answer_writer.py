@@ -9,10 +9,12 @@ before the validator runs again on the file.
 """
 from __future__ import annotations
 
+import re
 from datetime import datetime
 
 from engine import policy
 from engine.types import CaseContext, Evidence, Scorecard
+from engine.validator import uncertain_block_violation
 
 TS_FMT = "%Y-%m-%d %H:%M:%S"
 
@@ -46,6 +48,11 @@ def reasons_for(actions: list[str], adm: dict, ctx: CaseContext, sc: Scorecard, 
             what = "ask the cardholder which of the transactions were theirs" if a == "VERIFY_WITH_CUSTOMER" else "one-time passcode / app confirmation as a possession check before further activity"
             if "R7" in cites:
                 r = "R7: the disputed charge matches the card's own recurring pattern; verify the recurrence with the customer"
+            elif a == "STEP_UP_AUTH" and "R5" in cites:
+                r = "R5: card-testing sequence observed; require a one-time passcode / app confirmation before further activity"
+            elif a == "STEP_UP_AUTH" and policy.r2_denial(sc) and "R1" not in cites:
+                r = (f"§3b / §5: the customer denied this online purchase; {what}, while the R2 block awaits "
+                     f"{adm['routes']['BLOCK_CARD']} approval")
             elif single and "R1" in cites:
                 r = f"R1: probability {p:.2f} rests on a single evidence family ({_fams(sc.families_fraud) if sc.families_fraud else _fams(sc.families_legit)}); {what} before any block"
             elif sc.verdict == "uncertain":
@@ -58,7 +65,7 @@ def reasons_for(actions: list[str], adm: dict, ctx: CaseContext, sc: Scorecard, 
             elif sc.verdict == "uncertain":
                 r = "§3b / §5: verdict uncertain; raise monitoring for 72 h while the verification is pending"
             else:
-                r = f"fraud verdict at {p:.2f}: monitor further activity on the card until the block is approved"
+                r = f"§3b: fraud verdict at {p:.2f}; monitor further activity on the card until the block is approved"
         elif a == "MONITOR_CONNECTED_CARDS":
             if f.get("ring_hit"):
                 r = f"R6: {len(f.get('wave_cards', []))} other cards share the device profile `{f.get('ring_id')}` in this wave; every sharing card goes under monitoring"
@@ -69,11 +76,15 @@ def reasons_for(actions: list[str], adm: dict, ctx: CaseContext, sc: Scorecard, 
         elif a == "BLOCK_CARD":
             rt = adm["routes"]["BLOCK_CARD"]
             if "R2" in cites:
-                r = f"R2: customer denied the transaction; exposure ${exp:,.2f} {'is under' if rt == 'L1' else 'exceeds'} $2,500 so route {rt}"
+                r = f"R2: customer denied the transaction; exposure ${exp:,.2f} {'is at or under' if rt == 'L1' else 'exceeds'} $2,500 so route {rt}"
+                if sc.verdict != "fraud":
+                    r += (f"; the denial is the customer's answer, so R2 governs from intake (README §3b example) although the graph evidence "
+                          f"leaves the verdict {sc.verdict} at {p:.2f}")
             elif "R5" in cites:
                 r = f"R5: a purchase over $100 already cleared after the testing run; exposure ${exp:,.2f}, route {rt}"
             else:
-                r = f"fraud verdict: probability {p:.2f} with {n_f} independent evidence families ({_fams(sc.families_fraud)}); R1 not applicable; exposure ${exp:,.2f} routes {rt}"
+                r = (f"§3b: fraud verdict at probability {p:.2f} with {n_f} independent evidence famil{'y' if n_f == 1 else 'ies'} "
+                     f"({_fams(sc.families_fraud)}), so R1 does not apply (probability at or above 0.70); exposure ${exp:,.2f} routes {rt}")
         elif a == "FILE_REPORT":
             r = policy.sar_required(sc)[1]
         elif a == "ESCALATE_TO_ANALYST":
@@ -135,18 +146,26 @@ def draft_summary(ctx: CaseContext, sc_pre: Scorecard, sc_post: Scorecard, initi
         trig = f"Customer {ctx.customer_id} disputed transaction {ctx.flagged_txn_id} ({amt_ch}) on card {ctx.card_id}"
     else:
         trig = f"Analyst request on transaction {ctx.flagged_txn_id} ({amt_ch}) on card {ctx.card_id}"
-    top = sorted([e for e in sc_post.evidence if e.direction != "neutral"], key=lambda e: -e.weight)[:2]
-    key = " ".join((e.claim if len(e.claim) <= 220 else e.claim[:217].rsplit(" ", 1)[0] + "...").rstrip(".") + "." for e in top)
+    # README: "Two to six sentences an analyst could read" / "Keep summary short" (agent.validator: <= 700 characters);
+    # the evidence list carries the detail, so the summary names only the strongest item
+    top = sorted([e for e in sc_post.evidence if e.direction != "neutral"], key=lambda e: -e.weight)[:1]
+    key = " ".join(_clip(e.claim, 200) for e in top)
     verdict = f"Verdict {sc_post.verdict} at probability {sc_post.p_engine:.2f}"
     if sc_post.verdict != "legitimate":
         verdict += f", pattern {sc_post.pattern}, {len(sc_post.episode_ids)} affected transaction(s) worth ${sc_post.exposure_usd:,.2f}"
-    verdict += f" (families for fraud: {_fams(sc_post.families_fraud)}; for legitimacy: {_fams(sc_post.families_legit)})."
-    acts = "Initial actions: " + ", ".join(a["action"] for a in initial) + "."
-    if request:
-        acts += f" Assumed {request['type']} reply: {request['assumed_response'].replace('ASSUMED (simulated): ', '')}. Final actions: " + ", ".join(a["action"] for a in final) + "."
-    else:
-        acts += " No evidence request was needed; final equals initial."
-    return f"{trig}. {key} {verdict} {acts} Status {status}."
+    verdict += "."
+    acts = "Final actions: " + ", ".join(a["action"] for a in final)
+    acts += (f" after the assumed {request['type']} reply" if request else "; no evidence request was needed") + f"; status {status}."
+    out = f"{trig}. {key} {verdict} {acts}"
+    return out if len(out) <= 700 else f"{trig}. {verdict} {acts}"
+
+
+def _clip(text: str, n: int) -> str:
+    """The first sentence of `text`, cut at a word boundary to at most n characters, ending in one full stop."""
+    first = re.split(r"(?<=[.!?])\s+(?=[A-Z(])", " ".join(text.split()))[0]
+    if len(first) > n:
+        return first[: n - 3].rsplit(" ", 1)[0].rstrip(",;:") + "..."
+    return first.rstrip(".") + "."
 
 
 def draft_sar(ctx: CaseContext, sc: Scorecard, facts: dict, graph_case_id: str) -> dict:
@@ -196,7 +215,8 @@ def draft_sar(ctx: CaseContext, sc: Scorecard, facts: dict, graph_case_id: str) 
     prior_sar = [c for c in (facts.get("prior_cases_for_customer") or {}).get("closed_cases", []) if c.get("report_filed")]
     s.append(f"{len(prior_sar)} prior report(s) were filed on this customer ({', '.join(c['id'] for c in prior_sar)})." if prior_sar else "No prior report has been filed on this customer.")
     s.append("OFAC SDN screening of the customer identifier: no match (anonymised identifiers; screening result recorded from the sdn.csv lookup in the live run).")
-    s.append("Recommended actions: card blocked and reissued pending team-lead approval, internal case opened" +
+    approver = "team-lead" if sc.exposure_usd <= 2500 else "fraud-manager"      # BLOCK_CARD route L1 / L2 (README §8)
+    s.append(f"Recommended actions: a block and reissue of the card, not yet done and awaiting {approver} approval, internal case opened" +
              (f", {len(sc.connected_card_ids)} connected cards placed under monitoring" if sc.connected_card_ids else "") + ", case escalated to an analyst.")
     narrative = " ".join(s)
     return {"file": True, "reason": reason, "narrative": narrative, "subjects": subjects,
@@ -266,7 +286,7 @@ def assert_invariants(ans: dict) -> None:
     if "BLOCK_CARD" in fin:
         assert c["verdict"] != "legitimate"
     if c["verdict"] == "uncertain":
-        assert not any(a in ("BLOCK_CARD", "BLOCK_ALL_CARDS") for a in ini), "uncertain ⇒ no block in initial"
+        assert not uncertain_block_violation(nba["initial"]), "uncertain ⇒ no block in initial (except an R2 BLOCK_CARD on a customer denial)"
         assert c["status"] in ("escalated", "open"), "uncertain ⇒ status escalated or open"
     assert (nba["what_changed"] == "nothing") == (ini == fin), "what_changed == 'nothing' ⇔ initial == final"
     if ini != fin:

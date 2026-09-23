@@ -84,7 +84,7 @@
       "CC-2447",
       "CC-2277"
     ],
-    "summary": "Risk-score alert (0.52) on transaction 3509359 ($125.08, online) for card C12265-K2. Customer confirmed the activity when asked (assumed reply). Case-memory scorer (LightGBM over the bank's 5,565 closed cases; October holdout AUC 0.956) puts the flagged transaction at 0.01 (calibrated 0.01); the real-time risk score was 0.52. Verdict legitimate at probability 0.01 (families for fraud: none; for legitimacy: customer, history). Initial actions: CREATE_CASE, VERIFY_WITH_CUSTOMER. Assumed customer_validation reply: customer confirmed the purchase from a new phone/device and recognises the $125.08 charge. Final actions: CREATE_CASE, ALLOW_TRANSACTION, CLOSE_NO_FRAUD. Status closed_legitimate.",
+    "summary": "Risk-score alert (0.52) on transaction 3509359 ($125.08, online) for card C12265-K2. Customer confirmed the activity when asked (assumed reply). Verdict legitimate at probability 0.01. Final actions: CREATE_CASE, ALLOW_TRANSACTION, CLOSE_NO_FRAUD after the assumed customer_validation reply; status closed_legitimate.",
     "written_to_graph": false,
     "graph_case_id": "AC-HHG-020"
   },

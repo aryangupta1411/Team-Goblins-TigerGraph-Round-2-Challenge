@@ -18,7 +18,7 @@
     "exposure_usd": 1906.07,
     "evidence": [
       {
-        "claim": "4 online purchases within 48 h on a card that is 2% in-person",
+        "claim": "4 online purchases within 48 h on a card that is 97% in-person",
         "source": "graph",
         "ref": "query:card_window(card=C07297-K1, hours=72)",
         "entity_ids": [
@@ -74,7 +74,7 @@
       }
     ],
     "similar_prior_cases": [],
-    "summary": "Customer C07297 disputed transaction 3476682 ($482.12, online) on card C07297-K1. 4 online purchases of $456.96-$488.04 (all just under $500) within 30 minutes: the under-threshold burst shape; the card had 196 prior transactions. Customer C07297 reports they did not make the $482.12 purchase 3476682 (the denial is evidence: 4,665/4,665 customer-reported closed cases were confirmed fraud, 0 denials were cleared). Verdict fraud at probability 0.90, pattern undocumented, 4 affected transaction(s) worth $1,906.07 (families for fraud: customer, history; for legitimacy: memory). Initial actions: CREATE_CASE, BLOCK_CARD, FILE_REPORT, ESCALATE_TO_ANALYST. No evidence request was needed; final equals initial. Status escalated.",
+    "summary": "Customer C07297 disputed transaction 3476682 ($482.12, online) on card C07297-K1. 4 online purchases of $456.96-$488.04 (all just under $500) within 30 minutes: the under-threshold burst shape; the card had 196 prior transactions. Verdict fraud at probability 0.90, pattern undocumented, 4 affected transaction(s) worth $1,906.07. Final actions: CREATE_CASE, BLOCK_CARD, FILE_REPORT, ESCALATE_TO_ANALYST; no evidence request was needed; status escalated.",
     "written_to_graph": false,
     "graph_case_id": "AC-HHG-006"
   },
@@ -89,7 +89,7 @@
       {
         "action": "BLOCK_CARD",
         "route": "L1",
-        "reason": "R2: customer denied the transaction; exposure $1,906.07 is under $2,500 so route L1"
+        "reason": "R2: customer denied the transaction; exposure $1,906.07 is at or under $2,500 so route L1"
       },
       {
         "action": "FILE_REPORT",
@@ -111,7 +111,7 @@
       {
         "action": "BLOCK_CARD",
         "route": "L1",
-        "reason": "R2: customer denied the transaction; exposure $1,906.07 is under $2,500 so route L1"
+        "reason": "R2: customer denied the transaction; exposure $1,906.07 is at or under $2,500 so route L1"
       },
       {
         "action": "FILE_REPORT",
@@ -129,7 +129,7 @@
   "sar": {
     "file": true,
     "reason": "3a / R9: undocumented coordinated pattern (Under-threshold burst)",
-    "narrative": "This report concerns suspected fraud following an undocumented coordinated pattern on card C07297-K1 held by customer C07297 (internal case AC-HHG-006, opened 2016-11-22). On 2016-11-21 the card was used for 4 transaction(s) totalling $1,906.07: on 2016-11-21 $478.95 online in billing region 264.0; on 2016-11-21 $456.96 online in billing region 476.0; on 2016-11-21 $488.04 online in billing region 476.0; on 2016-11-21 $482.12 online in billing region 264.0. All four purchases were online, each between $450 and $499.99, placed within 30 minutes from 2 device profiles marked New for the account, on a card that had made only 257 transactions before, almost all in person. Amounts sit just under a $500 authorisation threshold, and 12 other cards show the identical shape within 30 days, which analysts previously confirmed as fraud in five closed cases. The cardholder reported that they did not make the purchase and still hold the card. The activity is inconsistent with the cardholder's history (prior median purchase $62.93). No prior report has been filed on this customer. OFAC SDN screening of the customer identifier: no match (anonymised identifiers; screening result recorded from the sdn.csv lookup in the live run). Recommended actions: card blocked and reissued pending team-lead approval, internal case opened, case escalated to an analyst.",
+    "narrative": "This report concerns suspected fraud following an undocumented coordinated pattern on card C07297-K1 held by customer C07297 (internal case AC-HHG-006, opened 2016-11-22). On 2016-11-21 the card was used for 4 transaction(s) totalling $1,906.07: on 2016-11-21 $478.95 online in billing region 264.0; on 2016-11-21 $456.96 online in billing region 476.0; on 2016-11-21 $488.04 online in billing region 476.0; on 2016-11-21 $482.12 online in billing region 264.0. All four purchases were online, each between $450 and $499.99, placed within 30 minutes from 2 device profiles marked New for the account, on a card that had made only 197 transactions before, almost all in person. Amounts sit just under a $500 authorisation threshold, and 12 other cards show the identical shape within 30 days, which analysts previously confirmed as fraud in five closed cases. The cardholder reported that they did not make the purchase and still hold the card. The activity is inconsistent with the cardholder's history (prior median purchase $62.93). No prior report has been filed on this customer. OFAC SDN screening of the customer identifier: no match (anonymised identifiers; screening result recorded from the sdn.csv lookup in the live run). Recommended actions: a block and reissue of the card, not yet done and awaiting team-lead approval, internal case opened, case escalated to an analyst.",
     "subjects": [
       "C07297",
       "C07297-K1"
@@ -143,5 +143,5 @@
   "stop_reason": "Policy \u00a76 test 1: fraud probability 0.90 is at or above 0.85 with 2 independent evidence families (customer, history); no request could change the action set, so the initial recommendation is final.",
   "tool_calls": 15,
   "tokens": 0,
-  "latency_s": 0.04
+  "latency_s": 0.05
 }

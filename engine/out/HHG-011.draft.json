@@ -32,7 +32,7 @@
         ]
       },
       {
-        "claim": "Case-memory scorer (LightGBM over the bank's 5,565 closed cases; October holdout AUC 0.956) puts the flagged transaction at 0.04 (calibrated 0.06); the real-time risk score was 0.39; the scorer is unreliable here (card has 10332 transactions, position 10307)",
+        "claim": "Case-memory scorer (LightGBM over the bank's 5,565 closed cases; October holdout AUC 0.956) puts the flagged transaction at 0.04 (calibrated 0.06); the real-time risk score was 0.39; the scorer is unreliable here (card has 10312 transactions, position 10307)",
         "source": "graph",
         "ref": "query:case_context(txn=3583368)",
         "entity_ids": [
@@ -102,7 +102,7 @@
       "CC-3039",
       "CC-2799"
     ],
-    "summary": "Customer C11923 disputed transaction 3583368 ($131.30, online) on card C11923-K2. Customer C11923 reports they did not make the $131.30 purchase 3583368 (the denial is evidence: 4,665/4,665 customer-reported closed cases were confirmed fraud, 0 denials were cleared). 10 prior confirmed-fraud case(s) on this card (card_not_present_new_device, card_testing), most recent 2016-10-07; 5 within 120 days on the same channel. Verdict uncertain at probability 0.55, pattern card_not_present_new_device, 1 affected transaction(s) worth $131.30 (families for fraud: customer, memory; for legitimacy: history). Initial actions: CREATE_CASE, STEP_UP_AUTH, MONITOR_CARD, ESCALATE_TO_ANALYST. Assumed step_up_auth reply: step-up authentication was not completed within the window. Final actions: CREATE_CASE, MONITOR_CARD, DECLINE_TRANSACTION, ESCALATE_TO_ANALYST. Status escalated.",
+    "summary": "Customer C11923 disputed transaction 3583368 ($131.30, online) on card C11923-K2. Customer C11923 reports they did not make the $131.30 purchase 3583368 (the denial is evidence: 4,665/4,665 customer-reported closed cases were confirmed fraud, 0 denials were cleared). Verdict uncertain at probability 0.55, pattern card_not_present_new_device, 1 affected transaction(s) worth $131.30. Final actions: CREATE_CASE, MONITOR_CARD, DECLINE_TRANSACTION, BLOCK_CARD, ESCALATE_TO_ANALYST after the assumed step_up_auth reply; status escalated.",
     "written_to_graph": false,
     "graph_case_id": "AC-HHG-011"
   },
@@ -123,12 +123,12 @@
       {
         "action": "STEP_UP_AUTH",
         "route": "auto",
-        "reason": "\u00a73b / \u00a75: verdict uncertain at 0.55 (families for fraud: customer, memory; for legitimacy: history); one-time passcode / app confirmation as a possession check before further activity"
+        "reason": "\u00a73b / \u00a75: the customer denied this online purchase; one-time passcode / app confirmation as a possession check before further activity, while the R2 block awaits L1 approval"
       },
       {
-        "action": "MONITOR_CARD",
-        "route": "auto",
-        "reason": "\u00a73b / \u00a75: verdict uncertain; raise monitoring for 72 h while the verification is pending"
+        "action": "BLOCK_CARD",
+        "route": "L1",
+        "reason": "R2: customer denied the transaction; exposure $131.30 is at or under $2,500 so route L1; the denial is the customer's answer, so R2 governs from intake (README \u00a73b example) although the graph evidence leaves the verdict uncertain at 0.55"
       },
       {
         "action": "ESCALATE_TO_ANALYST",
@@ -153,22 +153,27 @@
         "reason": "R4: no reply within 24 h; decline pending / further authorisations on this card (card stays active)"
       },
       {
+        "action": "BLOCK_CARD",
+        "route": "L1",
+        "reason": "R2: customer denied the transaction; exposure $131.30 is at or under $2,500 so route L1; the denial is the customer's answer, so R2 governs from intake (README \u00a73b example) although the graph evidence leaves the verdict uncertain at 0.55"
+      },
+      {
         "action": "ESCALATE_TO_ANALYST",
         "route": "auto",
         "reason": "R8: the evidence conflicts (for fraud: memory; for legitimacy: history; the customer's own statement excluded)"
       }
     ],
-    "what_changed": "The assumed reply (step_up_auth: step-up authentication was not completed within the window) left the probability at 0.55 and the verdict became uncertain. Added DECLINE_TRANSACTION. Dropped STEP_UP_AUTH. Counterfactual: a passed step-up would have closed the alert (R3); a failed one would have led to BLOCK_CARD (R2)."
+    "what_changed": "The assumed reply (step_up_auth: step-up authentication was not completed within the window) left the probability at 0.55 and the verdict became uncertain. Added MONITOR_CARD, DECLINE_TRANSACTION. Dropped STEP_UP_AUTH. Counterfactual: a passed step-up would have closed the alert (R3); a failed one would have led to BLOCK_CARD (R2)."
   },
   "sar": {
     "file": false,
-    "reason": "3a not met: verdict uncertain (fraud not confirmed or strongly suspected), exposure $131.30; no report",
+    "reason": "R2 / 3a not met: the customer denied the transaction, but exposure $131.30 <= $1,000; the New profile `SM-G610F Build/NRD90M | NULL | chrome 66.0 for android | NULL` is a common, non-distinctive profile (not a strong device profile), so it is not a shared-origin signal; no other card's fraud connected; documented pattern; no report",
     "narrative": "",
     "subjects": [],
     "total_amount_usd": 0.0,
     "activity_dates": []
   },
-  "stop_reason": "Policy \u00a76 test 3: the verification was not answered within the window; R4 applies (monitor + decline pending authorisations) and the case is escalated to an analyst (R8), so no further automated step would change the recommendation until a reply arrives.",
+  "stop_reason": "Policy \u00a76 test 3: the verification was not answered within the window; R2's block on the customer's denial stands pending approval, R4 applies (monitor + decline pending authorisations) and the case is escalated to an analyst (R8), so no further automated step would change the recommendation until a reply arrives.",
   "tool_calls": 15,
   "tokens": 0,
   "latency_s": 0.08

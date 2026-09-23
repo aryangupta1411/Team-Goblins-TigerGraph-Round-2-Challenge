@@ -28,11 +28,11 @@
    "flagged_addr1": "",
    "flagged_device_id": "NULL | NULL | firefox 47.0 | NULL",
    "flagged_device_new": "New",
-   "flagged_device_cards": 6,
+   "flagged_device_cards": 0,
    "flagged_device_strong": false,
    "channel": "online",
    "modal_region": "",
-   "card_n_txns": 216,
+   "card_n_txns": 210,
    "two_cards_confirmed_fraud": false,
    "outcome": "",
    "asked": true,
@@ -231,11 +231,11 @@
    "flagged_addr1": "",
    "flagged_device_id": "NULL | NULL | firefox 47.0 | NULL",
    "flagged_device_new": "New",
-   "flagged_device_cards": 6,
+   "flagged_device_cards": 0,
    "flagged_device_strong": false,
    "channel": "online",
    "modal_region": "",
-   "card_n_txns": 216,
+   "card_n_txns": 210,
    "two_cards_confirmed_fraud": false,
    "outcome": "inconclusive",
    "asked": true,
@@ -427,14 +427,15 @@
   "inconclusive": [
    "CREATE_CASE",
    "MONITOR_CARD",
-   "DECLINE_TRANSACTION"
+   "DECLINE_TRANSACTION",
+   "BLOCK_CARD"
   ]
  },
  "adm_initial": {
   "required": [
    "CREATE_CASE",
    "STEP_UP_AUTH",
-   "MONITOR_CARD"
+   "BLOCK_CARD"
   ],
   "allowed": [
    "ALLOW_TRANSACTION",
@@ -444,6 +445,7 @@
    "WARN_CUSTOMER",
    "VERIFY_WITH_CUSTOMER",
    "STEP_UP_AUTH",
+   "BLOCK_CARD",
    "GENERATE_REPORT",
    "CREATE_CASE",
    "FILE_REPORT",
@@ -451,8 +453,7 @@
    "CLOSE_NO_FRAUD"
   ],
   "forbidden": [
-   "BLOCK_ALL_CARDS",
-   "BLOCK_CARD"
+   "BLOCK_ALL_CARDS"
   ],
   "routes": {
    "ALLOW_TRANSACTION": "auto",
@@ -472,34 +473,26 @@
   },
   "citations": {
    "CREATE_CASE": [
-    "3a_case",
-    "uncertain_initial"
+    "3a",
+    "R2"
    ],
-   "MONITOR_CARD": [
-    "uncertain_initial"
+   "BLOCK_CARD": [
+    "R2"
    ],
    "STEP_UP_AUTH": [
-    "R1",
-    "uncertain_initial"
+    "\u00a73b"
    ],
    "_forbidden": {
-    "BLOCK_CARD": [
-     "R1",
-     "uncertain_initial"
-    ],
     "BLOCK_ALL_CARDS": [
-     "R1",
-     "R10",
-     "uncertain_initial"
+     "R10"
     ]
    },
    "_conflicts": {}
   },
   "fired": [
-   "3a_case",
-   "R1",
-   "R10",
-   "uncertain_initial"
+   "3a",
+   "R2",
+   "R10"
   ]
  },
  "violations": [],

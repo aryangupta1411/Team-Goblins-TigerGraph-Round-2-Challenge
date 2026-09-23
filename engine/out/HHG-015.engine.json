@@ -34,11 +34,11 @@
    "flagged_addr1": "327.0",
    "flagged_device_id": "Trident/7.0 | Windows 8.1 | ie 11.0 for desktop | 1680x1050",
    "flagged_device_new": "New",
-   "flagged_device_cards": 8,
+   "flagged_device_cards": 1,
    "flagged_device_strong": true,
    "channel": "online",
    "modal_region": "299.0",
-   "card_n_txns": 79,
+   "card_n_txns": 69,
    "two_cards_confirmed_fraud": false,
    "outcome": "",
    "asked": true,
@@ -274,7 +274,7 @@
     "direction": "legit"
    },
    {
-    "claim": "Mixed-channel chain of 4 transactions worth $2,140.94 inside 48 h: in-person purchases up to $550.03 against a card median of $99.98, then online activity",
+    "claim": "Mixed-channel chain of 4 transactions worth $2,140.94 inside 48 h: in-person purchases up to $550.03 against a card median of $99.96, then online activity",
     "source": "graph",
     "ref": "query:episode_candidates(txn=3464869)",
     "entity_ids": [
@@ -378,11 +378,11 @@
    "flagged_addr1": "327.0",
    "flagged_device_id": "Trident/7.0 | Windows 8.1 | ie 11.0 for desktop | 1680x1050",
    "flagged_device_new": "New",
-   "flagged_device_cards": 8,
+   "flagged_device_cards": 1,
    "flagged_device_strong": true,
    "channel": "online",
    "modal_region": "299.0",
-   "card_n_txns": 79,
+   "card_n_txns": 69,
    "two_cards_confirmed_fraud": false,
    "outcome": "inconclusive",
    "asked": true,
@@ -620,7 +620,7 @@
     "direction": "legit"
    },
    {
-    "claim": "Mixed-channel chain of 4 transactions worth $2,140.94 inside 48 h: in-person purchases up to $550.03 against a card median of $99.98, then online activity",
+    "claim": "Mixed-channel chain of 4 transactions worth $2,140.94 inside 48 h: in-person purchases up to $550.03 against a card median of $99.96, then online activity",
     "source": "graph",
     "ref": "query:episode_candidates(txn=3464869)",
     "entity_ids": [
@@ -759,38 +759,38 @@
   },
   "citations": {
    "CREATE_CASE": [
-    "3a_case",
-    "uncertain_initial"
+    "3a",
+    "\u00a73b"
    ],
    "ESCALATE_TO_ANALYST": [
     "R8"
    ],
    "MONITOR_CARD": [
-    "uncertain_initial"
+    "\u00a73b"
    ],
    "STEP_UP_AUTH": [
     "R1",
-    "uncertain_initial"
+    "\u00a73b"
    ],
    "_forbidden": {
     "BLOCK_CARD": [
      "R1",
-     "uncertain_initial"
+     "\u00a73b"
     ],
     "BLOCK_ALL_CARDS": [
      "R1",
      "R10",
-     "uncertain_initial"
+     "\u00a73b"
     ]
    },
    "_conflicts": {}
   },
   "fired": [
-   "3a_case",
+   "3a",
    "R1",
    "R8",
    "R10",
-   "uncertain_initial"
+   "\u00a73b"
   ]
  },
  "violations": [],

@@ -72,7 +72,7 @@
       "CC-1736",
       "CC-0696"
     ],
-    "summary": "Customer C08106 disputed transaction 3583227 ($128.33, online) on card C08106-K1. Customer C08106 reports they did not make the $128.33 purchase 3583227 (the denial is evidence: 4,665/4,665 customer-reported closed cases were confirmed fraud, 0 denials were cleared). Case-memory scorer (LightGBM over the bank's 5,565 closed cases; October holdout AUC 0.956) puts the flagged transaction at 0.01 (calibrated 0.01); the real-time risk score was 0.34. Verdict uncertain at probability 0.55, pattern card_not_present_new_device, 1 affected transaction(s) worth $128.33 (families for fraud: customer; for legitimacy: none). Initial actions: CREATE_CASE, STEP_UP_AUTH, MONITOR_CARD. Assumed step_up_auth reply: step-up authentication was not completed within the window. Final actions: CREATE_CASE, MONITOR_CARD, DECLINE_TRANSACTION. Status open.",
+    "summary": "Customer C08106 disputed transaction 3583227 ($128.33, online) on card C08106-K1. Customer C08106 reports they did not make the $128.33 purchase 3583227 (the denial is evidence: 4,665/4,665 customer-reported closed cases were confirmed fraud, 0 denials were cleared). Verdict uncertain at probability 0.55, pattern card_not_present_new_device, 1 affected transaction(s) worth $128.33. Final actions: CREATE_CASE, MONITOR_CARD, DECLINE_TRANSACTION, BLOCK_CARD after the assumed step_up_auth reply; status open.",
     "written_to_graph": false,
     "graph_case_id": "AC-HHG-004"
   },
@@ -93,12 +93,12 @@
       {
         "action": "STEP_UP_AUTH",
         "route": "auto",
-        "reason": "R1: probability 0.55 rests on a single evidence family (customer); one-time passcode / app confirmation as a possession check before further activity before any block"
+        "reason": "\u00a73b / \u00a75: the customer denied this online purchase; one-time passcode / app confirmation as a possession check before further activity, while the R2 block awaits L1 approval"
       },
       {
-        "action": "MONITOR_CARD",
-        "route": "auto",
-        "reason": "\u00a73b / \u00a75: verdict uncertain; raise monitoring for 72 h while the verification is pending"
+        "action": "BLOCK_CARD",
+        "route": "L1",
+        "reason": "R2: customer denied the transaction; exposure $128.33 is at or under $2,500 so route L1; the denial is the customer's answer, so R2 governs from intake (README \u00a73b example) although the graph evidence leaves the verdict uncertain at 0.55"
       }
     ],
     "final": [
@@ -116,20 +116,25 @@
         "action": "DECLINE_TRANSACTION",
         "route": "L1",
         "reason": "R4: no reply within 24 h; decline pending / further authorisations on this card (card stays active)"
+      },
+      {
+        "action": "BLOCK_CARD",
+        "route": "L1",
+        "reason": "R2: customer denied the transaction; exposure $128.33 is at or under $2,500 so route L1; the denial is the customer's answer, so R2 governs from intake (README \u00a73b example) although the graph evidence leaves the verdict uncertain at 0.55"
       }
     ],
-    "what_changed": "The assumed reply (step_up_auth: step-up authentication was not completed within the window) left the probability at 0.55 and the verdict became uncertain. Added DECLINE_TRANSACTION. Dropped STEP_UP_AUTH. Counterfactual: a passed step-up would have closed the alert (R3); a failed one would have led to BLOCK_CARD (R2)."
+    "what_changed": "The assumed reply (step_up_auth: step-up authentication was not completed within the window) left the probability at 0.55 and the verdict became uncertain. Added MONITOR_CARD, DECLINE_TRANSACTION. Dropped STEP_UP_AUTH. Counterfactual: a passed step-up would have closed the alert (R3); a failed one would have led to BLOCK_CARD (R2)."
   },
   "sar": {
     "file": false,
-    "reason": "3a not met: verdict uncertain (fraud not confirmed or strongly suspected), exposure $128.33; no report",
+    "reason": "R2 / 3a not met: the customer denied the transaction, but exposure $128.33 <= $1,000; the New profile `NULL | NULL | firefox 47.0 | NULL` is a common, non-distinctive profile (not a strong device profile), so it is not a shared-origin signal; no other card's fraud connected; documented pattern; no report",
     "narrative": "",
     "subjects": [],
     "total_amount_usd": 0.0,
     "activity_dates": []
   },
-  "stop_reason": "Policy \u00a76 test 3: the verification was not answered within the window; R4 applies (monitor + decline pending authorisations) and the case stays open for the reply, so no further automated step would change the recommendation until a reply arrives.",
+  "stop_reason": "Policy \u00a76 test 3: the verification was not answered within the window; R2's block on the customer's denial stands pending approval, R4 applies (monitor + decline pending authorisations) and the case stays open for the reply, so no further automated step would change the recommendation until a reply arrives.",
   "tool_calls": 15,
   "tokens": 0,
-  "latency_s": 0.04
+  "latency_s": 0.05
 }

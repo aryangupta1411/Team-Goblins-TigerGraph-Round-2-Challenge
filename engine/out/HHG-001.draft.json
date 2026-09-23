@@ -72,7 +72,7 @@
       "CC-1673",
       "CC-1066"
     ],
-    "summary": "Risk-score alert (0.61) on transaction 3514030 ($77.07, in person) for card C12382-K1. Customer confirmed the activity when asked (assumed reply). Amount $77.07 sits inside the card's baseline (prior median $83.94, prior maximum $845.01 over 358 transactions). Verdict legitimate at probability 0.10 (families for fraud: none; for legitimacy: customer, history). Initial actions: CREATE_CASE, VERIFY_WITH_CUSTOMER, MONITOR_CARD. Assumed customer_validation reply: customer confirmed travel to billing region 444.0 and recognises the $77.07 purchase. Final actions: CREATE_CASE, ALLOW_TRANSACTION, CLOSE_NO_FRAUD. Status closed_legitimate.",
+    "summary": "Risk-score alert (0.61) on transaction 3514030 ($77.07, in person) for card C12382-K1. Customer confirmed the activity when asked (assumed reply). Verdict legitimate at probability 0.10. Final actions: CREATE_CASE, ALLOW_TRANSACTION, CLOSE_NO_FRAUD after the assumed customer_validation reply; status closed_legitimate.",
     "written_to_graph": false,
     "graph_case_id": "AC-HHG-001"
   },
@@ -131,5 +131,5 @@
   "stop_reason": "Policy \u00a76 test 2: the assumed customer confirmation settled the question. Probability 0.10 with 2 families also meets \u00a76 test 1.",
   "tool_calls": 15,
   "tokens": 0,
-  "latency_s": 0.04
+  "latency_s": 0.05
 }

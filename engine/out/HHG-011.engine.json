@@ -35,11 +35,11 @@
    "flagged_addr1": "",
    "flagged_device_id": "SM-G610F Build/NRD90M | NULL | chrome 66.0 for android | NULL",
    "flagged_device_new": "New",
-   "flagged_device_cards": 4,
+   "flagged_device_cards": 0,
    "flagged_device_strong": false,
    "channel": "online",
    "modal_region": "",
-   "card_n_txns": 10332,
+   "card_n_txns": 10312,
    "two_cards_confirmed_fraud": false,
    "outcome": "",
    "asked": true,
@@ -1647,7 +1647,7 @@
     "direction": "neutral"
    },
    {
-    "claim": "Case-memory scorer (LightGBM over the bank's 5,565 closed cases; October holdout AUC 0.956) puts the flagged transaction at 0.04 (calibrated 0.06); the real-time risk score was 0.39; the scorer is unreliable here (card has 10332 transactions, position 10307)",
+    "claim": "Case-memory scorer (LightGBM over the bank's 5,565 closed cases; October holdout AUC 0.956) puts the flagged transaction at 0.04 (calibrated 0.06); the real-time risk score was 0.39; the scorer is unreliable here (card has 10312 transactions, position 10307)",
     "source": "graph",
     "ref": "query:case_context(txn=3583368)",
     "entity_ids": [
@@ -1739,11 +1739,11 @@
    "flagged_addr1": "",
    "flagged_device_id": "SM-G610F Build/NRD90M | NULL | chrome 66.0 for android | NULL",
    "flagged_device_new": "New",
-   "flagged_device_cards": 4,
+   "flagged_device_cards": 0,
    "flagged_device_strong": false,
    "channel": "online",
    "modal_region": "",
-   "card_n_txns": 10332,
+   "card_n_txns": 10312,
    "two_cards_confirmed_fraud": false,
    "outcome": "inconclusive",
    "asked": true,
@@ -3353,7 +3353,7 @@
     "direction": "neutral"
    },
    {
-    "claim": "Case-memory scorer (LightGBM over the bank's 5,565 closed cases; October holdout AUC 0.956) puts the flagged transaction at 0.04 (calibrated 0.06); the real-time risk score was 0.39; the scorer is unreliable here (card has 10332 transactions, position 10307)",
+    "claim": "Case-memory scorer (LightGBM over the bank's 5,565 closed cases; October holdout AUC 0.956) puts the flagged transaction at 0.04 (calibrated 0.06); the real-time risk score was 0.39; the scorer is unreliable here (card has 10312 transactions, position 10307)",
     "source": "graph",
     "ref": "query:case_context(txn=3583368)",
     "entity_ids": [
@@ -3430,6 +3430,7 @@
    "CREATE_CASE",
    "MONITOR_CARD",
    "DECLINE_TRANSACTION",
+   "BLOCK_CARD",
    "ESCALATE_TO_ANALYST"
   ]
  },
@@ -3437,7 +3438,7 @@
   "required": [
    "CREATE_CASE",
    "STEP_UP_AUTH",
-   "MONITOR_CARD",
+   "BLOCK_CARD",
    "ESCALATE_TO_ANALYST"
   ],
   "allowed": [
@@ -3448,6 +3449,7 @@
    "WARN_CUSTOMER",
    "VERIFY_WITH_CUSTOMER",
    "STEP_UP_AUTH",
+   "BLOCK_CARD",
    "GENERATE_REPORT",
    "CREATE_CASE",
    "FILE_REPORT",
@@ -3455,8 +3457,7 @@
    "CLOSE_NO_FRAUD"
   ],
   "forbidden": [
-   "BLOCK_ALL_CARDS",
-   "BLOCK_CARD"
+   "BLOCK_ALL_CARDS"
   ],
   "routes": {
    "ALLOW_TRANSACTION": "auto",
@@ -3476,34 +3477,30 @@
   },
   "citations": {
    "CREATE_CASE": [
-    "3a_case",
-    "uncertain_initial"
+    "3a",
+    "R2"
+   ],
+   "BLOCK_CARD": [
+    "R2"
+   ],
+   "STEP_UP_AUTH": [
+    "\u00a73b"
    ],
    "ESCALATE_TO_ANALYST": [
     "R8"
    ],
-   "MONITOR_CARD": [
-    "uncertain_initial"
-   ],
-   "STEP_UP_AUTH": [
-    "uncertain_initial"
-   ],
    "_forbidden": {
     "BLOCK_ALL_CARDS": [
-     "R10",
-     "uncertain_initial"
-    ],
-    "BLOCK_CARD": [
-     "uncertain_initial"
+     "R10"
     ]
    },
    "_conflicts": {}
   },
   "fired": [
-   "3a_case",
+   "3a",
+   "R2",
    "R8",
-   "R10",
-   "uncertain_initial"
+   "R10"
   ]
  },
  "violations": [],

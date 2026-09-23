@@ -4,7 +4,9 @@ Samples (seeded, reproducible):
   100 cleared cases replayed as risk_score triggers          (flagged = the alert transaction)
   150 confirmed_fraud cases replayed as customer_report      (flagged = first_fraud_txn_id)
    30 confirmed_fraud cases replayed as risk_score triggers where the first fraud txn had risk >= 0.5
-   30 cleared cases replayed as SYNTHETIC customer disputes  (the R7 / uncertain gate must not block them)
+   30 cleared cases replayed as SYNTHETIC customer disputes  (a denial takes R2's BLOCK_CARD at any verdict — README R2 and
+                                                             the §3b example — so these are blocked unless R7 matches; the
+                                                             guardrail is that an R7-matched dispute is never blocked)
 
 Scorer probabilities for Jul-Oct rows are the ETL's month-wise out-of-fold cms_p (etl/cms_train.py step 3,
 `txn_feat.cms_fold = oof-2016-MM`), so the flagged transaction's own label never leaks into its score; the
@@ -14,8 +16,8 @@ to opened_at by the facts layer and the replayed case itself is stripped from ev
 and Card.ring_id are all-time attributes (as in the graph) — the one known optimism of this replay.
 
 Metrics: pattern accuracy, SAR decision accuracy, episode Jaccard, verdict accuracy per trigger,
-Brier / ECE of the final probability, action-set F1 vs actions_taken per trigger, synthetic disputes
-blocked in initial (target 0). Writes out/replay_metrics.json and out/replay_rows.csv.
+Brier / ECE of the final probability, action-set F1 vs actions_taken per trigger, R7-matched disputes
+blocked in initial (target 0; synthetic disputes blocked is a diagnostic). Writes out/replay_metrics.json and out/replay_rows.csv.
 
 Run:  python -m engine.replay           (~2 min)
 """
@@ -43,14 +45,17 @@ TARGETS: list[tuple[str, str, str | None, float, str]] = [
     ("SAR decision accuracy", "sar_accuracy_fraud_all", "sar_accuracy_fraud_verdict_fraud", 1.00, "min"),
     ("episode Jaccard", "episode_jaccard_fraud_all", "episode_jaccard_fraud_verdict_fraud", 0.85, "min"),
 ]
-# The only count with a target in the module docstring: the R7 / uncertain gate must not block a
-# synthetic dispute. Everything else that is merely diagnostic goes in the diagnostics table, with
+# The only count with a target in the module docstring: R7 ("disputed but legitimate: do not block") must hold on
+# every dispute whose charge matches the customer's own recurring pattern. The former guardrail "no synthetic dispute
+# blocked in initial" contradicted README R2 (a customer denial is answered with BLOCK_CARD at any verdict; R7 is the
+# only exception), so it is reported as a diagnostic. Everything merely diagnostic goes in the diagnostics table, with
 # no pass/fail mark, so "targets met" stays an honest count of the stated targets.
 GUARDRAILS: list[tuple[str, str, float, str]] = [
-    ("synthetic disputes blocked in initial", "synthetic_disputes_blocked_initial", 0, "max"),
+    ("R7-matched disputes blocked in initial", "r7_disputes_blocked_initial", 0, "max"),
 ]
 DIAGNOSTICS: list[tuple[str, str]] = [
-    ("synthetic disputes blocked in final", "synthetic_disputes_blocked_final"),
+    ("synthetic disputes blocked in initial (R2)", "synthetic_disputes_blocked_initial"),
+    ("synthetic disputes blocked in final (R2)", "synthetic_disputes_blocked_final"),
     ("cleared cases given a false episode", "cleared_false_episodes"),
     ("cases that raised and were skipped", "n_failed"),
 ]
@@ -306,6 +311,8 @@ def main() -> None:
     m["per_group"] = per
     m["synthetic_disputes_blocked_initial"] = per.get("cleared_as_synthetic_dispute", {}).get("blocked_initial")
     m["synthetic_disputes_blocked_final"] = per.get("cleared_as_synthetic_dispute", {}).get("blocked_final")
+    disputes = good[good.trigger == "customer_report"]
+    m["r7_disputes_blocked_initial"] = int((disputes.r7.astype(bool) & disputes.blocked_initial.astype(bool)).sum())
     json.dump(m, open(config.OUT_DIR / "replay_metrics.json", "w"), indent=1, default=str)
 
     # ---- report (display only; `m` above is already on disk, untouched by anything below) ----

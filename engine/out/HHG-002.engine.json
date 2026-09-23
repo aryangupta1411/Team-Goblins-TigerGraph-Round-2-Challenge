@@ -29,7 +29,7 @@
    "flagged_device_strong": false,
    "channel": "online",
    "modal_region": "",
-   "card_n_txns": 44,
+   "card_n_txns": 36,
    "two_cards_confirmed_fraud": false,
    "outcome": "",
    "asked": true,
@@ -226,7 +226,7 @@
    "flagged_device_strong": false,
    "channel": "online",
    "modal_region": "",
-   "card_n_txns": 44,
+   "card_n_txns": 36,
    "two_cards_confirmed_fraud": false,
    "outcome": "deny",
    "asked": true,
@@ -453,14 +453,14 @@
   },
   "citations": {
    "CREATE_CASE": [
-    "3a_case",
-    "fraud_band"
+    "3a",
+    "\u00a73b"
    ],
    "BLOCK_CARD": [
-    "fraud_band"
+    "\u00a73b"
    ],
    "VERIFY_WITH_CUSTOMER": [
-    "fraud_band"
+    "\u00a73b"
    ],
    "_forbidden": {
     "BLOCK_ALL_CARDS": [
@@ -470,9 +470,9 @@
    "_conflicts": {}
   },
   "fired": [
-   "3a_case",
+   "3a",
    "R10",
-   "fraud_band"
+   "\u00a73b"
   ]
  },
  "violations": [],

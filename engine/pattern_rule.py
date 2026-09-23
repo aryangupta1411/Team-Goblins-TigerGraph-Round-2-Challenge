@@ -9,6 +9,11 @@ label(chain_members, card_modal_region, flags) -> pattern
             ring_hit            strong anonymous-proxy ring profile on the episode      → undocumented
             burst_hit           >= 4 x $450-499.99 online within 40 min                  → undocumented
             card_testing_chain  all-online episode, >= 5 members, >= 1 sub-$5 member    → card_testing
+
+out_of_region_use = an all-card-present episode that leaves the card's modal (home) region. "No history" in the
+README's wording is read as "away from home", which is how the bank labels it: 581 of the 955 confirmed
+out_of_region_use closed cases had every transaction in a region the card had used >= 5 times before, and only 173
+touched a never-used region (tests/unit/test_engine_r2.py). A "region must be new" rule would mislabel most of them.
 """
 from __future__ import annotations
 

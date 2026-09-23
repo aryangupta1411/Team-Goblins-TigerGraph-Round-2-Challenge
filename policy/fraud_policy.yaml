@@ -93,29 +93,41 @@ engine:                                       # PLAN §4.5 (calibrated engine), 
 
 # §3 rules as when / require / forbid / add_if templates. Condition names are computed by
 # engine/policy.conditions(); `stage` is initial or final. A rule fires when every `when` holds.
+# `cite` is the README rule or section a rule (or one add_if branch) implements; policy.admissible reports
+# citations and fired rules by `cite`, never by the internal key (D-REASON: an action reason names R1-R10 or a
+# README section). A rule without `cite` is cited by its key (the R-rules).
 rules:
   3a_case:
+    cite: "3a"
     text: "Open a case whenever fraud probability reaches 0.30, whenever evidence is requested, or on any customer dispute."
     when: [case_open]
     require: [CREATE_CASE]
   3a_report_only:
+    cite: "3a"
     text: "Write up the investigation for the internal record without opening a case."
     when: [not_case_open]
     require: [GENERATE_REPORT]
-  R1:
+  R1:                                         # not on a customer denial: the denial is the customer's answer and R2 governs
     text: "Single signal and probability below 0.70: VERIFY_WITH_CUSTOMER or STEP_UP_AUTH before any block."
-    when: [single_signal, p_below_r1, not_settled]
+    when: [single_signal, p_below_r1, not_settled, not_r2_denial]
     require_one_of: [VERIFY_WITH_CUSTOMER, STEP_UP_AUTH]
     forbid: [BLOCK_CARD, BLOCK_ALL_CARDS]
-  R2:
+  R2:                                         # README §3b worked example: R1 governs BEFORE a denial; once the customer denies, the
+                                              # actions become BLOCK_CARD + CREATE_CASE (+ FILE_REPORT). A customer_report trigger IS
+                                              # the denial, so R2 applies from intake at any verdict, unless R7 matches (r2_denial).
+                                              # R2 is an action rule: it does not move the probability or the verdict.
     text: "Customer denies: BLOCK_CARD and CREATE_CASE; FILE_REPORT if exposure > $1,000 or shared device / another card's fraud."
-    when: [denial, verdict_fraud]
+    when: [r2_denial]
     require: [BLOCK_CARD, CREATE_CASE]
     add_if:
       - when: [sar_required]
         actions: [FILE_REPORT]
       - when: [shared_origin]
+        cite: "R6"
         actions: [MONITOR_CONNECTED_CARDS]
+      - when: [not_settled, stage_initial, channel_online]   # online dispute: possession check on further activity while the block awaits approval
+        cite: "§3b"
+        actions: [STEP_UP_AUTH]
   R3:
     text: "Customer confirms: CLOSE_NO_FRAUD and note the confirmation."
     when: [customer_confirmed]
@@ -164,40 +176,50 @@ rules:
     when: [not_two_cards_confirmed_fraud]
     forbid: [BLOCK_ALL_CARDS]
   uncertain_initial:                          # README notes: uncertain earns credit only with R1 / R8 actions → no block before evidence
+                                              # (not on a customer denial: R2 governs there)
+    cite: "§3b"
     text: "Uncertain verdict before evidence: CREATE_CASE, a verification (STEP_UP_AUTH online / VERIFY_WITH_CUSTOMER in person), MONITOR_CARD; no block."
-    when: [verdict_uncertain, stage_initial]
+    when: [verdict_uncertain, stage_initial, not_r2_denial]
     require: [CREATE_CASE, MONITOR_CARD]
     require_one_of: [VERIFY_WITH_CUSTOMER, STEP_UP_AUTH]
     forbid: [BLOCK_CARD, BLOCK_ALL_CARDS]
   uncertain_final:                            # verification came back but did not settle it (failed / not completed): R4 set; R8 only when gated (D3),
                                               # otherwise the case stays `open` with the reply pending
+    cite: "R4"
     text: "Uncertain verdict after the requested evidence: MONITOR_CARD and DECLINE_TRANSACTION for pending authorizations; escalate when R8 holds."
-    when: [verdict_uncertain, stage_final, not_customer_confirmed]
+    when: [verdict_uncertain, stage_final, not_customer_confirmed, requested]   # only after a request (a settled R2 denial asks none)
     require: [CREATE_CASE, MONITOR_CARD, DECLINE_TRANSACTION]
     add_if:
       - when: [r8_trigger]
+        cite: "R8"
         actions: [ESCALATE_TO_ANALYST]
   fraud_band:                                 # PLAN §4.5 / D1: the fraud set; one §3b verification is still asked while the case is not settled
-                                              # (§6 test 1: p >= 0.85 with two families), never once it is
+                                              # (§6 test 1: p >= 0.85 with two families), never once it is. R1 does not apply at p >= 0.70.
+    cite: "§3b"
     text: "Fraud verdict: CREATE_CASE, BLOCK_CARD; FILE_REPORT when 3a holds; MONITOR_CONNECTED_CARDS when a shared origin exists."
     when: [verdict_fraud]
     require: [CREATE_CASE, BLOCK_CARD]
     add_if:
       - when: [sar_required]
+        cite: "3a"
         actions: [FILE_REPORT]
       - when: [shared_origin]
+        cite: "R6"
         actions: [MONITOR_CONNECTED_CARDS]
       - when: [not_settled, stage_initial, not_analyst_request]
         actions_one_of: [VERIFY_WITH_CUSTOMER, STEP_UP_AUTH]
   legit_band:
+    cite: "§6"
     text: "Legitimate verdict: CLOSE_NO_FRAUD (and ALLOW_TRANSACTION for a risk alert)."
     when: [verdict_legit, settled]
     require: [CLOSE_NO_FRAUD]
     forbid: [BLOCK_CARD, BLOCK_ALL_CARDS, DECLINE_TRANSACTION, FILE_REPORT, MONITOR_CARD]
     add_if:
       - when: [risk_alert]
+        cite: "R3"
         actions: [ALLOW_TRANSACTION]
   legit_leaning_initial:                      # p <= 0.15 with one family: still verify (§6 needs two independent pieces)
+    cite: "§6"
     text: "Legitimate-leaning on a single family: verify before closing."
     when: [verdict_legit, not_settled, stage_initial]
     require: [CREATE_CASE]
@@ -217,13 +239,16 @@ sar:
   recipient_email_files: false
   reason_templates:
     file_exposure: "3a: fraud confirmed/strongly suspected and exposure ${exposure:,.2f} exceeds $1,000"
+    file_r2_exposure: "R2 / 3a: the customer denied the transaction (fraud strongly suspected) and exposure ${exposure:,.2f} exceeds $1,000"
     file_shared_device: "3a / R6: fraud connects to the shared device profile `{profile}` used by {n_cards} other cards, {n_fraud} of them with confirmed fraud"
     file_ring: "3a / R6 / R9: coordinated undocumented pattern — anonymous-proxy device ring `{profile}` spanning {n_cards} other cards"
     file_undocumented: "3a / R9: undocumented coordinated pattern ({description})"
     file_other_customer: "3a / R2: the episode connects to another customer's confirmed fraud ({cases})"
     not_fraud: "3a not met: verdict {verdict} (fraud not confirmed or strongly suspected), exposure ${exposure:,.2f}; no report"
     not_met: "3a not met: exposure ${exposure:,.2f} <= $1,000; {device_clause}; no shared region cluster; no other customer's fraud connected; documented pattern"
-    device_generic: "the {new_word}profile `{profile}` is used by {n_cards} cards with no fraud linkage strong enough to be a shared-origin signal"
+    not_met_r2: "R2 / 3a not met: the customer denied the transaction, but exposure ${exposure:,.2f} <= $1,000; {device_clause}; no other card's fraud connected; documented pattern; no report"
+    device_generic: "the {new_word}profile `{profile}` is used by {n_cards} cards (this one included) in the 30 days before the case opened, with no fraud linkage strong enough to be a shared-origin signal"
+    device_common: "the {new_word}profile `{profile}` is a common, non-distinctive profile (not a strong device profile), so it is not a shared-origin signal"
     device_none: "no device profile shared with other cards' fraud"
 
 # Simulated replies (README §5: replies are not provided; state the assumption). Text templates come

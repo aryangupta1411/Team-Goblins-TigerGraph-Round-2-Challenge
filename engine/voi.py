@@ -5,7 +5,8 @@ should_ask(ctx, sc, request_type) -> (ask, branches)
 A request is worth making only if at least one assumed outcome changes the FINAL action set.
 branches = {outcome: [action names]} for every outcome the request type can produce, computed by
 running policy.admissible on the post-evidence scorecard of each branch. The stop rule (§6 test 1)
-is checked by the caller before this: a settled case never asks.
+is checked by the caller before this: a settled case never asks. A customer_validation request is never
+made on an R2 denial (the customer already answered it in the trigger).
 """
 from __future__ import annotations
 
@@ -30,6 +31,10 @@ def request_type_for(ctx: CaseContext, sc: Scorecard) -> str:
 
 
 def should_ask(ctx: CaseContext, sc: Scorecard, request_type: str) -> tuple[bool, dict]:
+    # R2: a customer who has denied the charge has already answered the customer_validation question; asking it again
+    # cannot change the R2 action set (only R7, a recurring-charge match, re-asks — r2_denial is False there).
+    if request_type == "customer_validation" and policy.r2_denial(sc) and not sc.flags.get("outcome"):
+        return False, {}
     branches: dict[str, list[str]] = {}
     for outcome in OUTCOMES[request_type]:
         post = scorecard.post_evidence(sc, outcome)

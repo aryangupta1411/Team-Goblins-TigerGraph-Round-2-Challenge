@@ -186,7 +186,9 @@ def compute(ctx: CaseContext, facts: Facts, evidence: list[Evidence]) -> Scoreca
         "flagged_addr1": txn["addr1"],
         "flagged_device_id": txn["device_id"],
         "flagged_device_new": txn["device_new"],
-        "flagged_device_cards": int(dev.get("n_cards_alltime", 0) or 0),
+        # cards on the flagged profile in device_neighbors' window (30 days before the flag up to as_of; the card itself
+        # included), the count the evidence cites; the profile's all-time n_cards reaches past opened_at (D-MISC HHG-019)
+        "flagged_device_cards": len(dn.get("cards", []) or []),
         "flagged_device_strong": bool(dev.get("is_strong")),
         "channel": txn["channel"],
         "modal_region": modal,
@@ -344,7 +346,7 @@ def compute(ctx: CaseContext, facts: Facts, evidence: list[Evidence]) -> Scoreca
         if n48 >= 2 and n_online <= 0.1 * n_txns and seq >= 10:
             led.append(
                 Evidence(
-                    f"{n48 + 1} online purchases within 48 h on a card that is {100 * n_online / n_txns:.0f}% in-person",
+                    f"{n48 + 1} online purchases within 48 h on a card that is {100 - 100 * n_online / n_txns:.0f}% in-person",
                     "graph",
                     _q("card_window", card=cid, hours=72),
                     [txn["id"], cid],
@@ -439,10 +441,10 @@ def compute(ctx: CaseContext, facts: Facts, evidence: list[Evidence]) -> Scoreca
     in_person = [m for m in raw48 if m["channel"] == "in_person"]
     online = [m for m in raw48 if m["channel"] == "online"]
     med_all = float(pcard.get("median_amt", 0) or 0)
-    max_ip_alltime = float(pcard.get("max_in_person_amt", 0) or 0)
+    max_ip_asof = float(pcard.get("max_in_person_amt", 0) or 0)
     ip_max = max((float(m["amt"]) for m in in_person), default=0.0)
     # clause A: a mixed-channel spree whose in-person members hold the card's in-person record and dwarf its median
-    spree = bool(in_person and online and med_all > 0 and ip_max > 3 * med_all and ip_max >= max_ip_alltime - 0.01 and sum(float(m["amt"]) for m in raw48) > P["conflict_min_exposure"])
+    spree = bool(in_person and online and med_all > 0 and ip_max > 3 * med_all and ip_max >= max_ip_asof - 0.01 and sum(float(m["amt"]) for m in raw48) > P["conflict_min_exposure"])
     # clause B: a New device from a never-seen region; the online New-device activity itself must exceed the threshold
     new_dev_new_region = bool(
         txn["channel"] == "online" and txn["device_new"] == "New" and int(txn.get("prior_on_dev", 0)) == 0 and txn["addr1"] and int(txn.get("prior_in_region", 0)) == 0 and seq >= 10

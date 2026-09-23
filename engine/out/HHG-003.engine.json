@@ -30,10 +30,10 @@
    "flagged_device_strong": false,
    "channel": "in_person",
    "modal_region": "299.0",
-   "card_n_txns": 1134,
+   "card_n_txns": 981,
    "two_cards_confirmed_fraud": false,
    "outcome": "",
-   "asked": true,
+   "asked": false,
    "pending": false,
    "ring_hit": false,
    "ring_id": "SAMSUNG SM-S727VL Build/MMB29M | Android 6.0.1 | samsung browser 6.2 | 1280x720",
@@ -136,7 +136,7 @@
     "3530056",
     "3530164"
    ],
-   "request_type": "customer_validation"
+   "escalated": false
   },
   "chain": [
    {
@@ -975,11 +975,11 @@
    "flagged_device_strong": false,
    "channel": "in_person",
    "modal_region": "299.0",
-   "card_n_txns": 1134,
+   "card_n_txns": 981,
    "two_cards_confirmed_fraud": false,
-   "outcome": "no_reply",
-   "asked": true,
-   "pending": true,
+   "outcome": "",
+   "asked": false,
+   "pending": false,
    "ring_hit": false,
    "ring_id": "SAMSUNG SM-S727VL Build/MMB29M | Android 6.0.1 | samsung browser 6.2 | 1280x720",
    "ring_txn_ids": [
@@ -1081,8 +1081,6 @@
     "3530056",
     "3530164"
    ],
-   "request_type": "customer_validation",
-   "request_seq": 1,
    "escalated": false
   },
   "chain": [
@@ -1888,37 +1886,14 @@
     ],
     "family": "customer",
     "direction": "fraud"
-   },
-   {
-    "claim": "No reply within 24 hours / verification not completed (assumed); probability unchanged",
-    "source": "customer",
-    "ref": "evidence_request:1",
-    "entity_ids": [],
-    "family": "customer",
-    "direction": "neutral"
    }
   ]
  },
- "branches": {
-  "confirm": [
-   "CREATE_CASE",
-   "CLOSE_NO_FRAUD"
-  ],
-  "deny": [
-   "CREATE_CASE",
-   "BLOCK_CARD"
-  ],
-  "no_reply": [
-   "CREATE_CASE",
-   "MONITOR_CARD",
-   "DECLINE_TRANSACTION"
-  ]
- },
+ "branches": {},
  "adm_initial": {
   "required": [
    "CREATE_CASE",
-   "VERIFY_WITH_CUSTOMER",
-   "MONITOR_CARD"
+   "BLOCK_CARD"
   ],
   "allowed": [
    "ALLOW_TRANSACTION",
@@ -1928,6 +1903,7 @@
    "WARN_CUSTOMER",
    "VERIFY_WITH_CUSTOMER",
    "STEP_UP_AUTH",
+   "BLOCK_CARD",
    "GENERATE_REPORT",
    "CREATE_CASE",
    "FILE_REPORT",
@@ -1935,8 +1911,7 @@
    "CLOSE_NO_FRAUD"
   ],
   "forbidden": [
-   "BLOCK_ALL_CARDS",
-   "BLOCK_CARD"
+   "BLOCK_ALL_CARDS"
   ],
   "routes": {
    "ALLOW_TRANSACTION": "auto",
@@ -1956,34 +1931,23 @@
   },
   "citations": {
    "CREATE_CASE": [
-    "3a_case",
-    "uncertain_initial"
+    "3a",
+    "R2"
    ],
-   "MONITOR_CARD": [
-    "uncertain_initial"
-   ],
-   "VERIFY_WITH_CUSTOMER": [
-    "R1",
-    "uncertain_initial"
+   "BLOCK_CARD": [
+    "R2"
    ],
    "_forbidden": {
-    "BLOCK_CARD": [
-     "R1",
-     "uncertain_initial"
-    ],
     "BLOCK_ALL_CARDS": [
-     "R1",
-     "R10",
-     "uncertain_initial"
+     "R10"
     ]
    },
    "_conflicts": {}
   },
   "fired": [
-   "3a_case",
-   "R1",
-   "R10",
-   "uncertain_initial"
+   "3a",
+   "R2",
+   "R10"
   ]
  },
  "violations": [],

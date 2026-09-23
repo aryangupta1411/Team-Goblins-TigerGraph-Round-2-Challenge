@@ -118,7 +118,7 @@
       "CC-4455",
       "CC-4196"
     ],
-    "summary": "Risk-score alert (0.87) on transaction 3514948 ($111.92, in person) for card C09933-K2. Case-memory scorer (LightGBM over the bank's 5,565 closed cases; October holdout AUC 0.956) puts the flagged transaction at 0.85 (calibrated 0.77); the real-time risk score was 0.87. Amount $111.92 sits inside the card's baseline (prior median $77.04, prior maximum $2,529.78 over 2431 transactions). Verdict fraud at probability 0.77, pattern account_takeover, 3 affected transaction(s) worth $265.85 (families for fraud: memory; for legitimacy: history). Initial actions: CREATE_CASE, VERIFY_WITH_CUSTOMER, BLOCK_CARD. Assumed customer_validation reply: no reply from the customer within 24 hours. Final actions: CREATE_CASE, MONITOR_CARD, DECLINE_TRANSACTION, BLOCK_CARD. Status open.",
+    "summary": "Risk-score alert (0.87) on transaction 3514948 ($111.92, in person) for card C09933-K2. Case-memory scorer (LightGBM over the bank's 5,565 closed cases; October holdout AUC 0.956) puts the flagged transaction at 0.85 (calibrated 0.77); the real-time risk score was 0.87. Verdict fraud at probability 0.77, pattern account_takeover, 3 affected transaction(s) worth $265.85. Final actions: CREATE_CASE, MONITOR_CARD, DECLINE_TRANSACTION, BLOCK_CARD after the assumed customer_validation reply; status open.",
     "written_to_graph": false,
     "graph_case_id": "AC-HHG-007"
   },
@@ -144,7 +144,7 @@
       {
         "action": "BLOCK_CARD",
         "route": "L1",
-        "reason": "fraud verdict: probability 0.77 with 1 independent evidence families (memory); R1 not applicable; exposure $265.85 routes L1"
+        "reason": "\u00a73b: fraud verdict at probability 0.77 with 1 independent evidence family (memory), so R1 does not apply (probability at or above 0.70); exposure $265.85 routes L1"
       }
     ],
     "final": [
@@ -166,7 +166,7 @@
       {
         "action": "BLOCK_CARD",
         "route": "L1",
-        "reason": "fraud verdict: probability 0.77 with 1 independent evidence families (memory); R1 not applicable; exposure $265.85 routes L1"
+        "reason": "\u00a73b: fraud verdict at probability 0.77 with 1 independent evidence family (memory), so R1 does not apply (probability at or above 0.70); exposure $265.85 routes L1"
       }
     ],
     "what_changed": "The assumed reply (customer_validation: no reply from the customer within 24 hours) left the probability at 0.77 and the verdict became fraud. Added MONITOR_CARD, DECLINE_TRANSACTION. Dropped VERIFY_WITH_CUSTOMER. Counterfactual: a confirmation would have closed the alert (R3); a denial would have led to BLOCK_CARD and CREATE_CASE (R2)."
@@ -182,5 +182,5 @@
   "stop_reason": "Policy \u00a76 test 3: the verification was not completed within the window and the probability stayed at 0.77; the fraud-band actions (block pending approval) already apply, so no further automated step would change the recommendation.",
   "tool_calls": 15,
   "tokens": 0,
-  "latency_s": 0.06
+  "latency_s": 0.07
 }

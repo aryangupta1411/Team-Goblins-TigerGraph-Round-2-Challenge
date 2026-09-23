@@ -83,7 +83,7 @@
       "CC-0066",
       "CC-2616"
     ],
-    "summary": "Risk-score alert (0.90) on transaction 3503878 ($99.92, online) for card C07987-K2. Case-memory scorer (LightGBM over the bank's 5,565 closed cases; October holdout AUC 0.956) puts the flagged transaction at 0.85 (calibrated 0.77); the real-time risk score was 0.90. 3 prior confirmed-fraud case(s) on this card (card_not_present_fraud, out_of_region_use), most recent 2016-10-19; 1 within 120 days on the same channel. Verdict fraud at probability 0.77, pattern card_not_present_new_device, 1 affected transaction(s) worth $99.92 (families for fraud: memory; for legitimacy: history). Initial actions: CREATE_CASE, STEP_UP_AUTH, BLOCK_CARD. Assumed step_up_auth reply: step-up authentication was not completed within the window. Final actions: CREATE_CASE, MONITOR_CARD, DECLINE_TRANSACTION, BLOCK_CARD. Status open.",
+    "summary": "Risk-score alert (0.90) on transaction 3503878 ($99.92, online) for card C07987-K2. Case-memory scorer (LightGBM over the bank's 5,565 closed cases; October holdout AUC 0.956) puts the flagged transaction at 0.85 (calibrated 0.77); the real-time risk score was 0.90. Verdict fraud at probability 0.77, pattern card_not_present_new_device, 1 affected transaction(s) worth $99.92. Final actions: CREATE_CASE, MONITOR_CARD, DECLINE_TRANSACTION, BLOCK_CARD after the assumed step_up_auth reply; status open.",
     "written_to_graph": false,
     "graph_case_id": "AC-HHG-019"
   },
@@ -109,7 +109,7 @@
       {
         "action": "BLOCK_CARD",
         "route": "L1",
-        "reason": "fraud verdict: probability 0.77 with 1 independent evidence families (memory); R1 not applicable; exposure $99.92 routes L1"
+        "reason": "\u00a73b: fraud verdict at probability 0.77 with 1 independent evidence family (memory), so R1 does not apply (probability at or above 0.70); exposure $99.92 routes L1"
       }
     ],
     "final": [
@@ -131,14 +131,14 @@
       {
         "action": "BLOCK_CARD",
         "route": "L1",
-        "reason": "fraud verdict: probability 0.77 with 1 independent evidence families (memory); R1 not applicable; exposure $99.92 routes L1"
+        "reason": "\u00a73b: fraud verdict at probability 0.77 with 1 independent evidence family (memory), so R1 does not apply (probability at or above 0.70); exposure $99.92 routes L1"
       }
     ],
     "what_changed": "The assumed reply (step_up_auth: step-up authentication was not completed within the window) left the probability at 0.77 and the verdict became fraud. Added MONITOR_CARD, DECLINE_TRANSACTION. Dropped STEP_UP_AUTH. Counterfactual: a passed step-up would have closed the alert (R3); a failed one would have led to BLOCK_CARD (R2)."
   },
   "sar": {
     "file": false,
-    "reason": "3a not met: exposure $99.92 <= $1,000; the New profile `Windows | other | chrome 61.0 | 1280x720` is used by 5 cards with no fraud linkage strong enough to be a shared-origin signal; no shared region cluster; no other customer's fraud connected; documented pattern",
+    "reason": "3a not met: exposure $99.92 <= $1,000; the New profile `Windows | other | chrome 61.0 | 1280x720` is used by 3 cards (this one included) in the 30 days before the case opened, with no fraud linkage strong enough to be a shared-origin signal; no shared region cluster; no other customer's fraud connected; documented pattern",
     "narrative": "",
     "subjects": [],
     "total_amount_usd": 0.0,

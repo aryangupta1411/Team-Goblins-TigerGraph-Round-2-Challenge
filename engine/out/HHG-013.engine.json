@@ -24,11 +24,11 @@
    "flagged_addr1": "",
    "flagged_device_id": "Windows | NULL | chrome 66.0 | NULL",
    "flagged_device_new": "New",
-   "flagged_device_cards": 266,
+   "flagged_device_cards": 0,
    "flagged_device_strong": false,
    "channel": "online",
    "modal_region": "264.0",
-   "card_n_txns": 1561,
+   "card_n_txns": 1433,
    "two_cards_confirmed_fraud": false,
    "outcome": "",
    "asked": true,
@@ -1253,11 +1253,11 @@
    "flagged_addr1": "",
    "flagged_device_id": "Windows | NULL | chrome 66.0 | NULL",
    "flagged_device_new": "New",
-   "flagged_device_cards": 266,
+   "flagged_device_cards": 0,
    "flagged_device_strong": false,
    "channel": "online",
    "modal_region": "264.0",
-   "card_n_txns": 1561,
+   "card_n_txns": 1433,
    "two_cards_confirmed_fraud": false,
    "outcome": "confirm",
    "asked": true,
@@ -2471,7 +2471,8 @@
   "deny": [
    "CREATE_CASE",
    "MONITOR_CARD",
-   "DECLINE_TRANSACTION"
+   "DECLINE_TRANSACTION",
+   "BLOCK_CARD"
   ],
   "no_reply": [
    "CREATE_CASE",
@@ -2520,40 +2521,40 @@
   },
   "citations": {
    "CREATE_CASE": [
-    "3a_case",
-    "legit_leaning_initial"
+    "3a",
+    "\u00a76"
    ],
    "VERIFY_WITH_CUSTOMER": [
     "R1",
-    "legit_leaning_initial"
+    "\u00a76"
    ],
    "_forbidden": {
     "BLOCK_CARD": [
      "R1",
-     "legit_leaning_initial"
+     "\u00a76"
     ],
     "BLOCK_ALL_CARDS": [
      "R1",
      "R10",
-     "legit_leaning_initial"
+     "\u00a76"
     ],
     "DECLINE_TRANSACTION": [
-     "legit_leaning_initial"
+     "\u00a76"
     ],
     "FILE_REPORT": [
-     "legit_leaning_initial"
+     "\u00a76"
     ],
     "CLOSE_NO_FRAUD": [
-     "legit_leaning_initial"
+     "\u00a76"
     ]
    },
    "_conflicts": {}
   },
   "fired": [
-   "3a_case",
+   "3a",
    "R1",
    "R10",
-   "legit_leaning_initial"
+   "\u00a76"
   ]
  },
  "violations": [],

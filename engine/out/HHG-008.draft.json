@@ -106,7 +106,7 @@
       "CC-3928",
       "CC-3728"
     ],
-    "summary": "Customer C13171 disputed transaction 3558054 ($55.68, online) on card C13171-K2. Customer C13171 reports they did not make the $55.68 purchase 3558054 (the denial is evidence: 4,665/4,665 customer-reported closed cases were confirmed fraud, 0 denials were cleared). Case-memory scorer (LightGBM over the bank's 5,565 closed cases; October holdout AUC 0.956) puts the flagged transaction at 0.96 (calibrated 0.78); the real-time risk score was 0.38. Verdict fraud at probability 0.95, pattern card_not_present_new_device, 3 affected transaction(s) worth $166.97 (families for fraud: customer, memory; for legitimacy: device, history). Initial actions: CREATE_CASE, BLOCK_CARD. No evidence request was needed; final equals initial. Status closed_fraud.",
+    "summary": "Customer C13171 disputed transaction 3558054 ($55.68, online) on card C13171-K2. Customer C13171 reports they did not make the $55.68 purchase 3558054 (the denial is evidence: 4,665/4,665 customer-reported closed cases were confirmed fraud, 0 denials were cleared). Verdict fraud at probability 0.95, pattern card_not_present_new_device, 3 affected transaction(s) worth $166.97. Final actions: CREATE_CASE, BLOCK_CARD; no evidence request was needed; status closed_fraud.",
     "written_to_graph": false,
     "graph_case_id": "AC-HHG-008"
   },
@@ -121,7 +121,7 @@
       {
         "action": "BLOCK_CARD",
         "route": "L1",
-        "reason": "R2: customer denied the transaction; exposure $166.97 is under $2,500 so route L1"
+        "reason": "R2: customer denied the transaction; exposure $166.97 is at or under $2,500 so route L1"
       }
     ],
     "final": [
@@ -133,14 +133,14 @@
       {
         "action": "BLOCK_CARD",
         "route": "L1",
-        "reason": "R2: customer denied the transaction; exposure $166.97 is under $2,500 so route L1"
+        "reason": "R2: customer denied the transaction; exposure $166.97 is at or under $2,500 so route L1"
       }
     ],
     "what_changed": "nothing"
   },
   "sar": {
     "file": false,
-    "reason": "3a not met: exposure $166.97 <= $1,000; the profile `NULL | NULL | chrome 66.0 | NULL` is used by 175 cards with no fraud linkage strong enough to be a shared-origin signal; no shared region cluster; no other customer's fraud connected; documented pattern",
+    "reason": "3a not met: exposure $166.97 <= $1,000; the profile `NULL | NULL | chrome 66.0 | NULL` is a common, non-distinctive profile (not a strong device profile), so it is not a shared-origin signal; no shared region cluster; no other customer's fraud connected; documented pattern",
     "narrative": "",
     "subjects": [],
     "total_amount_usd": 0.0,
@@ -149,5 +149,5 @@
   "stop_reason": "Policy \u00a76 test 1: fraud probability 0.95 is at or above 0.85 with 2 independent evidence families (customer, memory); no request could change the action set, so the initial recommendation is final.",
   "tool_calls": 15,
   "tokens": 0,
-  "latency_s": 0.05
+  "latency_s": 0.06
 }

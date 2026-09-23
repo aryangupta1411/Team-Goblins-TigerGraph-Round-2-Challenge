@@ -25,6 +25,19 @@ FRAUD_CONTAINMENT = {"BLOCK_CARD", "DECLINE_TRANSACTION", "ESCALATE_TO_ANALYST",
 _CARD = re.compile(r"C\d{5}-K\d")
 _CUST = re.compile(r"C\d{5}")
 _CC = re.compile(r"CC-\d{4}")
+_R2_CITE = re.compile(r"\bR2\b")
+
+
+def uncertain_block_violation(initial: list[dict]) -> bool:
+    """`uncertain ⇒ no block in initial` (PLAN §4.7), with the README R2 exception: a customer denial takes BLOCK_CARD from
+    intake at any verdict (README §3b example), so an initial BLOCK_CARD whose reason cites R2 is allowed. BLOCK_ALL_CARDS
+    never is (R10)."""
+    for a in initial:
+        if a["action"] == "BLOCK_ALL_CARDS":
+            return True
+        if a["action"] == "BLOCK_CARD" and not _R2_CITE.search(a.get("reason") or ""):
+            return True
+    return False
 
 
 class FactsResolver:
@@ -279,8 +292,8 @@ def validate(answer: dict, db, meta: dict | None = None) -> list[str]:
     if "CLOSE_NO_FRAUD" in fin and c["verdict"] != "legitimate":
         e.append("CLOSE_NO_FRAUD in final ⇒ verdict legitimate")
     if c["verdict"] == "uncertain":
-        if any(a in ("BLOCK_CARD", "BLOCK_ALL_CARDS") for a in ini):
-            e.append("uncertain ⇒ no block in initial")
+        if uncertain_block_violation(nba["initial"]):
+            e.append("uncertain ⇒ no block in initial (except an R2 BLOCK_CARD on a customer denial)")
         if c["status"] not in ("escalated", "open"):
             e.append("uncertain ⇒ status escalated or open")
     if c["verdict"] != "legitimate" and not c["affected_txn_ids"]:

@@ -85,7 +85,7 @@
       "CC-1930",
       "CC-2142"
     ],
-    "summary": "Risk-score alert (0.57) on transaction 3450629 ($100.09, online) for card C04570-K1. Customer confirmed the activity when asked (assumed reply). Amount $100.09 sits inside the card's baseline (prior median $199.97, prior maximum $2,892.12 over 52 transactions). Verdict legitimate at probability 0.07 (families for fraud: none; for legitimacy: customer, device, history, memory). Initial actions: CREATE_CASE, VERIFY_WITH_CUSTOMER. Assumed customer_validation reply: customer confirmed an unusual amount of $100.09 consistent with stated intent. Final actions: CREATE_CASE, ALLOW_TRANSACTION, CLOSE_NO_FRAUD. Status closed_legitimate.",
+    "summary": "Risk-score alert (0.57) on transaction 3450629 ($100.09, online) for card C04570-K1. Customer confirmed the activity when asked (assumed reply). Verdict legitimate at probability 0.07. Final actions: CREATE_CASE, ALLOW_TRANSACTION, CLOSE_NO_FRAUD after the assumed customer_validation reply; status closed_legitimate.",
     "written_to_graph": false,
     "graph_case_id": "AC-HHG-017"
   },
@@ -139,5 +139,5 @@
   "stop_reason": "Policy \u00a76 test 2: the assumed customer confirmation settled the question. Probability 0.07 with 4 families also meets \u00a76 test 1.",
   "tool_calls": 15,
   "tokens": 0,
-  "latency_s": 0.06
+  "latency_s": 0.08
 }

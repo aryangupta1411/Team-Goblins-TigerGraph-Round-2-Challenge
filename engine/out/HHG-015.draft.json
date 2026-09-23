@@ -35,7 +35,7 @@
         ]
       },
       {
-        "claim": "Mixed-channel chain of 4 transactions worth $2,140.94 inside 48 h: in-person purchases up to $550.03 against a card median of $99.98, then online activity",
+        "claim": "Mixed-channel chain of 4 transactions worth $2,140.94 inside 48 h: in-person purchases up to $550.03 against a card median of $99.96, then online activity",
         "source": "graph",
         "ref": "query:episode_candidates(txn=3464869)",
         "entity_ids": [
@@ -105,7 +105,7 @@
       "CC-1370",
       "CC-1841"
     ],
-    "summary": "Risk-score alert (0.77) on transaction 3464869 ($599.94, online) for card C03042-K1. Mixed-channel chain of 4 transactions worth $2,140.94 inside 48 h: in-person purchases up to $550.03 against a card median of $99.98, then online activity. Online purchase of $599.94 from a device marked New for this account in billing region 327.0 the card has never used. Verdict uncertain at probability 0.30, pattern account_takeover, 4 affected transaction(s) worth $2,140.94 (families for fraud: history; for legitimacy: memory). Initial actions: CREATE_CASE, STEP_UP_AUTH, MONITOR_CARD, ESCALATE_TO_ANALYST. Assumed step_up_auth reply: step-up authentication was not completed within the window. Final actions: CREATE_CASE, MONITOR_CARD, DECLINE_TRANSACTION, ESCALATE_TO_ANALYST. Status escalated.",
+    "summary": "Risk-score alert (0.77) on transaction 3464869 ($599.94, online) for card C03042-K1. Mixed-channel chain of 4 transactions worth $2,140.94 inside 48 h: in-person purchases up to $550.03 against a card median of $99.96, then online activity. Verdict uncertain at probability 0.30, pattern account_takeover, 4 affected transaction(s) worth $2,140.94. Final actions: CREATE_CASE, MONITOR_CARD, DECLINE_TRANSACTION, ESCALATE_TO_ANALYST after the assumed step_up_auth reply; status escalated.",
     "written_to_graph": false,
     "graph_case_id": "AC-HHG-015"
   },
@@ -174,5 +174,5 @@
   "stop_reason": "Policy \u00a76 test 3: the verification was not answered within the window; R4 applies (monitor + decline pending authorisations) and the case is escalated to an analyst (R8), so no further automated step would change the recommendation until a reply arrives.",
   "tool_calls": 15,
   "tokens": 0,
-  "latency_s": 0.05
+  "latency_s": 0.06
 }

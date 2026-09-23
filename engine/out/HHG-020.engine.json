@@ -19,11 +19,11 @@
    "flagged_addr1": "264.0",
    "flagged_device_id": "Trident/7.0 | Windows 10 | ie 11.0 for desktop | 1920x1080",
    "flagged_device_new": "New",
-   "flagged_device_cards": 253,
+   "flagged_device_cards": 0,
    "flagged_device_strong": false,
    "channel": "online",
    "modal_region": "264.0",
-   "card_n_txns": 109,
+   "card_n_txns": 83,
    "two_cards_confirmed_fraud": false,
    "outcome": "",
    "asked": true,
@@ -215,11 +215,11 @@
    "flagged_addr1": "264.0",
    "flagged_device_id": "Trident/7.0 | Windows 10 | ie 11.0 for desktop | 1920x1080",
    "flagged_device_new": "New",
-   "flagged_device_cards": 253,
+   "flagged_device_cards": 0,
    "flagged_device_strong": false,
    "channel": "online",
    "modal_region": "264.0",
-   "card_n_txns": 109,
+   "card_n_txns": 83,
    "two_cards_confirmed_fraud": false,
    "outcome": "confirm",
    "asked": true,
@@ -453,40 +453,40 @@
   },
   "citations": {
    "CREATE_CASE": [
-    "3a_case",
-    "legit_leaning_initial"
+    "3a",
+    "\u00a76"
    ],
    "VERIFY_WITH_CUSTOMER": [
     "R1",
-    "legit_leaning_initial"
+    "\u00a76"
    ],
    "_forbidden": {
     "BLOCK_CARD": [
      "R1",
-     "legit_leaning_initial"
+     "\u00a76"
     ],
     "BLOCK_ALL_CARDS": [
      "R1",
      "R10",
-     "legit_leaning_initial"
+     "\u00a76"
     ],
     "DECLINE_TRANSACTION": [
-     "legit_leaning_initial"
+     "\u00a76"
     ],
     "FILE_REPORT": [
-     "legit_leaning_initial"
+     "\u00a76"
     ],
     "CLOSE_NO_FRAUD": [
-     "legit_leaning_initial"
+     "\u00a76"
     ]
    },
    "_conflicts": {}
   },
   "fired": [
-   "3a_case",
+   "3a",
    "R1",
    "R10",
-   "legit_leaning_initial"
+   "\u00a76"
   ]
  },
  "violations": [],

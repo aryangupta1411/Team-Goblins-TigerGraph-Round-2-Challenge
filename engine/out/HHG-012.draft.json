@@ -80,7 +80,7 @@
       "CC-1494",
       "CC-1796"
     ],
-    "summary": "Risk-score alert (0.55) on transaction 3553342 ($30.91, in person) for card C05876-K2. Customer confirmed the activity when asked (assumed reply). Case-memory scorer (LightGBM over the bank's 5,565 closed cases; October holdout AUC 0.956) puts the flagged transaction at 0.02 (calibrated 0.03); the real-time risk score was 0.55. Verdict legitimate at probability 0.03 (families for fraud: none; for legitimacy: customer, history, memory). Initial actions: CREATE_CASE, VERIFY_WITH_CUSTOMER. Assumed customer_validation reply: customer confirmed travel to billing region 494.0 and recognises the $30.91 purchase. Final actions: CREATE_CASE, ALLOW_TRANSACTION, CLOSE_NO_FRAUD. Status closed_legitimate.",
+    "summary": "Risk-score alert (0.55) on transaction 3553342 ($30.91, in person) for card C05876-K2. Customer confirmed the activity when asked (assumed reply). Verdict legitimate at probability 0.03. Final actions: CREATE_CASE, ALLOW_TRANSACTION, CLOSE_NO_FRAUD after the assumed customer_validation reply; status closed_legitimate.",
     "written_to_graph": false,
     "graph_case_id": "AC-HHG-012"
   },

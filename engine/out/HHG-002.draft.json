@@ -75,7 +75,7 @@
     "similar_prior_cases": [
       "CC-4160"
     ],
-    "summary": "Risk-score alert (0.79) on transaction 3478782 ($292.36, online) for card C11891-K1. Customer denied the purchases when asked and still has the card (assumed reply). Amount $292.36 is 2.4x the card's prior maximum ($121.32); prior median $47.29 over 35 transactions. Verdict fraud at probability 0.94, pattern card_not_present_fraud, 1 affected transaction(s) worth $292.36 (families for fraud: customer, history, memory; for legitimacy: none). Initial actions: CREATE_CASE, VERIFY_WITH_CUSTOMER, BLOCK_CARD. Assumed customer_validation reply: customer states they did not make these purchases and still has the card. Final actions: CREATE_CASE, BLOCK_CARD. Status closed_fraud.",
+    "summary": "Risk-score alert (0.79) on transaction 3478782 ($292.36, online) for card C11891-K1. Customer denied the purchases when asked and still has the card (assumed reply). Verdict fraud at probability 0.94, pattern card_not_present_fraud, 1 affected transaction(s) worth $292.36. Final actions: CREATE_CASE, BLOCK_CARD after the assumed customer_validation reply; status closed_fraud.",
     "written_to_graph": false,
     "graph_case_id": "AC-HHG-002"
   },
@@ -101,7 +101,7 @@
       {
         "action": "BLOCK_CARD",
         "route": "L1",
-        "reason": "fraud verdict: probability 0.83 with 2 independent evidence families (history, memory); R1 not applicable; exposure $292.36 routes L1"
+        "reason": "\u00a73b: fraud verdict at probability 0.83 with 2 independent evidence families (history, memory), so R1 does not apply (probability at or above 0.70); exposure $292.36 routes L1"
       }
     ],
     "final": [
@@ -113,7 +113,7 @@
       {
         "action": "BLOCK_CARD",
         "route": "L1",
-        "reason": "R2: customer denied the transaction; exposure $292.36 is under $2,500 so route L1"
+        "reason": "R2: customer denied the transaction; exposure $292.36 is at or under $2,500 so route L1"
       }
     ],
     "what_changed": "The assumed reply (customer_validation: customer states they did not make these purchases and still has the card) probability moved from 0.83 to 0.94 and the verdict became fraud. Dropped VERIFY_WITH_CUSTOMER. Counterfactual: had the customer confirmed the purchase, R3 would have applied: CLOSE_NO_FRAUD."

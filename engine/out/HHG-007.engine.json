@@ -25,7 +25,7 @@
    "flagged_device_strong": false,
    "channel": "in_person",
    "modal_region": "264.0",
-   "card_n_txns": 2788,
+   "card_n_txns": 2435,
    "two_cards_confirmed_fraud": false,
    "outcome": "",
    "asked": true,
@@ -1686,7 +1686,7 @@
    "flagged_device_strong": false,
    "channel": "in_person",
    "modal_region": "264.0",
-   "card_n_txns": 2788,
+   "card_n_txns": 2435,
    "two_cards_confirmed_fraud": false,
    "outcome": "no_reply",
    "asked": true,
@@ -3390,14 +3390,14 @@
   },
   "citations": {
    "CREATE_CASE": [
-    "3a_case",
-    "fraud_band"
+    "3a",
+    "\u00a73b"
    ],
    "BLOCK_CARD": [
-    "fraud_band"
+    "\u00a73b"
    ],
    "VERIFY_WITH_CUSTOMER": [
-    "fraud_band"
+    "\u00a73b"
    ],
    "_forbidden": {
     "BLOCK_ALL_CARDS": [
@@ -3407,9 +3407,9 @@
    "_conflicts": {}
   },
   "fired": [
-   "3a_case",
+   "3a",
    "R10",
-   "fraud_band"
+   "\u00a73b"
   ]
  },
  "violations": [],

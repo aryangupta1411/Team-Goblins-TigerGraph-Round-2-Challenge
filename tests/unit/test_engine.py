@@ -161,9 +161,12 @@ def test_r1_single_signal_forbids_block():
 
 
 def test_uncertain_initial_never_blocks_and_r8_is_gated():
-    """D3: R8 only when uncertain AND (exposure > $500 OR conflict); conflict excludes the customer's own statement."""
-    adm = policy.admissible(DISP, _sc(0.55, ["customer"], ["history"], denial=True, channel="in_person"), "initial")
+    """D3: R8 only when uncertain AND (exposure > $500 OR conflict); conflict excludes the customer's own statement.
+    Without a customer denial the uncertain band never blocks before evidence (R1 / §3b); a denial takes R2's block from
+    intake instead (tests/unit/test_engine_r2.py), and R8 is gated the same way there."""
+    adm = policy.admissible(CTX, _sc(0.55, ["memory"], ["history"], channel="in_person"), "initial")
     assert "BLOCK_CARD" in adm["forbidden"] and "MONITOR_CARD" in adm["required"] and "VERIFY_WITH_CUSTOMER" in adm["required"]
+    adm = policy.admissible(DISP, _sc(0.55, ["customer"], ["history"], denial=True, channel="in_person"), "initial")
     assert "ESCALATE_TO_ANALYST" not in adm["required"] and "R8" not in adm["fired"]          # F' = {}, exposure 100: no R8
     adm = policy.admissible(DISP, _sc(0.55, ["customer"], ["history"], denial=True, channel="in_person", exposure=600.0), "initial")
     assert "ESCALATE_TO_ANALYST" in adm["required"] and "R8" in adm["fired"]                    # exposure > 500

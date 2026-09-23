@@ -42,7 +42,7 @@
       }
     ],
     "similar_prior_cases": [],
-    "summary": "Customer C08299 disputed transaction 3581141 ($30.02, online) on card C08299-K1. Customer C08299 reports they did not make the $30.02 purchase 3581141 (the denial is evidence: 4,665/4,665 customer-reported closed cases were confirmed fraud, 0 denials were cleared). Case-memory scorer (LightGBM over the bank's 5,565 closed cases; October holdout AUC 0.956) puts the flagged transaction at 0.86 (calibrated 0.78); the real-time risk score was 0.28. Verdict fraud at probability 0.91, pattern card_not_present_fraud, 1 affected transaction(s) worth $30.02 (families for fraud: customer, memory; for legitimacy: history). Initial actions: CREATE_CASE, BLOCK_CARD. No evidence request was needed; final equals initial. Status closed_fraud.",
+    "summary": "Customer C08299 disputed transaction 3581141 ($30.02, online) on card C08299-K1. Customer C08299 reports they did not make the $30.02 purchase 3581141 (the denial is evidence: 4,665/4,665 customer-reported closed cases were confirmed fraud, 0 denials were cleared). Verdict fraud at probability 0.91, pattern card_not_present_fraud, 1 affected transaction(s) worth $30.02. Final actions: CREATE_CASE, BLOCK_CARD; no evidence request was needed; status closed_fraud.",
     "written_to_graph": false,
     "graph_case_id": "AC-HHG-009"
   },
@@ -57,7 +57,7 @@
       {
         "action": "BLOCK_CARD",
         "route": "L1",
-        "reason": "R2: customer denied the transaction; exposure $30.02 is under $2,500 so route L1"
+        "reason": "R2: customer denied the transaction; exposure $30.02 is at or under $2,500 so route L1"
       }
     ],
     "final": [
@@ -69,7 +69,7 @@
       {
         "action": "BLOCK_CARD",
         "route": "L1",
-        "reason": "R2: customer denied the transaction; exposure $30.02 is under $2,500 so route L1"
+        "reason": "R2: customer denied the transaction; exposure $30.02 is at or under $2,500 so route L1"
       }
     ],
     "what_changed": "nothing"

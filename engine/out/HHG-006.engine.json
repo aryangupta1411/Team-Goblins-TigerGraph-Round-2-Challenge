@@ -27,11 +27,11 @@
    "flagged_addr1": "264.0",
    "flagged_device_id": "Trident/7.0 | Windows 7 | ie 11.0 for desktop | 1920x1080",
    "flagged_device_new": "New",
-   "flagged_device_cards": 543,
+   "flagged_device_cards": 0,
    "flagged_device_strong": false,
    "channel": "online",
    "modal_region": "264.0",
-   "card_n_txns": 261,
+   "card_n_txns": 201,
    "two_cards_confirmed_fraud": false,
    "outcome": "",
    "asked": false,
@@ -378,7 +378,7 @@
   "similar_prior_cases": [],
   "evidence": [
    {
-    "claim": "4 online purchases within 48 h on a card that is 2% in-person",
+    "claim": "4 online purchases within 48 h on a card that is 97% in-person",
     "source": "graph",
     "ref": "query:card_window(card=C07297-K1, hours=72)",
     "entity_ids": [
@@ -474,11 +474,11 @@
    "flagged_addr1": "264.0",
    "flagged_device_id": "Trident/7.0 | Windows 7 | ie 11.0 for desktop | 1920x1080",
    "flagged_device_new": "New",
-   "flagged_device_cards": 543,
+   "flagged_device_cards": 0,
    "flagged_device_strong": false,
    "channel": "online",
    "modal_region": "264.0",
-   "card_n_txns": 261,
+   "card_n_txns": 201,
    "two_cards_confirmed_fraud": false,
    "outcome": "",
    "asked": false,
@@ -825,7 +825,7 @@
   "similar_prior_cases": [],
   "evidence": [
    {
-    "claim": "4 online purchases within 48 h on a card that is 2% in-person",
+    "claim": "4 online purchases within 48 h on a card that is 97% in-person",
     "source": "graph",
     "ref": "query:card_window(card=C07297-K1, hours=72)",
     "entity_ids": [
@@ -937,19 +937,19 @@
   },
   "citations": {
    "CREATE_CASE": [
-    "3a_case",
+    "3a",
     "R2",
     "R9",
-    "fraud_band"
+    "\u00a73b"
    ],
    "BLOCK_CARD": [
     "R2",
-    "fraud_band"
+    "\u00a73b"
    ],
    "FILE_REPORT": [
+    "3a",
     "R2",
-    "R9",
-    "fraud_band"
+    "R9"
    ],
    "ESCALATE_TO_ANALYST": [
     "R9"
@@ -962,11 +962,11 @@
    "_conflicts": {}
   },
   "fired": [
-   "3a_case",
+   "3a",
    "R2",
    "R9",
    "R10",
-   "fraud_band"
+   "\u00a73b"
   ]
  },
  "violations": [],

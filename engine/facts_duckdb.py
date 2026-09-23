@@ -153,6 +153,8 @@ class DuckFacts:
                 "has_identity", "device_new", "proxy", "device_type", "device_id", "cms_p", "card_seq", "prior_in_region",
                 "prior_on_dev", "prior_pem", "prior_pcd", "prior_med_amt", "prior_max_amt", "ring_hit", "burst_id"]
         card = _rows(self.q("SELECT id, card_type, card_network, modal_region, n_txns, ring_id, customer_id FROM card_feat WHERE id = ?", txn["card_id"]))[0]
+        # n_txns time-boxed to ts <= as_of, as case_context.gsql counts it (card_feat.n_txns is whole-history)
+        card["n_txns"] = int(self.q("SELECT count(*) n FROM txc WHERE card_id=? AND ts <= ?::TIMESTAMP", txn["card_id"], as_of).n[0])
         cust = _rows(self.q("SELECT id, n_cards FROM customer_feat WHERE id = ?", card["customer_id"]))[0]
         return {"txn": {k: txn[k] for k in keys},
                 "card": {k: card[k] for k in ("id", "card_type", "card_network", "modal_region", "n_txns", "ring_id")},
@@ -161,6 +163,15 @@ class DuckFacts:
     def card_profile(self, c, as_of: str) -> dict:
         cid = _vid(c)
         card = _rows(self.q("SELECT * FROM card_feat WHERE id = ?", cid))[0]
+        # the history fields are recomputed over ts <= as_of, as card_profile.gsql does (card_feat holds whole-history values)
+        hist = _rows(self.q("""SELECT count(*) n_txns, min(ts) first_ts, max(ts) last_ts, coalesce(quantile_cont(amt, 0.5), 0) median_amt,
+                                 coalesce(quantile_cont(amt, 0.9), 0) p90_amt, coalesce(max(amt), 0) max_amt,
+                                 coalesce(max(amt) FILTER (WHERE channel='in_person'), -1) max_in_person_amt,
+                                 count(*) FILTER (WHERE channel='online') n_online, count(*) FILTER (WHERE channel='in_person') n_in_person,
+                                 count(DISTINCT addr1) FILTER (WHERE addr1<>'') n_regions,
+                                 count(DISTINCT device_id) FILTER (WHERE device_id<>'') n_devices_seen
+                                 FROM txc WHERE card_id=? AND ts <= ?::TIMESTAMP""", cid, as_of))[0]
+        card.update(hist)
         card["first_ts"], card["last_ts"] = _ts(card["first_ts"]), _ts(card["last_ts"])
         last30 = _rows(self.q("""SELECT count(*) n, round(coalesce(sum(amt),0),2) sum_amt, count(*) FILTER (WHERE channel='online') n_online,
                                   count(DISTINCT addr1) FILTER (WHERE addr1<>'') n_regions,

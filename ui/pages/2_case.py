@@ -22,14 +22,12 @@ runs = common.list_runs()
 run_id = st.session_state.get("run_id") or (runs[0] if runs else None)
 qp = st.query_params
 pack_ids = [m["case_id"] for m in common.load_case_pack()]
-case_default = qp.get("case", st.session_state.get("case_id", "HHG-014"))
 
 top1, top2 = st.columns([1, 3])
 with top1:
     run_id = st.selectbox("Run", runs, index=runs.index(run_id) if run_id in runs else 0) if runs else None
     st.session_state["run_id"] = run_id
-    case_id = st.selectbox("Case", pack_ids, index=pack_ids.index(case_default) if case_default in pack_ids else 0)
-    st.session_state["case_id"] = case_id
+    case_id = common.case_select(st, pack_ids, key="case_page_case", preferred=qp.get("case"))
 
 if not run_id:
     st.warning("No run selected — `make mock-run` or `make bench` first.")

@@ -63,15 +63,14 @@ st.dataframe(rows, width="stretch", hide_index=True)
 st.divider()
 left, right = st.columns([1, 2])
 with left:
-    case_id = st.selectbox("Case", [m["case_id"] for m in pack], index=[m["case_id"] for m in pack].index(st.session_state.get("case_id", "HHG-014")) if st.session_state.get("case_id") in [m["case_id"] for m in pack] else 13)
-    st.session_state["case_id"] = case_id
+    case_id = common.case_select(st, [m["case_id"] for m in pack], key="queue_case")
     meta = common.case_meta(case_id)
     st.markdown(f"**{meta.get('trigger_type','')}** · opened `{meta.get('opened_at','')}`")
     st.info(meta.get("trigger_text", ""))
     common.link_to("pages/2_case.py", label="Open the case view", icon=common.PAGE_ICONS["case"])
 
 with right:
-    mode = common.run_mode()
+    mode = "mock" if common.read_only() else common.run_mode()  # read-only deployment: replay, never spawn agent.bench
     st.markdown("**Investigate** — " + ("runs the agent live through the TigerGraph MCP tools" if mode == "live" else "replays the recorded tool trace (mock / demo fallback)"))
     speed = st.slider("Replay speed (s per call)", 0.0, 2.0, 0.4, 0.1)
     if st.button("▶ Investigate", type="primary", width="stretch"):

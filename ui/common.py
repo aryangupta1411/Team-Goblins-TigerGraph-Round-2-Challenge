@@ -48,6 +48,27 @@ def run_mode() -> str:
     return "live" if mode == "live" and _env("TG_HOST") else "mock"
 
 
+def read_only() -> bool:
+    """DEPLOY_READONLY=1 (the Dockerfile default): a public deployment never spawns the agent and never
+    writes to the graph, whatever RUN_MODE says. Graph reads and local approval decisions still work."""
+    return _env("DEPLOY_READONLY", "").strip().lower() in ("1", "true", "yes", "on")
+
+
+def case_select(where: Any, pack_ids: list[str], key: str, preferred: str | None = None) -> str:
+    """The Case selectbox of the queue, case and graph pages. Each page's widget owns its key and is
+    seeded from st.session_state["case_id"] only while it has no value, so a pick sticks (an index=
+    that changes with the pick rebuilds the widget and snaps it back to the previous case) and the
+    last opened case still follows the analyst from page to page."""
+    import streamlit as st
+
+    if st.session_state.get(key) not in pack_ids:
+        want = preferred or st.session_state.get("case_id") or "HHG-014"
+        st.session_state[key] = want if want in pack_ids else pack_ids[0]
+    case_id = where.selectbox("Case", pack_ids, key=key)
+    st.session_state["case_id"] = case_id
+    return case_id
+
+
 def runs_root() -> Path:
     p = Path(_env("RUNS_DIR", str(ROOT / "runs")))
     return p if p.is_absolute() else ROOT / p

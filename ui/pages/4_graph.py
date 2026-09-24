@@ -20,8 +20,7 @@ common.page_header("Case subgraph")
 pack_ids = [m["case_id"] for m in common.load_case_pack()]
 run_id = st.session_state.get("run_id") or (common.list_runs() or [None])[0]
 c1, c2, c3, c4 = st.columns([2, 1, 1, 2])
-case_id = c1.selectbox("Case", pack_ids, index=pack_ids.index(st.session_state.get("case_id", "HHG-014")) if st.session_state.get("case_id") in pack_ids else 13)
-st.session_state["case_id"] = case_id
+case_id = common.case_select(c1, pack_ids, key="graph_case")
 hours = c2.number_input("hours before opened_at", 1, 24 * 30, 72)
 renderer = c3.selectbox("Renderer", ["streamlit-agraph", "pyvis"])
 meta = common.case_meta(case_id)
@@ -46,6 +45,10 @@ if sub is None or not sub.get("nodes"):
 
 FONT = "Inter, -apple-system, Helvetica, Arial, sans-serif"
 MUTED = "#9aa3b2"
+# the canvas paints its own labels, so it follows the app theme explicitly; an unknown theme (first load) gets
+# the light palette on a light panel, which stays legible either way
+DARK = st.context.theme.type == "dark"
+INK, PAPER, SUBTLE, SELECT = ("#e6edf3", "#0d1117", "#8b949e", "#58a6ff") if DARK else ("#1a1a1a", "#ffffff", "#5b6472", "#0b3d91")
 NODE_STYLE = {  # (vis shape, size); shape repeats the colour cue so the legend reads without colour
     "AgentCase": ("diamond", 28),
     "Card": ("dot", 24),
@@ -129,7 +132,7 @@ legend_edges = "".join(
     f"&nbsp;{t}</span>"
     for t in edge_types
 )
-row = "display:flex;flex-wrap:wrap;gap:6px 20px;align-items:center;font-size:13px;color:#3f4652;margin:2px 0 6px"
+row = f"display:flex;flex-wrap:wrap;gap:6px 20px;align-items:center;font-size:13px;color:{SUBTLE};margin:2px 0 6px"
 st.markdown(f"<div style='{row}'>{legend_nodes}</div><div style='{row};margin-bottom:12px'>{legend_edges}</div>", unsafe_allow_html=True)
 
 vis_nodes = []
@@ -144,13 +147,13 @@ for n in nodes:
         "label": node_label(n, detailed),
         "shape": shape,
         "size": size,
-        "color": {"background": c, "border": "#ffffff", "highlight": {"background": c, "border": "#0b3d91"}, "hover": {"background": c, "border": "#0b3d91"}},
+        "color": {"background": c, "border": PAPER, "highlight": {"background": c, "border": SELECT}, "hover": {"background": c, "border": SELECT}},
     })
 vis_edges = []
 for e in edges:
     t = common.etype(e)
     c, dashed = edge_style(t)
-    ve = {"source": e["src"], "target": e["dst"], "title": t, "dashes": dashed, "color": {"color": c, "highlight": "#0b3d91", "hover": c, "opacity": 0.9}}
+    ve = {"source": e["src"], "target": e["dst"], "title": t, "dashes": dashed, "color": {"color": c, "highlight": SELECT, "hover": c, "opacity": 0.9}}
     if edge_labels:
         ve["label"] = t
     vis_edges.append(ve)
@@ -158,7 +161,7 @@ for e in edges:
 VIS_OPTIONS = {
     "autoResize": True,
     "nodes": {
-        "font": {"face": FONT, "size": 18 if dense else 13, "color": "#1a1a1a", "strokeWidth": 4, "strokeColor": "#ffffff"},
+        "font": {"face": FONT, "size": 18 if dense else 13, "color": INK, "strokeWidth": 4, "strokeColor": PAPER},
         "borderWidth": 2,
         "borderWidthSelected": 3,
     },
@@ -168,7 +171,7 @@ VIS_OPTIONS = {
         "hoverWidth": 0.8,
         "arrows": {"to": {"enabled": True, "scaleFactor": 0.45}},
         "smooth": {"enabled": True, "type": "continuous", "roundness": 0.2},
-        "font": {"face": FONT, "size": 10, "color": "#5b6472", "strokeWidth": 3, "strokeColor": "#ffffff", "align": "middle"},
+        "font": {"face": FONT, "size": 10, "color": SUBTLE, "strokeWidth": 3, "strokeColor": PAPER, "align": "middle"},
     },
     "physics": {
         "enabled": len(nodes) < 150,
@@ -184,7 +187,8 @@ VIS_OPTIONS = {
 g_col, d_col = st.columns([3, 1], gap="medium")
 clicked = None
 with g_col:
-    with st.container(border=True):
+    st.markdown(f"<style>.st-key-graph_panel {{background: {PAPER};}}</style>", unsafe_allow_html=True)
+    with st.container(border=True, key="graph_panel"):
         if renderer == "streamlit-agraph":
             try:
                 from streamlit_agraph import Config, Edge, Node, agraph
@@ -197,6 +201,7 @@ with g_col:
                 gedges = [Edge(**{k: v for k, v in ve.items() if k != "color"}, color=ve["color"]) for ve in vis_edges]
                 cfg = Config(directed=True, physics=len(nodes) < 150, hierarchical=False)
                 cfg.__dict__.update(VIS_OPTIONS, width="100%", height=f"{HEIGHT}px")  # Config appends "px" to width, so set it directly
+                cfg.__dict__.pop("groups", None)  # Config defaults groups=None, which vis rejects on every redraw
                 clicked = agraph(nodes=gnodes, edges=gedges, config=cfg)
             except ImportError:
                 st.warning("streamlit-agraph not installed; using pyvis")
@@ -206,7 +211,7 @@ with g_col:
 
             from pyvis.network import Network
 
-            net = Network(height=f"{HEIGHT}px", width="100%", directed=True, notebook=False, cdn_resources="in_line", bgcolor="#ffffff", font_color="#1a1a1a")
+            net = Network(height=f"{HEIGHT}px", width="100%", directed=True, notebook=False, cdn_resources="in_line", bgcolor=PAPER, font_color=INK)
             for vn in vis_nodes:
                 net.add_node(vn["id"], label=vn["label"], shape=vn["shape"], size=vn["size"], color=vn["color"], title=f"{common.vtype(node_by_id[vn['id']])}\n{vn['id']}")
             for ve in vis_edges:

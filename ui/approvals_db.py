@@ -46,6 +46,10 @@ COLUMNS = ("id", "case_id", "action", "route", "reason", "status", "decided_by",
 # CaseEvent.seq for approval events: agent phases use 1..99, approvals 500 + row id (id is 3-digit padded).
 APPROVAL_EVENT_SEQ_BASE = 500
 
+# decided_by is free text from the approvals page and the inbox is shared by every visitor of a
+# deployment, so it is capped here as well as in the widget.
+DECIDED_BY_MAX = 64
+
 
 def default_path() -> Path:
     return Path(os.getenv("APPROVALS_DB", str(Path(__file__).resolve().parent / "approvals.sqlite")))
@@ -118,6 +122,8 @@ def decide(approval_id: int, status: str, decided_by: str, path: str | os.PathLi
     if status not in ("approved", "rejected"):
         raise ValueError(status)
     when = now or dt.datetime.now(dt.UTC).strftime("%Y-%m-%d %H:%M:%S")
+    if decided_by is not None:
+        decided_by = str(decided_by)[:DECIDED_BY_MAX]
     con = connect(path)
     try:
         with con:

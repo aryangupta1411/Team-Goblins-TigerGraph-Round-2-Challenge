@@ -337,6 +337,49 @@ Rebuild the id-only validator DuckDB (`data/ids.duckdb`, checked in) and verify 
 make ids
 ```
 
+## Deploy on Railway
+
+The analyst dashboard runs on [Railway](https://railway.com) as one small container. The root `Dockerfile`
+installs only what `ui/` imports: `requirements-ui.txt`, 70 packages pinned to `uv.lock`, about 127 MB of
+wheels. A plain `uv sync` would download 3.4 GB, mostly torch and CUDA wheels. The image also ships `cases/` and
+the canonical run `runs/live-final-2/`, so the public page shows all 20 cases with their full traces. It starts in
+mock mode and read-only, so it needs no TigerGraph connection, no agent and no keys.
+
+1. Commit and push the deploy files (`Dockerfile`, `.dockerignore`, `.railwayignore`, `railway.json`,
+   `requirements-ui.txt`), the changes to `.gitignore` and `ui/`, and `runs/.gitkeep` with `runs/live-final-2/`.
+   `.gitignore` now lets that one run in, and every other run stays local. Before pushing, check that
+   `git ls-files runs/live-final-2 | wc -l` prints 82; without the run, the build fails at its `COPY`.
+2. Sign in at railway.com with GitHub, then choose **New Project → Deploy from GitHub repo**, pick this repository
+   and the branch `main`. If Railway asks, grant its GitHub app access to the repository. Railway finds the root
+   `Dockerfile`, so leave **Custom Start Command** empty. If you do set one, wrap it so `$PORT` expands:
+   `/bin/sh -c "exec streamlit run ui/app.py --server.address=0.0.0.0 --server.port=$PORT"`.
+3. Under **Settings → Deploy**, set the healthcheck path to `/_stcore/health`. `railway.json` has the same settings,
+   but Railway no longer reads config files for new services.
+4. Under **Settings → Networking**, choose **Generate Domain**. The target port is the one Streamlit listens on,
+   Railway's `PORT`.
+5. No variables are required. Do not add `TG_SECRET` or API keys, and do not accept the variables Railway suggests
+   from `.env.example`.
+
+If the page stays on "Please wait...", set `STREAMLIT_BROWSER_SERVER_ADDRESS` to the service's `*.up.railway.app`
+domain, so Streamlit accepts the browser's websocket origin. Keep CORS and XSRF protection on.
+
+From a local checkout, `railway up` deploys the same image. It skips everything in `.gitignore` and
+`.railwayignore`. Never pass `--no-gitignore`, because that uploads `.env`.
+
+To try the image locally:
+
+```bash
+docker build -t hhgoa-ui . && docker run --rm -p 8501:8501 hhgoa-ui
+```
+
+| Variable | Image default | Effect |
+|---|---|---|
+| `RUN_MODE` | `mock` | Set to `live`, with `TG_HOST` and `TG_SECRET`, to make the graph page query `case_subgraph` on the workspace. |
+| `DEPLOY_READONLY` | `1` | Investigate replays the recorded trace instead of running the agent, and approval decisions never reach the graph, even in live mode. |
+| `APPROVALS_DB` | `/tmp/approvals.sqlite` | Path of the approval inbox, which every visitor shares. It must be an absolute, writable path: the relative `ui/approvals.sqlite` from `.env.example` breaks the Approvals page, because `/app` is read-only for the app user. A redeploy wipes the container disk. To keep decisions, attach a volume at `/data`, set this to `/data/approvals.sqlite` and set `RAILWAY_RUN_UID=0`, because the image runs as a non-root user. |
+| `TG_HOST`, `TG_SECRET` | unset | Needed for live mode only. Add `TG_SECRET` as a sealed variable. On a public URL, any visitor who opens the graph page then wakes, and bills, the workspace, and connection errors show its hostname. |
+| `PORT` | set by Railway | The port Streamlit listens on; `8501` when unset. |
+
 ## Guarantees about the answer files
 
 - **Every id exists in the dataset.** The validator resolves every `TransactionID`, card id, customer id, `CC-` id and device-profile string against DuckDB before a file is promoted; an agent-written `AC-` id never appears in `entity_ids` (it is only in `graph_case_id`).

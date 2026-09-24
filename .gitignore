@@ -1,8 +1,11 @@
 # secrets and local state
 .env
 ui/approvals.sqlite
-runs/
+# runs are local output, except the canonical final run (the source of cases/*.json), which the
+# dashboard and the Railway image show. `runs/*` rather than `runs/` so the exceptions can apply.
+runs/*
 !runs/.gitkeep
+!runs/live-final-2/
 
 # raw data (708 MB) and the full DuckDB; the id-only data/ids.duckdb IS checked in for CI
 data/raw/

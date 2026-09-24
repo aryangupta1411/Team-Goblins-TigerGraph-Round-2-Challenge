@@ -18,15 +18,18 @@ st.set_page_config(page_title="Approvals", page_icon=common.PAGE_ICONS["approval
 common.inject_css()
 common.page_header("Approval inbox")
 mode = common.run_mode()
+graph_writes = mode == "live" and not common.read_only()  # DEPLOY_READONLY=1 keeps decisions local even in live mode
 st.caption(
-    "Policy §2: the agent executes `auto` actions itself; `L1` (team lead: DECLINE_TRANSACTION, BLOCK_CARD ≤ $2,500) and "
-    "`L2` (fraud manager: BLOCK_CARD > $2,500, BLOCK_ALL_CARDS, FILE_REPORT) wait here. "
-    + ("Decisions write an `Approval` vertex and a `CaseEvent(kind=approval)` to FraudGraph." if mode == "live" else "**Mock mode:** decisions are stored in ui/approvals.sqlite only.")
+    "Policy §2: the agent executes `auto` actions itself; `L1` (team lead: DECLINE_TRANSACTION, BLOCK_CARD ≤ \\$2,500) and "
+    "`L2` (fraud manager: BLOCK_CARD > \\$2,500, BLOCK_ALL_CARDS, FILE_REPORT) wait here. "
+    + ("Decisions write an `Approval` vertex and a `CaseEvent(kind=approval)` to FraudGraph." if graph_writes
+       else "**Read-only deployment:** decisions are recorded locally only (shared by everyone using this deployment) and never written to FraudGraph." if common.read_only()
+       else "**Mock mode:** decisions are stored in ui/approvals.sqlite only.")
 )
 
 run_id = st.session_state.get("run_id") or (common.list_runs() or [None])[0]
 c1, c2, c3 = st.columns([2, 2, 3])
-decided_by = c1.text_input("Decided by", value=st.session_state.get("decided_by", "team-lead@bank"), help="Recorded in Approval.decided_by")
+decided_by = c1.text_input("Decided by", value=st.session_state.get("decided_by", "team-lead@bank"), max_chars=approvals_db.DECIDED_BY_MAX, help="Recorded in Approval.decided_by")
 st.session_state["decided_by"] = decided_by
 if c2.button(f"Import L1/L2 actions from run `{run_id}`", disabled=not run_id, help="The agent's authorize() normally enqueues these itself; this re-scans answer.json files."):
     n = 0
@@ -48,7 +51,7 @@ st.metric("Pending approvals", pending)
 
 def decide(row: dict, status: str) -> None:
     updated = approvals_db.decide(row["id"], status, decided_by)
-    if mode == "live":
+    if graph_writes:
         try:
             conn = common.graph_conn()
             out = approvals_db.write_to_graph(conn, updated)
@@ -57,7 +60,7 @@ def decide(row: dict, status: str) -> None:
         except Exception as exc:  # noqa: BLE001 - surface to the analyst, keep the local decision
             st.session_state[f"graph_err_{row['id']}"] = str(exc)
     else:
-        st.toast(f"{row['case_id']} {row['action']}: {status} (mock: local only)")
+        st.toast(f"{row['case_id']} {row['action']}: {status} ({'read-only' if common.read_only() else 'mock'}: local only)")
 
 
 for r in rows:
@@ -67,7 +70,8 @@ for r in rows:
         a.markdown(f"**{r['case_id']}** · **{r['action']}** {common.route_badge(r['route'])} {chips} · {common.badge(r['status'], {'pending':'orange','approved':'green','rejected':'red'}[r['status']])}")
         a.caption(r.get("reason", ""))
         if r["status"] != "pending":
-            a.caption(f"decided by {r.get('decided_by')} at {r.get('decided_at')} · graph id `{approvals_db.approval_vertex_id(r['case_id'], r['action'])}`")
+            who = str(r.get("decided_by") or "").replace("`", "'")  # visitor-typed: inline code, so no links / images / colors
+            a.caption(f"decided by `{who}` at {r.get('decided_at')} · graph id `{approvals_db.approval_vertex_id(r['case_id'], r['action'])}`")
         if err := st.session_state.get(f"graph_err_{r['id']}"):
             a.error(f"graph write failed: {err}")
             if a.button("Retry graph write", key=f"retry_{r['id']}"):

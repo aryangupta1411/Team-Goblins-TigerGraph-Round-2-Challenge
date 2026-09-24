@@ -16,8 +16,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from ui import common  # noqa: E402
 
-st.set_page_config(page_title="Queue", page_icon="📥", layout="wide")
-st.title("📥 Case queue")
+st.set_page_config(page_title="Queue", page_icon=common.PAGE_ICONS["queue"], layout="wide")
+common.inject_css()
+common.page_header("Case queue", "The 20 exam cases and the state each one reached in the selected run.")
 
 run_id = st.session_state.get("run_id") or (common.list_runs() or [None])[0]
 st.session_state["run_id"] = run_id
@@ -67,7 +68,7 @@ with left:
     meta = common.case_meta(case_id)
     st.markdown(f"**{meta.get('trigger_type','')}** · opened `{meta.get('opened_at','')}`")
     st.info(meta.get("trigger_text", ""))
-    common.link_to("pages/2_case.py", label="Open the case view", icon="🔎")
+    common.link_to("pages/2_case.py", label="Open the case view", icon=common.PAGE_ICONS["case"])
 
 with right:
     mode = common.run_mode()
@@ -101,12 +102,12 @@ with right:
             else:
                 for c in cr.calls:
                     if c.get("kind") == "llm":
-                        box.write(f"`{c.get('phase','')}` 🧠 **{c.get('name')}** ({c.get('model','')}) — {c.get('input_tokens',0)}+{c.get('output_tokens',0)} tokens, {c.get('latency_s','?')}s")
+                        box.write(f"`{c.get('phase','')}` {common.badge('LLM', 'violet')} **{c.get('name')}** ({c.get('model','')}) — {c.get('input_tokens',0)}+{c.get('output_tokens',0)} tokens, {c.get('latency_s','?')}s")
                     else:
-                        box.write(f"`{c.get('phase','')}` 🕸️ **tigergraph__run_installed_query** `{c.get('name')}` `{c.get('params',{})}` — {c.get('result_bytes','?')} B, {c.get('latency_s','?')}s")
+                        box.write(f"`{c.get('phase','')}` {common.badge('TOOL', 'blue')} **tigergraph__run_installed_query** `{c.get('name')}` `{c.get('params',{})}` — {c.get('result_bytes','?')} B, {c.get('latency_s','?')}s")
                     time.sleep(speed)
                 for ph in cr.phases:
                     if ph.get("phase") in ("P4", "P5", "P6", "P7"):
                         box.write(f"**{ph.get('phase')} {ph.get('name')}** → `{str(ph.get('payload'))[:300]}`")
                 box.update(label=f"Replayed {len(cr.calls)} calls for {case_id}", state="complete")
-                common.link_to("pages/2_case.py", label="See the evidence and the recommendation", icon="🔎")
+                common.link_to("pages/2_case.py", label="See the evidence and the recommendation", icon=common.PAGE_ICONS["case"])

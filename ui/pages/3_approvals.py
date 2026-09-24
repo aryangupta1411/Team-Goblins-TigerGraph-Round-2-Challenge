@@ -14,8 +14,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from ui import approvals_db, common  # noqa: E402
 
-st.set_page_config(page_title="Approvals", page_icon="✅", layout="wide")
-st.title("✅ Approval inbox")
+st.set_page_config(page_title="Approvals", page_icon=common.PAGE_ICONS["approvals"], layout="wide")
+common.inject_css()
+common.page_header("Approval inbox")
 mode = common.run_mode()
 st.caption(
     "Policy §2: the agent executes `auto` actions itself; `L1` (team lead: DECLINE_TRANSACTION, BLOCK_CARD ≤ $2,500) and "
@@ -87,7 +88,7 @@ for r in rows:
             if b.button("Reopen", key=f"re_{r['id']}", width="stretch"):
                 approvals_db.reopen(r["id"])
                 st.rerun()
-        common.link_to("pages/2_case.py", label="Open case", icon="🔎")
+        common.link_to("pages/2_case.py", label="Open case", icon=common.PAGE_ICONS["case"])
 
 with st.expander("Raw table (ui/approvals.sqlite)"):
     st.dataframe(approvals_db.rows(), width="stretch", hide_index=True)

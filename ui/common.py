@@ -263,19 +263,121 @@ def rule_chips(reason: str) -> list[str]:
     return seen
 
 
-ROUTE_COLORS = {"auto": "green", "L1": "orange", "L2": "red"}
+ROUTE_COLORS = {"auto": "gray", "L1": "orange", "L2": "red"}
 VERDICT_COLORS = {"fraud": "red", "legitimate": "green", "uncertain": "orange"}
 STATUS_COLORS = {"open": "blue", "escalated": "orange", "closed_fraud": "red", "closed_legitimate": "green"}
-SOURCE_ICONS = {"graph": "🕸️", "document": "📄", "customer": "🗣️", "external": "🌐"}
+SOURCE_COLORS = {"graph": "blue", "document": "violet", "customer": "orange", "external": "gray"}
 
 
 def badge(text: str, color: str) -> str:
-    """Streamlit markdown colour badge (``:color-badge[text]`` needs streamlit >= 1.40)."""
+    """Streamlit markdown colour badge (``:color-badge[text]`` needs streamlit >= 1.40).
+    Colours resolve through .streamlit/config.toml's palette, so "red" is always the
+    same red everywhere in the app rather than Streamlit's stock per-color defaults."""
     return f":{color}-badge[{text}]"
 
 
 def route_badge(route: str) -> str:
     return badge(route, ROUTE_COLORS.get(route, "gray"))
+
+
+def source_badge(source: str) -> str:
+    return badge(source or "—", SOURCE_COLORS.get(source, "gray"))
+
+
+# --------------------------------------------------------------------------- #
+# Page chrome — one look shared by every page (PLAN §3.1): a single injected  #
+# stylesheet plus a consistent header component, instead of six pages each   #
+# improvising their own st.title() + emoji.                                  #
+# --------------------------------------------------------------------------- #
+PAGE_ICONS = {
+    "app": ":material/verified_user:",
+    "queue": ":material/inbox:",
+    "case": ":material/search:",
+    "approvals": ":material/task_alt:",
+    "graph": ":material/hub:",
+    "runs": ":material/monitoring:",
+}
+
+
+def inject_css() -> None:
+    """Small stylesheet on top of the config.toml theme: tighten default
+    Streamlit spacing, give containers a touch more polish, and drop the
+    "Made with Streamlit" footer. Safe to call once per page load."""
+    import streamlit as st
+
+    st.markdown(
+        """
+        <style>
+        /* tighten the default top margin so the header sits closer to the sidebar */
+        .block-container { padding-top: 2.2rem; padding-bottom: 3rem; max-width: 1400px; }
+        footer { visibility: hidden; }
+        /* main-menu (⋮) cleanup: keep Print + the theme toggle, drop the
+           screen-recorder item and the "Made with Streamlit vX.Y.Z" footer.
+           toolbarMode="viewer" bundles print/record/theme-toggle together
+           with no config flag to hide just one, so this is CSS by necessity. */
+        [data-testid="stMainMenuItem-recordScreencast"] { display: none !important; }
+        [data-testid="stMainMenuPopover"] > div > div:not([data-testid]) { display: none !important; }
+        /* bordered containers (st.container(border=True)) read as cards, not boxes */
+        div[data-testid="stVerticalBlockBorderWrapper"] {
+            border-radius: 10px !important;
+            box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
+        }
+        /* metric labels: allow wrapping instead of Streamlit's default single-line ellipsis.
+           the actual truncation lives on the nested stMarkdownContainer (fixed px width,
+           nowrap, text-overflow:ellipsis) and its <p>, not on stMetricLabel itself. */
+        [data-testid="stMetricLabel"],
+        [data-testid="stMetricLabel"] > div,
+        [data-testid="stMetricLabel"] [data-testid="stMarkdownContainer"],
+        [data-testid="stMetricLabel"] [data-testid="stMarkdownContainer"] p {
+            white-space: normal !important;
+            overflow: visible !important;
+            text-overflow: clip !important;
+            width: 100% !important;
+            max-width: 100% !important;
+            line-height: 1.25 !important;
+        }
+        /* every other widget label (checkbox, selectbox, text_input, ...) uses the same
+           fixed-width nowrap+ellipsis pattern as stMetricLabel; fix it once, globally. */
+        [data-testid="stWidgetLabel"],
+        [data-testid="stWidgetLabel"] [data-testid="stMarkdownContainer"],
+        [data-testid="stWidgetLabel"] [data-testid="stMarkdownContainer"] p {
+            white-space: normal !important;
+            overflow: visible !important;
+            text-overflow: clip !important;
+            width: 100% !important;
+            max-width: 100% !important;
+            line-height: 1.25 !important;
+        }
+        div[data-testid="stMetricValue"],
+        div[data-testid="stMetricValue"] > div {
+            font-weight: 700;
+            overflow: visible !important;
+            white-space: normal !important;
+            text-overflow: clip !important;
+            width: 100% !important;
+            max-width: 100% !important;
+            font-size: 1.3rem !important;
+            line-height: 1.3 !important;
+            word-break: break-word;
+        }
+        /* sidebar nav: a touch more breathing room between page links */
+        div[data-testid="stSidebarNav"] a { border-radius: 8px; }
+        h1, h2, h3 { letter-spacing: -0.01em; }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def page_header(title: str, subtitle: str = "", icon: str = "") -> None:
+    """Consistent page header: one H2 with an optional muted subtitle line,
+    used by every sub-page instead of st.title() + an emoji glued to the text."""
+    import streamlit as st
+
+    prefix = f"{icon} " if icon else ""
+    st.markdown(f"## {prefix}{title}")
+    if subtitle:
+        st.caption(subtitle)
 
 
 def actions_diff(initial: list[dict], final: list[dict]) -> tuple[list[str], list[str], list[str]]:
@@ -384,7 +486,18 @@ def run_installed(conn, name: str, params: dict, timeout_ms: int = 60_000) -> di
     return merged
 
 
-NODE_COLORS = {"Card": "#f39c12", "Transaction": "#3498db", "DeviceProfile": "#e74c3c", "EmailDomain": "#9b59b6", "BillingRegion": "#1abc9c", "ClosedCase": "#7f8c8d", "AgentCase": "#2ecc71", "Customer": "#e67e22"}
+# Coordinated with .streamlit/config.toml's chartCategoricalColors so the graph
+# page's node palette reads as part of the same design system, not a clip-art set.
+NODE_COLORS = {
+    "Card": "#b8860b",
+    "Transaction": "#2563eb",
+    "DeviceProfile": "#c0392b",
+    "EmailDomain": "#7c3aed",
+    "BillingRegion": "#0e7c86",
+    "ClosedCase": "#5b6472",
+    "AgentCase": "#1e7e34",
+    "Customer": "#0b3d91",
+}
 
 
 def vtype(node: dict) -> str:

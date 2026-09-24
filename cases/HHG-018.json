@@ -17,7 +17,7 @@
     "exposure_usd": 197.11,
     "evidence": [
       {
-        "claim": "Customer C02354 denies making the $39.08 purchase 3491361; the denial is the trigger evidence and floors the probability at 0.55 per bank history where customer-reported denials were never cleared without an R7 match.",
+        "claim": "The customer reports they never made the $39.08 purchase 3491361 and asks the bank to check the card; in this bank's history 4,665 of 4,665 customer-reported closed cases were confirmed fraud and none were cleared, so the denial is treated as a strong fraud signal.",
         "source": "customer",
         "ref": "trigger",
         "entity_ids": [
@@ -26,16 +26,7 @@
         ]
       },
       {
-        "claim": "recurring_charge_check on txn 3491361 found 17 prior product-W purchases within 1% of $39.08 in billing region 126.0 (median gap 5.0 days) but gap CV of 1.029, which exceeds the 0.6 ceiling required for the R7 recurring-pattern exception, so R7 does not apply and R2 governs this denial.",
-        "source": "graph",
-        "ref": "query:recurring_charge_check(t=3491361, tol=0.01, as_of=2016-11-27 14:41:26)",
-        "entity_ids": [
-          "3491361",
-          "C02354-K2"
-        ]
-      },
-      {
-        "claim": "The card's modal region is 325.0 (4,788 prior in-person purchases across 149 days as of opening) while the flagged charge occurred in region 126.0, a secondary but well-used region (565 prior purchases across 141 days); the bank labels card-present fraud away from the modal region out_of_region_use even when the region is known to the card, matching the pattern documented for 581 of 955 of the bank's confirmed out_of_region_use cases.",
+        "claim": "Per the bank's out_of_region_use convention, a card-present purchase away from the card's modal region is labeled out_of_region_use even when that region is known to the card: billing region 126.0 has 566 prior in-person purchases over 142 days versus modal region 325.0's 4,788 prior purchases over 149 days, so the flagged transaction and episode members outside 325.0 are labeled out_of_region_use rather than 'known, so ordinary use'.",
         "source": "graph",
         "ref": "query:region_history(c=C02354-K2, addr1=126.0, as_of=2016-11-27 14:41:26)",
         "entity_ids": [
@@ -44,32 +35,39 @@
         ]
       },
       {
-        "claim": "episode_candidates around the flagged transaction shows a same-card, same-region in-person purchase 3485990 ($40.96 in region 126.0, ts 2016-11-25 13:26:35, two days earlier) with a cms_p of 0.837, the highest score in the 48h chain, though it does not sig_match the flagged transaction structurally.",
+        "claim": "recurring_charge_check on product W at billing region 126.0 found 17 prior purchases with median gap 5.0 days but gap coefficient of variation 1.03, which fails the R7 monthly-cadence requirement (gap CV <= 0.6), so the recurring-pattern exception does not apply and the case proceeds under R2.",
         "source": "graph",
-        "ref": "query:episode_candidates(t=3491361, as_of=2016-11-27 14:41:26, gap_h=48)",
+        "ref": "query:recurring_charge_check(t=3491361, tol=0.01, as_of=2016-11-27 14:41:26)",
         "entity_ids": [
-          "3485990",
-          "3491361"
+          "3491361",
+          "C02354-K2"
         ]
       },
       {
-        "claim": "This exact card carries 19 confirmed_fraud closed cases (account_takeover and out_of_region_use patterns, most recently CC-5558 opened 2016-11-01) against a single cleared case (CC-0405, confirmed-travel outcome), indicating a chronically compromised card rather than an isolated dispute.",
+        "claim": "prior_cases_for_customer lists 19 confirmed-fraud closed cases on this same card (patterns account_takeover, out_of_region_use, card_not_present_fraud), the most recent (CC-5558) opened 2016-11-01, less than a month before this transaction, showing a card that is repeatedly compromised.",
         "source": "graph",
         "ref": "query:prior_cases_for_customer(cu=C02354, as_of=2016-11-27 14:41:26)",
         "entity_ids": [
           "CC-5558",
           "CC-4070",
           "CC-3899",
-          "CC-3085",
+          "CC-3634",
           "CC-1450",
-          "CC-0454",
           "CC-0255",
-          "CC-0405",
           "C02354-K2"
         ]
       },
       {
-        "claim": "The flagged $39.08 amount sits well under the card's prior median purchase of $86.91 (prior maximum $4,438.01 over 5,860 prior transactions as of opening), and the case-memory model itself scores this specific transaction at only 0.251 (calibrated 0.331), below the fraud band on its own.",
+        "claim": "Within the 48h episode_candidates chain around the flagged transaction, a second in-person transaction (3490180, $117.07, billing region 325.0) scored cms_p 0.719, well above the flagged transaction's own cms_p of 0.251, and is included in the engine's episode alongside 3491361.",
+        "source": "graph",
+        "ref": "query:episode_candidates(t=3491361, as_of=2016-11-27 14:41:26, gap_h=48)",
+        "entity_ids": [
+          "3490180",
+          "3491361"
+        ]
+      },
+      {
+        "claim": "The flagged amount of $39.08 sits inside the card's baseline as of opening: 5,860 prior transactions, prior median amount $86.91, prior maximum amount $4,438.01, so the amount itself is not anomalous for this card.",
         "source": "graph",
         "ref": "query:case_context(t=3491361, as_of=2016-11-27 14:41:26)",
         "entity_ids": [
@@ -78,23 +76,22 @@
         ]
       },
       {
-        "claim": "card_testing_check, under_threshold_burst and shared_origin_scan on this card returned no small-then-large chain, no just-under-$500 burst, and no strong shared device or recipient-email fan-out connected to the flagged charge, so no card_testing, undocumented-ring, or R6 shared-origin evidence applies here.",
+        "claim": "The case-memory scorer is flagged unreliable for this card: with 5,863 total transactions and the flagged transaction at card sequence position 5861, the calibrated probability (cal_p 0.33) and raw cms_p (0.25) are treated as low-weight evidence rather than a decisive signal, per the scorecard's scorer_unreliable flag.",
         "source": "graph",
-        "ref": "query:card_testing_check(c=C02354-K2, as_of=2016-11-27 14:41:26, small=5.0, window_min=60, min_n=3, big=100.0, lookahead_h=48)",
+        "ref": "query:case_context(t=3491361, as_of=2016-11-27 14:41:26)",
         "entity_ids": [
+          "3491361",
           "C02354-K2"
         ]
       }
     ],
     "similar_prior_cases": [
       "CC-1699",
-      "CC-5101",
+      "CC-3537",
       "CC-5360",
-      "CC-4630",
-      "CC-4215",
-      "CC-3606"
+      "CC-5101"
     ],
-    "summary": "Verdict uncertain at p=0.55, labeled out_of_region_use since the $39.08 charge landed in region 126.0 away from the card's modal region 325.0. The chain-rule episode is transactions 3485990, 3490180 and 3491361, exposure $197.11 around the customer's denied charge. Decisive facts pull both ways: 19 prior confirmed-fraud cases on this card plus a 0.837 cms_p same-region neighbor (3485990) argue fraud, while the amount fits the card's baseline and a near-miss recurring pattern in region 126.0 (gap CV 1.03, just over the R7 threshold) argues ordinary use. Recommending CREATE_CASE and ESCALATE_TO_ANALYST (auto) plus BLOCK_CARD pending L1 approval to resolve the conflict.",
+    "summary": "Uncertain verdict, probability 0.55; pattern out_of_region_use under the bank's convention for card-present activity away from the card's modal region 325.0 (flagged billing region 126.0). The chain-scoped episode (3485990, 3490180, 3491361) totals $197.11 exposure, driven by the customer's denial of 3491361 and 19 prior confirmed-fraud cases on this card, against the alternative reading that region 126.0 is long-used and the amount fits the card's baseline. No further evidence was requested. Recommend CREATE_CASE (auto) and BLOCK_CARD (L1, awaiting approval), plus ESCALATE_TO_ANALYST (auto) given the conflicting evidence.",
     "written_to_graph": true,
     "graph_case_id": "AC-HHG-018"
   },
@@ -104,34 +101,34 @@
       {
         "action": "CREATE_CASE",
         "route": "auto",
-        "reason": "3a/R2: the customer denied transaction 3491361 ($39.08, in-person, region 126.0), and 3a requires a case be opened on any customer dispute; exposure across the episode is $197.11."
+        "reason": "3a/R2: the customer denies transaction 3491361 and denial opens a case regardless of probability; exposure $197.11."
       },
       {
         "action": "BLOCK_CARD",
         "route": "L1",
-        "reason": "R2: customer denied the charge and no R7 recurring-pattern exception applies (recurring_charge_check gap CV 1.029 > 0.6), so blocking is recommended; exposure $197.11 ≤ $2,500 keeps this at L1."
+        "reason": "R2: customer denied the charge; exposure $197.11 ≤ $2,500, so a card block is recommended at L1."
       },
       {
         "action": "ESCALATE_TO_ANALYST",
         "route": "auto",
-        "reason": "R8: the verdict is uncertain (p=0.55) with conflicting evidence — 19 prior confirmed-fraud cases on this card and a high-cms_p same-region neighbour (3485990, cms_p 0.837) point toward fraud, while the amount sits inside the card's baseline and a near-miss recurring pattern in region 126.0 points toward ordinary use — so an analyst should resolve the conflict and confirm episode scope."
+        "reason": "R8: evidence conflicts (a denial plus 19 prior confirmed-fraud cases on this card point to fraud, while the known billing region 126.0, an in-baseline $39.08 amount, and an unreliable scorer on a 5,863-transaction card point to legitimacy), so the uncertain verdict is escalated to an analyst."
       }
     ],
     "final": [
       {
         "action": "CREATE_CASE",
         "route": "auto",
-        "reason": "3a/R2: the customer denied transaction 3491361 ($39.08, in-person, region 126.0), and 3a requires a case be opened on any customer dispute; exposure across the episode is $197.11."
+        "reason": "3a/R2: the customer denies transaction 3491361 and denial opens a case regardless of probability; exposure $197.11."
       },
       {
         "action": "BLOCK_CARD",
         "route": "L1",
-        "reason": "R2: customer denied the charge and no R7 recurring-pattern exception applies (recurring_charge_check gap CV 1.029 > 0.6), so blocking is recommended; exposure $197.11 ≤ $2,500 keeps this at L1."
+        "reason": "R2: customer denied the charge; exposure $197.11 ≤ $2,500, so a card block is recommended at L1."
       },
       {
         "action": "ESCALATE_TO_ANALYST",
         "route": "auto",
-        "reason": "R8: the verdict is uncertain (p=0.55) with conflicting evidence — 19 prior confirmed-fraud cases on this card and a high-cms_p same-region neighbour (3485990, cms_p 0.837) point toward fraud, while the amount sits inside the card's baseline and a near-miss recurring pattern in region 126.0 points toward ordinary use — so an analyst should resolve the conflict and confirm episode scope."
+        "reason": "R8: evidence conflicts (a denial plus 19 prior confirmed-fraud cases on this card point to fraud, while the known billing region 126.0, an in-baseline $39.08 amount, and an unreliable scorer on a 5,863-transaction card point to legitimacy), so the uncertain verdict is escalated to an analyst."
       }
     ],
     "what_changed": "nothing"
@@ -144,8 +141,8 @@
     "total_amount_usd": 0,
     "activity_dates": []
   },
-  "stop_reason": "Policy §6 test 2 fired: the customer's denial in the trigger is itself the verification response, so R2 already fixes the action set (BLOCK_CARD + CREATE_CASE); re-asking the customer would only repeat the question they already answered, and step-up authentication does not apply to a card-present purchase, so no evidence request was made before escalating the residual conflict to an analyst.",
+  "stop_reason": "Policy §6 test 2 fired: the customer's denial in the trigger is itself the verification response, so R2 already fixes the action set (BLOCK_CARD + CREATE_CASE); re-asking the customer would repeat a question already answered, and step-up authentication does not apply to a card-present purchase, so no evidence request was made and the conflicting graph facts were escalated instead.",
   "tool_calls": 17,
-  "tokens": 399494,
-  "latency_s": 207.8
+  "tokens": 418595,
+  "latency_s": 182.2
 }

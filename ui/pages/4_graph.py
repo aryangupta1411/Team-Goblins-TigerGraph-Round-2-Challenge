@@ -13,8 +13,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from ui import common  # noqa: E402
 
-st.set_page_config(page_title="Graph", page_icon="🕸️", layout="wide")
-st.title("🕸️ Case subgraph")
+st.set_page_config(page_title="Graph", page_icon=common.PAGE_ICONS["graph"], layout="wide")
+common.inject_css()
+common.page_header("Case subgraph")
 
 pack_ids = [m["case_id"] for m in common.load_case_pack()]
 run_id = st.session_state.get("run_id") or (common.list_runs() or [None])[0]
@@ -25,7 +26,7 @@ hours = c2.number_input("hours before opened_at", 1, 24 * 30, 72)
 renderer = c3.selectbox("Renderer", ["streamlit-agraph", "pyvis"])
 meta = common.case_meta(case_id)
 mode = common.run_mode()
-c4.markdown(f"card `{meta.get('card_id','')}` · as_of `{meta.get('opened_at','')}` · {common.badge(mode, 'green' if mode=='live' else 'gray')}")
+c4.markdown(f"card `{meta.get('card_id','')}` · as_of `{meta.get('opened_at','')}`")
 
 sub: dict | None = None
 if mode == "live":
@@ -43,36 +44,207 @@ if sub is None or not sub.get("nodes"):
     sub = common.subgraph_from_answer(ans, meta)
     st.caption(f"answer-derived subgraph: {len(sub['nodes'])} nodes / {len(sub['edges'])} edges (card, flagged + affected transactions, device profiles, connected cards, similar closed cases, the AgentCase vertex)")
 
-types = sorted({common.vtype(n) for n in sub["nodes"]})
-keep = st.multiselect("Vertex types", types, default=types)
+FONT = "Inter, -apple-system, Helvetica, Arial, sans-serif"
+MUTED = "#9aa3b2"
+NODE_STYLE = {  # (vis shape, size); shape repeats the colour cue so the legend reads without colour
+    "AgentCase": ("diamond", 28),
+    "Card": ("dot", 24),
+    "DeviceProfile": ("square", 20),
+    "Customer": ("dot", 20),
+    "EmailDomain": ("triangle", 17),
+    "BillingRegion": ("triangle", 17),
+    "ClosedCase": ("dot", 14),
+    "Transaction": ("dot", 14),
+}
+SHAPE_GLYPH = {"dot": "●", "diamond": "◆", "square": "■", "triangle": "▲"}
+EDGE_STYLE = {  # (colour, dashed): device links in red because they carry the ring signal; memory links dashed
+    "OWNS": (MUTED, False),
+    "MADE": ("#2563eb", False),
+    "FROM_DEVICE": ("#c0392b", False),
+    "SHARES_DEVICE": ("#c0392b", False),
+    "PURCHASER_EMAIL": ("#7c3aed", False),
+    "BILLED_IN": ("#0e7c86", False),
+    "CASE_ON_CARD": ("#1e7e34", False),
+    "CASE_INVOLVES": ("#1e7e34", False),
+    "CASE_CONNECTED_TO": ("#1e7e34", False),
+    "CASE_SIMILAR_TO": ("#5b6472", True),
+    "ON_CARD": ("#5b6472", True),
+}
+
+
+def node_style(t: str) -> tuple[str, int]:
+    return NODE_STYLE.get(t, ("dot", 16))
+
+
+def edge_style(t: str) -> tuple[str, bool]:
+    return EDGE_STYLE.get(t, (MUTED, False))
+
+
+def short(s: str, n: int) -> str:
+    return s if len(s) <= n else s[: n - 1] + "…"
+
+
+def node_label(n: dict, detailed: bool) -> str:
+    """Two short lines instead of one long one: the id, then what it is."""
+    nid, desc = str(n["id"]), str(n.get("label") or "")
+    if " | " in nid:  # device profiles are keyed by the full "model | os | browser | screen" string
+        head, rest = nid.split(" | ", 1)
+        tail = " · ".join(rest.split(" | ")[:2])
+    else:
+        head = nid
+        tail = desc[len(nid):].strip(" ()") if desc.startswith(nid) else desc
+    head = short(head, 22)
+    return f"{head}\n{short(tail, 26)}" if detailed and tail else head
+
+
+type_counts = {}
+for n in sub["nodes"]:
+    type_counts[common.vtype(n)] = type_counts.get(common.vtype(n), 0) + 1
+types = sorted(type_counts)
+f1, f2 = st.columns([5, 1], vertical_alignment="bottom")
+keep = f1.multiselect("Vertex types", types, default=types)
+edge_labels = f2.toggle("Edge labels", value=False, help="Relationship names always show when you hover an edge; switch this on to print them on every edge.")
 nodes = [n for n in sub["nodes"] if common.vtype(n) in keep]
 ids = {n["id"] for n in nodes}
-edges = [e for e in sub["edges"] if e.get("src") in ids and e.get("dst") in ids]
-st.markdown(" ".join(f"<span style='color:{common.NODE_COLORS.get(t,'#95a5a6')}'>■</span> {t}" for t in types), unsafe_allow_html=True)
+seen_edges: set[tuple] = set()
+edges = []
+for e in sub["edges"]:
+    k = (e.get("src"), e.get("dst"), common.etype(e))
+    if k[0] in ids and k[1] in ids and k not in seen_edges:
+        seen_edges.add(k)
+        edges.append(e)
+detailed = len(nodes) <= 60
+dense = len(nodes) > 20  # vis zooms out to fit a big view, so it gets larger type and smaller cards
+HEIGHT = 720 if dense else 620
+node_by_id = {n["id"]: n for n in nodes}
 
-if renderer == "streamlit-agraph":
-    try:
-        from streamlit_agraph import Config, Edge, Node, agraph
+legend_nodes = "".join(
+    f"<span style='white-space:nowrap'><span style='color:{common.NODE_COLORS.get(t, MUTED)};font-size:15px'>{SHAPE_GLYPH[node_style(t)[0]]}</span>"
+    f"&nbsp;{t} <span style='color:#8a93a3'>{type_counts[t]}</span></span>"
+    for t in types if t in keep
+)
+edge_types = sorted({common.etype(e) for e in edges})
+legend_edges = "".join(
+    f"<span style='white-space:nowrap'><span style='display:inline-block;width:22px;border-top:2px {'dashed' if edge_style(t)[1] else 'solid'} {edge_style(t)[0]};vertical-align:middle'></span>"
+    f"&nbsp;{t}</span>"
+    for t in edge_types
+)
+row = "display:flex;flex-wrap:wrap;gap:6px 20px;align-items:center;font-size:13px;color:#3f4652;margin:2px 0 6px"
+st.markdown(f"<div style='{row}'>{legend_nodes}</div><div style='{row};margin-bottom:12px'>{legend_edges}</div>", unsafe_allow_html=True)
 
-        gnodes = [Node(id=n["id"], label=str(n.get("label", n["id"]))[:28], size=22 if common.vtype(n) in ("Card", "AgentCase", "DeviceProfile") else 12, color=common.NODE_COLORS.get(common.vtype(n), "#95a5a6"), title=f"{common.vtype(n)}: {n['id']}") for n in nodes]
-        gedges = [Edge(source=e["src"], target=e["dst"], label=common.etype(e)) for e in edges]
-        cfg = Config(width="100%", height=650, directed=True, physics=len(nodes) < 150, hierarchical=False)
-        clicked = agraph(nodes=gnodes, edges=gedges, config=cfg)
-        if clicked:
-            st.info(f"selected `{clicked}`")
-    except ImportError:
-        st.warning("streamlit-agraph not installed; using pyvis")
-        renderer = "pyvis"
-if renderer == "pyvis":
-    import streamlit.components.v1 as components
-    from pyvis.network import Network
+vis_nodes = []
+for n in nodes:
+    t = common.vtype(n)
+    shape, size = node_style(t)
+    if dense and t == "Card":
+        size = 16
+    c = common.NODE_COLORS.get(t, MUTED)
+    vis_nodes.append({
+        "id": n["id"],
+        "label": node_label(n, detailed),
+        "shape": shape,
+        "size": size,
+        "color": {"background": c, "border": "#ffffff", "highlight": {"background": c, "border": "#0b3d91"}, "hover": {"background": c, "border": "#0b3d91"}},
+    })
+vis_edges = []
+for e in edges:
+    t = common.etype(e)
+    c, dashed = edge_style(t)
+    ve = {"source": e["src"], "target": e["dst"], "title": t, "dashes": dashed, "color": {"color": c, "highlight": "#0b3d91", "hover": c, "opacity": 0.9}}
+    if edge_labels:
+        ve["label"] = t
+    vis_edges.append(ve)
 
-    net = Network(height="650px", width="100%", directed=True, notebook=False, cdn_resources="in_line")
-    for n in nodes:
-        net.add_node(n["id"], label=str(n.get("label", n["id"]))[:28], color=common.NODE_COLORS.get(common.vtype(n), "#95a5a6"), title=f"{common.vtype(n)}: {n['id']}")
-    for e in edges:
-        net.add_edge(e["src"], e["dst"], title=common.etype(e))
-    components.html(net.generate_html(), height=680, scrolling=True)
+VIS_OPTIONS = {
+    "autoResize": True,
+    "nodes": {
+        "font": {"face": FONT, "size": 18 if dense else 13, "color": "#1a1a1a", "strokeWidth": 4, "strokeColor": "#ffffff"},
+        "borderWidth": 2,
+        "borderWidthSelected": 3,
+    },
+    "edges": {
+        "width": 1.4,
+        "selectionWidth": 1.5,
+        "hoverWidth": 0.8,
+        "arrows": {"to": {"enabled": True, "scaleFactor": 0.45}},
+        "smooth": {"enabled": True, "type": "continuous", "roundness": 0.2},
+        "font": {"face": FONT, "size": 10, "color": "#5b6472", "strokeWidth": 3, "strokeColor": "#ffffff", "align": "middle"},
+    },
+    "physics": {
+        "enabled": len(nodes) < 150,
+        "solver": "barnesHut",
+        "barnesHut": {"gravitationalConstant": -7000 if dense else -9000, "centralGravity": 0.3 if dense else 0.25, "springLength": 150 if dense else 170, "springConstant": 0.04 if dense else 0.035, "damping": 0.35, "avoidOverlap": 0.8 if dense else 0.5},
+        "stabilization": {"enabled": True, "iterations": 600, "fit": True},
+        "minVelocity": 0.75,
+    },
+    "layout": {"randomSeed": 7, "improvedLayout": True, "hierarchical": {"enabled": False}},
+    "interaction": {"hover": True, "tooltipDelay": 120, "zoomView": True, "dragView": True, "navigationButtons": False, "keyboard": False},
+}
+
+g_col, d_col = st.columns([3, 1], gap="medium")
+clicked = None
+with g_col:
+    with st.container(border=True):
+        if renderer == "streamlit-agraph":
+            try:
+                from streamlit_agraph import Config, Edge, Node, agraph
+
+                gnodes = []
+                for vn in vis_nodes:
+                    gn = Node(**vn)
+                    gn.__dict__.pop("title", None)  # the component opens a node's title as a URL on double-click
+                    gnodes.append(gn)
+                gedges = [Edge(**{k: v for k, v in ve.items() if k != "color"}, color=ve["color"]) for ve in vis_edges]
+                cfg = Config(directed=True, physics=len(nodes) < 150, hierarchical=False)
+                cfg.__dict__.update(VIS_OPTIONS, width="100%", height=f"{HEIGHT}px")  # Config appends "px" to width, so set it directly
+                clicked = agraph(nodes=gnodes, edges=gedges, config=cfg)
+            except ImportError:
+                st.warning("streamlit-agraph not installed; using pyvis")
+                renderer = "pyvis"
+        if renderer == "pyvis":
+            import json
+
+            from pyvis.network import Network
+
+            net = Network(height=f"{HEIGHT}px", width="100%", directed=True, notebook=False, cdn_resources="in_line", bgcolor="#ffffff", font_color="#1a1a1a")
+            for vn in vis_nodes:
+                net.add_node(vn["id"], label=vn["label"], shape=vn["shape"], size=vn["size"], color=vn["color"], title=f"{common.vtype(node_by_id[vn['id']])}\n{vn['id']}")
+            for ve in vis_edges:
+                net.add_edge(ve["source"], ve["target"], title=ve["title"], dashes=ve["dashes"], color=ve["color"], **({"label": ve["label"]} if "label" in ve else {}))
+            net.set_options(json.dumps(VIS_OPTIONS))
+            html = (  # the page already draws the border, so drop pyvis's own two
+                net.generate_html()
+                .replace("border: 1px solid lightgray;", "border: none;")
+                .replace('<div class="card" style="width: 100%">', '<div class="card" style="width: 100%; border: none">')
+            )
+            st.iframe(html, height=HEIGHT + 20)
+
+with d_col:
+    st.markdown("**Selected node**")
+    if clicked and clicked in node_by_id:
+        n = node_by_id[clicked]
+        t = common.vtype(n)
+        st.markdown(
+            f"<span style='color:{common.NODE_COLORS.get(t, MUTED)};font-size:15px'>{SHAPE_GLYPH[node_style(t)[0]]}</span>&nbsp;<b>{t}</b>",
+            unsafe_allow_html=True,
+        )
+        st.code(str(n["id"]), language=None, wrap_lines=True)
+        if n.get("label") and str(n["label"]) != str(n["id"]):
+            st.caption(str(n["label"]))
+        links = []
+        for e in edges:
+            if clicked in (e["src"], e["dst"]):
+                other = e["dst"] if e["src"] == clicked else e["src"]
+                arrow = "→" if e["src"] == clicked else "←"
+                links.append(f"{arrow} `{common.etype(e)}` {short(str(other).split(' | ')[0], 30)} :gray[({common.vtype(node_by_id.get(other, {}))})]")
+        st.markdown(f"**Connections** ({len(links)})")
+        st.markdown("\n".join(f"- {x}" for x in links[:25]) + (f"\n- … and {len(links) - 25} more" if len(links) > 25 else "") if links else "_none in this view_")
+    elif renderer == "pyvis":
+        st.caption("Hover a node for its id. Switch the renderer to streamlit-agraph to inspect a node's connections here.")
+    else:
+        st.caption("Click a node to see its full id, type and every connection. Drag to pan, scroll to zoom, hover an edge for its relationship.")
+    st.divider()
+    st.caption(f"{len(nodes)} nodes · {len(edges)} edges in view")
 
 with st.expander("Nodes / edges"):
     st.dataframe(nodes, width="stretch", hide_index=True)

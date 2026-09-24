@@ -12,8 +12,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from ui import common  # noqa: E402
 
-st.set_page_config(page_title="Runs", page_icon="📈", layout="wide")
-st.title("📈 Runs")
+st.set_page_config(page_title="Runs", page_icon=common.PAGE_ICONS["runs"], layout="wide")
+common.inject_css()
+common.page_header("Runs")
 
 runs = common.list_runs()
 if not runs:

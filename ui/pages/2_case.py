@@ -15,7 +15,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from ui import common  # noqa: E402
 
-st.set_page_config(page_title="Case", page_icon="🔎", layout="wide")
+st.set_page_config(page_title="Case", page_icon=common.PAGE_ICONS["case"], layout="wide")
+common.inject_css()
 
 runs = common.list_runs()
 run_id = st.session_state.get("run_id") or (runs[0] if runs else None)
@@ -53,13 +54,13 @@ pre, post = common.probability_pre_post(run)
 fam_f, fam_l = common.families(run)
 
 with top2:
-    st.title(f"{case_id} · {meta.get('trigger_type','')} · card `{meta.get('card_id','')}` · opened `{meta.get('opened_at','')}`")
+    common.page_header(case_id, f"{meta.get('trigger_type','')} · card {meta.get('card_id','')} · opened {meta.get('opened_at','')}")
     st.markdown(
         " ".join(
             [
                 common.badge(f"verdict {case['verdict']}", common.VERDICT_COLORS.get(case["verdict"], "gray")),
                 common.badge(f"status {case['status']}", common.STATUS_COLORS.get(case["status"], "gray")),
-                common.badge(f"pattern {case['pattern']}", "violet"),
+                common.badge(f"pattern {case['pattern']}", "primary"),
                 common.badge(f"exposure {common.money(case['exposure_usd'])}", "blue"),
                 common.badge("SAR" if sar["file"] else "no SAR", "red" if sar["file"] else "gray"),
                 common.badge(f"graph {case.get('graph_case_id') or '—'}", "green" if case.get("written_to_graph") else "gray"),
@@ -68,12 +69,15 @@ with top2:
     )
     st.info(meta.get("trigger_text", ""))
 
-m1, m2, m3, m4, m5 = st.columns(5)
+m1, m2, m3, m4 = st.columns(4)
 m1.metric("Probability (pre-evidence)", common.pct(pre))
 m2.metric("Probability (post-evidence)", common.pct(post), delta=None if pre is None or post is None else f"{100*(post-pre):+.0f} pts")
 m3.metric("Evidence families for fraud", len(fam_f), help=", ".join(common.FAMILY_LABELS.get(f, f) for f in fam_f) or "none")
 m4.metric("Families for legitimacy", len(fam_l), help=", ".join(common.FAMILY_LABELS.get(f, f) for f in fam_l) or "none")
-m5.metric("Tool calls / tokens / s", f"{ans.get('tool_calls',0)} / {ans.get('tokens',0):,} / {ans.get('latency_s',0):.0f}")
+m5, m6, m7 = st.columns(3)
+m5.metric("Tool calls", ans.get("tool_calls", 0))
+m6.metric("Tokens", f"{ans.get('tokens', 0):,}")
+m7.metric("Latency", f"{ans.get('latency_s', 0):.0f}s")
 
 st.markdown(f"**Summary.** {case.get('summary','')}")
 if case["pattern"] == "undocumented":
@@ -88,7 +92,7 @@ with tabs[0]:
         fam = common.family_of_evidence(ev)
         with st.container(border=True):
             c1, c2 = st.columns([5, 2])
-            c1.markdown(f"{common.SOURCE_ICONS.get(ev.get('source'),'')} {common.badge(ev.get('source',''), 'blue')} {common.badge(common.FAMILY_LABELS.get(fam, fam), 'gray')}  **{i}.** {ev.get('claim','')}")
+            c1.markdown(f"{common.source_badge(ev.get('source',''))} {common.badge(common.FAMILY_LABELS.get(fam, fam), 'gray')}  **{i}.** {ev.get('claim','')}")
             c2.code(ev.get("ref", ""), language=None)
             if ev.get("entity_ids"):
                 st.markdown(" ".join(f"`{e}`" for e in ev["entity_ids"][:40]) + (f" … +{len(ev['entity_ids'])-40}" if len(ev["entity_ids"]) > 40 else ""))
@@ -111,7 +115,7 @@ with tabs[1]:
         for f in common.FAMILY_ORDER:
             if f == "document":
                 continue
-            mark = "🔴 fraud" if f in fam_f else ("🟢 legit" if f in fam_l else "⚪ —")
+            mark = common.badge("fraud", "red") if f in fam_f else (common.badge("legit", "green") if f in fam_l else common.badge("—", "gray"))
             st.markdown(f"- {common.FAMILY_LABELS[f]}: {mark}")
         st.markdown(f"**Stop reason:** {ans.get('stop_reason','')}")
     with c2:

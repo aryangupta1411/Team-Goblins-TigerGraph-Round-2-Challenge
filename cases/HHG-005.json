@@ -3,7 +3,7 @@
   "case": {
     "status": "closed_legitimate",
     "verdict": "legitimate",
-    "fraud_probability": 0.04,
+    "fraud_probability": 0.08,
     "pattern": "none",
     "pattern_description": "",
     "affected_txn_ids": [],
@@ -13,7 +13,24 @@
     "exposure_usd": 0.0,
     "evidence": [
       {
-        "claim": "Case-memory calibration (cms_p) scores the flagged transaction at 0.026 (cal_p 0.0346), far below the raw risk_score of 0.54, indicating the calibrated model does not see this as fraud.",
+        "claim": "The flagged $100.07 online purchase sits inside the card's prior baseline: prior median amount $117.01 and prior maximum $1,104.08 across the 90 transactions on the card before this one (card_seq=91).",
+        "source": "graph",
+        "ref": "query:case_context(t=3523199, as_of=2016-12-08 03:38:37)",
+        "entity_ids": [
+          "3523199",
+          "C02923-K1"
+        ]
+      },
+      {
+        "claim": "The transaction's billing region (330.0) is the card's modal region: 85 prior purchases there over 49 distinct days, a 94% regional share of all prior activity as of opening, with home activity continuing in the ±48h window.",
+        "source": "graph",
+        "ref": "query:region_history(c=C02923-K1, addr1=330.0, as_of=2016-12-07 21:38:36)",
+        "entity_ids": [
+          "C02923-K1"
+        ]
+      },
+      {
+        "claim": "The case-memory calibration score for this transaction is 0.026 (cms_p), far below the real-time risk_score of 0.54 that triggered the alert.",
         "source": "graph",
         "ref": "query:case_context(t=3523199, as_of=2016-12-08 03:38:37)",
         "entity_ids": [
@@ -21,57 +38,38 @@
         ]
       },
       {
-        "claim": "Transaction 3523199 ($100.07) sits inside the card's baseline: prior median amount $117.01 and prior maximum $1,104.08 across 92 prior transactions, on product code R which the card has used before.",
+        "claim": "episode_candidates found a single-member chain (3523199 only), and card_testing_check found no small-auth run (n_members=1, n_small=0) and under_threshold_burst found no burst, so there is no escalating episode around the flagged transaction.",
         "source": "graph",
-        "ref": "query:card_profile(c=C02923-K1, as_of=2016-12-08 03:38:37)",
-        "entity_ids": [
-          "3523199",
-          "C02923-K1"
-        ]
-      },
-      {
-        "claim": "Billing region 330.0 is the card's modal region with 85 prior transactions over 49 days and hint=home; this online purchase falls in the customer's home region, not a novel one.",
-        "source": "graph",
-        "ref": "query:region_history(c=C02923-K1, addr1=330.0, as_of=2016-12-07 21:38:36)",
-        "entity_ids": [
-          "3523199",
-          "C02923-K1"
-        ]
-      },
-      {
-        "claim": "The device profile iOS Device | iOS 9.3.5 | mobile safari 9.0 | 1024x768 is New to this card (device_history prior_n=1, first_ts=2016-12-07 21:38:37) but is generic, not strong (112 cards all-time, 98 in 30 days, over the 60-card strong-profile cap), so it carries no shared-origin weight.",
-        "source": "graph",
-        "ref": "query:device_history(c=C02923-K1, d=iOS Device | iOS 9.3.5 | mobile safari 9.0 | 1024x768, as_of=2016-12-08 03:38:37)",
-        "entity_ids": [
-          "iOS Device | iOS 9.3.5 | mobile safari 9.0 | 1024x768",
-          "C02923-K1"
-        ]
-      },
-      {
-        "claim": "card_testing_check, under_threshold_burst and episode_candidates each return a single-member result (chain n_members=1, n_small=0; 0 bursts; 1-row chain), ruling out card-testing, the just-under-$500 burst, and any multi-transaction episode around txn 3523199.",
-        "source": "graph",
-        "ref": "query:card_testing_check(c=C02923-K1, as_of=2016-12-08 03:38:37, small=5, window_min=60, min_n=3, big=100, lookahead_h=48)",
+        "ref": "query:episode_candidates(t=3523199, as_of=2016-12-07 21:38:37, gap_h=48)",
         "entity_ids": [
           "3523199"
         ]
       },
       {
-        "claim": "shared_origin_scan and ring_profile show the flagged device is not strong and the card's only strong/shared profile is a different device (Windows | Windows 7 | firefox 57.0 | 1680x1050, 28 cards all-time) which this transaction did not touch (ring_hit=false).",
+        "claim": "The device profile iOS Device | iOS 9.3.5 | mobile safari 9.0 | 1024x768 is New on this card but is generic and widely shared (112 cards all-time, 98 cards in the 30 days before opening) and not strong (is_strong=false); device_neighbors returned zero connected cards on it, so it cannot serve as shared-origin (R6) evidence.",
         "source": "graph",
-        "ref": "query:shared_origin_scan(c=C02923-K1, as_of=2016-12-08 03:38:37, days=30)",
+        "ref": "query:device_neighbors(d=iOS Device | iOS 9.3.5 | mobile safari 9.0 | 1024x768, from_ts=2016-11-07 21:38:37, to_ts=2016-12-08 03:38:37, max_cards=60)",
         "entity_ids": [
-          "iOS Device | iOS 9.3.5 | mobile safari 9.0 | 1024x768",
-          "Windows | Windows 7 | firefox 57.0 | 1680x1050"
+          "iOS Device | iOS 9.3.5 | mobile safari 9.0 | 1024x768"
         ]
       },
       {
-        "claim": "The card has 3 prior confirmed-fraud cases (CC-2400, CC-2717, CC-2857), all account_takeover, most recently opened 2016-09-01, roughly three months before this transaction and sharing no method (device/region/channel) with it.",
+        "claim": "The card carries three prior confirmed-fraud closed cases (CC-2400, CC-2717, CC-2857), all pattern account_takeover, the most recent opened 2016-09-01 — over three months before this transaction and none matching this transaction's single-channel, in-baseline shape.",
         "source": "graph",
         "ref": "query:prior_cases_for_customer(cu=C02923, as_of=2016-12-08 03:38:37)",
         "entity_ids": [
-          "CC-2857",
-          "CC-2717",
           "CC-2400",
+          "CC-2717",
+          "CC-2857",
+          "C02923-K1"
+        ]
+      },
+      {
+        "claim": "case_context reports prior_pem=0 for the flagged transaction: this is the first purchase on this card using purchaser email domain icloud.com.",
+        "source": "graph",
+        "ref": "query:case_context(t=3523199, as_of=2016-12-08 03:38:37)",
+        "entity_ids": [
+          "3523199",
           "C02923-K1"
         ]
       },
@@ -85,11 +83,11 @@
       }
     ],
     "similar_prior_cases": [
-      "CC-2403",
       "CC-4000",
-      "CC-2091"
+      "CC-2091",
+      "CC-2403"
     ],
-    "summary": "Case HHG-005 on card C02923-K1 is closed as legitimate at a probability of 0.04 (pattern: none) after the customer confirmed transaction 3523199, a $100.07 online purchase in product R on 2016-12-07. The episode is the single transaction 3523199, exposure $0.00 (no block, so nothing carried against the customer). Decisive evidence: the history family showed the amount sits well inside the card's baseline (median $117.01, max $1,104.08) in the card's modal home region 330.0, and the calibrated case-memory score (cms_p 0.026) sharply contradicted the raw risk_score of 0.54; the device family confirmed the New iOS profile is a generic, non-strong device (112 cards all-time) with no card-testing, burst, or shared-origin signal. A customer_validation request was asked because this was a single weak signal (risk_score alone) under R1; the assumed reply was a confirmation that the purchase and new phone were the customer's own, satisfying R3 and settling the case (customer family). Similar cleared same-region cases CC-2403, CC-4000 and CC-2091 supported the legitimate reading, while the card's three prior confirmed account_takeover cases (CC-2400, CC-2717, CC-2857) were considered but did not share method or timing with this isolated purchase. The alternative reading — treating the New device and prior account-takeover history as decisive and denying the transaction — would have triggered R2 (BLOCK_CARD, CREATE_CASE) had the customer instead denied it; that did not occur. Recommended route: auto — CREATE_CASE, ALLOW_TRANSACTION, CLOSE_NO_FRAUD, no L1/L2 approval needed.",
+    "summary": "Verdict legitimate, probability 0.08. The $100.07 online purchase (product R, region 330.0) matched the card's home region and prior amount range, with a case-memory score of 0.026 far below the 0.54 risk-score that triggered the alert; no episode was retained (exposure $0.00). Because the card carries three prior confirmed account-takeover cases, this could otherwise be read as continuing compromise, but an assumed customer confirmation resolved it. Recommended: CREATE_CASE, ALLOW_TRANSACTION, and CLOSE_NO_FRAUD (all auto route), noting the confirmation.",
     "written_to_graph": true,
     "graph_case_id": "AC-HHG-005"
   },
@@ -105,32 +103,32 @@
       {
         "action": "CREATE_CASE",
         "route": "auto",
-        "reason": "3a: evidence is requested (customer_validation) on this risk-score alert, so a case is opened even though probability 0.04 is low."
+        "reason": "3a: a case is opened whenever evidence is requested, and a customer-validation request is being made on this risk-score alert."
       },
       {
         "action": "VERIFY_WITH_CUSTOMER",
         "route": "auto",
-        "reason": "R1: single evidence signal (risk_score alone, family=history) and probability 0.04 < 0.70, so verify the New device with the customer before any block; the device profile is generic/New and legitimacy-leaning per case_context and device_history."
+        "reason": "R1: single evidence family (risk_score alone, with case-memory cms_p 0.026 far below it) and probability 0.08 < 0.70, so verify before any block is even considered."
       }
     ],
     "final": [
       {
         "action": "CREATE_CASE",
         "route": "auto",
-        "reason": "3a: a case was already opened for the customer_validation request and is retained to record the confirmation."
+        "reason": "3a: a case is opened on this risk-score alert since evidence was requested and probability 0.08 is within the reportable band for documentation."
       },
       {
         "action": "ALLOW_TRANSACTION",
         "route": "auto",
-        "reason": "R3: customer confirmed the transaction as their own, so the $100.07 charge is allowed to stand."
+        "reason": "R3: the customer confirmed the $100.07 charge, settling the single risk-score signal in favor of legitimacy."
       },
       {
         "action": "CLOSE_NO_FRAUD",
         "route": "auto",
-        "reason": "R3: customer confirmed; combined with the legitimate verdict (p=0.04, history evidence: baseline amount and home region) the case closes with no fraud found."
+        "reason": "R3: customer confirmation resolves the case, noting the confirmation of transaction 3523199, with no further monitoring needed given the low probability (0.08) and legitimate-leaning graph evidence."
       }
     ],
-    "what_changed": "The assumed customer validation reply (confirm) moved the probability from 0.04 to 0.04 and the verdict to legitimate, adding ALLOW_TRANSACTION, CLOSE_NO_FRAUD, removing VERIFY_WITH_CUSTOMER. Counterfactual: had the customer denied the purchase, R2 would have applied: BLOCK_CARD (L1) and CREATE_CASE."
+    "what_changed": "The assumed customer validation reply (confirm) left the probability at 0.08 and kept the verdict legitimate, adding ALLOW_TRANSACTION, CLOSE_NO_FRAUD, removing VERIFY_WITH_CUSTOMER. Counterfactual: had the customer denied the purchase, R2 would have applied: BLOCK_CARD (L1) and CREATE_CASE."
   },
   "sar": {
     "file": false,
@@ -140,8 +138,8 @@
     "total_amount_usd": 0,
     "activity_dates": []
   },
-  "stop_reason": "Policy §6 test 2 fired: the assumed customer confirmation settled the single-signal question raised under R1. This is reinforced by §6 test 1, since probability 0.04 was already supported by two independent evidence families (history and device) before the confirmation arrived.",
+  "stop_reason": "Policy §6 test 2 fired: the assumed customer confirmation of transaction 3523199 settled the single risk-score signal. Probability 0.08 with two independent evidence families (card/region history and the customer's confirmation) also satisfies §6 test 1.",
   "tool_calls": 21,
-  "tokens": 244121,
-  "latency_s": 139.1
+  "tokens": 238243,
+  "latency_s": 122.1
 }

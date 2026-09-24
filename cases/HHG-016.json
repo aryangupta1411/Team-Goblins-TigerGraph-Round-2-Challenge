@@ -15,7 +15,7 @@
     "exposure_usd": 59.67,
     "evidence": [
       {
-        "claim": "Customer C09988 denies making the $59.67 purchase 3534820; in this bank's history 4,665 of 4,665 customer-reported denials were ultimately confirmed fraud and none were cleared, so the denial floors the probability at 0.55.",
+        "claim": "Customer C09988 denies making the $59.67 purchase 3534820 on card C09988-K1; in this bank's history 4,665 of 4,665 customer-reported closed cases were confirmed fraud and no denial was ever cleared, which sets the probability floor at 0.55.",
         "source": "customer",
         "ref": "trigger",
         "entity_ids": [
@@ -24,7 +24,7 @@
         ]
       },
       {
-        "claim": "The case-memory scorer (LightGBM over 5,565 closed cases, October holdout AUC 0.956) rates transaction 3534820 at cms_p=0.45 (calibrated 0.53), above the real-time risk_score of 0.37, corroborating the denial.",
+        "claim": "The case-memory scorer (trained on 5,565 closed cases) rates transaction 3534820 at cms_p 0.4463 (calibrated 0.5259), above the real-time risk_score of 0.37, and because this calibrated value is >= 0.5 the scorer corroborates the denial rather than contradicting it.",
         "source": "graph",
         "ref": "query:case_context(t=3534820, as_of=2016-12-12 01:39:08)",
         "entity_ids": [
@@ -32,22 +32,20 @@
         ]
       },
       {
-        "claim": "find_similar_cases returned 8 closed cases (CC-3491, CC-5057, CC-2694, CC-2898, CC-2540, CC-3580, CC-2675, CC-2732), each overlapping on 'same_device' and each confirmed_fraud with pattern card_not_present_new_device, matching this episode's shape.",
+        "claim": "Six structurally similar closed cases with the same overlap reason (same_device) and the same pattern label (card_not_present_new_device) — CC-3491, CC-5057, CC-2694, CC-2898, CC-3580, CC-2540 — were all confirmed_fraud.",
         "source": "graph",
-        "ref": "query:similar_prior_cases(card_id=C09988-K1, device_id=Windows | NULL | edge 16.0 | NULL, as_of=2016-12-12 01:39:08)",
+        "ref": "query:find_similar_cases(card_id=C09988-K1, device_id=Windows | NULL | edge 16.0 | NULL, as_of=2016-12-12 01:39:08)",
         "entity_ids": [
           "CC-3491",
           "CC-5057",
           "CC-2694",
           "CC-2898",
-          "CC-2540",
           "CC-3580",
-          "CC-2675",
-          "CC-2732"
+          "CC-2540"
         ]
       },
       {
-        "claim": "device_history shows device profile 'Windows | NULL | edge 16.0 | NULL' has prior_n=1 on card C09988-K1 with first_ts equal to the flagged transaction's own timestamp (2016-12-11 22:39:08) -- this is the device's first-ever use on this card, consistent with the card_not_present_new_device label.",
+        "claim": "device_history shows the device profile 'Windows | NULL | edge 16.0 | NULL' has prior_n=1 on card C09988-K1 with first_ts equal to the flagged transaction's own timestamp (2016-12-11 22:39:08), i.e. this is the first time this device has ever been used on this card.",
         "source": "graph",
         "ref": "query:device_history(c=C09988-K1, d=Windows | NULL | edge 16.0 | NULL, as_of=2016-12-12 01:39:08)",
         "entity_ids": [
@@ -57,7 +55,7 @@
         ]
       },
       {
-        "claim": "recurring_charge_check on transaction 3534820 returned zero groups (total_n=0), so the R7 recurring-charge gate does not apply and the denial cannot be explained away as the customer's own recurring pattern.",
+        "claim": "recurring_charge_check on transaction 3534820 returned 0 matching groups, so the R7 recurring-pattern exception does not apply and the R2 block/case path governs from intake.",
         "source": "graph",
         "ref": "query:recurring_charge_check(t=3534820, tol=0.01, as_of=2016-12-12 01:39:08)",
         "entity_ids": [
@@ -65,7 +63,7 @@
         ]
       },
       {
-        "claim": "The $59.67 amount sits inside the card's own baseline (prior median $37.75, prior maximum $94.70 across 48 prior product-C purchases), a legitimacy-leaning fact that keeps this out of the extreme-fraud band.",
+        "claim": "The $59.67 amount sits inside the card's baseline as of opening: 48 prior transactions with prior median $37.75 and prior maximum $94.70, so the amount itself is not anomalous.",
         "source": "graph",
         "ref": "query:case_context(t=3534820, as_of=2016-12-12 01:39:08)",
         "entity_ids": [
@@ -74,18 +72,19 @@
         ]
       },
       {
-        "claim": "episode_candidates over the 48h window before opened_at returns only the single flagged transaction (chain n=1); the card had no other activity in the 72h card_window either, so this is an isolated event, not a card-testing chain or under-threshold burst.",
+        "claim": "The purchaser/recipient email domain hotmail.com on transaction 3534820 had been used 16 times before by this card, so the email side of the transaction is not a new element.",
         "source": "graph",
-        "ref": "query:episode_candidates(t=3534820, as_of=2016-12-12 01:39:08, gap_h=48)",
+        "ref": "query:case_context(t=3534820, as_of=2016-12-12 01:39:08)",
         "entity_ids": [
           "3534820"
         ]
       },
       {
-        "claim": "device_neighbors on this profile over the prior 30 days returned 0 connected cards and the profile is marked is_strong=False (160 cards all-time, 63 in a 30-day window), so it cannot be cited as R6 shared-origin evidence despite 10 historical fraud cases on it.",
+        "claim": "episode_candidates over the 48h window before opening returned only transaction 3534820 (no chain), and card_testing_check found a chain of 1 member with 0 small (<$5) authorizations, ruling out a card-testing burst; the device profile itself has 160 cards all-time and 63 in the 30 days before opening, so it is generic (not is_strong) and cannot serve as shared-origin (R6) evidence.",
         "source": "graph",
-        "ref": "query:device_neighbors(d=Windows | NULL | edge 16.0 | NULL, from_ts=2016-11-11 22:39:08, to_ts=2016-12-12 01:39:08, max_cards=60)",
+        "ref": "query:episode_candidates(t=3534820, as_of=2016-12-12 01:39:08, gap_h=48)",
         "entity_ids": [
+          "3534820",
           "Windows | NULL | edge 16.0 | NULL"
         ]
       },
@@ -103,10 +102,10 @@
       "CC-5057",
       "CC-2694",
       "CC-2898",
-      "CC-2540",
-      "CC-3580"
+      "CC-3580",
+      "CC-2540"
     ],
-    "summary": "Verdict: fraud at probability 0.77 for the card_not_present_new_device pattern. The episode is the single flagged online purchase, transaction 3534820 for $59.67 on card C09988-K1, made on a device profile (\"Windows | NULL | edge 16.0 | NULL\") never before seen on this card, so exposure is $59.67. Decisive evidence: the customer family (C09988 denies the charge; in this bank's history 4,665/4,665 such denials were confirmed fraud) corroborated by the memory family (the case-memory scorer rates the transaction 0.45/calibrated 0.53, and six to eight closed cases — CC-3491, CC-5057, CC-2694, CC-2898, CC-2540, CC-3580 — with the same device-profile overlap were all confirmed fraud with this exact pattern); no legitimacy family emerged (the amount fell inside the card's baseline, but that alone doesn't offset the denial). We asked for step-up authentication before finalizing a block; the simulated reply was inconclusive/no response within the window, so per R4 we assume non-completion rather than a pass. An alternative reading is possible if the customer's device change reflects a genuine new-phone purchase with no supporting evidence of compromise, but the denial plus the strong same-device fraud precedent outweigh that. The bank should now, via the L1 approval route, block card C09988-K1, decline any pending authorization on it, and keep it on monitoring while the case stays open; escalation and SAR filing are not triggered since exposure is well under $500/$1,000 and no shared-origin cluster was found.",
+    "summary": "Verdict fraud, probability 0.77: customer C09988 denies the $59.67 online purchase 3534820 from a device never before used on this card (card_not_present_new_device). Episode scoped to this single transaction, exposure $59.67, decided by the denial plus 6 same-device closed cases all confirmed fraud; a requested step-up authentication came back inconclusive. Recommended: BLOCK_CARD and DECLINE_TRANSACTION pending L1 approval, plus CREATE_CASE and MONITOR_CARD (auto).",
     "written_to_graph": true,
     "graph_case_id": "AC-HHG-016"
   },
@@ -122,53 +121,53 @@
       {
         "action": "CREATE_CASE",
         "route": "auto",
-        "reason": "3a/R2: customer dispute on transaction 3534820 with fraud verdict (p=0.7692 ≥ 0.30) opens a case."
+        "reason": "3a/R2: customer denied transaction 3534820 ($59.67, exposure $59.67 ≤ $2,500), so a case is opened on the dispute."
       },
       {
         "action": "STEP_UP_AUTH",
         "route": "auto",
-        "reason": "§3b/§5: online channel, 0.70 ≤ p=0.7692 < 0.85 with families customer+memory but no independent device/history corroboration yet, so verify via step-up before finalizing the block."
+        "reason": "§3b: probability 0.77 sits in the 0.70–0.85 band, so before finalizing we request step-up authentication to confirm episode scope (no other chain members were found within 48h) rather than treating the single-transaction read as settled."
       },
       {
         "action": "BLOCK_CARD",
         "route": "L1",
-        "reason": "R2: customer denied transaction 3534820; exposure $59.67 ≤ $2,500 → L1 block."
+        "reason": "R2: customer denied transaction 3534820; exposure $59.67 ≤ $2,500, so the block recommendation routes to L1 for approval."
       }
     ],
     "final": [
       {
         "action": "CREATE_CASE",
         "route": "auto",
-        "reason": "3a/R2: case remains open on the confirmed fraud verdict for transaction 3534820 (p=0.7692)."
+        "reason": "3a/R2: customer denied transaction 3534820 ($59.67), and exposure $59.67 ≤ $2,500, so a case remains open on the dispute."
       },
       {
         "action": "MONITOR_CARD",
         "route": "auto",
-        "reason": "R4: step-up auth outcome was inconclusive (no reply within 24h), so the card is placed on monitoring."
+        "reason": "R4: the step-up authentication request came back inconclusive (no settled reply within 24h), so the card is placed on monitoring pending resolution."
       },
       {
         "action": "DECLINE_TRANSACTION",
         "route": "L1",
-        "reason": "R4: no reply within 24h to the step-up request → decline any pending authorization on card C09988-K1."
+        "reason": "R4: no reply was received within 24h on the step-up request, so decline is recommended for any pending authorization on card C09988-K1."
       },
       {
         "action": "BLOCK_CARD",
         "route": "L1",
-        "reason": "R2: customer denied transaction 3534820 and the verdict is fraud; exposure $59.67 ≤ $2,500 → L1 block."
+        "reason": "R2/§3b: customer denied transaction 3534820; exposure $59.67 ≤ $2,500, so the block recommendation routes to L1 for approval."
       }
     ],
-    "what_changed": "The assumed step up auth reply (inconclusive) moved the probability from 0.77 to 0.77 and the verdict to fraud, adding MONITOR_CARD, DECLINE_TRANSACTION, removing STEP_UP_AUTH. Counterfactual: a passed step-up would have closed the alert (R3); a failed one would have led to BLOCK_CARD (R2)."
+    "what_changed": "The assumed step up auth reply (inconclusive) left the probability at 0.77 and kept the verdict fraud, adding MONITOR_CARD, DECLINE_TRANSACTION, removing STEP_UP_AUTH. Counterfactual: a passed step-up would have closed the alert (R3); a failed one would have led to BLOCK_CARD (R2)."
   },
   "sar": {
     "file": false,
-    "reason": "3a not met: exposure $59.67 <= $1,000; the New profile `Windows | NULL | edge 16.0 | NULL` is used by 160 cards with no fraud linkage strong enough to be a shared-origin signal; no shared region cluster; no other customer's fraud connected; documented pattern",
+    "reason": "3a not met: exposure $59.67 <= $1,000; the New profile `Windows | NULL | edge 16.0 | NULL` is a common, non-distinctive profile (not a strong device profile), so it is not a shared-origin signal; no shared region cluster; no other customer's fraud connected; documented pattern",
     "narrative": "",
     "subjects": [],
     "total_amount_usd": 0,
     "activity_dates": []
   },
-  "stop_reason": "Policy §6 test 3 fired: the requested step-up verification was not completed within the window, the probability stayed at 0.77 (unchanged, still in the fraud band), and the fraud-band actions (block pending L1 approval) already apply, so no further automated step would change the recommendation.",
+  "stop_reason": "Policy §6 test 3 fired: the step-up authentication was not completed within the window and probability held at 0.77, so the fraud-band block/decline recommendations already apply and no further automated step would change the recommendation.",
   "tool_calls": 18,
-  "tokens": 221021,
-  "latency_s": 141.5
+  "tokens": 254271,
+  "latency_s": 125.7
 }

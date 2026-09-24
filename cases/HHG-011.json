@@ -15,7 +15,7 @@
     "exposure_usd": 131.3,
     "evidence": [
       {
-        "claim": "Customer C11923 denies making the $131.30 purchase 3583368; case memory shows no customer denial in the bank's closed cases has ever been cleared, so per policy the probability is floored at 0.55.",
+        "claim": "Customer C11923 denies making the $131.30 purchase 3583368; in the bank's history 4,665 of 4,665 customer-reported closed cases were confirmed fraud and no denial was ever cleared.",
         "source": "customer",
         "ref": "trigger",
         "entity_ids": [
@@ -24,43 +24,7 @@
         ]
       },
       {
-        "claim": "10 of the 11 prior closed cases on card C11923-K2 are confirmed_fraud, most under pattern card_not_present_new_device (CC-3905, CC-3206, CC-3039, CC-2799, CC-1056, CC-0031) or card_testing (CC-4501, CC-2673, CC-2247, CC-0290), showing this card is a chronic fraud target.",
-        "source": "graph",
-        "ref": "query:prior_cases_for_customer(cu=C11923, as_of=2016-12-29 06:27:44)",
-        "entity_ids": [
-          "C11923-K2",
-          "CC-3905",
-          "CC-3206",
-          "CC-3039",
-          "CC-2799",
-          "CC-1056",
-          "CC-0031",
-          "CC-4501",
-          "CC-2673",
-          "CC-2247",
-          "CC-0290"
-        ]
-      },
-      {
-        "claim": "Device profile SM-G610F Build/NRD90M | NULL | chrome 66.0 for android | NULL used on flagged transaction 3583368 has prior_n=1 with first_ts equal to the flagged transaction's own timestamp (2016-12-29 03:27:44), meaning it is brand-new to this card.",
-        "source": "graph",
-        "ref": "query:device_history(c=C11923-K2, d=SM-G610F Build/NRD90M | NULL | chrome 66.0 for android | NULL, as_of=2016-12-29 06:27:44)",
-        "entity_ids": [
-          "3583368",
-          "SM-G610F Build/NRD90M | NULL | chrome 66.0 for android | NULL",
-          "C11923-K2"
-        ]
-      },
-      {
-        "claim": "The calibrated case-memory score (cms_p) for transaction 3583368 is 0.0428, well below the fraud band, indicating the memory-informed model leans legitimate despite the denial; the harness also flags the card's 10,332-transaction history as making any single-transaction score unreliable.",
-        "source": "graph",
-        "ref": "query:case_context(t=3583368, as_of=2016-12-29 06:27:44)",
-        "entity_ids": [
-          "3583368"
-        ]
-      },
-      {
-        "claim": "recurring_charge_check found 8 prior product-C purchases to gmail.com within 1% of $131.30 (median gap 3.9 days, gap CV 1.35) and 5 to hotmail.com (median gap 35.3 days, gap CV 0.67); neither group meets the R7 gate (5-35 day cadence with CV <=0.6), so this is not a documented recurring charge, though the sheer frequency shows this account transacts unusually often.",
+        "claim": "The $131.30 product-code-C amount recurs 14 times within 1% tolerance on this card, but neither the 8-purchase gmail.com group (median gap 3.9 days, gap CV 1.35) nor the 5-purchase hotmail.com group (median gap 35.3 days, gap CV 0.67) meets R7's gate (5-35 day median gap, gap CV ≤ 0.6), so the denial is not excused as the customer's own recurring pattern.",
         "source": "graph",
         "ref": "query:recurring_charge_check(t=3583368, tol=0.01, as_of=2016-12-29 06:27:44)",
         "entity_ids": [
@@ -69,25 +33,36 @@
         ]
       },
       {
-        "claim": "Closed case CC-4743 on this same card (opened 2016-10-12) was a cleared 'new phone' template with 0 exposure, showing that a New device on this card is not automatically fraud.",
+        "claim": "Device profile SM-G610F Build/NRD90M | NULL | chrome 66.0 for android | NULL was used on card C11923-K2 for the first time ever at the flagged transaction (prior_n=1, device_new=New), supporting the card_not_present_new_device label.",
+        "source": "graph",
+        "ref": "query:device_history(c=C11923-K2, d=SM-G610F Build/NRD90M | NULL | chrome 66.0 for android | NULL, as_of=2016-12-29 06:27:44)",
+        "entity_ids": [
+          "3583368",
+          "C11923-K2",
+          "SM-G610F Build/NRD90M | NULL | chrome 66.0 for android | NULL"
+        ]
+      },
+      {
+        "claim": "Card C11923-K2 carries 10 prior confirmed-fraud closed cases (CC-2799, CC-3039, CC-3206, CC-3905, CC-1056, CC-0031 pattern card_not_present_new_device; CC-4501, CC-2673, CC-2247, CC-0290 pattern card_testing), most recently opened 2016-10-07, against a single cleared new-phone case CC-4743 opened 2016-10-12.",
         "source": "graph",
         "ref": "query:prior_cases_for_customer(cu=C11923, as_of=2016-12-29 06:27:44)",
         "entity_ids": [
+          "CC-4501",
+          "CC-3905",
+          "CC-3206",
+          "CC-3039",
+          "CC-2799",
+          "CC-2673",
+          "CC-2247",
+          "CC-1056",
+          "CC-0290",
+          "CC-0031",
           "CC-4743",
           "C11923-K2"
         ]
       },
       {
-        "claim": "shared_origin_scan and ring_profile found no strong shared device profile behind the flagged device (is_strong=false, ring_profile returned an empty ring_id and 0 wave/pre-open cards), so there is no R6 shared-origin evidence connecting this episode to other cards.",
-        "source": "graph",
-        "ref": "query:shared_origin_scan(c=C11923-K2, as_of=2016-12-29 06:27:44, days=30)",
-        "entity_ids": [
-          "SM-G610F Build/NRD90M | NULL | chrome 66.0 for android | NULL",
-          "C11923-K2"
-        ]
-      },
-      {
-        "claim": "card_testing_check found a small-value run of 8 authorizations of $1.23-$2.63 (3526796-3526890) ending 2016-12-09 03:14:10, followed by a $157.36 purchase (3528455) that cleared later that day; this run is more than two weeks before and unrelated to the flagged transaction, so R5 card-testing does not apply to the current episode.",
+        "claim": "A separate card-testing shape occurred on this card on 2016-12-09 (an 8-transaction run of $1.23-$2.63 auths from 02:23 to 03:14 followed by a $157.36 purchase that already cleared), showing the card remains subject to serial small-then-large abuse after its last confirmed case.",
         "source": "graph",
         "ref": "query:card_testing_check(c=C11923-K2, as_of=2016-12-29 06:27:44, small=5, window_min=60, min_n=3, big=100, lookahead_h=48)",
         "entity_ids": [
@@ -99,7 +74,35 @@
           "3526878",
           "3526888",
           "3526890",
-          "3528455"
+          "3528455",
+          "C11923-K2"
+        ]
+      },
+      {
+        "claim": "The case-memory scorer puts this transaction at cms_p=0.043, well below the real-time risk_score of 0.39; with the card at transaction position 10,307 of a dense online-only history the scorer is flagged unreliable, so the probability leans on the graph facts rather than the score alone.",
+        "source": "graph",
+        "ref": "query:case_context(t=3583368, as_of=2016-12-29 06:27:44)",
+        "entity_ids": [
+          "3583368",
+          "C11923-K2"
+        ]
+      },
+      {
+        "claim": "The purchaser email domain gmail.com on the flagged transaction had already been used 3,968 times on this card before opening, an established usage pattern rather than a novel identifier.",
+        "source": "graph",
+        "ref": "query:case_context(t=3583368, as_of=2016-12-29 06:27:44)",
+        "entity_ids": [
+          "3583368",
+          "C11923-K2"
+        ]
+      },
+      {
+        "claim": "Device profile SM-G610F Build/NRD90M | NULL | chrome 66.0 for android | NULL is not strong (is_strong=False) and device_neighbors over the 30 days before opening returned 0 other cards on it, so no shared-device-ring evidence connects this card to another customer's fraud.",
+        "source": "graph",
+        "ref": "query:device_neighbors(d=SM-G610F Build/NRD90M | NULL | chrome 66.0 for android | NULL, from_ts=2016-11-29 03:27:44, to_ts=2016-12-29 06:27:44, max_cards=60)",
+        "entity_ids": [
+          "SM-G610F Build/NRD90M | NULL | chrome 66.0 for android | NULL",
+          "C11923-K2"
         ]
       },
       {
@@ -112,20 +115,20 @@
       }
     ],
     "similar_prior_cases": [
-      "CC-3905",
       "CC-3206",
       "CC-3039",
+      "CC-3905",
       "CC-4501",
       "CC-4743"
     ],
-    "summary": "Case HHG-011 on card C11923-K2 (customer C11923) is assessed as uncertain at a fraud probability of 0.60, with the episode limited to the single disputed transaction 3583368, an online $131.30 product-C purchase on 2016-12-29, so exposure is $131.30. The candidate pattern is card_not_present_new_device: the flagged device profile is brand-new to this card (first-ever use), matching the label convention used in six of this card's prior confirmed-fraud cases (CC-3905, CC-3206, CC-3039, CC-4501). The decisive evidence is a genuine conflict between two families: the customer's denial plus this card's chronic fraud memory (10 of 11 prior closed cases confirmed fraud) argue fraud, while the very low calibrated cms_p (0.0428) and the earlier cleared \"new phone\" case CC-4743 on this same card argue legitimacy; no shared-device or ring evidence (R6) or matching card-testing chain (R5) was found to break the tie. We asked for step-up authentication on the online transaction and assumed (simulated) it went unanswered within the window, so per R4 the recommendation is now MONITOR_CARD plus DECLINE_TRANSACTION on the pending authorization (route L1), with the case kept open (CREATE_CASE) and escalated to an analyst (ESCALATE_TO_ANALYST) under R8 for the unresolved conflict; no SAR is filed at this exposure and pattern strength. The alternative reading is that this is simply routine, if erratic, account behavior — the card processes thousands of small online purchases and even shows recurring same-amount charges to gmail.com and hotmail.com, though neither group satisfies the R7 monthly-cadence gate, so the recurring-charge exception does not apply and the dispute is treated as a live alert pending the analyst's review and any customer follow-up.",
+    "summary": "Verdict uncertain at p=0.60 (pattern card_not_present_new_device): the customer denies transaction 3583368 ($131.30, the full episode exposure), which is the first-ever use of a new device on this card, and the card already carries 10 prior confirmed-fraud closed cases; a low cms_p (0.043) and an established gmail.com usage pattern argue the other way, so the alternative reading (legitimate use on an unreliable scorer) can't be ruled out. A requested step-up authentication was not completed within the window, so BLOCK_CARD and DECLINE_TRANSACTION are recommended for L1 approval alongside MONITOR_CARD, while CREATE_CASE stays open and ESCALATE_TO_ANALYST is recommended pending a reply.",
     "written_to_graph": true,
     "graph_case_id": "AC-HHG-011"
   },
   "evidence_requests": [
     {
       "type": "step_up_auth",
-      "asked_after_step": 21,
+      "asked_after_step": 19,
       "assumed_response": "ASSUMED (simulated): step-up authentication was not completed within the window"
     }
   ],
@@ -134,58 +137,63 @@
       {
         "action": "CREATE_CASE",
         "route": "auto",
-        "reason": "3a: probability 0.60 ≥ 0.30 and a customer dispute is open on txn 3583368, so a case must be opened regardless of the final verdict."
+        "reason": "3a/R2: customer denied transaction 3583368 ($131.30) and probability 0.60 ≥ 0.30, opening a case per 3a and R2."
       },
       {
         "action": "STEP_UP_AUTH",
         "route": "auto",
-        "reason": "§3b/§5: verdict is uncertain (p=0.60) with conflicting evidence — cms_p 0.0428 leans legitimate while 10 prior confirmed-fraud cases on this card lean fraud — so on this online transaction we request step-up authentication before any block."
+        "reason": "§3b: evidence conflicts (cms_p 0.043 vs. 10 prior confirmed-fraud closed cases on this same card) so a scope-clarifying step-up/analyst check is requested before the block recommendation is finalized; will recommend again once the reply is in."
       },
       {
-        "action": "MONITOR_CARD",
-        "route": "auto",
-        "reason": "Uncertain band, step-up reply pending: monitor card C11923-K2 for further activity while the step-up authentication request is outstanding."
+        "action": "BLOCK_CARD",
+        "route": "L1",
+        "reason": "R2: customer denied transaction 3583368; exposure $131.30 ≤ $2,500, so BLOCK_CARD is recommended for L1 approval."
       },
       {
         "action": "ESCALATE_TO_ANALYST",
         "route": "auto",
-        "reason": "R8: verdict uncertain with conflicting evidence (very low cms_p 0.0428 versus a chronic confirmed-fraud history of 10 prior cases and a brand-new device on the flagged transaction), so the case is escalated to an analyst alongside the step-up request."
+        "reason": "R8: verdict is uncertain and the evidence conflicts (very low cms_p 0.043 on a scorer flagged unreliable versus the card's 10 prior confirmed-fraud cases and repeat card-testing/new-device history), so the case is escalated to an analyst."
       }
     ],
     "final": [
       {
         "action": "CREATE_CASE",
         "route": "auto",
-        "reason": "3a: case remains open given probability 0.60 ≥ 0.30 and the customer's ongoing dispute of txn 3583368."
+        "reason": "3a/R2/R4: customer denied transaction 3583368 ($131.30) and the requested step-up auth came back inconclusive, so the case opened under 3a/R2 stays open."
       },
       {
         "action": "MONITOR_CARD",
         "route": "auto",
-        "reason": "R4: the step-up authentication request came back inconclusive (no clear reply) within the review window, so card C11923-K2 is placed on monitoring."
+        "reason": "R4: no reply within 24h to the step-up auth request, so ongoing monitoring of the card is recommended."
       },
       {
         "action": "DECLINE_TRANSACTION",
         "route": "L1",
-        "reason": "R4: no clear reply to the step-up request on this $131.30 pending online authorization, so it is declined pending further review."
+        "reason": "R4: no reply within 24h to the step-up auth request, so declining any pending authorization on this card is recommended for L1 approval."
+      },
+      {
+        "action": "BLOCK_CARD",
+        "route": "L1",
+        "reason": "R2: customer denied transaction 3583368; exposure $131.30 ≤ $2,500, so BLOCK_CARD is recommended for L1 approval."
       },
       {
         "action": "ESCALATE_TO_ANALYST",
         "route": "auto",
-        "reason": "R8: verdict remains uncertain with conflicting evidence (cms_p 0.0428 vs. 10 prior confirmed-fraud cases on this card) even after the inconclusive step-up, so the case is escalated to an analyst."
+        "reason": "R8: verdict remains uncertain and the evidence still conflicts (cms_p 0.043 on a scorer flagged unreliable versus the card's 10 prior confirmed-fraud cases) after the step-up auth reply came back inconclusive, so the case is escalated to an analyst."
       }
     ],
-    "what_changed": "The assumed step up auth reply (inconclusive) moved the probability from 0.60 to 0.60 and the verdict to uncertain, adding DECLINE_TRANSACTION, removing STEP_UP_AUTH. Counterfactual: a passed step-up would have closed the alert (R3); a failed one would have led to BLOCK_CARD (R2)."
+    "what_changed": "The assumed step up auth reply (inconclusive) left the probability at 0.60 and kept the verdict uncertain, adding MONITOR_CARD, DECLINE_TRANSACTION, removing STEP_UP_AUTH. Counterfactual: a passed step-up would have closed the alert (R3); a failed one would have led to BLOCK_CARD (R2)."
   },
   "sar": {
     "file": false,
-    "reason": "3a not met: verdict uncertain (fraud not confirmed or strongly suspected), exposure $131.30; no report",
+    "reason": "R2 / 3a not met: the customer denied the transaction, but exposure $131.30 <= $1,000; the New profile `SM-G610F Build/NRD90M | NULL | chrome 66.0 for android | NULL` is a common, non-distinctive profile (not a strong device profile), so it is not a shared-origin signal; no other card's fraud connected; documented pattern; no report",
     "narrative": "",
     "subjects": [],
     "total_amount_usd": 0,
     "activity_dates": []
   },
-  "stop_reason": "Policy §6 test 3 fired: the step-up authentication request went unanswered within the window, so R4 governs (monitor the card and decline the pending authorization) and the case stays open awaiting a reply; no further automated query would move the recommendation until that reply arrives.",
-  "tool_calls": 21,
-  "tokens": 566083,
-  "latency_s": 209.3
+  "stop_reason": "Policy §6 test 3 fired: the step-up authentication requested at the initial stage was not answered within the window, so R2's block on the customer's denial stands pending approval and R4's monitor-plus-decline-pending-authorizations applies; no further automated step would move the decision until a reply arrives, so the case stays open awaiting it.",
+  "tool_calls": 19,
+  "tokens": 499394,
+  "latency_s": 191.4
 }

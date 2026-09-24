@@ -15,18 +15,17 @@
     "exposure_usd": 99.92,
     "evidence": [
       {
-        "claim": "The memory-informed calibration scores transaction 3503878 at cms_p=0.8493 (cal_p 0.7674), reflecting the bank's own closed-case history for this card rather than just the raw risk_score of 0.90.",
+        "claim": "Case memory scores the flagged transaction 3503878 at cms_p=0.849 (calibrated 0.767), close to the real-time risk score of 0.90.",
         "source": "graph",
         "ref": "query:case_context(t=3503878, as_of=2016-12-01 22:28:53)",
         "entity_ids": [
-          "3503878",
-          "C07987-K2"
+          "3503878"
         ]
       },
       {
-        "claim": "Card C07987-K2 has three prior confirmed-fraud closed cases in the last four months (CC-5026 out_of_region_use $309.86 opened 2016-10-19, CC-2860 card_not_present_fraud $149.92 opened 2016-09-01, CC-2011 out_of_region_use $3059.89 opened 2016-08-12), making this a repeat-victim card rather than a clean baseline.",
+        "claim": "This card carries three prior confirmed-fraud closed cases: CC-5026 (out_of_region_use, $309.86, opened 2016-10-19), CC-2860 (card_not_present_fraud, $149.92, opened 2016-09-01) and CC-2011 (out_of_region_use, $3,059.89, opened 2016-08-12), the most recent about six weeks before this alert.",
         "source": "graph",
-        "ref": "query:prior_cases_for_customer(customer=C07987)",
+        "ref": "query:prior_cases_for_customer(customer=C07987, as_of=2016-12-01 22:28:53)",
         "entity_ids": [
           "CC-5026",
           "CC-2860",
@@ -35,16 +34,27 @@
         ]
       },
       {
-        "claim": "The flagged device profile Windows | other | chrome 61.0 | 1280x720 is strong (is_strong=true) but is being used on card C07987-K2 for the first time ever (device_history prior_n=1, device_new=New), with no prior identity history on this card.",
+        "claim": "The flagged transaction is the first-ever use of device profile Windows | other | chrome 61.0 | 1280x720 on this card (prior_n=0 before opening, device_new=New); the profile is strong but has only 5 cards all-time and 0 recorded fraud cases, so this new-device signal alone is weak.",
         "source": "graph",
-        "ref": "query:device_history(c=C07987-K2, d=Windows | other | chrome 61.0 | 1280x720, as_of=2016-12-01 22:28:53)",
+        "ref": "query:device_history(c=C07987-K2, d=Windows | other | chrome 61.0 | 1280x720, as_of=2016-12-01 17:28:52)",
         "entity_ids": [
           "Windows | other | chrome 61.0 | 1280x720",
           "C07987-K2"
         ]
       },
       {
-        "claim": "The $99.92 amount sits inside the card's own baseline (prior median $116.92, prior maximum $1,586.94 over 247 transactions), unlike the amounts on the card's three prior fraud cases, which is a legitimacy-leaning signal.",
+        "claim": "That same strong device profile was used by three cards in the 30 days before opening — C06224-K2 ($100.00, also a New device), C07987-K2 ($99.92, flagged) and C11309-K1 ($100.06) — clustered near $100 each, but with 0 fraud cases recorded on the profile, so it is not yet a confirmed shared-origin ring.",
+        "source": "graph",
+        "ref": "query:device_neighbors(d=Windows | other | chrome 61.0 | 1280x720, from_ts=2016-11-01 22:28:53, to_ts=2016-12-01 22:28:53, max_cards=60)",
+        "entity_ids": [
+          "Windows | other | chrome 61.0 | 1280x720",
+          "C06224-K2",
+          "C07987-K2",
+          "C11309-K1"
+        ]
+      },
+      {
+        "claim": "The $99.92 amount sits inside the card's baseline as of opening: prior median $116.92 and prior maximum $1,586.94 over 219 prior transactions (card_seq=220).",
         "source": "graph",
         "ref": "query:case_context(t=3503878, as_of=2016-12-01 22:28:53)",
         "entity_ids": [
@@ -53,33 +63,20 @@
         ]
       },
       {
-        "claim": "The card has one prior risk-score alert of the same template that was cleared after customer confirmation (CC-2087, cleared_travel, opened 2016-08-14), showing this card also produces false-positive alerts, not only real fraud.",
+        "claim": "One prior risk-alert case on this card, CC-2087, was cleared under the cleared_travel template, showing the bank previously found a flagged episode on this card to be legitimate.",
         "source": "graph",
-        "ref": "query:prior_cases_for_customer(customer=C07987)",
+        "ref": "query:prior_cases_for_customer(customer=C07987, as_of=2016-12-01 22:28:53)",
         "entity_ids": [
           "CC-2087",
           "C07987-K2"
         ]
       },
       {
-        "claim": "device_neighbors over the prior 30 days shows the flagged profile used by only three cards total (C07987-K2, C06224-K2, C11309-K1), with n_fraud_cases=0 and n_proxy=0, so this is not a confirmed fraud/proxy ring despite being a strong profile.",
+        "claim": "card_testing_check found only 3 chain members with 0 authorizations under $5, so the R5 card-testing shape does not apply to this card.",
         "source": "graph",
-        "ref": "query:device_neighbors(d=Windows | other | chrome 61.0 | 1280x720, from_ts=2016-11-01 22:28:53, to_ts=2016-12-01 22:28:53, max_cards=60)",
+        "ref": "query:card_testing_check(c=C07987-K2, as_of=2016-12-01 22:28:53, small=5, window_min=60, min_n=3, big=100, lookahead_h=48)",
         "entity_ids": [
-          "Windows | other | chrome 61.0 | 1280x720",
-          "C06224-K2",
-          "C11309-K1",
           "C07987-K2"
-        ]
-      },
-      {
-        "claim": "episode_candidates shows the two in-person purchases in the prior 72 hours (3495125 on 2016-11-28, 3499109 on 2016-11-30) have very low cms_p (0.006 and 0.007) and sig_match=false, so only transaction 3503878 forms the episode; the case is not mixed-channel.",
-        "source": "graph",
-        "ref": "query:episode_candidates(t=3503878, as_of=2016-12-01 22:28:53, gap_h=48)",
-        "entity_ids": [
-          "3495125",
-          "3499109",
-          "3503878"
         ]
       },
       {
@@ -92,19 +89,21 @@
       }
     ],
     "similar_prior_cases": [
-      "CC-2011",
-      "CC-2860",
-      "CC-5026",
-      "CC-2087"
+      "CC-5008",
+      "CC-4591",
+      "CC-3761",
+      "CC-3332",
+      "CC-3862",
+      "CC-4349"
     ],
-    "summary": "Verdict is fraud at probability 0.77 for transaction 3503878 ($99.92, online, product R), a single-transaction card_not_present_new_device episode on a brand-new strong device profile (Windows | other | chrome 61.0 | 1280x720, first use ever on this card); exposure is $99.92. The decisive evidence is the memory family: a calibrated score of cms_p 0.849/cal_p 0.7674 and three prior confirmed-fraud closed cases on this exact card in the last four months (CC-2011, CC-2860, CC-5026), against a countervailing history-family reading that the amount sits inside the card's normal baseline and one prior same-template alert cleared after customer confirmation (CC-2087) — a genuine conflict between one strong fraud family and one legitimacy family. We asked for step-up authentication on the online purchase per §3b/§5 rather than blocking outright at 0.70≤p<0.85 with a single fraud family; the reply is assumed inconclusive/no response within the window, so per R4 the case adds MONITOR_CARD and DECLINE_TRANSACTION for the pending authorization while the CREATE_CASE and fraud-band BLOCK_CARD stand, all routed to L1 (exposure ≤$2,500) except the auto-routed CREATE_CASE/MONITOR_CARD; no SAR is filed since exposure is under $1,000 and device_neighbors found no fraud-linked ring on this profile (only 3 cards, 0 fraud cases). An alternative reading is that this is simply a legitimate new-device purchase, consistent with the earlier cleared travel/new-phone precedent CC-2087 and an in-baseline amount, but the card's repeated recent confirmed-fraud history keeps it in the fraud band pending a completed verification.",
+    "summary": "Verdict fraud at p=0.77 on a $99.92 online purchase (txn 3503878, product R), the sole member of the chain-scoped episode and full exposure. Decisive facts: a case-memory score of 0.85 on a device profile never used before on this card, against three prior confirmed-fraud cases on the same card. A step-up auth was requested to settle the online channel; it came back inconclusive within the window, so BLOCK_CARD and DECLINE_TRANSACTION are now recommended (L1) alongside CREATE_CASE and MONITOR_CARD; a completed confirm/deny could still have closed or hardened the case.",
     "written_to_graph": true,
     "graph_case_id": "AC-HHG-019"
   },
   "evidence_requests": [
     {
       "type": "step_up_auth",
-      "asked_after_step": 20,
+      "asked_after_step": 21,
       "assumed_response": "ASSUMED (simulated): step-up authentication was not completed within the window"
     }
   ],
@@ -113,53 +112,53 @@
       {
         "action": "CREATE_CASE",
         "route": "auto",
-        "reason": "3a: probability 0.77 ≥ 0.30, so a case is opened for this fraud-band alert on transaction 3503878."
+        "reason": "3a: probability 0.77 ≥ 0.30 opens a case on this alert regardless of the final block decision."
       },
       {
         "action": "STEP_UP_AUTH",
         "route": "auto",
-        "reason": "§3b/§5: at 0.70 ≤ p=0.77 < 0.85 with a single independent fraud family (memory: cms_p 0.849 plus three prior confirmed-fraud cases on this card) and conflicting legitimacy evidence (amount within baseline, cleared same-template precedent CC-2087), request step-up authentication on this online purchase before blocking."
+        "reason": "§3b/§5: probability 0.77 sits in the 0.70–0.85 band on a single evidence family (memory: cms_p plus prior confirmed-fraud cases) against conflicting legitimacy evidence (baseline amount, cleared precedent CC-2087), so step-up verification on the online channel is requested before recommending a block."
       },
       {
         "action": "BLOCK_CARD",
         "route": "L1",
-        "reason": "fraud_band: verdict fraud at p=0.77; exposure $99.92 ≤ $2,500 keeps the block at L1 pending the step-up outcome."
+        "reason": "§3b: recommended alongside the step-up request given the fraud-band probability on this card's history of confirmed fraud; exposure $99.92 ≤ $2,500 keeps this at L1 pending approval."
       }
     ],
     "final": [
       {
         "action": "CREATE_CASE",
         "route": "auto",
-        "reason": "3a: probability 0.77 ≥ 0.30; the case opened on transaction 3503878 stays open now that the step-up outcome is known."
+        "reason": "3a/§3b: a case was already opened at probability 0.77 ≥ 0.30, and it stays open to record that the step-up request returned inconclusive."
       },
       {
         "action": "MONITOR_CARD",
         "route": "auto",
-        "reason": "R4: the step-up authentication request returned no usable reply (inconclusive) within 24h, so the card is placed on monitoring."
+        "reason": "R4: the step-up verification came back inconclusive (no settled reply) on this online transaction, so the card is monitored pending any further activity."
       },
       {
         "action": "DECLINE_TRANSACTION",
         "route": "L1",
-        "reason": "R4: no reply within 24h on the step-up request — decline the pending online authorization 3503878; exposure $99.92 ≤ $500 so no separate escalation is triggered by R4."
+        "reason": "R4: no reply within 24 h to the step-up request means the pending authorization is recommended for decline; exposure $99.92 is below the $500 escalation threshold so no analyst escalation is added on this basis."
       },
       {
         "action": "BLOCK_CARD",
         "route": "L1",
-        "reason": "fraud_band: verdict fraud at p=0.77 stands unresolved by the inconclusive step-up; exposure $99.92 ≤ $2,500 keeps the block at L1."
+        "reason": "§3b: with the step-up outcome inconclusive and probability 0.77 still in the fraud band against a card carrying three prior confirmed-fraud cases, blocking is recommended; exposure $99.92 ≤ $2,500 keeps this at L1 pending approval."
       }
     ],
-    "what_changed": "The assumed step up auth reply (inconclusive) moved the probability from 0.77 to 0.77 and the verdict to fraud, adding MONITOR_CARD, DECLINE_TRANSACTION, removing STEP_UP_AUTH. Counterfactual: a passed step-up would have closed the alert (R3); a failed one would have led to BLOCK_CARD (R2)."
+    "what_changed": "The assumed step up auth reply (inconclusive) left the probability at 0.77 and kept the verdict fraud, adding MONITOR_CARD, DECLINE_TRANSACTION, removing STEP_UP_AUTH. Counterfactual: a passed step-up would have closed the alert (R3); a failed one would have led to BLOCK_CARD (R2)."
   },
   "sar": {
     "file": false,
-    "reason": "3a not met: exposure $99.92 <= $1,000; the New profile `Windows | other | chrome 61.0 | 1280x720` is used by 5 cards with no fraud linkage strong enough to be a shared-origin signal; no shared region cluster; no other customer's fraud connected; documented pattern",
+    "reason": "3a not met: exposure $99.92 <= $1,000; the New profile `Windows | other | chrome 61.0 | 1280x720` is used by 3 cards (this one included) in the 30 days before the case opened, with no fraud linkage strong enough to be a shared-origin signal; no shared region cluster; no other customer's fraud connected; documented pattern",
     "narrative": "",
     "subjects": [],
     "total_amount_usd": 0,
     "activity_dates": []
   },
-  "stop_reason": "Policy §6 test 3 fired: the assumed step-up authentication was not completed within the window, probability stayed unchanged at 0.77, and the fraud-band actions (block pending L1 approval, decline the pending auth, monitor the card) already apply, so no further automated step would change the recommendation.",
-  "tool_calls": 20,
-  "tokens": 305996,
-  "latency_s": 186.6
+  "stop_reason": "Policy §6 test 3 fired: the requested step-up authentication was not completed within the window and probability held at 0.77, so the fraud-band recommendation (block pending L1 approval) stands and no further automated evidence step would change it.",
+  "tool_calls": 21,
+  "tokens": 286436,
+  "latency_s": 186.8
 }

@@ -3,7 +3,7 @@
   "case": {
     "status": "closed_fraud",
     "verdict": "fraud",
-    "fraud_probability": 0.9,
+    "fraud_probability": 0.91,
     "pattern": "card_not_present_fraud",
     "pattern_description": "",
     "affected_txn_ids": [
@@ -15,7 +15,7 @@
     "exposure_usd": 30.02,
     "evidence": [
       {
-        "claim": "Customer C08299 denies making the $30.02 online purchase 3581141; in this bank's history 4,665/4,665 customer-reported disputes were confirmed fraud with zero cleared, which is why the denial floors the probability at 0.55.",
+        "claim": "Customer C08299 denies making the $30.02 online purchase 3581141, the trigger for this case; customer denials in this bank's closed-case history were never cleared (4,665/4,665 confirmed fraud).",
         "source": "customer",
         "ref": "trigger",
         "entity_ids": [
@@ -24,16 +24,15 @@
         ]
       },
       {
-        "claim": "case_context shows txn 3581141 carries a case-memory calibration score cms_p of 0.858653 (calibrated cal_p 0.7784), far above its own real-time risk_score of 0.28, so the model trained on the bank's closed cases treats this charge as fraud-like even though the point-of-sale score did not flag it.",
+        "claim": "case_context shows the case-memory scorer rates transaction 3581141 at cms_p 0.858653 (calibrated 0.7784), well above the real-time risk_score of 0.28, flagging it as anomalous relative to the card's learned history.",
         "source": "graph",
         "ref": "query:case_context(t=3581141, as_of=2016-12-28 17:10:53)",
         "entity_ids": [
-          "3581141",
-          "C08299-K1"
+          "3581141"
         ]
       },
       {
-        "claim": "region_history for addr1 203.0 on card C08299-K1 shows only 1 prior transaction ever in this region (2016-07-27), versus a modal region of 441.0 and 7 regions total, hint=rare, with no home-region activity in the surrounding ±48h.",
+        "claim": "region_history(C08299-K1, addr1=203.0) shows only 1 prior transaction in this region (hint=rare) against a modal region of 441.0 out of 7 regions used, with no home-region activity in the surrounding 48h window.",
         "source": "graph",
         "ref": "query:region_history(c=C08299-K1, addr1=203.0, as_of=2016-12-28 12:10:52)",
         "entity_ids": [
@@ -41,16 +40,15 @@
         ]
       },
       {
-        "claim": "recurring_charge_check found only 4 prior product-S purchases within 1% of $30.02, with a median gap of 55.98 days (outside the 5-35 day recurring window required by R7), so this charge does not qualify as the customer's own recurring pattern and R7 does not shield it.",
+        "claim": "recurring_charge_check found only 4 prior product-S purchases within 1% of $30.02 (median gap ~56 days, gap_cv 0.59), one short of the R7 gate's 5-occurrence minimum, so the denial cannot be waved off as the customer's own recurring pattern.",
         "source": "graph",
         "ref": "query:recurring_charge_check(t=3581141, tol=0.01, as_of=2016-12-28 17:10:53)",
         "entity_ids": [
-          "3581141",
-          "C08299-K1"
+          "3581141"
         ]
       },
       {
-        "claim": "episode_candidates over a 48h window returns a chain of exactly 1 member (3581141 itself), and card_testing_check finds no small-then-large auth run (n_members=1, n_small=0), so this is an isolated charge, not a card-testing chain or multi-transaction spree.",
+        "claim": "episode_candidates over the 48h window before opening returns a chain of exactly one transaction, 3581141 itself, with no other card activity sharing its signature.",
         "source": "graph",
         "ref": "query:episode_candidates(t=3581141, as_of=2016-12-28 17:10:53, gap_h=48)",
         "entity_ids": [
@@ -58,7 +56,15 @@
         ]
       },
       {
-        "claim": "shared_origin_scan and ring_profile show no strong shared device profile, proxy usage, or ring on card C08299-K1 (device is_strong=False, n_proxy=0, ring_id empty), so no shared-origin or coordinated-ring evidence attaches to this case.",
+        "claim": "card_testing_check on C08299-K1 found no small-authorization run (chain n_members=1, n_small=0, no larger purchase), ruling out a card-testing pattern for this episode.",
+        "source": "graph",
+        "ref": "query:card_testing_check(c=C08299-K1, as_of=2016-12-28 17:10:53, small=5, window_min=60, min_n=3, big=100, lookahead_h=48)",
+        "entity_ids": [
+          "C08299-K1"
+        ]
+      },
+      {
+        "claim": "shared_origin_scan on C08299-K1 over the 30 days before opening lists no device tied to the flagged transaction (device_id empty on 3581141) and no recipient-email or region cluster with fraud linkage; the strongest devices seen carry 0-2 fraud cases against dozens of unrelated cards, none of them the flagged transaction's own (device-less) session.",
         "source": "graph",
         "ref": "query:shared_origin_scan(c=C08299-K1, as_of=2016-12-28 17:10:53, days=30)",
         "entity_ids": [
@@ -66,7 +72,7 @@
         ]
       },
       {
-        "claim": "The $30.02 amount sits inside the card's ordinary spending baseline (prior median $49.97, prior maximum $343.94 across 46 prior transactions on 56 total), meaning size alone would not have flagged this purchase, which is the strongest legitimacy-leaning fact in the ledger.",
+        "claim": "The $30.02 amount sits inside the card's baseline as of opening (prior median $49.97, prior maximum $343.94 over the 46 transactions before this one), so amount alone is not an unusual signal for this card.",
         "source": "graph",
         "ref": "query:case_context(t=3581141, as_of=2016-12-28 17:10:53)",
         "entity_ids": [
@@ -76,11 +82,14 @@
       }
     ],
     "similar_prior_cases": [
-      "CC-5153",
+      "CC-4001",
+      "CC-5334",
+      "CC-3985",
+      "CC-5195",
       "CC-3044",
-      "CC-4574"
+      "CC-5153"
     ],
-    "summary": "Verdict: fraud at probability 0.90. Customer C08299 denied a $30.02 online purchase (transaction 3581141, product code S) placed from a billing region (203.0) where the card has only one prior visit ever against a modal region of 441.0; the episode is this single transaction, so exposure is $30.02. The decisive evidence is the customer's denial itself (family: customer; historically 4,665/4,665 such denials on this dataset were confirmed fraud) combined with the case-memory calibration score of 0.86 on this transaction (family: memory), well above its real-time risk_score of 0.28; region rarity and the failed R7 recurring-charge test (only 4 same-amount purchases, median gap 55.98 days, outside the 5-35 day window) corroborate rather than drive the call. The one legitimacy-leaning fact is that $30.02 sits comfortably inside the card's normal $49.97-median spending, so an alternative reading is that this is a small, forgotten legitimate charge the customer mistakenly disputed rather than true card-not-present fraud, but the policy's zero-clearance history on denials and the high cms_p outweigh that. No evidence request was made or needed; nothing was assumed beyond the standard denial-floor treatment. The bank should open the case and block the card at the L1 (team-lead) route, per R2, given exposure of $30.02 is well under the $2,500 L1 ceiling; similar closed cases in this same region (CC-5153, CC-3044, CC-4574) were all confirmed fraud, reinforcing that region 203.0 carries a real fraud base rate for this cardholder.",
+    "summary": "Verdict: fraud, probability 0.91. The customer denies the $30.02 online transaction 3581141, which forms the entire candidate episode and exposure (a single-transaction chain, not a spree); the card-memory scorer rates it 0.86, well above the 0.28 model risk score, and no recurring-charge pattern covers it (only 4 prior matches, one short of the exception), so this is not read as the customer's own routine charge. No evidence request was needed. Recommended: create the case now (auto) and block the card, pending team-lead approval (L1, exposure ≤ $2,500).",
     "written_to_graph": true,
     "graph_case_id": "AC-HHG-009"
   },
@@ -90,24 +99,24 @@
       {
         "action": "CREATE_CASE",
         "route": "auto",
-        "reason": "3a: probability 0.90 ≥ 0.30 and this is a customer dispute, so a case is opened to hold the evidence."
+        "reason": "3a: the customer disputes transaction 3581141, opening a case regardless of exposure."
       },
       {
         "action": "BLOCK_CARD",
         "route": "L1",
-        "reason": "R2: customer denied transaction 3581141 and the verdict is fraud (p=0.90); exposure $30.02 ≤ $2,500 so this routes to the team lead, not L2."
+        "reason": "R2: customer denied; exposure $30.02 ≤ $2,500, so this recommendation goes to the team lead for approval rather than a manager."
       }
     ],
     "final": [
       {
         "action": "CREATE_CASE",
         "route": "auto",
-        "reason": "3a: probability 0.90 ≥ 0.30 and this is a customer dispute, so a case is opened to hold the evidence."
+        "reason": "3a: the customer disputes transaction 3581141, opening a case regardless of exposure."
       },
       {
         "action": "BLOCK_CARD",
         "route": "L1",
-        "reason": "R2: customer denied transaction 3581141 and the verdict is fraud (p=0.90); exposure $30.02 ≤ $2,500 so this routes to the team lead, not L2."
+        "reason": "R2: customer denied; exposure $30.02 ≤ $2,500, so this recommendation goes to the team lead for approval rather than a manager."
       }
     ],
     "what_changed": "nothing"
@@ -120,8 +129,8 @@
     "total_amount_usd": 0,
     "activity_dates": []
   },
-  "stop_reason": "Policy §6 test 1 fired: fraud probability 0.90 is at or above the 0.85 stop threshold with two independent evidence families (customer denial and case-memory calibration score), so no further evidence request could move the case out of the fraud band, making the initial CREATE_CASE + BLOCK_CARD (L1) recommendation final.",
-  "tool_calls": 16,
-  "tokens": 180872,
-  "latency_s": 127.8
+  "stop_reason": "Policy §6 test 1 fired: probability 0.91 is at or above the 0.85 fraud threshold with two independent evidence families (customer denial, case-memory score), and neither the recurring-charge nor shared-origin checks offered a request that could change the action set, so the initial recommendation stands as final.",
+  "tool_calls": 18,
+  "tokens": 176528,
+  "latency_s": 120.6
 }

@@ -3,7 +3,7 @@
   "case": {
     "status": "open",
     "verdict": "uncertain",
-    "fraud_probability": 0.62,
+    "fraud_probability": 0.6,
     "pattern": "out_of_region_use",
     "pattern_description": "",
     "affected_txn_ids": [
@@ -16,16 +16,26 @@
     "exposure_usd": 165.93,
     "evidence": [
       {
-        "claim": "Customer C08623 denies making the $49.00 purchase 3530164, which is why this case was opened.",
+        "claim": "Customer C08623 denies making the $49.00 purchase 3530164 on card C08623-K2; this denial is the case trigger, and in the bank's history no customer-reported denial of this kind was ever cleared.",
         "source": "customer",
         "ref": "trigger",
         "entity_ids": [
           "3530164",
+          "C08623-K2",
           "C08623"
         ]
       },
       {
-        "claim": "The transaction immediately before the flagged one, 3530056 ($116.93, same region 330.0, 49 minutes earlier), carries a case-memory score cms_p=0.844364 and its own real-time risk_score of 0.88, and shares the rare purchaser-email domain 'me.com' with the flagged transaction.",
+        "claim": "recurring_charge_check for transaction 3530164 found only 3 prior same-place purchases at billing region 330.0 (median gap 0.00 days, gap CV 1.00), short of the 5-purchase R7 gate, so the charge does not match a documented recurring pattern and R2 governs from intake rather than R7.",
+        "source": "graph",
+        "ref": "query:recurring_charge_check(t=3530164, tol=0.01, as_of=2016-12-10 15:01:21)",
+        "entity_ids": [
+          "3530164",
+          "C08623-K2"
+        ]
+      },
+      {
+        "claim": "The transaction immediately preceding the flagged one, 3530056 ($116.93, in_person, billing region 330.0, ts 2016-12-10 12:12:41, 49 minutes earlier), scores cms_p 0.844 and shares the purchaser-email domain 'me.com' with 3530164, forming the candidate 2-member episode.",
         "source": "graph",
         "ref": "query:episode_candidates(t=3530164, as_of=2016-12-10 15:01:21, gap_h=48)",
         "entity_ids": [
@@ -34,7 +44,7 @@
         ]
       },
       {
-        "claim": "Card C08623-K2 has 5 prior confirmed-fraud closed cases (CC-4957, CC-3682, CC-3327, CC-2935, CC-2817; out_of_region_use/account_takeover), most recently opened 2016-10-18, versus only 1 cleared case (CC-1589).",
+        "claim": "Card C08623-K2 has 5 prior confirmed-fraud closed cases (CC-4957, CC-3682, CC-3327, CC-2935, CC-2817; 4 out_of_region_use, 1 account_takeover), the most recent opened 2016-10-18.",
         "source": "graph",
         "ref": "query:prior_cases_for_customer(cu=C08623, as_of=2016-12-10 15:01:21)",
         "entity_ids": [
@@ -43,118 +53,100 @@
           "CC-3327",
           "CC-2935",
           "CC-2817",
-          "CC-1589",
           "C08623-K2"
         ]
       },
       {
-        "claim": "The $49.00 amount sits inside the card's normal baseline: prior median $67.91 and prior maximum $2,680.95 over 981 prior transactions on this card.",
+        "claim": "8 similar closed cases sharing the same-region overlap with this card (CC-3842, CC-3061, CC-3499, CC-5555, CC-3154, CC-5127, CC-3121, CC-5438) were all resolved confirmed_fraud, pattern out_of_region_use.",
         "source": "graph",
-        "ref": "query:case_context(t=3530164)",
+        "ref": "query:similar_prior_cases(q=[1024 items], k=8, card_id=C08623-K2, customer_id=C08623, addr1=330.0, as_of=2016-12-10 15:01:21)",
+        "entity_ids": [
+          "CC-3842",
+          "CC-3061",
+          "CC-3499",
+          "CC-5555",
+          "CC-3154",
+          "CC-5127",
+          "CC-3121",
+          "CC-5438"
+        ]
+      },
+      {
+        "claim": "The flagged $49.00 amount sits inside the card's own baseline as of opening: 980 prior transactions, prior median amount $67.91, prior maximum amount $2,680.95.",
+        "source": "graph",
+        "ref": "query:case_context(t=3530164, as_of=2016-12-10 15:01:21)",
         "entity_ids": [
           "3530164",
           "C08623-K2"
         ]
       },
       {
-        "claim": "Billing region 330.0 is a known region for this card, used 42-43 times over 33 days (about 4.4% share) since 2016-07-09, while the card overall has transacted in 53 distinct regions, so region novelty carries little weight here.",
-        "source": "graph",
-        "ref": "query:region_history(c=C08623-K2, addr1=330.0, as_of=2016-12-10 15:01:21)",
+        "claim": "Billing region 330.0 is known to card C08623-K2, with 42 prior purchases across 33 distinct days before this transaction; the bank's labeling convention still calls card-present fraud away from the card's modal region (299.0) out_of_region_use even when the region is well-known to the card, since 581 of its 955 confirmed out_of_region_use closed cases were in regions the card had used five or more times before.",
+        "source": "document",
+        "ref": "document:policy#out_of_region_use_convention",
         "entity_ids": [
           "C08623-K2"
         ]
       },
       {
-        "claim": "recurring_charge_check found a group of 3 prior purchases within 1% of $49.00 at region 330.0, but the median gap between them is only 0.001 days with gap_cv 1.0, failing R7's 5-35 day cadence test, so this is not a documented legitimate recurring charge.",
+        "claim": "The case-memory scorer calibrates the flagged transaction at cms_p 0.087 (cal_p 0.107), well below the real-time risk_score of 0.40, reflecting its own in-baseline amount and familiar region.",
         "source": "graph",
-        "ref": "query:recurring_charge_check(t=3530164, tol=0.01, as_of=2016-12-10 15:01:21)",
-        "entity_ids": [
-          "3530164"
-        ]
-      },
-      {
-        "claim": "The case-memory calibration (cms_p=0.0872, cal_p=0.107) scores the flagged transaction itself low, well below its own real-time risk_score of 0.40, indicating the standalone $49.00 charge does not look anomalous in isolation; the elevated probability rests on the denial plus the high-scoring neighboring transaction and prior fraud history.",
-        "source": "graph",
-        "ref": "query:case_context(t=3530164)",
-        "entity_ids": [
-          "3530164"
-        ]
-      },
-      {
-        "claim": "Assumed reply: no reply from the customer within 24 hours",
-        "source": "customer",
-        "ref": "evidence_request:1",
+        "ref": "query:case_context(t=3530164, as_of=2016-12-10 15:01:21)",
         "entity_ids": [
           "3530164"
         ]
       }
     ],
     "similar_prior_cases": [
+      "CC-3842",
       "CC-3061",
-      "CC-4326",
-      "CC-5127",
-      "CC-4005",
-      "CC-4625",
-      "CC-4909"
+      "CC-3499",
+      "CC-5555",
+      "CC-3154",
+      "CC-5127"
     ],
-    "summary": "Verdict: uncertain at probability 0.62 (kept within the p_engine±0.10 band), pattern out_of_region_use. The candidate episode is two in-person transactions on card C08623-K2 at billing region 330.0: 3530056 ($116.93, 2016-12-10 12:12) and the flagged 3530164 ($49.00, 2016-12-10 13:01), for total exposure $165.93. The decisive fraud evidence is the customer's own denial of 3530164 (family: customer, floors probability at 0.55) plus a card-history/memory signal: the immediately preceding transaction 3530056 scores cms_p 0.844 with a rare shared purchaser-email domain (me.com), and this card already carries 5 prior confirmed-fraud closed cases including CC-3327 (account_takeover) and CC-4957 (out_of_region_use), echoed by the retrieved similar cases CC-3061, CC-4326, CC-5127, CC-4005, CC-4625 and CC-4909, all confirmed_fraud out_of_region_use on the same card/region cluster. Against that, family history evidence is legitimacy-leaning: region 330.0 is actually a known region for this heavily-roaming card (42+ prior visits, 53 regions total) and the $49 amount is well inside its normal spending range, so an equally reasonable reading is that this is ordinary activity the customer simply doesn't recognize rather than true takeover. We requested customer_validation asking which of 3530056/3530164 the customer actually made; no reply arrived within 24 hours, so per R4 the recommendation is MONITOR_CARD plus DECLINE_TRANSACTION on any pending authorizations (L1 route) alongside the already-open CREATE_CASE (auto), with no block or report until a reply is received.",
+    "summary": "Verdict uncertain at p=0.60 for an out_of_region_use episode on card C08623-K2: transactions 3530056 ($116.93) and 3530164 ($49.00, the disputed one), $165.93 exposure. Decisive facts: the customer denied 3530164, no R7 recurring match cleared it, and the prior transaction shares a rare email domain with a 0.844 case-memory score, against 5 prior confirmed-fraud cases on this card in the same pattern. Could also read as ordinary roaming use in a region the card knows well (42 prior visits). Recommend CREATE_CASE (auto) and BLOCK_CARD (L1, pending approval).",
     "written_to_graph": true,
     "graph_case_id": "AC-HHG-003"
   },
-  "evidence_requests": [
-    {
-      "type": "customer_validation",
-      "asked_after_step": 17,
-      "assumed_response": "ASSUMED (simulated): no reply from the customer within 24 hours"
-    }
-  ],
+  "evidence_requests": [],
   "next_best_actions": {
     "initial": [
       {
         "action": "CREATE_CASE",
         "route": "auto",
-        "reason": "3a: customer dispute on transaction 3530164 opens a case regardless of probability."
+        "reason": "3a/R2: the customer disputed transaction 3530164, opening a case is required on any customer dispute, and the denial without an R7 recurring-charge match puts the card in R2's block track."
       },
       {
-        "action": "VERIFY_WITH_CUSTOMER",
-        "route": "auto",
-        "reason": "R1: probability 0.62 < 0.70 on a single evidence family (customer denial); verify which of 3530164 and the neighboring 3530056 ($116.93) the customer made before any block is considered."
-      },
-      {
-        "action": "MONITOR_CARD",
-        "route": "auto",
-        "reason": "uncertain_initial: verdict uncertain at p=0.62 with exposure $165.93 ≤ $500, so monitor the card while the verification reply is pending rather than blocking (block not admissible per R1)."
+        "action": "BLOCK_CARD",
+        "route": "L1",
+        "reason": "R2: customer denied transaction 3530164; exposure $165.93 (3530056 + 3530164) is ≤ $2,500, so a team-lead-level card block is recommended rather than escalated to fraud manager."
       }
     ],
     "final": [
       {
         "action": "CREATE_CASE",
         "route": "auto",
-        "reason": "3a: customer dispute on transaction 3530164 requires an open case."
+        "reason": "3a/R2: the customer disputed transaction 3530164, opening a case is required on any customer dispute, and the denial without an R7 recurring-charge match puts the card in R2's block track."
       },
       {
-        "action": "MONITOR_CARD",
-        "route": "auto",
-        "reason": "R4: no reply within 24h to the customer_validation request, so the card is placed on monitoring."
-      },
-      {
-        "action": "DECLINE_TRANSACTION",
+        "action": "BLOCK_CARD",
         "route": "L1",
-        "reason": "R4: no reply within 24h — decline pending authorizations on this card; exposure $165.93 ≤ $500 so no escalation is triggered."
+        "reason": "R2: customer denied transaction 3530164; exposure $165.93 (3530056 + 3530164) is ≤ $2,500, so a team-lead-level card block is recommended rather than escalated to fraud manager."
       }
     ],
-    "what_changed": "The assumed customer validation reply (no_reply) moved the probability from 0.62 to 0.62 and the verdict to uncertain, adding DECLINE_TRANSACTION, removing VERIFY_WITH_CUSTOMER. Counterfactual: a confirmation would have closed the alert (R3); a renewed denial would have led to BLOCK_CARD and CREATE_CASE (R2)."
+    "what_changed": "nothing"
   },
   "sar": {
     "file": false,
-    "reason": "3a not met: verdict uncertain (fraud not confirmed or strongly suspected), exposure $165.93; no report",
+    "reason": "R2 / 3a not met: the customer denied the transaction, but exposure $165.93 <= $1,000; no device profile shared with other cards' fraud; no other card's fraud connected; documented pattern; no report",
     "narrative": "",
     "subjects": [],
     "total_amount_usd": 0,
     "activity_dates": []
   },
-  "stop_reason": "Policy §6 test 3 fired: the customer_validation verification was not answered within the 24-hour window, so R4 governs (monitor the card, decline pending authorizations) and the case stays open pending a reply — no further automated query or action would move the recommendation until the customer responds.",
+  "stop_reason": "Policy §6 test 2 fired: the customer's denial in the trigger is itself the verification response, so R2 fixes the action set (BLOCK_CARD + CREATE_CASE); re-asking the customer would repeat an already-answered question and step-up authentication does not apply to this card-present purchase, so no further evidence request was made.",
   "tool_calls": 17,
-  "tokens": 416827,
-  "latency_s": 237.6
+  "tokens": 318761,
+  "latency_s": 190.4
 }

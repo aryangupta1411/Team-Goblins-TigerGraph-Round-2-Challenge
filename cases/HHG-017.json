@@ -13,24 +13,44 @@
     "exposure_usd": 0.0,
     "evidence": [
       {
-        "claim": "The flagged amount $100.09 sits well inside the card's own baseline (prior median $199.97, prior maximum $2,892.12 over 59 transactions).",
+        "claim": "case_context returned txn{id=3450629, ts=2016-11-11 23:46:24, amt=100.09, product_cd=R, channel=online, addr1=204.0}, card{id=C04570-K1, modal_region=325.0, n_txns=53}, device{id=Windows | Windows 10 | chrome 65.0 | 1920x1080, is_strong=False, n_cards_alltime=299, n_cards_30d=238, n_fraud_cases=7}",
         "source": "graph",
         "ref": "query:case_context(t=3450629, as_of=2016-11-12 00:46:24)",
+        "entity_ids": [
+          "3450629",
+          "C04570-K1",
+          "Windows | Windows 10 | chrome 65.0 | 1920x1080"
+        ]
+      },
+      {
+        "claim": "The flagged amount $100.09 sits inside the card's baseline of 52 prior transactions (prior median $199.97, prior maximum $2,892.12), well below the median, not an unusual purchase size for this card",
+        "source": "graph",
+        "ref": "query:case_context(txn=3450629)",
         "entity_ids": [
           "3450629",
           "C04570-K1"
         ]
       },
       {
-        "claim": "Billing region 204.0 is a known region for this card, with 5 prior purchases on 4 distinct days before this transaction and the flagged txn continuing that pattern.",
+        "claim": "Billing region 204.0 is a region the card already knows: region_history shows 5 prior online purchases there over 4 distinct days before this transaction (first_ts 2016-07-28, last_ts 2016-11-11 22:58:57), hint=known",
         "source": "graph",
         "ref": "query:region_history(c=C04570-K1, addr1=204.0, as_of=2016-11-11 23:46:23)",
         "entity_ids": [
+          "3450629",
           "C04570-K1"
         ]
       },
       {
-        "claim": "$100.09 under product code R at anonymous.com is a recurring price point for this card: 9 total prior/related purchases, with a 5-member group at anonymous.com showing a 15.0-day median gap (gap CV 1.15, so it fails R7's strict monthly-cadence gate but still shows an established habit, not a one-off).",
+        "claim": "The purchaser email domain anonymous.com had been used 28 times on this card before this transaction, making it the card's dominant usual_p_email rather than a novel recipient",
+        "source": "graph",
+        "ref": "query:case_context(txn=3450629)",
+        "entity_ids": [
+          "3450629",
+          "C04570-K1"
+        ]
+      },
+      {
+        "claim": "recurring_charge_check found 9 total prior purchases within ±1% of $100.09 under product code R, 5 of them at anonymous.com with median gap 15.0 days (gap CV 1.15, failing R7's strict monthly-cadence test but showing this price point recurs on this card, not a one-off)",
         "source": "graph",
         "ref": "query:recurring_charge_check(t=3450629, tol=0.01, as_of=2016-11-12 00:46:24)",
         "entity_ids": [
@@ -39,38 +59,39 @@
         ]
       },
       {
-        "claim": "The device profile Windows | Windows 10 | chrome 65.0 | 1920x1080 was already used 3-4 times on this card since 2016-10-27 (device_new values Found/New seen) and, per shared_origin_scan and device_neighbors, is a generic profile (299 cards all-time, not is_strong) so it cannot count as R6 shared-origin evidence despite 7 fraud cases on it elsewhere.",
+        "claim": "device_history shows the device profile Windows | Windows 10 | chrome 65.0 | 1920x1080 was already known to this card, with 3 prior uses since first_ts 2016-10-27 21:32:25 before the flagged transaction (device_new=Found, not a fresh device)",
         "source": "graph",
-        "ref": "query:device_history(c=C04570-K1, d=Windows | Windows 10 | chrome 65.0 | 1920x1080, as_of=2016-11-12 00:46:24)",
+        "ref": "query:device_history(c=C04570-K1, d=Windows | Windows 10 | chrome 65.0 | 1920x1080, as_of=2016-11-11 23:46:23)",
         "entity_ids": [
           "Windows | Windows 10 | chrome 65.0 | 1920x1080",
           "C04570-K1"
         ]
       },
       {
-        "claim": "card_testing_check on the 3-member 48-hour online chain (3450436, 3450503, 3450629) found zero sub-$5 members and no subsequent larger cleared purchase, so the R5 card-testing shape does not apply.",
+        "claim": "card_testing_check over a 60-minute window with a $5 small threshold found the 3-member online chain has n_small=0 and no run, so the R5 card-testing shape (tiny auths then a larger purchase) does not apply here",
         "source": "graph",
         "ref": "query:card_testing_check(c=C04570-K1, as_of=2016-11-12 00:46:24, small=5, window_min=60, min_n=3, big=100, lookahead_h=48)",
         "entity_ids": [
-          "3450436",
-          "3450503",
-          "3450629"
+          "C04570-K1"
         ]
       },
       {
-        "claim": "The case-memory scorer (LightGBM over 5,565 closed cases, October holdout AUC 0.956) rates the flagged transaction at cms_p=0.0987 (calibrated 0.107), far below the raw real-time risk_score of 0.57.",
+        "claim": "The memory-informed case scorer (cms_p) rates this transaction at 0.0987 (calibrated to 0.107 after adjustment) versus the real-time risk_score of 0.57, and the card's one prior risk-score alert (CC-1383) was cleared with a 'confirmed travel' template, both pointing away from fraud",
         "source": "graph",
-        "ref": "query:case_context(t=3450629, as_of=2016-11-12 00:46:24)",
+        "ref": "query:case_context(txn=3450629); query:prior_cases_for_customer(customer=C04570)",
         "entity_ids": [
-          "3450629"
-        ]
-      },
-      {
-        "claim": "The card's one prior risk-score alert of the same template (cleared_travel) closed as cleared with no fraud found, and 8 similar prior cases retrieved for this card/region all closed as cleared with pattern none.",
-        "source": "graph",
-        "ref": "query:prior_cases_for_customer(cu=C04570, as_of=2016-11-12 00:46:24)",
-        "entity_ids": [
+          "3450629",
           "CC-1383",
+          "C04570-K1"
+        ]
+      },
+      {
+        "claim": "shared_origin_scan and device_neighbors confirm the online device profile is not strong (299 cards all-time, 238 in the prior 30 days, above the 60-card strength ceiling) and the ring profile on this card (iOS Device | iOS 10.2.0 | mobile safari 10.0 | 2208x1242) shows only 1 prior transaction from this card with no ring_hit, so no shared-origin (R6) evidence applies to this transaction",
+        "source": "graph",
+        "ref": "query:shared_origin_scan(c=C04570-K1, as_of=2016-11-12 00:46:24, days=30); query:ring_profile(c=C04570-K1, as_of=2016-11-12 00:46:24)",
+        "entity_ids": [
+          "Windows | Windows 10 | chrome 65.0 | 1920x1080",
+          "iOS Device | iOS 10.2.0 | mobile safari 10.0 | 2208x1242",
           "C04570-K1"
         ]
       },
@@ -84,18 +105,18 @@
       }
     ],
     "similar_prior_cases": [
-      "CC-1383",
-      "CC-4955",
-      "CC-4381"
+      "CC-2037",
+      "CC-4381",
+      "CC-4955"
     ],
-    "summary": "Verdict: legitimate at probability 0.08 for transaction 3450629 ($100.09, online, product R, region 204.0) on card C04570-K1, pattern none, with the candidate three-member chain (3450436, 3450503, 3450629, $300.14 total in a 48-hour window) never treated as an episode since the case resolved as legitimate and exposure is $0.00. The decisive evidence spanned four families: history (the amount sits well inside the card's median-$199.97/max-$2,892.12 baseline, the region has five prior visits, and the $100.09 product-R charge to anonymous.com recurs roughly every 15 days), device (the profile is a generic, not-strong Windows/Chrome fingerprint already used on this card since October 27, so it carries no shared-origin weight despite appearing on many cards), memory (the calibrated case-memory score of 0.099 was far below the raw risk_score of 0.57, and a prior risk-score alert on this card of the same cleared_travel template, CC-1383, closed clean, echoed by same-region comparables such as CC-4955 and CC-4381 that also cleared), and customer (a validation request was sent and the simulated reply confirmed the charge). The alternative reading — that a single risk_score of 0.57 plus a proxy flag on the flagged transaction warranted treating this as unverified card-not-present fraud — was considered but rejected because it rests on one weak signal against three independent legitimacy families. Nothing further needs approval beyond the auto-route actions already taken: CREATE_CASE, ALLOW_TRANSACTION, and CLOSE_NO_FRAUD, all executable by the agent with no L1/L2 escalation required.",
+    "summary": "Verdict: legitimate, probability 0.08. No fraud pattern; the $100.09 online purchase on card C04570-K1 fit the card's baseline (known region 204.0, usual product/email, previously-used device) and case memory (cms_p 0.099, a prior cleared alert). No episode was carried forward and exposure is $0.00. A customer-validation request was sent and the assumed reply confirmed the purchase, settling the alert. Recommended: CREATE_CASE and ALLOW_TRANSACTION (auto), then CLOSE_NO_FRAUD (auto) noting the confirmation; had the customer instead denied it, R2 would have required BLOCK_CARD (L1) and CREATE_CASE.",
     "written_to_graph": true,
     "graph_case_id": "AC-HHG-017"
   },
   "evidence_requests": [
     {
       "type": "customer_validation",
-      "asked_after_step": 21,
+      "asked_after_step": 20,
       "assumed_response": "ASSUMED (simulated): customer confirmed an unusual amount of $100.09 consistent with stated intent"
     }
   ],
@@ -104,32 +125,32 @@
       {
         "action": "CREATE_CASE",
         "route": "auto",
-        "reason": "3a: a case is opened whenever evidence is requested; single-signal risk_score alert (0.57) with p=0.08 still requires a case behind the verification."
+        "reason": "3a/§6: evidence was requested and a risk-score alert is open, so a case is opened even though probability is low (0.08)."
       },
       {
         "action": "VERIFY_WITH_CUSTOMER",
         "route": "auto",
-        "reason": "R1: single evidence family (risk_score alone) triggered the alert and p=0.08 < 0.70, so verify before any block; all other evidence (baseline amount, known region, recurring pattern, generic device, no card-testing shape, prior cleared alert of the same template) leans legitimate but a quick customer confirmation on the $100.09 charge settles it without further graph queries."
+        "reason": "R1: single evidence family (risk_score alone triggered the alert) and probability 0.08 < 0.70, so the alert is verified with the customer before any block is considered."
       }
     ],
     "final": [
       {
         "action": "CREATE_CASE",
         "route": "auto",
-        "reason": "3a: a case was opened for the customer_validation request on this single-signal risk_score alert; recording the confirmation closes it out."
+        "reason": "3a: evidence was requested and a risk-score alert is open, so a case is recorded to document the verification and outcome."
       },
       {
         "action": "ALLOW_TRANSACTION",
         "route": "auto",
-        "reason": "R3: customer confirmed the $100.09 charge, and p=0.08 is in the legitimate band with baseline amount, known region, recurring pattern, and prior cleared alert of the same template all supporting it."
+        "reason": "R3: the customer confirmed the transaction on the customer-validation request, settling the alert with no exposure."
       },
       {
         "action": "CLOSE_NO_FRAUD",
         "route": "auto",
-        "reason": "R3: customer confirms → close with no fraud found; exposure $0.00, verdict legitimate."
+        "reason": "R3/§6: customer confirmation plus the card, device and case-memory evidence all point legitimate (probability 0.08), so the case is closed with the confirmation noted."
       }
     ],
-    "what_changed": "The assumed customer validation reply (confirm) moved the probability from 0.08 to 0.08 and the verdict to legitimate, adding ALLOW_TRANSACTION, CLOSE_NO_FRAUD, removing VERIFY_WITH_CUSTOMER. Counterfactual: had the customer denied the purchase, R2 would have applied: BLOCK_CARD (L1) and CREATE_CASE."
+    "what_changed": "The assumed customer validation reply (confirm) left the probability at 0.08 and kept the verdict legitimate, adding ALLOW_TRANSACTION, CLOSE_NO_FRAUD, removing VERIFY_WITH_CUSTOMER. Counterfactual: had the customer denied the purchase, R2 would have applied: BLOCK_CARD (L1) and CREATE_CASE."
   },
   "sar": {
     "file": false,
@@ -139,8 +160,8 @@
     "total_amount_usd": 0,
     "activity_dates": []
   },
-  "stop_reason": "Policy §6 test 2 fired: the assumed customer confirmation settled the single-signal risk_score question, and independently §6 test 1 was already satisfied since probability 0.08 sits below the 0.15 legitimate threshold with four independent evidence families (customer, device, history, memory) supporting it.",
-  "tool_calls": 21,
-  "tokens": 246200,
-  "latency_s": 129.7
+  "stop_reason": "Policy §6 test 2 fired: the assumed customer confirmation settled the question, and separately probability 0.08 with 4 independent evidence families (customer, device, history, memory) already met §6 test 1.",
+  "tool_calls": 20,
+  "tokens": 244874,
+  "latency_s": 156.8
 }

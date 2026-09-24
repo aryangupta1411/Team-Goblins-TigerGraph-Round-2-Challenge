@@ -62,9 +62,30 @@ make test lint
 
 ## Results
 
-_To be filled in from the final live run of all 20 cases (verdicts, patterns, SARs filed, final actions,
-tool calls, tokens and latency per case), made with the ordered commands in [`docs/RERUN.md`](docs/RERUN.md).
-Until then, [`cases/MANIFEST.md`](cases/MANIFEST.md) lists the run that produced the files in `cases/`._
+The files in `cases/` come from one clean live pass, run `live-final`, made with the ordered commands in
+[`docs/RERUN.md`](docs/RERUN.md). Each case ran once against TigerGraph through MCP, all from commit `49768d0` with no
+local changes, on claude-sonnet-5 (high effort, subscription backend). Before the pass, the earlier runs' graph
+write-backs were deleted and the fixed GSQL library was reinstalled. [`cases/MANIFEST.md`](cases/MANIFEST.md) has the
+per-case verdict, probability, pattern, SAR, tool calls, tokens and latency; the traces are in `runs/live-final/`.
+
+| Measure | Value |
+|---|---|
+| Verdicts | 8 fraud, 7 legitimate, 5 uncertain |
+| SAR required | 2, HHG-006 (under-$500 burst) and HHG-014 (anonymous-proxy device ring), both `undocumented`; drafted, filing awaits L2 approval |
+| Evidence requested | 14 of 20 cases (9 customer validation, 5 step-up; replies simulated and labelled `ASSUMED`) |
+| Final actions by route | 46 auto, 18 L1, 2 L2 |
+| Tool calls per case | median 19 (15-24); 0 failed |
+| Tokens per case | median 286k (~95% prompt-cache writes and reads) |
+| Time per case | median 151 s (121-264 s) |
+| `make validate` | 20 clean, 0 problems |
+| Written back to the graph | 20 `AgentCase`, 130 `CaseEvent`, 20 pending `Approval` |
+
+All 20 answers agree with the engine's own offline prediction (`engine/out/<case>.draft.json`) on verdict, pattern,
+episode transactions, exposure, SAR decision, status and both action sets with their routes, and on probability within
+0.10. That is a self-consistency check, not accuracy: the organisers hold the answer key. Against real outcomes, a
+replay of 310 labelled closed cases (`engine/out/replay_metrics.json`) scores, on the 180 confirmed-fraud ones,
+pattern accuracy 0.878, SAR decision accuracy 0.939 and episode Jaccard 0.792, all below the targets of 0.95, 1.00 and
+0.85. [`docs/blog.md`](docs/blog.md) walks through HHG-014 and the lessons.
 
 ## The two documents
 
@@ -101,12 +122,12 @@ python sync_spec.py
 
 ```
 case_pack.csv ─► agent/bench.py ─► agent/phase_machine.py (P0–P10; LLM = claude-agent-sdk, LLM_BACKEND=cli)
-                                      │  12 typed read-only tools = installed GSQL queries via
+                                      │  16 typed read-only tools (14 GSQL query wrappers + 2 retrieval; 12 LLM calls/case) via
                                       │  mcp/tg_mcp_launcher.py → tigergraph-mcp 1.0.3 (stdio)  ──HTTPS──► Savanna TG-00 (4.2.x)
                                       ▼                                                                    FraudGraph + TigerVector
                         engine/ (scorecard · pattern · episode · SAR rule · policy gate · VoI · simulator)
                                       ▼
-                        agent/persist (open_case / append_case_event / close_case via MCP writers; AgentCase.note_emb)
+                        agent/persist (open_case / append_case_event / record_approval + add_edges via MCP; AgentCase + note_emb via pyTigerGraph)
                                       ▼
                   cases/HHG-0xx.json · runs/<run_id>/<case>/{calls,phases}.jsonl · ui/ (Streamlit)
 offline once:  etl/ (DuckDB, card_id rule, baselines, LightGBM scorer) → engine/facts_from_etl.py → graph/load_all.py → graph/run_algos.py → rag/ (local embeddings) → graph/install_all.py
@@ -212,7 +233,7 @@ Schema + loading jobs + 590,742 transactions; WCC / degree once (day 2, 4):
 make load algos
 ```
 
-The 25 installed queries (16 LLM-exposed reads + 4 writers + 5 harness-only: `grounding_chunks` + 4 RAG) and their MCP descriptions (day 3–4):
+The 25 installed queries (14 LLM-exposed reads + 4 writers + 7 harness-only: `grounding_chunks`, 4 RAG, `post_open_activity` and the UI's `case_subgraph`; the model sees 16 typed tools, the 14 plus `find_similar_cases` and `grounding_chunks`) and their MCP descriptions (day 3–4):
 
 ```bash
 make install-queries describe
@@ -322,7 +343,7 @@ make ids
 - `card_id` is derived by the rule that reproduces 100 % of the 14,975 labelled (transaction → card) pairs (`customer_id-K<dense_rank(card6)>`), tested in CI.
 - Evidence is time-boxed to `ts <= opened_at`; post-open activity is a monitoring note, never in `affected_txn_ids` / `exposure_usd`.
 - Routes and rules come from `policy/fraud_policy.yaml`; `auto` actions execute, `L1`/`L2` land in the approval inbox; `sar.file ⇔ FILE_REPORT ∈ final`; `verdict == fraud` ⇒ a block / decline / escalation in `final` and never `CLOSE_NO_FRAUD`; SAR narratives pass the single validator `rag/validate_sar.py`.
-- Each case is written to the graph as `AgentCase AC-HHG-0nn` with `CaseEvent`s, `Approval`s and `CASE_SIMILAR_TO` edges; cases run in `opened_at` order so later cases retrieve earlier ones.
+- Each case is written to the graph as `AgentCase AC-HHG-0nn` with `CaseEvent`s, `Approval`s and `CASE_SIMILAR_TO` edges; cases run in `opened_at` order so a later case can retrieve an earlier one (strictly `opened_at < as_of`, so never itself); in the final run none did, and every precedent was a closed case.
 - `tool_calls`, `tokens`, `latency_s` come from the run log (`runs/<run_id>/<case>/calls.jsonl`); prompts are frozen and hashed into `run_manifest.json`.
 
 ## Repository map
@@ -331,4 +352,4 @@ make ids
 
 ## Data and licensing
 
-IEEE-CIS Fraud Detection (Vesta) via the HHGOA re-cut. The public Kaggle files are **never** used, and the answer validator (`engine/validator.py`) rejects any answer whose free text mentions Kaggle or the outcome label (`isFraud`). Regulatory chunks carry url + sha256 + page provenance; full FATF/FFIEC documents are not vendored.
+IEEE-CIS Fraud Detection (Vesta) via the HHGOA re-cut. Only the HHGOA re-cut is used, and the answer validator (`engine/validator.py`) rejects any answer whose free text names an outside copy of the data or the outcome label (`isFraud`). Regulatory chunks carry url + sha256 + page provenance; full FATF/FFIEC documents are not vendored.

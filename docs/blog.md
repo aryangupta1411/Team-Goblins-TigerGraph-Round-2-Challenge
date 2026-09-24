@@ -27,7 +27,7 @@ In short: an agent that takes an alert (a risk score, a customer report or an an
 
 The card's billing region is one it has used 36 times before, so geography says nothing. The signal lives entirely in the shared device.
 
-**Memory.** Hybrid vector search over past case notes returns those same four ring cases as the nearest closed-case precedents (cosine distance 0.30, overlap reason `same_device`). The one hit ranked above them, at 0.26, was this case's own `AgentCase` from an earlier run. The engine ignores it, and I come back to that under "What I'd improve". The ring cases rank ahead of a same-region account-takeover case and two cleared cases. The search keeps cleared cases on purpose so the model sees both sides.
+**Memory.** Hybrid vector search over past case notes returns those same four ring cases as the nearest closed-case precedents (cosine distance 0.30, overlap reason `same_device`). The case's own `AgentCase` can't come back as a precedent, because agent cases must have opened strictly before the case under investigation (an earlier run ranked that self-match first). The ring cases rank ahead of a same-region account-takeover case, two cleared cases and a same-region out-of-region-use case. The search keeps cleared cases on purpose so the model sees both sides.
 
 **Decision.** The deterministic engine applies its anonymous-proxy ring rule and floors the probability at 0.90. The LLM reviews the evidence and leaves it there. A value-of-information check finds that no further evidence request could change the action set, so the agent does not ask. The final actions, each routed by policy:
 
@@ -41,7 +41,7 @@ The card's billing region is one it has used 36 times before, so geography says 
 
 Routes: **auto** runs without sign-off; **L1** and **L2** are the policy's two human-approval tiers (L2 covers SAR filing, blocking all of a customer's cards, and card blocks above $2,500). R6, R9 and 3a are clause numbers in the dataset's written fraud policy, which `policy/fraud_policy.yaml` encodes.
 
-**Output.** The agent drafts a SAR covering both of the card's ring transactions (3460634 and 3478561, $187.33 in total) and runs an OFAC sanctions screen on the customer. It then writes the case back to the graph as `AgentCase` AC-HHG-014 with 6 `CaseEvent`s, 2 pending `Approval`s (the card block and the SAR filing) and edges to the 27 connected cards, the 4 precedents and the device. The whole case took 22 tool calls (21 graph reads and an OFAC screen), 7 LLM calls and 180 seconds. The SAR narrative itself has two factual slips, which I cover in lesson 8.
+**Output.** The agent drafts a SAR covering both of the card's ring transactions (3460634 and 3478561, $187.33 in total) and runs an OFAC sanctions screen on the customer. It then writes the case back to the graph as `AgentCase` AC-HHG-014 with 6 `CaseEvent`s, 2 pending `Approval`s (the card block and the SAR filing) and edges to the 27 connected cards, the 4 precedents and the device. The whole case took 22 tool calls (21 graph reads and an OFAC screen), 5 LLM calls and 149 seconds. The SAR narrative passed the fact checks from lesson 8 on its first draft. The case summary and the card-block reason still share one slip, which I cover there too.
 
 ## Architecture: the engine decides, the LLM investigates
 
@@ -142,7 +142,7 @@ The model never sees raw MCP tools. It gets 16 typed tools: 14 wrappers, one per
 
 Each case runs through eleven logged phases:
 
-- **P0-P1 intake and memory:** open the `AgentCase` in the graph, run the four intake queries, and retrieve 8 precedents and 5 policy chunks.
+- **P0-P1 intake and memory:** open the `AgentCase` in the graph, run the four intake queries, and retrieve up to 8 precedents (1 to 8 in the final run) and 5 policy chunks.
 - **P2 investigate:** the LLM picks its own queries (74 calls across the 20 cases, most often `episode_candidates`, `card_testing_check`, `shared_origin_scan` and `device_history`).
 - **P3-P4 scorecard and assess:** the harness re-runs the engine's full query playbook, so the scorecard never depends on which queries the model happened to call. The LLM may then adjust the probability within ±0.10, citing a reason.
 - **P5-P7 actions, evidence, actions again:** a value-of-information check decides whether asking could change the action set. The LLM picks initial actions from the admissible set, a deterministic simulator answers the one engine-chosen request (labelled `ASSUMED (simulated)`, with the counterfactual branch recorded), and actions are chosen again with a computed `what_changed`.
@@ -152,7 +152,7 @@ Each case runs through eleven logged phases:
 
 | HHG-001 | Before evidence | After evidence |
 |---|---|---|
-| Probability | 0.30 from the engine, 0.20 after the LLM (known region, in-baseline amount, recurring $77.01 price point) | 0.10 |
+| Probability | 0.30 from the engine, 0.22 after the LLM (no fraud-side evidence, every detector negative) | 0.10 |
 | Verdict | uncertain (the card has four earlier confirmed-fraud episodes) | legitimate |
 | Evidence | customer validation requested | simulated reply: customer confirmed |
 | Actions | CREATE_CASE, VERIFY_WITH_CUSTOMER, MONITOR_CARD | CREATE_CASE, ALLOW_TRANSACTION, CLOSE_NO_FRAUD |
@@ -160,7 +160,7 @@ Each case runs through eleven logged phases:
 
 HHG-002 went the other way: a denial took it from 0.80 to 0.92, and the block stood.
 
-**Policy gate.** Routes come from `policy/fraud_policy.yaml`, not from the model. Low-risk actions run automatically. DECLINE_TRANSACTION and BLOCK_CARD need L1 approval. FILE_REPORT and BLOCK_ALL_CARDS need L2, and BLOCK_CARD also moves to L2 above $2,500 of exposure. Action order is fixed by the policy file. If the LLM proposes an inadmissible action or cites a rule whose conditions do not hold, it gets one re-prompt and then a deterministic correction. In the final run the gate rejected three action lists (HHG-007, 011 and 014), all for citing rule R1 without meeting it, and each re-prompt fixed the list. Every L1/L2 action lands as a pending `Approval` vertex, and a team lead can approve or reject it from the Streamlit approvals page.
+**Policy gate.** Routes come from `policy/fraud_policy.yaml`, not from the model. Low-risk actions run automatically. DECLINE_TRANSACTION and BLOCK_CARD need L1 approval. FILE_REPORT and BLOCK_ALL_CARDS need L2, and BLOCK_CARD also moves to L2 above $2,500 of exposure. Action order is fixed by the policy file. If the LLM proposes an inadmissible action or cites a rule whose conditions do not hold, it gets one re-prompt and then a deterministic correction. In an earlier run the gate rejected three action lists (HHG-007, 011 and 014), all for citing rule R1 without meeting it, and each re-prompt fixed the list. In the final run every action list passed on the first try. Every L1/L2 action lands as a pending `Approval` vertex, and a team lead can approve or reject it from the Streamlit approvals page.
 
 **Case memory.** Write-back is split. The `AgentCase` vertex and its 1024-d embedding go in as one pyTigerGraph REST upsert. Events, approvals and edges go through MCP. The agent then waits until the vector index reports ready, so the very next case can retrieve this one.
 
@@ -180,35 +180,35 @@ HHG-002 went the other way: a denial took it from 0.80 to 0.92, and the block st
 |---|---|
 | Verdicts | 8 fraud, 7 legitimate, 5 uncertain |
 | SAR required | 2 (HHG-006 under-$500 burst, HHG-014 device ring; both `undocumented`), each drafted and awaiting L2 approval to file |
-| Evidence requested | 16 of 20 cases (11 customer validation, 5 step-up) |
-| Final actions by route | 48 auto, 16 L1, 2 L2 |
-| Agreement with my engine's offline sheet | 20/20 on verdict, probability (±0.10), pattern, SAR, initial and final actions with routes, status |
+| Evidence requested | 14 of 20 cases (9 customer validation, 5 step-up) |
+| Final actions by route | 46 auto, 18 L1, 2 L2 |
+| Agreement with my engine's offline sheet | 20/20 on verdict, probability (±0.10), pattern, episode transactions, exposure, SAR, initial and final actions with routes, status |
 | Answer validator | 20/20 clean |
-| Written to graph | 20 AgentCase, 134 CaseEvent, 18 pending Approval |
+| Written to graph | 20 AgentCase, 130 CaseEvent, 20 pending Approval |
 
 **What it cost**
 
 | Measure | Value |
 |---|---|
 | Completion | 20/20, 0 failed tool calls |
-| Graph reads per case | median 19.5 (304 harness, 74 LLM-chosen in total, plus 2 OFAC screens) |
+| Graph reads per case | median 19 (304 harness, 74 LLM-chosen in total, plus 2 OFAC screens) |
 | Graph read latency | median 0.24 s per query |
-| Time per case | median 152 s (90% of it in LLM calls) |
-| Tokens per case | median 295k; ~96% prompt-cache writes and reads |
+| Time per case | median 151 s (85% of it in LLM calls) |
+| Tokens per case | median 286k; ~95% prompt-cache writes and reads |
 
-The agreement shows that the LLM agent, running on live graph data through MCP, reproduces the engine's reasoning. It does **not** show the verdicts are correct. One case also differs outside the compared fields: HHG-018's live episode has two transactions where the offline sheet has three (3485990 is missing), so its exposure is $156.15 against $197.11.
+The agreement shows that the LLM agent, running on live graph data through MCP, reproduces the engine's reasoning. It does **not** show the verdicts are correct. It does now include the episode: HHG-018's live episode has all three transactions (3485990, 3490180, 3491361) and $197.11 of exposure, as offline. In an earlier run a row cap in `episode_candidates`, tighter than the engine's, cut 3485990 off.
 
-**Run provenance.** All 20 cases had run before I fixed two live queries (lessons 2 and 3 below). I re-ran the five whose answers those bugs had changed (HHG-008, 011, 015, 019 and 020); the other 15 final answers are from the pre-fix pass. All 20 still match the offline engine. HHG-014 is one of the 15, and its answer file still contains one evidence line built on the inflated `device_neighbors` count (44 closed cases on the device). Its verdict rests on `ring_profile`, which was unaffected, but that line is wrong and I'd re-run the case.
+**Run provenance.** The 20 answers come from one clean live pass: each case ran exactly once, all from the same committed code with no local changes, the same model and the same prompts. Before the pass I deleted the 173 rows my earlier runs had written back to the graph (20 `AgentCase`, 134 `CaseEvent`, 19 `Approval`) and reinstalled the fixed GSQL library (all 25 queries). So no answer mixes pre-fix and post-fix code, and no case can retrieve a stale copy of itself.
 
 **Accuracy against real outcomes.** I replayed 310 labelled closed cases (180 confirmed fraud, 130 cleared) through the engine. The three metrics below are scored on the 180 confirmed-fraud cases. Episode Jaccard is the overlap between the transactions the engine put in the fraud episode and the ones the analyst did (1.0 means identical).
 
 | Metric (180 confirmed-fraud cases) | Result | My target |
 |---|---|---|
 | Pattern accuracy | 0.878 | 0.95 |
-| SAR decision accuracy | 0.928 | 1.00 |
-| Episode Jaccard | 0.798 | 0.85 |
+| SAR decision accuracy | 0.939 | 1.00 |
+| Episode Jaccard | 0.792 | 0.85 |
 
-All three miss their targets. The SAR number flatters the engine: most of it comes from correctly *not* filing. The bank filed on 12 of those cases, and the engine agreed on only 1. The engine is also conservative. It called 48% of replay cases uncertain, and of the verdicts it did commit to, 93.1% were right. The replay is also somewhat optimistic: `DeviceProfile.n_fraud_cases` and `Card.ring_id` are all-time attributes, so a replayed case can see fraud on its device that was confirmed after it opened.
+All three miss their targets. The SAR number flatters the engine: most of it comes from correctly *not* filing. The bank filed on 12 of those cases, and the engine agreed on only 5, while filing on 4 the bank did not. The engine is also conservative. It called 49% of replay cases uncertain, and of the verdicts it did commit to, 93.7% were right. The replay is also somewhat optimistic: `DeviceProfile.n_fraud_cases` and `Card.ring_id` are all-time attributes, so a replayed case can see fraud on its device that was confirmed after it opened.
 
 The case-memory scorer (LightGBM with isotonic calibration, trained on the bank's own history) reaches an October-holdout AUC of 0.956, against 0.866 for the bank's risk score alone. October was also the early-stopping and calibration set, so treat that number as slightly optimistic. The out-of-fold monthly AUCs, 0.945 to 0.965, tell the same story (October's is the same holdout figure again). The scorer does not recognise either undocumented pattern (HHG-014 at 0.07, HHG-006 at 0.01), which is exactly why the graph detectors exist.
 
@@ -235,7 +235,7 @@ These are the most useful parts of the project to share, because none of them sh
 
 **7. The 16-second ceiling.** The MCP server's `run_installed_query` sends no timeout header, so the server default of 16 s applies. My launcher pre-populates the MCP connection pool with a connection whose headers carry a 120 s `GSQL-TIMEOUT`. Lesson: check which headers an MCP server actually sends; its default timeout can be far shorter than your slowest query.
 
-**8. Explanations can drift from the facts.** HHG-014's stop reason says "two independent evidence families", but the engine scorecard counted only one (device). Its SAR narrative says no prior SAR was filed in connection with the device profile, although all four ring cases on it were filed. It also says the bank "blocked" the card, when the block is still a pending L1 approval. The decision was right; those sentences were not. The answer validator checks structure, ids, time-boxing and policy rules, not claims inside the narrative, so it passed them. Lesson: assemble factual sentences in explanations from engine fields, not from the model's paraphrase.
+**8. Explanations can drift from the facts.** In an earlier run HHG-014's SAR said no prior SAR had been filed in connection with the device profile, although all four ring cases on it were filed. Both SARs said the bank had "blocked" the card, when the block was still a pending L1 approval. HHG-014's also quoted the card's all-time history (85 transactions, maximum $252.28) rather than what was known when the case opened (73 transactions, maximum $225.94; the corrected SAR quotes 71, the count before the flagged purchase), because `card_profile` read all-time card attributes. The decisions were right; those sentences were not, and the validator, which then checked only structure, ids, time-boxing and policy rules, passed them. `card_profile` now recomputes the card history up to `as_of`, and `rag/validate_sar.py` fact-checks the narrative: V14 rejects a pending or absent block described as done, V18 a "no prior report" claim contradicted by filed cases on the card, device or connected cards, and V19 card statistics that aren't as of the opening. A failure re-prompts the SAR step, and `make validate` re-runs V14-V18 on every answer file. Both final SARs passed on the first draft. Only the SAR is checked, though: HHG-014's summary says "two independent families" settle the verdict, and its card-block reason says "two evidence families" (a reason that went into the graph's events and the L1 approval), where the engine's scorecard counted one (device). Lesson: check factual sentences against engine fields, or better, assemble them from those fields.
 
 ### What the data taught me
 
@@ -245,8 +245,8 @@ These are the most useful parts of the project to share, because none of them sh
 
 ## What I'd improve with more time
 
-- **Make memory compound, visibly.** Write-back works, but in this run no benchmark case retrieved *another* benchmark case's `AgentCase`. The retrieval uses `opened_at <= as_of`, so five cases (including HHG-014) retrieved their own record from an earlier run. The engine ignored those hits, but they should be excluded. Every other precedent came from the 5,565 closed cases, because the structural filter rarely links two exam cases. The live path also never writes `CASE_CITES` or `CASE_SIMILAR_TO_AGENT`.
-- **Fix the facts in the text.** Build the SAR's factual sentences from engine fields, re-run HHG-014 on the fixed `device_neighbors`, and regenerate both SAR narratives.
+- **Make memory compound, visibly.** Write-back works, but in the final run no benchmark case retrieved another benchmark case's `AgentCase`. Every precedent came from the 5,565 closed cases, because the structural filter rarely links two exam cases. The live path also never writes `CASE_CITES` or `CASE_SIMILAR_TO_AGENT`.
+- **Check the rest of the text.** The SAR is now fact-checked, but the summary and the action reasons are not. Their factual sentences should be built from engine fields.
 - **Better grounding queries.** P1 uses one fixed query per trigger type. The top five often included off-target chunks: an FFIEC paragraph about currency straps in 8 cases, and a FATF report-scope paragraph in all 20. Case-specific queries or a reranker would fix it.
 - **Recall on SARs and patterns.** Close the replay gaps above, starting with SAR under-filing.
 - **Personalised PageRank from fraud cards,** so each new case moves a graph score. I never ran it, so `Card.fraud_ppr` is still zero.

@@ -81,7 +81,7 @@ def test_subgraph_from_answer():
     assert all(e["src"] in ids and e["dst"] in ids for e in sub["edges"])
 
 
-PAGES = ["ui/app.py", "ui/pages/1_queue.py", "ui/pages/2_case.py", "ui/pages/3_approvals.py", "ui/pages/4_graph.py", "ui/pages/5_runs.py"]
+PAGES = ["ui/app.py", "ui/pages/1_queue.py", "ui/pages/2_case.py", "ui/pages/3_approvals.py", "ui/pages/4_graph.py", "ui/pages/5_runs.py", "ui/pages/6_schema.py"]
 
 
 @pytest.mark.parametrize("page", PAGES)

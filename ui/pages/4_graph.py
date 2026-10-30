@@ -17,10 +17,12 @@ st.set_page_config(page_title="Graph", page_icon=common.PAGE_ICONS["graph"], lay
 common.inject_css()
 common.page_header("Case subgraph")
 
-pack_ids = [m["case_id"] for m in common.load_case_pack()]
+pack_ids = [m["case_id"] for m in common.load_case_pack("all")]
 run_id = st.session_state.get("run_id") or (common.list_runs() or [None])[0]
+run_cases = common.list_cases_in_run(run_id) if run_id else []
+selectable_ids = [c for c in pack_ids if c in run_cases] or pack_ids
 c1, c2, c3, c4 = st.columns([2, 1, 1, 2])
-case_id = common.case_select(c1, pack_ids, key="graph_case")
+case_id = common.case_select(c1, selectable_ids, key="graph_case")
 hours = c2.number_input("hours before opened_at", 1, 24 * 30, 72)
 renderer = c3.selectbox("Renderer", ["streamlit-agraph", "pyvis"])
 meta = common.case_meta(case_id)
@@ -254,3 +256,51 @@ with d_col:
 with st.expander("Nodes / edges"):
     st.dataframe(nodes, width="stretch", hide_index=True)
     st.dataframe(edges, width="stretch", hide_index=True)
+
+st.divider()
+st.subheader("Ring Replay Time Slider & Containment Planner (Challenges 5 & 7)")
+try:
+    from engine.containment import WAVE_DEFINITIONS, build_containment_plan, wave_for_case
+
+    default_wave = wave_for_case(case_id)
+    wave_keys = list(WAVE_DEFINITIONS.keys())
+    w_col1, w_col2 = st.columns([2, 1])
+    selected_wave = w_col1.selectbox(
+        "Ring / Coordinated Wave",
+        wave_keys,
+        index=wave_keys.index(default_wave) if default_wave in wave_keys else 0,
+        format_func=lambda k: WAVE_DEFINITIONS[k]["name"],
+    )
+    plan = build_containment_plan(selected_wave, as_of=meta.get("opened_at") or "2017-01-31 23:59:59")
+    w_col2.caption(f"Shared choke-point: `{plan.shared_chokepoint}`")
+
+    k1, k2, k3, k4 = st.columns(4)
+    k1.metric("Cards in wave (to block)", plan.n_cards_in_wave)
+    k2.metric("Total wave exposure stopped", common.money(plan.exposure_stopped_by_plan_usd))
+    k3.metric("Innocent customers touched (targeted)", len(plan.legitimate_customers_touched_by_targeted_plan))
+    k4.metric("Innocent customers harmed by naive broad rule", len(plan.legitimate_customers_touched_if_broad_rule_used))
+
+    if plan.replay_frames:
+        max_f = len(plan.replay_frames)
+        frame_idx = st.slider(
+            "Ring Replay Frame (scrub through attested transactions as cards join the ring)",
+            min_value=1,
+            max_value=max_f,
+            value=max_f,
+        )
+        cur_frame = plan.replay_frames[frame_idx - 1]
+        st.info(
+            f"**Frame {cur_frame['frame']}/{max_f}** (`{cur_frame['ts']}`) · Transaction `{cur_frame['txn_id']}` on card `{cur_frame['card_id']}` "
+            f"({common.money(cur_frame['amt_usd'])}) · **Active ring cards:** {cur_frame['cumulative_cards']}/{plan.n_cards_in_wave} · "
+            f"**Cumulative loss:** {common.money(cur_frame['cumulative_exposure_usd'])}"
+        )
+        st.dataframe(plan.replay_frames[:frame_idx], width="stretch", hide_index=True)
+
+    with st.expander("Per-Card Containment Plan & Innocent Customer Impact (Challenge 7)", expanded=True):
+        st.markdown(f"**Targeted containment (`0` innocent customers touched) vs. Broad rule (`{len(plan.legitimate_customers_touched_if_broad_rule_used)}` innocent customers touched):** {plan.broad_rule_description}")
+        if plan.legitimate_customers_touched_if_broad_rule_used:
+            st.caption("Legitimate customers spared by targeted containment: " + ", ".join(f"`{c}`" for c in plan.legitimate_customers_touched_if_broad_rule_used[:20]))
+        st.dataframe(plan.per_card_plan, width="stretch", hide_index=True)
+        st.json(plan.attestation, expanded=False)
+except Exception as exc:
+    st.warning(f"Containment planner unavailable: {exc}")

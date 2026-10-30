@@ -186,7 +186,7 @@ class DuckFacts:
                                  GROUP BY 1 ORDER BY n DESC LIMIT 5""", cid, as_of))
         other = _rows(self.q("SELECT id, card_type, n_txns FROM card_feat WHERE customer_id=? AND id<>? ORDER BY id", card["customer_id"], cid))
         prior = _rows(self.q(f"""SELECT case_id id, opened_at, outcome, pattern, exposure_usd, report_filed, {self.TEMPLATE_SQL} template_id FROM cc
-                                WHERE card_id=? AND opened_at <= ?::TIMESTAMP ORDER BY opened_at""", cid, as_of))
+                                WHERE card_id=? AND opened_at < ?::TIMESTAMP ORDER BY opened_at""", cid, as_of))
         return {"card": card, "last30": last30, "regions": regions, "devices": devices, "emails": emails,
                 "other_cards": other, "prior_closed_cases": prior, "prior_agent_cases": []}
 
@@ -249,7 +249,7 @@ class DuckFacts:
                                  GROUP BY 1 ORDER BY first_ts LIMIT ?""", did, from_ts, to_ts, int(max_cards)))
         closed = _rows(self.q("""SELECT DISTINCT c.case_id id, c.card_id, c.pattern, c.outcome, c.report_filed
                                  FROM txc t JOIN cc_txn x USING(TransactionID) JOIN cc c USING(case_id)
-                                 WHERE t.device_id=? ORDER BY c.case_id""", did))
+                                 WHERE t.device_id=? AND c.opened_at < ?::TIMESTAMP ORDER BY c.case_id""", did, to_ts))
         return {"device": dev, "cards": cards, "closed_cases": closed, "agent_cases": []}
 
     def email_neighbors(self, e, c, from_ts: str, to_ts: str) -> dict:
@@ -358,7 +358,7 @@ class DuckFacts:
     def prior_cases_for_customer(self, cu, as_of: str) -> dict:
         cid = _vid(cu)
         closed = _rows(self.q(f"""SELECT case_id id, card_id, opened_at, outcome, pattern, exposure_usd, report_filed, n_txns, {self.TEMPLATE_SQL} template_id FROM cc
-                                 WHERE customer_id=? AND opened_at <= ?::TIMESTAMP ORDER BY opened_at""", cid, as_of))
+                                 WHERE customer_id=? AND opened_at < ?::TIMESTAMP ORDER BY opened_at""", cid, as_of))
         return {"closed_cases": closed, "agent_cases": []}
 
     def ring_profile(self, c, as_of: str) -> dict:
@@ -372,7 +372,7 @@ class DuckFacts:
         # transactions (the wave cluster: 27 for HHG-014); pre_open_cards = those whose such transaction is <= as_of (19);
         # n_cards_alltime = every card ever on the profile (52). The GSQL prints the same three.
         acts = self.q("SELECT card_id, ts FROM txc WHERE device_id=? AND card_id<>? ORDER BY ts", ring_id, cid)
-        n_alltime = int(self.q("SELECT count(DISTINCT card_id) n FROM txc WHERE device_id=?", ring_id).n[0])
+        n_alltime = int(dev.get("n_cards_alltime") or self.q("SELECT count(DISTINCT card_id) n FROM txc WHERE device_id=?", ring_id).n[0])
         wave_cards: set[str] = set()
         pre_open: set[str] = set()
         anchors = mine if len(mine) else self.q("SELECT id, ts, amt FROM txc WHERE card_id=? AND device_id=? ORDER BY ts", cid, ring_id)   # contract: all ring txns when none precede as_of
@@ -384,7 +384,7 @@ class DuckFacts:
             wave_cards = set(in_wave.card_id)
             pre_open = set(in_wave[in_wave.ts <= pd.Timestamp(as_of)].card_id)
         closed = _rows(self.q("""SELECT DISTINCT c.case_id id, c.card_id, c.pattern, c.outcome, c.report_filed
-                                 FROM txc t JOIN cc_txn x USING(TransactionID) JOIN cc c USING(case_id) WHERE t.device_id=? ORDER BY 1""", ring_id))
+                                 FROM txc t JOIN cc_txn x USING(TransactionID) JOIN cc c USING(case_id) WHERE t.device_id=? AND c.opened_at < ?::TIMESTAMP ORDER BY 1""", ring_id, as_of))
         return {"ring_id": ring_id, "device": dev, "wave_cards": sorted(wave_cards), "pre_open_cards": sorted(pre_open), "n_cards_alltime": n_alltime,
                 "card_txns_on_ring": [{"id": str(r.id), "ts": _ts(r.ts), "amt": float(r.amt)} for r in mine.itertuples()],
                 "closed_cases": closed}
@@ -480,4 +480,20 @@ class DuckFacts:
         facts["ring_profile"] = self.ring_profile(c, as_of)
         facts["post_open_activity"] = self.post_open_activity(c, as_of, 7)
         facts["similar_prior_cases"] = self.similar_prior_cases(None, 8, ctx.card_id, ctx.customer_id, txn["device_id"], txn["addr1"], "", as_of)
+        if str(ctx.flagged_txn_id).isdigit() and int(ctx.flagged_txn_id) >= 3600000:
+            try:
+                from engine.detectors import scan_card
+
+                hit = scan_card(self.con, ctx.card_id, str(ctx.flagged_txn_id), as_of)
+                if hit is not None:
+                    facts["round2_detector"] = hit.to_dict()
+                    ep_ints = [int(i) for i in hit.episode_txn_ids if str(i).isdigit()]
+                    if ep_ints:
+                        df_ep = self.q(
+                            f"SELECT id, ts, amt, product_cd, channel, addr1, p_email, r_email, device_id, device_new, proxy, cms_p FROM txc WHERE TransactionID IN ({','.join('?' * len(ep_ints))}) ORDER BY ts, TransactionID",
+                            *ep_ints,
+                        )
+                        facts["round2_detector_rows"] = [{**r, "sig_match": True} for r in _rows(df_ep)]
+            except Exception:
+                pass
         return facts

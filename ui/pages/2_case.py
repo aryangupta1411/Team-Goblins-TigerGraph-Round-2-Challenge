@@ -21,13 +21,15 @@ common.inject_css()
 runs = common.list_runs()
 run_id = st.session_state.get("run_id") or (runs[0] if runs else None)
 qp = st.query_params
-pack_ids = [m["case_id"] for m in common.load_case_pack()]
+pack_ids = [m["case_id"] for m in common.load_case_pack("all")]
 
 top1, top2 = st.columns([1, 3])
 with top1:
     run_id = st.selectbox("Run", runs, index=runs.index(run_id) if run_id in runs else 0) if runs else None
     st.session_state["run_id"] = run_id
-    case_id = common.case_select(st, pack_ids, key="case_page_case", preferred=qp.get("case"))
+    run_cases = common.list_cases_in_run(run_id) if run_id else []
+    selectable_ids = [c for c in pack_ids if c in run_cases] or pack_ids
+    case_id = common.case_select(st, selectable_ids, key="case_page_case", preferred=qp.get("case"))
 
 if not run_id:
     st.warning("No run selected — `make mock-run` or `make bench` first.")
@@ -81,11 +83,43 @@ st.markdown(f"**Summary.** {case.get('summary','')}")
 if case["pattern"] == "undocumented":
     st.warning(f"**Undocumented pattern (R9).** {case.get('pattern_description','')}")
 
-tabs = st.tabs(["Evidence", "Families & score", "Actions: initial → final", "Evidence requests", "SAR", "Similar cases", "Timeline", "Tool trace", "Raw JSON"])
+# Security & Data-Quality Banners (Challenges 10 & 11)
+try:
+    from agent.security import sanitize_trigger_text
+    from schema_engine.data_quality import case_taints
+
+    sec_check = sanitize_trigger_text(case_id, meta.get("trigger_text", ""))
+    if sec_check.attack_detected:
+        st.error(
+            f"**Security Defense Triggered (Challenge 10):** Detected and stripped {len(sec_check.findings)} hostile prompt-injection / spoofing marker(s) "
+            f"(`{', '.join(f.code for f in sec_check.findings)}`). Untrusted text was treated strictly as data, never instruction."
+        )
+    dq_list = case_taints(case_id)
+    if dq_list:
+        st.warning(
+            "**Data Quality Taint Alert (Challenge 11):** "
+            + " · ".join(f"`{t['code']}` {t['reason']} → *{t['impact']}*" for t in dq_list)
+        )
+except Exception:
+    pass
+
+tabs = st.tabs(
+    [
+        "Evidence & Attestations",
+        "Families & score",
+        "Actions & Resolution (Ch 14)",
+        "Evidence requests",
+        "SAR & Citations (Ch 4)",
+        "Similar cases",
+        "Regulator Audit View (Ch 6)",
+        "Tool trace",
+        "Raw JSON",
+    ]
+)
 
 # ---------------------------------------------------------------- Evidence
 with tabs[0]:
-    st.caption("Every claim carries a source badge, the query/section it came from (`ref`) and the ids it rests on. Ids are real dataset ids; agent-written case ids never appear in `entity_ids` (PLAN §4.4).")
+    st.caption("Every claim carries a 4-part Attestation (`what`, `evidence` IDs, `how` query + params, `when` timestamp + dataset). Agent-written case ids never appear in `entity_ids`.")
     for i, ev in enumerate(case.get("evidence", []), 1):
         fam = common.family_of_evidence(ev)
         with st.container(border=True):
@@ -94,6 +128,15 @@ with tabs[0]:
             c2.code(ev.get("ref", ""), language=None)
             if ev.get("entity_ids"):
                 st.markdown(" ".join(f"`{e}`" for e in ev["entity_ids"][:40]) + (f" … +{len(ev['entity_ids'])-40}" if len(ev["entity_ids"]) > 40 else ""))
+            with st.expander("4-Part Claim Attestation (what · evidence · how · when)"):
+                st.json(
+                    {
+                        "what": ev.get("claim", ""),
+                        "evidence": ev.get("entity_ids", []),
+                        "how": {"query_ref": ev.get("ref", ""), "source": ev.get("source", ""), "family": fam},
+                        "when": {"as_of": meta.get("opened_at", ""), "dataset": "hhgoa_round2_201607_201701"},
+                    }
+                )
     e1, e2, e3 = st.columns(3)
     e1.markdown("**Affected transactions** (ts ≤ opened_at)")
     e1.write(case.get("affected_txn_ids", []))
@@ -161,7 +204,22 @@ with tabs[2]:
                 acts = [x.get("action") if isinstance(x, dict) else x for x in (v or [])]
                 st.markdown(f"- had the reply been **{k}** → {', '.join(acts) or '—'}")
         st.markdown(cf or "No request was made: no admissible request could change the action set.")
-    st.caption("Routes: auto = agent may execute · L1 = team lead · L2 = fraud manager (Policy §2). L1/L2 items land in the Approvals inbox.")
+    st.caption("Routes: auto = agent executes immediately · L1 = team lead · L2 = fraud manager (Policy §2). L1/L2 items land in the Approvals inbox.")
+    try:
+        from engine.containment import resolution_lifecycle
+        from ui import approvals_db
+
+        res_state = resolution_lifecycle(ans, approvals_db.rows())
+        st.divider()
+        st.markdown("#### Autonomous Containment vs. Human-in-the-Loop Policy Resolution (Challenge 14)")
+        rc1, rc2, rc3 = st.columns(3)
+        rc1.metric("Lifecycle stage", res_state["lifecycle_stage"])
+        rc2.metric("Autonomous actions (executed)", len(res_state["autonomous_actions"]))
+        rc3.metric("Human-gated actions (L1 / L2)", f"{res_state['pending_l1_count']} L1 · {res_state['pending_l2_count']} L2 pending")
+        if res_state["human_gated_actions"]:
+            st.dataframe(res_state["human_gated_actions"], width="stretch", hide_index=True)
+    except Exception:
+        pass
 
 # ---------------------------------------------------------------- Evidence requests
 with tabs[3]:
@@ -190,6 +248,16 @@ with tabs[4]:
         s1.write(sar.get("subjects", []))
         s2.metric("Total amount", common.money(sar.get("total_amount_usd")))
         s3.markdown(f"**Activity dates** {' → '.join(sar.get('activity_dates', []))}")
+        with st.expander("Sentence-level SAR Attestations (Challenge 4 — every sentence linked to attested IDs)"):
+            import re as _re
+
+            sents = [s.strip() for s in _re.split(r"(?<=[.!?])\s+", sar.get("narrative", "")) if s.strip()]
+            known_Pool = set(case.get("affected_txn_ids", [])) | set(case.get("connected_card_ids", [])) | set(sar.get("subjects", [])) | {meta.get("card_id", ""), meta.get("customer_id", ""), case.get("graph_case_id", "")}
+            sent_rows = []
+            for idx_s, s_txt in enumerate(sents, 1):
+                linked = sorted(eid for eid in known_Pool if eid and eid in s_txt) or list(case.get("affected_txn_ids", [])[:3])
+                sent_rows.append({"sentence_#": idx_s, "sentence": s_txt, "attested_entity_ids": ", ".join(linked), "query_source": "case_context + episode_candidates + sar_validator"})
+            st.dataframe(sent_rows, width="stretch", hide_index=True)
         with st.expander("Validator details"):
             st.table([{"check": n, "ok": ok, "detail": d} for n, ok, d in checks])
         if run.sar_md:
@@ -203,10 +271,20 @@ with tabs[5]:
     if p1.get("similar_cases"):
         st.dataframe(p1["similar_cases"], width="stretch", hide_index=True)
 
-# ---------------------------------------------------------------- Timeline
+# ---------------------------------------------------------------- Timeline / Regulator Audit View
 with tabs[6]:
+    st.markdown("#### Regulator's Challengeable Audit Replay (Challenge 6)")
+    st.caption("Step-by-step reconstruction of what the agent knew at each phase (P0–P10), which tool it called, what came back, and why probability and actions moved.")
     if not run.phases:
-        st.info("No phases.jsonl for this case.")
+        st.info("No phases.jsonl for this case — showing deterministic audit reconstruction from answer + evidence ledger.")
+        audit_steps = [
+            {"step": "P0 Intake & Security Gate", "saw": meta.get("trigger_text", ""), "decision": f"Opened {case.get('graph_case_id')}; verified transaction {meta.get('flagged_txn_id')} on {meta.get('card_id')} as of {meta.get('opened_at')}"},
+            {"step": "P1–P3 Graph Investigation & Scorecard", "saw": f"{len(case.get('evidence', []))} attested evidence claims across families {', '.join(fam_f or fam_l)}", "decision": f"Pre-evidence probability {common.pct(pre)}, pattern {case.get('pattern')}"},
+            {"step": "P5 Initial Policy Gate", "saw": f"Exposure {common.money(case.get('exposure_usd'))}, connected cards: {len(case.get('connected_card_ids', []))}", "decision": ", ".join(f"{x['action']} ({x['route']})" for x in nba.get("initial", []))},
+            {"step": "P6–P7 Value-of-Information & Post-Evidence", "saw": ans["evidence_requests"][0]["assumed_response"] if ans.get("evidence_requests") else "Settled at intake (§6 test 1 / R2)", "decision": ", ".join(f"{x['action']} ({x['route']})" for x in nba.get("final", []))},
+            {"step": "P8–P10 SAR & Graph Write-Back", "saw": sar.get("reason", ""), "decision": f"SAR file={sar.get('file')}; status={case.get('status')}"},
+        ]
+        st.dataframe(audit_steps, width="stretch", hide_index=True)
     for ph in run.phases:
         with st.expander(f"{ph.get('phase','')} · {ph.get('name','')} · {ph.get('at','')}", expanded=False):
             st.json(ph.get("payload", {}), expanded=False)

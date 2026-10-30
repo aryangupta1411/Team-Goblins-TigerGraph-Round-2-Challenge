@@ -284,10 +284,16 @@ class PhaseMachine:
         # M5: the same window DuckFacts.collect uses (flagged_ts − 72 h → opened_at), not opened_at − 72 h
         F["card_window"] = await harness_query(self.session, self.tctx, "card_window", {"c": {"id": ctx.card_id}, "from_ts": _ts_add(flagged_ts, hours=-72), "to_ts": ctx.opened_at, "max_rows": 60})
         F["prior_cases_for_customer"] = await harness_query(self.session, self.tctx, "prior_cases_for_customer", {"cu": {"id": ctx.customer_id}, "as_of": ctx.opened_at})
+        from agent.security import sanitize_trigger_text
+
+        san = sanitize_trigger_text(ctx.case_id, ctx.trigger_text, db_txn=txn)
+        if san.attack_detected:
+            self.events.append({"kind": "security_alert", "payload": san.to_dict()})
+            self.log.note("security alert: prompt injection / spoofing stripped at intake", codes=[f.code for f in san.findings])
         head = {
             "case_id": ctx.case_id,
             "trigger_type": ctx.trigger_type,
-            "trigger_text": ctx.trigger_text,
+            "trigger_text": san.clean_text,
             "flagged_txn_id": ctx.flagged_txn_id,
             "card_id": ctx.card_id,
             "customer_id": ctx.customer_id,
@@ -393,6 +399,29 @@ class PhaseMachine:
         except Exception as e:
             self.post_open = {}
             self.log.note("post_open_activity failed", error=str(e)[:300])
+        if str(ctx.flagged_txn_id).isdigit() and int(ctx.flagged_txn_id) >= 3600000:
+            try:
+                db = _facts_db()
+                if db is not None:
+                    from engine.detectors import scan_card
+                    from engine.facts_duckdb import _rows
+
+                    hit = scan_card(db.con, ctx.card_id, str(ctx.flagged_txn_id), as_of)
+                    if hit is not None:
+                        F["round2_detector"] = hit.to_dict()
+                        ep_ints = [int(i) for i in hit.episode_txn_ids if str(i).isdigit()]
+                        if ep_ints:
+                            df_ep = db.q(
+                                f"SELECT id, ts, amt, product_cd, channel, addr1, p_email, r_email, device_id, device_new, proxy, cms_p FROM txc WHERE TransactionID IN ({','.join('?' * len(ep_ints))}) ORDER BY ts, TransactionID",
+                                *ep_ints,
+                            )
+                            F["round2_detector_rows"] = [{**r, "sig_match": True} for r in _rows(df_ep)]
+                        for cid_conn in hit.connected_card_ids:
+                            self.tctx.facts_all.setdefault("round2_detector", []).append({"card_id": cid_conn})
+                        for tid_ep in hit.episode_txn_ids:
+                            self.tctx.facts_all.setdefault("round2_detector", []).append({"id": tid_ep})
+            except Exception as e:
+                self.log.note("round2_detector scan failed", error=str(e)[:200])
 
     # ------------------------------------------------------------------ P3
     async def p3_scorecard(self):
@@ -1017,6 +1046,9 @@ class PhaseMachine:
             for e in self.evidence
         ]
         if requests and sc_post is not None:
+            from agent.security import sanitize_evidence_requests
+
+            requests = sanitize_evidence_requests(requests)
             sc_post.flags["pending"] = sc_post.flags.get("post_outcome") in ("no_reply", "inconclusive")
         try:
             answer = build_answer(ctx, sc, sc_post or sc, initial, final, ev_objs, requests, sar, closing_d, self.log.totals(), self.graph_case_id)

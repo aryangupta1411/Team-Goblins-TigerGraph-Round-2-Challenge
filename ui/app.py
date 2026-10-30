@@ -61,8 +61,9 @@ def main() -> None:
     asked = sum(1 for a in answers if a["evidence_requests"])
     written = sum(1 for a in answers if a["case"].get("written_to_graph"))
 
+    pack_for_run = common.load_case_pack_for_run(run_id)
     r1c1, r1c2, r1c3 = st.columns(3)
-    r1c1.metric("Cases in run", f"{len(answers)} / {len(common.load_case_pack())}")
+    r1c1.metric("Cases in run", f"{len(answers)} / {len(pack_for_run)}")
     r1c2.metric("Fraud / legitimate / uncertain", f"{verdicts.get('fraud',0)} · {verdicts.get('legitimate',0)} · {verdicts.get('uncertain',0)}")
     r1c3.metric("SARs recommended", sars)
     r2c1, r2c2, r2c3 = st.columns(3)
@@ -82,8 +83,9 @@ def main() -> None:
     common.link_to("pages/1_queue.py", label="Queue — the 20 exam cases and their state", icon=common.PAGE_ICONS["queue"])
     common.link_to("pages/2_case.py", label="Case — evidence, families, initial vs final, counterfactual, SAR", icon=common.PAGE_ICONS["case"])
     common.link_to("pages/3_approvals.py", label="Approvals — L1/L2 inbox writing Approval vertices", icon=common.PAGE_ICONS["approvals"])
-    common.link_to("pages/4_graph.py", label="Graph — case subgraph from `case_subgraph`", icon=common.PAGE_ICONS["graph"])
+    common.link_to("pages/4_graph.py", label="Graph — case subgraph, Ring Replay slider & Containment Planner", icon=common.PAGE_ICONS["graph"])
     common.link_to("pages/5_runs.py", label="Runs — tokens, tool calls, latency, agreement", icon=common.PAGE_ICONS["runs"])
+    common.link_to("pages/6_schema.py", label="Schema & Innovation — Drift Survival, Variant Mapper, DQ Detective, New Typologies & Security", icon=common.PAGE_ICONS["schema"])
 
     with st.expander("How this run was produced"):
         st.json(common.run_manifest(run_id) or {"note": "no run_manifest.json"})

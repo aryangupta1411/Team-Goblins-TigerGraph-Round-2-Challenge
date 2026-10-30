@@ -113,8 +113,21 @@ HHG-020,2016-12-03 12:04:26,risk_score,3509359,C12265-K2,C12265,0.52,"Real-time 
 """
 
 
-def load_case_pack() -> list[dict[str, str]]:
-    """Rows of case_pack.csv (data/raw first, then the embedded README copy), in opened_at order."""
+def load_case_pack(pack: str = "round1") -> list[dict[str, str]]:
+    """Rows of case_pack.csv in opened_at order.
+
+    `pack="round1"` (default for backward-compat with Round-1 unit tests) loads the 20 HHG cases;
+    `pack="round2"` loads the 18 HHF Final Round cases (`data/raw/round2/case_pack_final.csv`);
+    `pack="all"` loads all 38 cases.
+    """
+    if pack == "round2":
+        r2_path = ROOT / "data" / "raw" / "round2" / "case_pack_final.csv"
+        if r2_path.exists():
+            with open(r2_path, newline="", encoding="utf-8") as f:
+                rows = list(csv.DictReader(f))
+            return sorted(rows, key=lambda r: r["opened_at"])
+    if pack == "all":
+        return load_case_pack("round1") + load_case_pack("round2")
     path = ROOT / "data" / "raw" / "case_pack.csv"
     if path.exists():
         with open(path, newline="", encoding="utf-8") as f:
@@ -124,8 +137,21 @@ def load_case_pack() -> list[dict[str, str]]:
     return sorted(rows, key=lambda r: r["opened_at"])
 
 
+def load_case_pack_for_run(run_id: str | None) -> list[dict[str, str]]:
+    """Return the matching case pack (Round 2 HHF vs Round 1 HHG) based on the cases in `run_id`."""
+    if run_id:
+        in_run = list_cases_in_run(run_id)
+        has_hhf = any(c.startswith("HHF-") for c in in_run)
+        has_hhg = any(c.startswith("HHG-") for c in in_run)
+        if has_hhf and has_hhg:
+            return load_case_pack("all")
+        if has_hhf:
+            return load_case_pack("round2")
+    return load_case_pack("round1")
+
+
 def case_meta(case_id: str) -> dict[str, str]:
-    for r in load_case_pack():
+    for r in load_case_pack("all"):
         if r["case_id"] == case_id:
             return r
     return {"case_id": case_id}
@@ -317,6 +343,7 @@ PAGE_ICONS = {
     "approvals": ":material/task_alt:",
     "graph": ":material/hub:",
     "runs": ":material/monitoring:",
+    "schema": ":material/schema:",
 }
 
 

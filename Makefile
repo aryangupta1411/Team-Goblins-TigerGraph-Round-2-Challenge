@@ -107,7 +107,7 @@ SAY = C=; B=; D=; G=; Y=; RD=; R=; \
 .PHONY: help status install env db features cms facts chunks ids load algos install-queries describe \
         corpus embed vectors replay sheet engine-drafts bench bench-one bench-free promote validate ui mock-run \
         test test-data test-live lint lint-gsql lint-contracts fmt keepalive awake rebuild demo-warm clean \
-        clear-writebacks rerun-live
+        clear-writebacks rerun-live round2-ingest round2-backtest round2-grade load-round2
 
 ##@ Start here
 help: ## this list, grouped by build stage (the default target)
@@ -282,6 +282,21 @@ promote: ## copy runs/<RUN_ID>/*/answer.json -> cases/ after validation, write c
 
 validate: ## validate cases/*.json against the README schema + id existence (VALIDATOR_DB)
 	$(PY) -m $(AGENT_VALIDATE) --db $(VALIDATOR_DB) cases/*.json
+
+##@ Final Round (Round 2: HHF-001..018, Schema Engine, Detectors, Grader)
+round2-ingest: ## detect schema drift, normalize & merge Jan 2017 (60,196 rows + 5,585 closed cases) into DuckDB + delta TSVs
+	$(PY) -m schema_engine.cli drift
+	$(PY) -m schema_engine.cli ingest
+	$(PY) -m schema_engine.cli dq
+
+round2-backtest: ## backtest all undocumented typology detectors (D1..D4 + R0) over 5,585 closed cases
+	$(PY) -m engine.backtest_detectors
+
+round2-grade: ## run the official Round 2 grader (data/raw/round2/grade.py) over cases/HHF-*.json
+	$(PY) data/raw/round2/grade.py --teams-dir . --case-pack data/raw/round2/case_pack_final.csv --transactions data/raw/round2/transactions_2017q1.csv --out engine/out/round2_grade_report.json
+
+load-round2: ## upload the Jan 2017 delta TSVs (data/out/round2_delta/) to the live TigerGraph workspace
+	$(PY) graph/load_round2_delta.py
 
 ##@ Live re-run (docs/RERUN.md)
 clear-writebacks: ## list the agent's own AgentCase / CaseEvent / Approval write-backs for HHG-001..020 (dry run); APPLY=1 deletes exactly those

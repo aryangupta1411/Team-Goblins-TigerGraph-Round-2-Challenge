@@ -70,7 +70,8 @@ def reasons_for(actions: list[str], adm: dict, ctx: CaseContext, sc: Scorecard, 
             if f.get("ring_hit"):
                 r = f"R6: {len(f.get('wave_cards', []))} other cards share the device profile `{f.get('ring_id')}` in this wave; every sharing card goes under monitoring"
             else:
-                r = f"R6: other cards ({', '.join(f.get('shared_fraud_cards', [])[:5]) or ', '.join(f.get('shared_recipient_email', []))}) share the same origin element"
+                peers = ", ".join(sc.connected_card_ids[:5]) or ", ".join(f.get("shared_fraud_cards", [])[:5]) or ", ".join(f.get("shared_recipient_email", []))
+                r = f"R6: other cards ({peers}) share the same origin element; place connected cards under monitoring"
         elif a == "DECLINE_TRANSACTION":
             r = "R5: card-testing sequence observed; decline the purchase" if "R5" in cites else "R4: no reply within 24 h; decline pending / further authorisations on this card (card stays active)"
         elif a == "BLOCK_CARD":
@@ -182,13 +183,15 @@ def draft_sar(ctx: CaseContext, sc: Scorecard, facts: dict, graph_case_id: str) 
     chain = {str(m["id"]): m for m in sc.chain}
     for r in f.get("ring_rows", []) or []:
         chain.setdefault(str(r["id"]), {"id": r["id"], "ts": r["ts"], "amt": r["amt"], "channel": "online", "addr1": "", "device_new": "New", "device_id": f.get("ring_id", "")})
+    for r in f.get("r2_detector_rows", []) or []:
+        chain.setdefault(str(r["id"]), r)
     rows = sorted([chain[i] for i in sc.episode_ids if i in chain], key=lambda r: (r["ts"], str(r["id"])))
     dates = sorted(_d(r["ts"]) for r in rows)
     first, last = dates[0], dates[-1]
     typology = {"undocumented": "fraud following an undocumented coordinated pattern", "card_testing": "card testing", "card_not_present_fraud": "card-not-present fraud",
                 "card_not_present_new_device": "card-not-present fraud from a new device", "out_of_region_use": "out-of-region card-present fraud",
                 "account_takeover": "account takeover"}[sc.pattern]
-    desc = "; ".join(f"on {_d(r['ts'])} ${float(r['amt']):,.2f} {r.get('channel', '').replace('_', ' ')}" + (f" in billing region {r['addr1']}" if r.get("addr1") else "") for r in rows[:6])
+    desc = "; ".join(f"on {_d(r['ts'])} ${float(r['amt']):,.2f} {r.get('channel', '').replace('_', ' ')}" + (f" in billing region {r['addr1']}" if r.get("addr1") else "") for r in rows)
     when = f"On {first}" if first == last else f"Between {first} and {last}"
     subjects = [ctx.customer_id, ctx.card_id] + list(sc.connected_device_profiles)
     s = []
@@ -206,6 +209,11 @@ def draft_sar(ctx: CaseContext, sc: Scorecard, facts: dict, graph_case_id: str) 
             b = f["burst"]
             s.append(f"All four purchases were online, each between $450 and $499.99, placed within {int((datetime.strptime(b['end_ts'], TS_FMT) - datetime.strptime(b['start_ts'], TS_FMT)).total_seconds() // 60)} minutes from {len(b['device_ids'])} device profiles marked New for the account, on a card that had made only {max(int(f.get('card_n_txns', 0)) - 4, 0)} transactions before, almost all in person.")
             s.append(f"Amounts sit just under a $500 authorisation threshold, and {len(f.get('burst_lookalikes', []))} other cards show the identical shape within 30 days, which analysts previously confirmed as fraud in five closed cases.")
+        elif f.get("r2_undoc_hit") and sc.connected_card_ids:
+            u_cards = list(sc.connected_card_ids)
+            s.append(f"The activity matches a coordinated undocumented wave across {len(u_cards) + 1} cards sharing the signature ({f.get('r2_shared_element', 'undocumented wave')}).")
+            s.append(f"The other connected cards in this wave are {', '.join(u_cards)}.")
+            subjects += [c for c in u_cards if c not in subjects]
     if not f.get("ring_hit") and sc.connected_device_profiles:
         s.append(f"The purchases came from device profile `{sc.connected_device_profiles[0]}`, a profile shared with {len(sc.connected_card_ids)} other cards that carry confirmed fraud within 30 days ({', '.join(sc.connected_card_ids[:6])}).")
         subjects += list(sc.connected_card_ids[:6])

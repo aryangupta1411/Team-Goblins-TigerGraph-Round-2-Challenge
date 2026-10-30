@@ -30,7 +30,7 @@ from pathlib import Path
 
 from ops.console import Col, Table, detail, fail, header, ok, summary, warn
 
-EXAM_CASES = [f"HHG-{i:03d}" for i in range(1, 21)]
+EXAM_CASES = [f"HHG-{i:03d}" for i in range(1, 21)] + [f"HHF-{i:03d}" for i in range(1, 19)]
 # delete order: children first, then the AgentCase vertex (which takes every attached edge with it)
 WRITEBACK_TYPES = ("CaseEvent", "Approval", "AgentCase")
 # attributes read for the listing (contracts/schema.md); AgentCase's note_emb vector is never fetched

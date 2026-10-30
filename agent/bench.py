@@ -67,6 +67,10 @@ def load_case_pack(path: Path) -> list[CaseContext]:
         from ui.common import _CASE_PACK_FALLBACK_CSV
 
         raw_rows = list(csv.DictReader(io.StringIO(_CASE_PACK_FALLBACK_CSV)))
+        r2_pack = SETTINGS.data_dir / "raw" / "round2" / "case_pack_final.csv"
+        if r2_pack.exists():
+            with r2_pack.open(encoding="utf-8", newline="") as fh:
+                raw_rows.extend(list(csv.DictReader(fh)))
     else:
         raise FileNotFoundError(p)
     for r in raw_rows:
@@ -80,7 +84,10 @@ def load_case_pack(path: Path) -> list[CaseContext]:
 
 def select_cases(cases: list[CaseContext], spec: str) -> list[CaseContext]:
     if spec in ("all", "*", ""):
-        return cases
+        hhg = [c for c in cases if c.case_id.startswith("HHG-")]
+        return hhg if hhg and len(cases) > 20 else cases
+    if spec in ("round2", "hhf", "all-round2"):
+        return [c for c in cases if c.case_id.startswith("HHF-")]
     wanted = {s.strip() for s in spec.split(",") if s.strip()}
     return [c for c in cases if c.case_id in wanted]
 

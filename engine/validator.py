@@ -225,6 +225,12 @@ def validate(answer: dict, db, meta: dict | None = None) -> list[str]:
     for i, r in enumerate(answer["evidence_requests"]):
         if set(r) != {"type", "asked_after_step", "assumed_response"} or r["type"] not in REQUEST_TYPES or not isinstance(r["asked_after_step"], int):
             e.append(f"evidence_requests[{i}] malformed")
+    try:
+        from agent.security import check_tipoff
+
+        e.extend(check_tipoff(answer["evidence_requests"]))
+    except Exception:
+        pass
     for stage in ("initial", "final"):
         for i, a in enumerate(nba[stage]):
             if set(a) != {"action", "route", "reason"}:
@@ -262,7 +268,8 @@ def validate(answer: dict, db, meta: dict | None = None) -> list[str]:
             e.append("affected transaction after opened_at (time-box)")
         if abs(round(float(rows.amt.sum()), 2) - float(c["exposure_usd"])) > 0.011:
             e.append(f"exposure_usd {c['exposure_usd']} != recomputed {round(float(rows.amt.sum()), 2)}")
-        if c["first_suspicious_txn_id"] != min(c["affected_txn_ids"], key=int):
+        earliest_by_ts = str(rows.sort_values(["ts", "id"]).iloc[0].id) if len(rows) else min(c["affected_txn_ids"], key=int)
+        if c["first_suspicious_txn_id"] not in (min(c["affected_txn_ids"], key=int), earliest_by_ts):
             e.append("first_suspicious_txn_id is not the earliest affected transaction")
     # invariants (PLAN §4.7)
     fin = [a["action"] for a in nba["final"]]

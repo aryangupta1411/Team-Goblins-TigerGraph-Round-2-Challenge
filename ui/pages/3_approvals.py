@@ -29,7 +29,19 @@ st.caption(
 
 run_id = st.session_state.get("run_id") or (common.list_runs() or [None])[0]
 c1, c2, c3 = st.columns([2, 2, 3])
-decided_by = c1.text_input("Decided by", value=st.session_state.get("decided_by", "team-lead@bank"), max_chars=approvals_db.DECIDED_BY_MAX, help="Recorded in Approval.decided_by")
+principals = [
+    "fraud-manager@bank",
+    "team-lead@bank",
+    "analyst@bank",
+    "intern@bank",
+]
+decided_by = c1.selectbox(
+    "Authenticated Principal (Server-Side RBAC)",
+    principals,
+    index=0,
+    format_func=lambda p: f"{p} ({approvals_db.resolve_server_role(p)})",
+    help="Server-side RBAC directory: team_lead can only approve L1; fraud_manager can approve L1 & L2; analyst/intern are denied.",
+)
 st.session_state["decided_by"] = decided_by
 if c2.button(f"Import L1/L2 actions from run `{run_id}`", disabled=not run_id, help="The agent's authorize() normally enqueues these itself; this re-scans answer.json files."):
     n = 0
@@ -55,7 +67,12 @@ st.metric("Pending approvals", pending)
 
 
 def decide(row: dict, status: str) -> None:
-    updated = approvals_db.decide(row["id"], status, decided_by)
+    try:
+        updated = approvals_db.decide(row["id"], status, decided_by, enforce_immutable=True)
+    except PermissionError as exc:
+        st.session_state["rbac_err"] = str(exc)
+        return
+    st.session_state.pop("rbac_err", None)
     if graph_writes:
         try:
             conn = common.graph_conn()
@@ -68,6 +85,9 @@ def decide(row: dict, status: str) -> None:
         st.toast(f"{row['case_id']} {row['action']}: {status} ({'read-only' if common.read_only() else 'mock'}: local only)")
 
 
+if rbac_err := st.session_state.get("rbac_err"):
+    st.error(f"**Banking Security Drill — Action Blocked:** {rbac_err}")
+
 for r in rows:
     with st.container(border=True):
         a, b, c = st.columns([5, 2, 2])
@@ -76,7 +96,7 @@ for r in rows:
         a.caption(r.get("reason", ""))
         if r["status"] != "pending":
             who = str(r.get("decided_by") or "").replace("`", "'")  # visitor-typed: inline code, so no links / images / colors
-            a.caption(f"decided by `{who}` at {r.get('decided_at')} · graph id `{approvals_db.approval_vertex_id(r['case_id'], r['action'])}`")
+            a.caption(f"decided by `{who}` at {r.get('decided_at')} · graph id `{approvals_db.approval_vertex_id(r['case_id'], r['action'])}` · **IMMUTABLE**")
         if err := st.session_state.get(f"graph_err_{r['id']}"):
             a.error(f"graph write failed: {err}")
             if a.button("Retry graph write", key=f"retry_{r['id']}"):
@@ -94,10 +114,35 @@ for r in rows:
                 decide(r, "rejected")
                 st.rerun()
         else:
-            if b.button("Reopen", key=f"re_{r['id']}", width="stretch"):
-                approvals_db.reopen(r["id"])
+            b.caption("🔒 Immutable decision")
+            if c.button("Test tamper (Drill)", key=f"tamper_{r['id']}", width="stretch"):
+                decide(r, "rejected" if r["status"] == "approved" else "approved")
                 st.rerun()
         common.link_to("pages/2_case.py", label="Open case", icon=common.PAGE_ICONS["case"])
+
+with st.expander("Server-Side RBAC & Immutability Audit Log (Stage 2 Drills)", expanded=True):
+    audit = approvals_db.audit_log_rows()
+    if audit:
+        st.dataframe(audit, width="stretch", hide_index=True)
+    else:
+        st.caption("No approval attempts logged yet.")
+
+with st.expander("Analyst-in-the-Loop Finding Feedback (Challenge 8 — adapts without retraining LightGBM)"):
+    fb1, fb2, fb3, fb4 = st.columns([1.2, 1.5, 1.2, 2])
+    fb_case = fb1.selectbox("Case", [m["case_id"] for m in common.load_case_pack("all")], key="fb_case")
+    fb_meta = common.case_meta(fb_case)
+    fb_kind = fb2.selectbox("Finding", ["out_of_region_travel", "new_device_legit", "undocumented_wave", "recurring_charge"], key="fb_kind")
+    fb_dec = fb3.selectbox("Decision", ["accepted", "rejected"], key="fb_dec")
+    fb_reason = fb4.text_input("Reason", value="Cardholder travel pattern verified by analyst; do not block on future alerts in this region.")
+    if st.button("Record Analyst Feedback", key="fb_btn"):
+        try:
+            approvals_db.record_feedback(fb_case, fb_meta.get("card_id", ""), fb_kind, fb_dec, decided_by, fb_reason)
+            st.success(f"Recorded {fb_dec} feedback on {fb_case} ({fb_meta.get('card_id','')}) by {decided_by}")
+        except PermissionError as exc:
+            st.error(str(exc))
+    fb_rows = approvals_db.list_feedback()
+    if fb_rows:
+        st.dataframe(fb_rows, width="stretch", hide_index=True)
 
 with st.expander("Raw table (ui/approvals.sqlite)"):
     st.dataframe(approvals_db.rows(), width="stretch", hide_index=True)

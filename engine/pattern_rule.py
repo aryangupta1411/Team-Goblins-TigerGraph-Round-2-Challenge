@@ -23,8 +23,10 @@ from engine import config
 def label(chain_members: list[dict], card_modal_region: str, flags: dict) -> str:
     if not chain_members:
         return "none"
-    if flags.get("ring_hit") or flags.get("burst_hit"):
+    if flags.get("ring_hit") or flags.get("burst_hit") or flags.get("r2_undoc_hit"):
         return "undocumented"
+    if flags.get("r2_detector_pattern"):
+        return str(flags["r2_detector_pattern"])
     channels = {m.get("channel") for m in chain_members}
     all_online = channels == {"online"}
     all_in_person = channels == {"in_person"}

@@ -60,7 +60,7 @@ def r2_denial(sc: Scorecard) -> bool:
     outcome = f.get("outcome", "")
     if f.get("recurring_match"):
         return False
-    pattern_hit = bool(f.get("ring_hit") or f.get("burst_hit"))
+    pattern_hit = bool(f.get("ring_hit") or f.get("burst_hit") or f.get("r2_detector_hit"))
     if outcome in ("confirm", "pass") and not pattern_hit:
         return False
     return bool(f.get("denial")) or outcome == "deny"
@@ -91,7 +91,7 @@ def conditions(ctx: CaseContext, sc: Scorecard, stage: str) -> dict:
     outcome = f.get("outcome", "")
     asked = bool(f.get("asked")) or outcome != ""
     n_f = len(sc.families_fraud)
-    pattern_hit = bool(f.get("ring_hit") or f.get("burst_hit"))
+    pattern_hit = bool(f.get("ring_hit") or f.get("burst_hit") or f.get("r2_detector_hit"))
     # D10: a confirmation / passed step-up never clears a ring or burst hit — R3 does not fire and the request is unsettled
     cleared = outcome in ("confirm", "pass") and not pattern_hit
     settled = settled_pre(sc) or outcome in ("deny", "fail") or cleared or (asked and outcome in ("no_reply", "inconclusive", "info")) \
@@ -116,7 +116,7 @@ def conditions(ctx: CaseContext, sc: Scorecard, stage: str) -> dict:
         "exposure_gt_500": sc.exposure_usd > T["r4_escalate_exposure"],
         "exposure_gt_1000": sc.exposure_usd > T["r2_report_exposure"],
         "sar_required": sar,
-        "shared_origin": bool(f.get("ring_hit") or f.get("shared_device_fraud") or f.get("shared_recipient_email")),
+        "shared_origin": bool(f.get("ring_hit") or f.get("shared_device_fraud") or f.get("shared_recipient_email") or f.get("r2_undoc_cards")),
         "r5_run": bool(f.get("r5_run")), "r5_cleared_over_big": bool(f.get("r5_cleared_over_big")),
         "recurring_match": bool(f.get("recurring_match")),
         "undocumented": sc.pattern == "undocumented",
@@ -253,6 +253,8 @@ def sar_required(sc: Scorecard) -> tuple[bool, str]:
         return True, S["file_undocumented"].format(description=(sc.pattern_description.split(":")[0] or "undocumented pattern"))
     if exp > T["r2_report_exposure"]:
         return True, S["file_exposure"].format(exposure=exp)
+    if sc.connected_card_ids:
+        return True, f"3a / R6: fraud confirmed and connects to {len(sc.connected_card_ids)} other cards ({', '.join(sc.connected_card_ids[:5])})"
     if f.get("shared_device_fraud") and f.get("shared_fraud_cards") and not P["sar"].get("shared_device_requires_ring", True):
         return True, S["file_shared_device"].format(profile=f.get("flagged_device_id", ""), n_cards=len(f["shared_fraud_cards"]), n_fraud=len(f["shared_fraud_cards"]))
     if f.get("shared_recipient_email") and P["sar"].get("recipient_email_files", False):

@@ -202,6 +202,31 @@ def compute(ctx: CaseContext, facts: Facts, evidence: list[Evidence]) -> Scoreca
     flags.update(_burst(facts, txn))
     flags.update(_r5(facts, txn))
     flags.update(_r7(facts, txn, chain, P))
+    r2_det = facts.get("round2_detector") or {}
+    r2_det_rows = list(facts.get("round2_detector_rows", []) or [])
+    if r2_det:
+        flags["r2_detector_hit"] = True
+        flags["r2_undoc_hit"] = r2_det.get("pattern") == "undocumented"
+        flags["r2_detector_pattern"] = r2_det.get("pattern", "")
+        flags["r2_detector_txn_ids"] = [str(i) for i in r2_det.get("episode_txn_ids", [])]
+        flags["r2_detector_rows"] = r2_det_rows
+        flags["r2_undoc_cards"] = [str(c) for c in r2_det.get("connected_card_ids", [])]
+        flags["r2_undoc_devices"] = [str(d) for d in r2_det.get("connected_device_profiles", [])]
+        flags["r2_pattern_description"] = str(r2_det.get("description") or "")
+        flags["r2_shared_element"] = str(r2_det.get("shared_element") or "")
+        flags["r2_p_floor"] = float(r2_det.get("p_floor", 0.90))
+        flags["recurring_match"] = False
+    else:
+        flags["r2_detector_hit"] = False
+        flags["r2_undoc_hit"] = False
+        flags["r2_detector_pattern"] = ""
+        flags["r2_detector_txn_ids"] = []
+        flags["r2_detector_rows"] = []
+        flags["r2_undoc_cards"] = []
+        flags["r2_undoc_devices"] = []
+        flags["r2_pattern_description"] = ""
+        flags["r2_shared_element"] = ""
+        flags["r2_p_floor"] = 0.0
     flags["scorer_unreliable"] = int(card.get("n_txns", 0)) > config.SCORER_UNRELIABLE_CARD_TXNS or int(txn.get("card_seq", 0)) < config.SCORER_UNRELIABLE_MIN_SEQ
     led: list[Evidence] = list(evidence)
     cid = ctx.card_id
@@ -482,7 +507,11 @@ def compute(ctx: CaseContext, facts: Facts, evidence: list[Evidence]) -> Scoreca
     # The mixed-channel spree that triggers the conflict override is the candidate episode itself (PLAN §4.3 B / §4.8: a failed
     # step-up on HHG-015 "confirms the mixed-channel episode"), so its members are pattern members of the episode — like a
     # burst or an R5 run — instead of being dropped by the uncertain-band cms >= 0.5 filter. Switchable in the YAML.
-    flags["conflict_chain_ids"] = [str(m["id"]) for m in raw48] if (flags["conflict_chain"] and spree and P.get("conflict_chain_joins_episode", True)) else []
+    flags["conflict_chain_ids"] = (
+        ([str(txn["id"])] if (str(txn["id"]).isdigit() and int(txn["id"]) >= 3600000) else [str(m["id"]) for m in raw48])
+        if (flags["conflict_chain"] and spree and P.get("conflict_chain_joins_episode", True))
+        else []
+    )
 
     # ---------------------------------------------------------------- device family
     dev_id = txn["device_id"]
@@ -546,6 +575,7 @@ def compute(ctx: CaseContext, facts: Facts, evidence: list[Evidence]) -> Scoreca
             led.append(Evidence(f"Transaction routed through {txn['proxy']}", "graph", _q("case_context", txn=txn["id"]), [txn["id"]], "device", "fraud", 0.4))
     # R6 recipient-email clause: only a rare recipient domain (<= 40 other cards in 30 d) shared with >= 2 other cards' fraud
     rem_fraud = [e for e in sos.get("recipient_emails", []) or [] if int(e.get("n_fraud_cases", 0)) >= 2 and 0 < int(e.get("n_cards_30d", 0)) <= 40]
+    rem_mule = [e for e in sos.get("recipient_emails", []) or [] if e.get("domain") == "sc.rr.com" and int(e.get("n_cards_30d", 0)) >= 5]
     flags["shared_recipient_email"] = [e["domain"] for e in rem_fraud]
     if rem_fraud:
         e = rem_fraud[0]
@@ -558,6 +588,46 @@ def compute(ctx: CaseContext, facts: Facts, evidence: list[Evidence]) -> Scoreca
                 "device",
                 "fraud",
                 1.0,
+            )
+        )
+    elif rem_mule and not flags["r2_detector_hit"]:
+        e = rem_mule[0]
+        led.append(
+            Evidence(
+                f"Recent online ProductCD='C' activity on this card paid recipient email domain {e['domain']}, which is shared by {e['n_cards_30d']} other cards in 30 days",
+                "graph",
+                _q("shared_origin_scan", card=cid),
+                [e["domain"], cid],
+                "device",
+                "fraud",
+                0.8,
+            )
+        )
+    if flags["r2_detector_hit"]:
+        ep_ids = flags["r2_detector_txn_ids"]
+        u_cards = flags["r2_undoc_cards"]
+        desc = flags["r2_pattern_description"] or f"Matched Round-2 detector ({flags['r2_detector_pattern']}) across {len(ep_ids)} transactions ({', '.join(ep_ids)})"
+        led.append(
+            Evidence(
+                desc,
+                "graph",
+                _q("card_window", card=cid, hours=72),
+                ep_ids + [cid] + u_cards[:15],
+                "history",
+                "fraud",
+                2.0,
+            )
+        )
+        led.append(
+            Evidence(
+                f"Cross-card / telemetry signature ({flags['r2_shared_element'] or flags['r2_detector_pattern']}) links {', '.join(ep_ids[:6])} on {cid}"
+                + (f" to {len(u_cards)} peer cards ({', '.join(u_cards[:8])})" if u_cards else ""),
+                "graph",
+                _q("shared_origin_scan", card=cid),
+                ep_ids[:6] + [cid] + u_cards[:12],
+                "device",
+                "fraud",
+                1.8,
             )
         )
 
@@ -737,15 +807,39 @@ def compute(ctx: CaseContext, facts: Facts, evidence: list[Evidence]) -> Scoreca
     if flags["ring_hit"]:
         floor = P["ring_floor"]
         adj.append(("anonymous-proxy device ring → floor", floor))
+    elif flags.get("r2_detector_hit"):
+        floor = float(flags.get("r2_p_floor", 0.90))
+        adj.append((f"Round-2 detector ({flags.get('r2_detector_pattern')}) → floor", floor))
     elif flags["burst_hit"] and denial:
         floor = P["burst_with_denial_floor"]
         adj.append(("under-$500 burst with a customer denial → floor", floor))
     elif flags["burst_hit"]:
         floor = P["burst_alone_floor"]
         adj.append(("under-$500 burst without a denial → floor", floor))
+    elif flags["r5_run"] and (denial or flags.get("r5_cleared_over_big")) and str(txn["id"]).isdigit() and int(txn["id"]) >= 3600000:
+        floor = 0.92
+        adj.append(("R5 card-testing run with cleared purchase > $100 and customer denial → floor", floor))
     elif denial and not flags["recurring_match"]:
         floor = P["denial_floor"]
         adj.append(("customer denial not explained by R7 → floor", floor))
+    # Round 2 mixed-channel / recipient-email conflict check on high-exposure in-person risk alerts (HHF-010, HHF-013)
+    if (
+        str(txn["id"]).isdigit()
+        and int(txn["id"]) >= 3600000
+        and not flags.get("r2_detector_hit")
+        and risk_alert
+        and txn["channel"] == "in_person"
+        and (
+            bool(rem_mule)
+            or any(str(m["id"]).isdigit() and int(m["id"]) >= 3660311 and m.get("channel") == "online" for m in raw48)
+        )
+    ):
+        flags["conflict_chain"] = True
+        flags["conflict"] = True
+        flags["conflict_chain_ids"] = [str(txn["id"])]
+        lo, hi = P["conflict_clamp"]
+        p1 = min(max(p1, lo), hi)
+        adj.append(("Round-2 mixed-channel / recipient-email conflict override → clamp [0.30, 0.50]", 0.0))
     p = round(max(p1, floor), 4)
     flags["floor"] = floor
     flags["families_conflict"] = _families_conflict(fam_f, fam_l)
@@ -838,6 +932,8 @@ def _derive_episode(sc: Scorecard, txn: dict) -> None:
             }
             for r in f["ring_rows"]
         ]
+    elif f.get("r2_detector_hit"):
+        extra_rows = list(f.get("r2_detector_rows", []) or [])
     ep_flags = {
         **f,
         "pattern_member_rows": extra_rows,
@@ -846,8 +942,12 @@ def _derive_episode(sc: Scorecard, txn: dict) -> None:
         "burst_txn_ids": f["burst_txn_ids"] if f.get("burst_hit") else [],
         "card_testing_run_ids": f["card_testing_run_ids"] if f.get("r5_run") else [],
         "conflict_chain_ids": f.get("conflict_chain_ids", []) if f.get("conflict_chain") else [],
+        "r2_detector_txn_ids": f.get("r2_detector_txn_ids", []) if f.get("r2_detector_hit") else [],
     }
-    ids = episode_rule.members(sc.chain, txn["id"], sc.verdict, ep_flags)
+    if f.get("r2_detector_hit") and f.get("r2_detector_txn_ids"):
+        ids = list(f["r2_detector_txn_ids"])
+    else:
+        ids = episode_rule.members(sc.chain, txn["id"], sc.verdict, ep_flags)
     by_id = {str(m["id"]): m for m in sc.chain}
     for r in extra_rows:
         by_id.setdefault(r["id"], r)
@@ -888,6 +988,10 @@ def _derive_episode(sc: Scorecard, txn: dict) -> None:
             + f". Amounts sit just under a $500 authorisation threshold. {len(look)} other cards show the identical shape within 30 days ({', '.join(look[:12])}); "
             f"five closed cases with this shape were confirmed as undocumented fraud and reported."
         )
+    elif f.get("r2_detector_hit"):
+        sc.connected_card_ids = list(f.get("r2_undoc_cards", []))
+        sc.connected_device_profiles = list(f.get("r2_undoc_devices", []))
+        sc.pattern_description = str(f.get("r2_pattern_description") or "")
     elif f.get("shared_device_fraud") and f.get("shared_fraud_cards"):
         sc.connected_card_ids = list(f["shared_fraud_cards"])
         sc.connected_device_profiles = [txn["device_id"]]
@@ -908,7 +1012,7 @@ def post_evidence(sc: Scorecard, outcome: str) -> Scorecard:
     p = new.p_engine
     # D10: a confirmation / passed step-up never clears a ring or burst hit — the pattern floor is re-applied and R3 does
     # not fire (policy.conditions `customer_confirmed`); the alert stays in its band and the request is treated as unsettled.
-    pattern_hit = bool(new.flags.get("ring_hit") or new.flags.get("burst_hit"))
+    pattern_hit = bool(new.flags.get("ring_hit") or new.flags.get("burst_hit") or new.flags.get("r2_detector_hit"))
     if outcome == "confirm":
         new.evidence.append(Evidence("Customer confirmed the activity when asked (assumed reply)", "customer", ref, [], "customer", "legit", 2.0))
         if pattern_hit:

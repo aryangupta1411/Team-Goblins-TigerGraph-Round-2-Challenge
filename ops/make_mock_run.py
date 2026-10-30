@@ -128,14 +128,23 @@ def synth_calls(ans: dict, trigger_type: str, opened_at: str, model: str) -> lis
 def load_case_pack(path: str) -> dict[str, dict]:
     import csv
 
-    if not os.path.exists(path):
-        return {}
-    with open(path, newline="", encoding="utf-8") as f:
-        return {r["case_id"]: r for r in csv.DictReader(f)}
+    out: dict[str, dict] = {}
+    try:
+        from ui.common import load_case_pack as _load_all
+
+        for r in _load_all("all"):
+            out[r["case_id"]] = r
+    except Exception:
+        pass
+    if os.path.exists(path):
+        with open(path, newline="", encoding="utf-8") as f:
+            for r in csv.DictReader(f):
+                out[r["case_id"]] = r
+    return out
 
 
 def build(answers_dir: str, run_id: str, runs_dir: str, case_pack_csv: str, model: str = "mock") -> list[str]:
-    files = sorted(glob.glob(os.path.join(answers_dir, "HHG-*.json")))
+    files = sorted(glob.glob(os.path.join(answers_dir, "HH[GF]-*.json")))
     if not files:
         files = sorted(glob.glob(os.path.join("tests", "fixtures", "answers", "*.sample.json")))
     if not files:

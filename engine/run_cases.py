@@ -29,8 +29,10 @@ from engine.types import CaseContext
 from ops.console import Col, Table, detail, fail, header, is_plain, joinlist, money, ok, prob, progress, rule, step, summary
 
 
-def contexts(fx: DuckFacts, only: list[str] | None = None) -> list[CaseContext]:
-    cp = fx.q("SELECT * FROM cp ORDER BY opened_at, case_id")
+def contexts(fx: DuckFacts, only: list[str] | None = None, table: str = "cp") -> list[CaseContext]:
+    if only and any(str(c).startswith("HHF-") for c in only):
+        table = "cp_all"
+    cp = fx.q(f"SELECT * FROM {table} ORDER BY opened_at, case_id")
     out = []
     for r in cp.itertuples():
         if only and r.case_id not in only:

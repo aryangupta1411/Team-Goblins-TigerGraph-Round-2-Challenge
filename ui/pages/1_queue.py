@@ -22,10 +22,21 @@ common.page_header("Case queue", "The 20 exam cases and the state each one reach
 
 run_id = st.session_state.get("run_id") or (common.list_runs() or [None])[0]
 st.session_state["run_id"] = run_id
-pack = common.load_case_pack()
+
+f0, f1, f2, f3 = st.columns([1.2, 1.2, 1.2, 2])
+pack_choice = f0.selectbox(
+    "Case pack",
+    ["auto", "round2", "round1", "all"],
+    format_func=lambda k: {
+        "auto": "Auto (match run)",
+        "round2": "Final Round (HHF-001..018)",
+        "round1": "Round 1 (HHG-001..020)",
+        "all": "All 38 cases",
+    }[k],
+)
+pack = common.load_case_pack_for_run(run_id) if pack_choice == "auto" else common.load_case_pack(pack_choice)
 pack_ids = [m["case_id"] for m in pack]
 
-f1, f2, f3 = st.columns([1, 1, 2])
 trigger = f1.multiselect("Trigger", ["risk_score", "customer_report", "analyst_request"], default=[])
 only_unrun = f2.checkbox("Only cases without an answer in this run", value=False)
 f3.caption(f"Run **{run_id or '—'}** · cases run in `opened_at` order so later cases can retrieve earlier agent-written ones (PLAN §4.2).")
@@ -108,7 +119,12 @@ def _run_bench(
     resume: bool,
     box: st.delta_generator.DeltaGenerator,
 ) -> None:
-    cases_arg = "all" if len(target_cases) == len(pack_ids) else ",".join(target_cases)
+    if len(target_cases) == len(pack_ids) and all(c.startswith("HHF-") for c in target_cases):
+        cases_arg = "round2"
+    elif len(target_cases) == len(pack_ids) and all(c.startswith("HHG-") for c in target_cases):
+        cases_arg = "all"
+    else:
+        cases_arg = ",".join(target_cases)
     cmd = [sys.executable, "-m", "agent.bench", "--cases", cases_arg, "--run-id", target_run]
     if use_mock:
         cmd.append("--mock")

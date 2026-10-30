@@ -34,7 +34,7 @@ def members(chain: list[dict], flagged_id: str, verdict: str, flags: dict) -> li
     min_cms = float(flags.get("min_cms", MIN_CMS))
     unc_cms = float(flags.get("uncertain_cms", UNCERTAIN_CMS))
     pattern_ids: set[str] = set()
-    for key in ("ring_txn_ids", "burst_txn_ids", "card_testing_run_ids", "conflict_chain_ids"):
+    for key in ("ring_txn_ids", "burst_txn_ids", "card_testing_run_ids", "conflict_chain_ids", "r2_detector_txn_ids"):
         pattern_ids |= {str(x) for x in flags.get(key, []) or []}
     chosen: dict[str, str] = {}   # id -> ts for ordering
     for m in chain:

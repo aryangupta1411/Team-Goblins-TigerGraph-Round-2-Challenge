@@ -64,10 +64,24 @@ def open_db(path: str | Path) -> _Q:
 
 def _case_pack_rows(path: str | Path | None = None) -> dict[str, dict]:
     p = Path(path or os.environ.get("CASE_PACK_CSV", REPO_ROOT / "data" / "raw" / "case_pack.csv"))
-    if not p.exists():
-        return {}
-    with p.open(encoding="utf-8", newline="") as fh:
-        return {r["case_id"]: r for r in csv.DictReader(fh)}
+    rows: dict[str, dict] = {}
+    if p.exists():
+        with p.open(encoding="utf-8", newline="") as fh:
+            rows.update({r["case_id"]: r for r in csv.DictReader(fh)})
+    else:
+        try:
+            from ui.common import load_case_pack
+
+            for r in load_case_pack("all"):
+                rows[r["case_id"]] = r
+        except Exception:
+            pass
+    r2 = REPO_ROOT / "data" / "raw" / "round2" / "case_pack_final.csv"
+    if r2.exists():
+        with r2.open(encoding="utf-8", newline="") as fh:
+            for r in csv.DictReader(fh):
+                rows.setdefault(r["case_id"], r)
+    return rows
 
 
 def meta_for(answer: dict, case_pack: dict[str, dict] | None = None) -> dict:

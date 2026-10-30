@@ -3,20 +3,24 @@
     parse(phase, schema, user_text, ...)   -> a validated Pydantic object   (P4/P5/P7/P8/P9)
     investigate(user_text, tools, ...)     -> runs the typed-tool loop      (P2)
 
-Three backends, chosen by `LLM_BACKEND` (contracts §D):
+Four backends, chosen by `LLM_BACKEND` (contracts §D):
 
-  cli   `claude-agent-sdk` (default): drives the bundled Claude Code CLI, which authenticates
-        with the user's Claude subscription — **no ANTHROPIC_API_KEY**. Structured phases use the
-        Agent SDK's JSON-schema output (`output_format={"type": "json_schema", ...}` ->
-        `ResultMessage.structured_output`); P2 uses an in-process SDK MCP server that wraps the
-        very same typed query tools (`agent/mcp_client.make_query_tools`,
-        `agent/tools_local.make_local_tools`), so every graph call still goes through
-        `call_query_tool` -> `run_query` -> `RunLog.record_tool` with unchanged row shapes and the
-        harness keeps all writer calls to itself.
-  api   the Anthropic Python SDK 1.7.0 path this module was carved out of, moved verbatim:
-        `client.beta.messages.parse` and `client.beta.messages.tool_runner`. Needs ANTHROPIC_API_KEY.
-  mock  the `api` code driven by `agent/fake_anthropic.FakeAnthropic` — RUN_MODE=mock, no keys,
-        no network (this is what `--mock` has always done).
+  gemini  Google Gemini API (`generativelanguage.googleapis.com/v1beta`), authenticated via
+          `GEMINI_API_KEY` (or `GOOGLE_API_KEY`). Uses `responseMimeType="application/json"` with
+          `responseSchema` for structured output phases and `functionDeclarations` for the P2
+          typed-tool loop, preserving `thoughtSignature` across multi-turn tool calls.
+  cli     `claude-agent-sdk` (default when no Gemini key/model is set): drives the bundled Claude
+          Code CLI, which authenticates with the user's Claude subscription — **no ANTHROPIC_API_KEY**.
+          Structured phases use the Agent SDK's JSON-schema output (`output_format={"type": "json_schema", ...}`
+          -> `ResultMessage.structured_output`); P2 uses an in-process SDK MCP server that wraps the
+          very same typed query tools (`agent/mcp_client.make_query_tools`,
+          `agent/tools_local.make_local_tools`), so every graph call still goes through
+          `call_query_tool` -> `run_query` -> `RunLog.record_tool` with unchanged row shapes and the
+          harness keeps all writer calls to itself.
+  api     the Anthropic Python SDK 1.7.0 path this module was carved out of, moved verbatim:
+          `client.beta.messages.parse` and `client.beta.messages.tool_runner`. Needs ANTHROPIC_API_KEY.
+  mock    the `api` code driven by `agent/fake_anthropic.FakeAnthropic` — RUN_MODE=mock, no keys,
+          no network (this is what `--mock` has always done).
 
 Isolation of the cli backend (so a run is reproducible and never picks up this machine's setup):
   setting_sources=[]   no ~/.claude settings, no CLAUDE.md, no project settings
@@ -30,15 +34,17 @@ conversation stays append-only and the CLI's own prompt cache is reused across p
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import time
 import warnings
 from types import SimpleNamespace
 from typing import Any
 
-from agent.config import SETTINGS, Settings
+from agent.config import DEFAULT_GEMINI_MODEL, SETTINGS, Settings
 
 MCP_SERVER_NAME = "hhgoa"
+GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta/models"
 
 # A tool named in `allowed_tools` is auto-approved before `can_use_tool` runs; the SDK warns about
 # that on every call. That is exactly the wiring we want (allowlist approves our typed queries, the
@@ -56,16 +62,25 @@ PARSE_MAX_TURNS = 6
 
 
 def resolve_backend(settings: Settings = SETTINGS) -> str:
-    """`LLM_BACKEND` = cli | api | mock; unset (or "auto") means mock in RUN_MODE=mock, else cli."""
+    """`LLM_BACKEND` = gemini | cli | api | mock; unset (or "auto") means mock in RUN_MODE=mock,
+    gemini when GEMINI_API_KEY / a gemini-* model is set, else cli."""
     name = (settings.llm_backend or "").strip().lower()
+    if name in ("gemini", "google"):
+        return "gemini"
     if name in ("cli", "api", "mock"):
         return name
-    return "mock" if settings.mock else "cli"
+    if settings.mock:
+        return "mock"
+    if settings.gemini_api_key or (settings.model or "").lower().startswith("gemini"):
+        return "gemini"
+    return "cli"
 
 
 def make_backend(settings: Settings = SETTINGS, client: Any = None) -> Any:
-    """The backend `agent.bench` hands to `PhaseMachine`. `client` overrides the api/mock client."""
+    """The backend `agent.bench` hands to `PhaseMachine`. `client` overrides the api/mock/gemini client."""
     name = resolve_backend(settings)
+    if name == "gemini":
+        return GeminiBackend(settings, transport=client)
     if name == "cli":
         return CliBackend(settings)
     if client is None:
@@ -305,3 +320,270 @@ class CliBackend:
         text = (result.result or "").strip()
         if text:
             history.append({"role": "assistant", "content": text})
+
+
+# ---------------------------------------------------------------- gemini backend
+
+_GEMINI_STRIP_KEYS = frozenset({"$defs", "definitions", "$schema", "additionalProperties", "title", "default"})
+_GEMINI_REFUSALS = frozenset({"SAFETY", "PROHIBITED_CONTENT", "BLOCKLIST", "SPII", "RECITATION"})
+
+
+def _gemini_model(model: str) -> str:
+    """Normalise `model` for the Gemini REST endpoint, replacing a leftover Claude default."""
+    m = (model or "").strip()
+    if m.startswith("models/"):
+        m = m[len("models/"):]
+    if not m or m.lower().startswith("claude"):
+        return DEFAULT_GEMINI_MODEL
+    return m
+
+
+def _gemini_schema(schema: dict[str, Any]) -> dict[str, Any]:
+    """Inline `$defs`/`$ref` and strip keywords that Gemini's OpenAPI 3.0 `Schema` object rejects."""
+    defs = dict(schema.get("$defs") or schema.get("definitions") or {})
+
+    def walk(node: Any) -> Any:
+        if not isinstance(node, dict):
+            return [walk(x) for x in node] if isinstance(node, list) else node
+        if "$ref" in node:
+            ref = str(node["$ref"]).rsplit("/", 1)[-1]
+            target = dict(defs.get(ref) or {})
+            merged = {**target, **{k: v for k, v in node.items() if k != "$ref"}}
+            return walk(merged)
+        for union_key in ("anyOf", "oneOf"):
+            if union_key in node and isinstance(node[union_key], list):
+                non_null = [b for b in node[union_key] if not (isinstance(b, dict) and b.get("type") == "null")]
+                has_null = len(non_null) < len(node[union_key])
+                base = dict(walk(non_null[0])) if non_null else {"type": "string"}
+                if has_null:
+                    base["nullable"] = True
+                if "description" in node and "description" not in base:
+                    base["description"] = node["description"]
+                return base
+        out: dict[str, Any] = {}
+        for k, v in node.items():
+            if k in _GEMINI_STRIP_KEYS:
+                continue
+            if k == "properties" and isinstance(v, dict):
+                out["properties"] = {pk: walk(pv) for pk, pv in v.items()}
+            elif k == "items":
+                out["items"] = walk(v)
+            else:
+                out[k] = walk(v)
+        return out
+
+    return walk(schema)
+
+
+def _gemini_tool_declarations(tools: list[Any]) -> list[dict[str, Any]]:
+    decls: list[dict[str, Any]] = []
+    for t in tools:
+        spec = t.to_dict()
+        params = _gemini_schema(spec.get("input_schema") or {"type": "object", "properties": {}})
+        decls.append({
+            "name": spec["name"],
+            "description": spec.get("description", ""),
+            "parameters": params,
+        })
+    return decls
+
+
+def _gemini_contents(history: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Convert `PhaseMachine.history` into Gemini `contents`, merging adjacent same-role turns."""
+    contents: list[dict[str, Any]] = []
+    for msg in history:
+        role = "model" if msg.get("role") in ("assistant", "model") else "user"
+        if "parts" in msg and isinstance(msg["parts"], list):
+            parts = list(msg["parts"])
+        else:
+            raw = msg.get("content", "")
+            if isinstance(raw, str):
+                parts = [{"text": raw}] if raw else []
+            elif isinstance(raw, list):
+                parts = [{"text": b.get("text", str(b))} if isinstance(b, dict) else {"text": str(b)} for b in raw]
+            else:
+                parts = [{"text": json.dumps(raw, default=str)}]
+        if not parts:
+            continue
+        if contents and contents[-1]["role"] == role:
+            contents[-1]["parts"].extend(parts)
+        else:
+            contents.append({"role": role, "parts": parts})
+    return contents
+
+
+def _gemini_usage_response(data: dict[str, Any], model: str) -> Any:
+    """Map Gemini `usageMetadata` onto the `.usage` shape `RunLog.record_llm` consumes."""
+    u = data.get("usageMetadata") or {}
+    prompt_total = int(u.get("promptTokenCount", 0) or 0)
+    cached = int(u.get("cachedContentTokenCount", 0) or 0)
+    inp = max(0, prompt_total - cached)
+    out = int(u.get("candidatesTokenCount", 0) or 0) + int(u.get("thoughtsTokenCount", 0) or 0)
+    cand = (data.get("candidates") or [{}])[0] if isinstance(data.get("candidates"), list) and data.get("candidates") else {}
+    return SimpleNamespace(
+        usage=SimpleNamespace(
+            input_tokens=inp,
+            output_tokens=out,
+            cache_read_input_tokens=cached,
+            cache_creation_input_tokens=0,
+        ),
+        model=data.get("modelVersion") or model,
+        id=data.get("responseId", "") or "",
+        stop_reason=cand.get("finishReason", "") or "",
+    )
+
+
+def _gemini_text_from_parts(parts: list[dict[str, Any]]) -> str:
+    return "".join(str(p.get("text", "")) for p in parts if isinstance(p, dict) and not p.get("thought") and "text" in p).strip()
+
+
+class GeminiBackend:
+    """Google Gemini API (`generateContent` over v1beta) — needs GEMINI_API_KEY (or GOOGLE_API_KEY)."""
+
+    name = "gemini"
+
+    def __init__(self, settings: Settings = SETTINGS, transport: Any = None) -> None:
+        self.s = settings
+        self.transport = transport
+
+    def new_case(self) -> None:
+        return None
+
+    async def _generate(self, *, model: str, system: list[dict] | str, contents: list[dict],
+                        generation_config: dict[str, Any], tools: list[dict] | None = None) -> dict[str, Any]:
+        m = _gemini_model(model)
+        payload: dict[str, Any] = {
+            "contents": contents,
+            "generationConfig": generation_config,
+        }
+        sys_text = _system_text(system)
+        if sys_text:
+            payload["systemInstruction"] = {"parts": [{"text": sys_text}]}
+        if tools:
+            payload["tools"] = [{"functionDeclarations": tools}]
+        if self.transport is not None:
+            return await self.transport(m, payload)
+
+        api_key = (self.s.gemini_api_key or "").strip()
+        if not api_key:
+            raise RuntimeError("GEMINI_API_KEY (or GOOGLE_API_KEY) is required when LLM_BACKEND=gemini")
+
+        import httpx
+
+        url = f"{GEMINI_API_BASE}/{m}:generateContent"
+        headers = {"x-goog-api-key": api_key, "Content-Type": "application/json"}
+        last_err = ""
+        async with httpx.AsyncClient(timeout=600.0) as client:
+            for attempt in range(5):
+                try:
+                    resp = await client.post(url, headers=headers, json=payload)
+                except httpx.TransportError as e:
+                    last_err = f"network error: {e}"
+                    if attempt < 4:
+                        await asyncio.sleep(min(2 ** attempt, 16))
+                        continue
+                    raise RuntimeError(f"Gemini request to {m} failed after 5 attempts: {last_err}") from e
+                if resp.status_code == 200:
+                    return resp.json()
+                if resp.status_code in (429, 500, 502, 503, 504) and attempt < 4:
+                    retry_after = float(resp.headers.get("retry-after", "0") or 0)
+                    await asyncio.sleep(max(retry_after, float(min(2 ** (attempt + 1), 30))))
+                    continue
+                raise RuntimeError(f"Gemini HTTP {resp.status_code} ({m}): {resp.text[:500]}")
+        raise RuntimeError(f"Gemini request to {m} failed: {last_err}")
+
+    async def parse(self, *, phase: str, schema: type, user_text: str, history: list[dict],
+                    system: list[dict], tool_defs: list[dict], model: str, log: Any) -> Any:
+        history.append({"role": "user", "content": user_text})
+        js = _gemini_schema(schema.model_json_schema())
+        gen_cfg = {
+            "maxOutputTokens": self.s.max_tokens,
+            "responseMimeType": "application/json",
+            "responseSchema": js,
+        }
+        m = _gemini_model(model)
+        last_err = ""
+        for _attempt in range(3):
+            t0 = time.time()
+            data = await self._generate(
+                model=m, system=system, contents=_gemini_contents(history), generation_config=gen_cfg,
+            )
+            log.record_llm(phase, _gemini_usage_response(data, m), time.time() - t0)
+            cands = data.get("candidates") or []
+            cand = cands[0] if cands else {}
+            finish = str(cand.get("finishReason", "") or "")
+            if finish in _GEMINI_REFUSALS:
+                raise RuntimeError(f"{phase}: model refused (finishReason={finish})")
+            parts = (cand.get("content") or {}).get("parts") or []
+            text = _gemini_text_from_parts(parts)
+            history.append({"role": "assistant", "content": text or "{}"})
+            if text:
+                try:
+                    return schema.model_validate_json(text)
+                except Exception as e:
+                    last_err = f"structured output did not validate: {str(e)[:300]}"
+            else:
+                last_err = f"no structured output (finishReason={finish})"
+            if log is not None:
+                log.note(f"{phase}: retrying structured output", error=last_err)
+            history.append({
+                "role": "user",
+                "content": f"Your previous reply could not be parsed ({last_err}). Reply again with only the requested structured output.",
+            })
+        raise RuntimeError(f"{phase}: structured output failed after 3 attempts: {last_err}")
+
+    async def investigate(self, *, phase: str, user_text: str, history: list[dict], system: list[dict],
+                          tools: list[Any], model: str, log: Any, max_iterations: int) -> None:
+        history.append({"role": "user", "content": user_text})
+        tool_decls = _gemini_tool_declarations(tools)
+        tool_map = {t.to_dict()["name"]: t for t in tools}
+        gen_cfg = {"maxOutputTokens": self.s.max_tokens}
+        m = _gemini_model(model)
+        for _turn in range(max_iterations):
+            t0 = time.time()
+            data = await self._generate(
+                model=m, system=system, contents=_gemini_contents(history),
+                generation_config=gen_cfg, tools=tool_decls,
+            )
+            log.record_llm(phase, _gemini_usage_response(data, m), time.time() - t0)
+            cands = data.get("candidates") or []
+            cand = cands[0] if cands else {}
+            finish = str(cand.get("finishReason", "") or "")
+            if finish in _GEMINI_REFUSALS:
+                raise RuntimeError(f"{phase}: model refused (finishReason={finish})")
+            content = dict(cand.get("content") or {"role": "model", "parts": []})
+            content["role"] = "model"
+            parts = list(content.get("parts") or [])
+            content["parts"] = parts
+            if parts:
+                history.append(content)
+            calls = [p["functionCall"] for p in parts if isinstance(p, dict) and isinstance(p.get("functionCall"), dict)]
+            if not calls:
+                break
+            fn_responses: list[dict[str, Any]] = []
+            for fc in calls:
+                fname = str(fc.get("name", ""))
+                fargs = dict(fc.get("args") or {})
+                tool_obj = tool_map.get(fname)
+                if tool_obj is None:
+                    raw_out = json.dumps({"error": f"unknown tool: {fname}"})
+                else:
+                    try:
+                        raw_out = await tool_obj.call(fargs)
+                    except Exception as e:
+                        raw_out = json.dumps({"error": f"{fname} failed: {str(e)[:400]}"})
+                if isinstance(raw_out, str):
+                    try:
+                        parsed_out = json.loads(raw_out)
+                        resp_payload = parsed_out if isinstance(parsed_out, dict) else {"result": parsed_out}
+                    except Exception:
+                        resp_payload = {"result": raw_out}
+                elif isinstance(raw_out, dict):
+                    resp_payload = raw_out
+                else:
+                    resp_payload = {"result": raw_out}
+                fr: dict[str, Any] = {"name": fname, "response": resp_payload}
+                if "id" in fc:
+                    fr["id"] = fc["id"]
+                fn_responses.append({"functionResponse": fr})
+            history.append({"role": "user", "parts": fn_responses})

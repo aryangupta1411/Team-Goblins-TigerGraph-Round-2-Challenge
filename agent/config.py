@@ -40,6 +40,18 @@ def _env(name: str, default: str = "") -> str:
 
 # Embedding defaults follow EMBED_BACKEND (mirrors rag/config.py, which is the source of truth for rag/).
 _EMBED_DEFAULTS = {"local": ("BAAI/bge-large-en-v1.5", 1024), "voyage": ("voyage-4-lite", 1024)}
+DEFAULT_CLAUDE_MODEL = "claude-sonnet-5"
+DEFAULT_GEMINI_MODEL = "gemini-2.5-flash"
+
+
+def _default_model() -> str:
+    explicit = _env("MODEL", "")
+    if explicit:
+        return explicit
+    backend = (_env("LLM_BACKEND", "") or "").strip().lower()
+    if backend in ("gemini", "google") or (not backend and (_env("GEMINI_API_KEY", "") or _env("GOOGLE_API_KEY", ""))):
+        return DEFAULT_GEMINI_MODEL
+    return DEFAULT_CLAUDE_MODEL
 
 
 def _embed_default_model() -> str:
@@ -59,13 +71,15 @@ class Settings:
     tg_query_timeout_ms: int = field(default_factory=lambda: int(_env("TG_QUERY_TIMEOUT_MS", "120000")))
     tg_response_limit_bytes: int = field(default_factory=lambda: int(_env("TG_RESPONSE_LIMIT_BYTES", "64000000")))
     # LLM
-    # cli (claude-agent-sdk over the bundled Claude Code CLI, subscription auth, no API key —
-    # the default) | api (anthropic SDK, needs ANTHROPIC_API_KEY) | mock (FakeAnthropic).
-    # Unset means "cli", except under RUN_MODE=mock where it means "mock" (agent/llm.resolve_backend).
+    # gemini (Gemini REST API, needs GEMINI_API_KEY / GOOGLE_API_KEY) | cli (claude-agent-sdk over the
+    # bundled Claude Code CLI, subscription auth, no API key) | api (anthropic SDK, needs ANTHROPIC_API_KEY) |
+    # mock (FakeAnthropic). Unset means "mock" under RUN_MODE=mock, "gemini" when GEMINI_API_KEY / a gemini-*
+    # model is set, else "cli" (agent/llm.resolve_backend).
     llm_backend: str = field(default_factory=lambda: _env("LLM_BACKEND", ""))
     anthropic_api_key: str = field(default_factory=lambda: _env("ANTHROPIC_API_KEY", ""))
-    model: str = field(default_factory=lambda: _env("MODEL", "claude-sonnet-5"))
-    sar_model: str = field(default_factory=lambda: _env("SAR_MODEL", _env("MODEL", "claude-sonnet-5")))
+    gemini_api_key: str = field(default_factory=lambda: _env("GEMINI_API_KEY", "") or _env("GOOGLE_API_KEY", ""))
+    model: str = field(default_factory=_default_model)
+    sar_model: str = field(default_factory=lambda: _env("SAR_MODEL", "") or _default_model())
     effort: str = field(default_factory=lambda: _env("EFFORT", "high"))       # low|medium|high|xhigh|max
     max_tokens: int = field(default_factory=lambda: int(_env("MAX_TOKENS", "16000")))
     cache_ttl: str = field(default_factory=lambda: _env("CACHE_TTL", "1h"))   # "5m" | "1h"

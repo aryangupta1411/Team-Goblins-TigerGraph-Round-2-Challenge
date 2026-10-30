@@ -364,7 +364,14 @@ async def run(args: argparse.Namespace) -> int:
         settings = Settings(**{**settings.__dict__, "run_mode": "mock"})
     if args.llm_backend:
         os.environ["LLM_BACKEND"] = args.llm_backend
-        settings = Settings(**{**settings.__dict__, "llm_backend": args.llm_backend})
+        updates: dict[str, str] = {"llm_backend": args.llm_backend}
+        if args.llm_backend in ("gemini", "google") and not args.model and settings.model.lower().startswith("claude"):
+            from agent.config import DEFAULT_GEMINI_MODEL
+
+            updates["model"] = DEFAULT_GEMINI_MODEL
+            if not args.sar_model and settings.sar_model.lower().startswith("claude"):
+                updates["sar_model"] = DEFAULT_GEMINI_MODEL
+        settings = Settings(**{**settings.__dict__, **updates})
     cases = select_cases(load_case_pack(Path(args.case_pack) if args.case_pack else settings.case_pack_csv), args.cases)
     if not cases:
         with _on_stderr():
@@ -529,8 +536,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--sar-model", default=None)
     ap.add_argument("--resume", action="store_true")
     ap.add_argument("--mock", action="store_true", help="RUN_MODE=mock: FakeSession (DuckDB facts) + FakeAnthropic unless --llm-backend says otherwise")
-    ap.add_argument("--llm-backend", default=None, choices=["cli", "api", "mock"],
-                    help="cli (claude-agent-sdk, no API key, default) | api (ANTHROPIC_API_KEY) | mock (FakeAnthropic)")
+    ap.add_argument("--llm-backend", default=None, choices=["gemini", "google", "cli", "api", "mock"],
+                    help="gemini (GEMINI_API_KEY / GOOGLE_API_KEY) | cli (claude-agent-sdk, no API key) | api (ANTHROPIC_API_KEY) | mock (FakeAnthropic)")
     ap.add_argument("--case-pack", default=None)
     ap.add_argument("--fail-fast", action="store_true")
     args = ap.parse_args(argv)

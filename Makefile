@@ -153,12 +153,13 @@ status: ## what exists and what does not: data, models, chunks, vectors, cases, 
 	 banner "make status" "what this checkout already has, checked on disk only - no network, no secrets"; \
 	 kv "repo"        "$$PWD"; \
 	 kv "RUN_MODE"    "$$(cfg RUN_MODE)"; \
-	 kv "LLM_BACKEND" "$$(cfg LLM_BACKEND)   (cli = claude-agent-sdk, no API key)"; \
+	 kv "LLM_BACKEND" "$$(cfg LLM_BACKEND)   (gemini | cli | api | mock)"; \
 	 kv "MODEL"       "$$(cfg MODEL)"; \
 	 kv "EMBED_BACKEND" "$$(cfg EMBED_BACKEND)   model $$(cfg EMBED_MODEL) dim $$(cfg EMBED_DIM)"; \
 	 kv "TG_HOST"     "$$(cfg TG_HOST)"; \
 	 kv "TG_GRAPHNAME" "$$(cfg TG_GRAPHNAME)"; \
 	 kv "TG_SECRET"   "$$(held TG_SECRET)"; \
+	 kv "GEMINI_API_KEY" "$$(held GEMINI_API_KEY)"; \
 	 kv "ANTHROPIC_API_KEY" "$$(held ANTHROPIC_API_KEY)"; \
 	 kv "VOYAGE_API_KEY" "$$(held VOYAGE_API_KEY)"; \
 	 printf '\n'; \
@@ -196,7 +197,7 @@ install: ## uv sync (+dev extras); copies .env.example -> .env if missing
 
 env: ## print the effective config as KEY=value (secrets masked); `make status` is the readable version
 	@$(PY) -c "import os; from dotenv import load_dotenv; load_dotenv(); \
-	  [print(f'{k}={(v[:6]+\"…\") if k.endswith((\"KEY\",\"SECRET\")) and v else v}') for k,v in sorted(os.environ.items()) if k.startswith(('TG_','RUN_MODE','MODEL','SAR_MODEL','LLM_BACKEND','EMBED','VOYAGE','ANTHROPIC','ENGINE_','HHGOA_'))]"
+	  [print(f'{k}={(v[:6]+\"…\") if k.endswith((\"KEY\",\"SECRET\")) and v else v}') for k,v in sorted(os.environ.items()) if k.startswith(('TG_','RUN_MODE','MODEL','SAR_MODEL','LLM_BACKEND','EMBED','VOYAGE','GEMINI','GOOGLE','ANTHROPIC','ENGINE_','HHGOA_'))]"
 
 awake: ## wake the Savanna workspace (retries 502/503 up to 4 min) and print the version
 	$(PY) -m ops.keep_alive --once

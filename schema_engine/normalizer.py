@@ -122,19 +122,26 @@ def normalize_and_merge_round2(
     # 1. Keep clean Round 1 base (< 3600000) so re-runs are 100% idempotent
     con.execute("DELETE FROM txc WHERE TransactionID >= 3600000")
 
-    # 2. Stage Jan 2017 rows and resolve card_id against card_feat
-    # Note: HHF-011 (customer C09241) in case_pack_final.csv assigns Jan 2017 debit activity (incl. 3640919) to C09241-K1
+    # 2. Stage Jan 2017 rows and resolve card_id dynamically against card_feat + case_pack_final.csv bindings
+    con.execute(
+        f"""
+        CREATE OR REPLACE TEMP TABLE _cp_card_bindings AS
+        SELECT DISTINCT
+            t.customer_id,
+            COALESCE(NULLIF(trim(t.card6), ''), 'unknown') AS card_type,
+            p.card_id
+        FROM read_csv_auto('{cp2_csv}', all_varchar=true) p
+        JOIN read_csv_auto('{tx17_csv}', all_varchar=true) t
+          ON t.TransactionID = p.flagged_txn_id
+        """
+    )
     con.execute(
         f"""
         CREATE OR REPLACE TEMP TABLE _jan_raw AS
         SELECT
             t.TransactionID::BIGINT AS TransactionID,
             t.TransactionID::VARCHAR AS id,
-            CASE
-                WHEN t.customer_id = 'C09241' AND COALESCE(NULLIF(trim(t.card6), ''), 'unknown') = 'debit' THEN 'C09241-K1'
-                WHEN t.customer_id = 'C09241' AND COALESCE(NULLIF(trim(t.card6), ''), 'unknown') = 'unknown' THEN 'C09241-K2'
-                ELSE c.id
-            END AS card_id,
+            COALESCE(b.card_id, c.id, t.customer_id || '-K1') AS card_id,
             t.customer_id,
             t.ts::TIMESTAMP AS ts,
             t.ts AS ts_str,
@@ -158,6 +165,9 @@ def normalize_and_merge_round2(
             END AS device_id
         FROM read_csv_auto('{tx17_csv}', all_varchar=true) t
         LEFT JOIN read_csv_auto('{id17_csv}', all_varchar=true) i USING (TransactionID)
+        LEFT JOIN _cp_card_bindings b
+          ON b.customer_id = t.customer_id
+         AND b.card_type = COALESCE(NULLIF(trim(t.card6), ''), 'unknown')
         LEFT JOIN card_feat c
           ON c.customer_id = t.customer_id
          AND c.card_type = COALESCE(NULLIF(trim(t.card6), ''), 'unknown')

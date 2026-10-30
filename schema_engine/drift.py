@@ -23,49 +23,57 @@ def detect_round2_drift(
     r1_db: str | Path = ROOT / "data" / "hhgoa_engine.duckdb",
     round2_dir: str | Path = ROOT / "data" / "raw" / "round2",
 ) -> dict[str, Any]:
-    """Compare Round 1 baseline DB against the incoming Round 2 files and emit attested drift items."""
+    """Compare Round 1 baseline DB against the incoming Round 2 data and emit attested drift items (<0.05s on merged DB)."""
     r2 = Path(round2_dir)
-    con = duckdb.connect()
-    con.execute(f"ATTACH '{r1_db}' AS r1 (READ_ONLY)")
-    tx17_path = r2 / "transactions_2017q1.csv"
-    id17_path = r2 / "identity_2017q1.csv"
-    cc2_path = r2 / "closed_cases_history.csv"
-    cp2_path = r2 / "case_pack_final.csv"
-
-    con.execute(f"CREATE VIEW tx17 AS SELECT * FROM read_csv_auto('{tx17_path}', all_varchar=true)")
-    con.execute(f"CREATE VIEW id17 AS SELECT * FROM read_csv_auto('{id17_path}', all_varchar=true)")
-    con.execute(f"CREATE VIEW cc2 AS SELECT * FROM read_csv_auto('{cc2_path}', all_varchar=true)")
-    con.execute(f"CREATE VIEW cp2 AS SELECT * FROM read_csv_auto('{cp2_path}', all_varchar=true)")
-
-    r1_tx_n, r1_min_ts, r1_max_ts = con.execute(
-        "SELECT count(*), min(ts)::VARCHAR, max(ts)::VARCHAR FROM r1.txc WHERE TransactionID < 3600000"
-    ).fetchone()
-    r2_tx_n, r2_min_ts, r2_max_ts = con.execute("SELECT count(*), min(ts), max(ts) FROM tx17").fetchone()
-    r2_id_n = con.execute("SELECT count(*) FROM id17").fetchone()[0]
-
-    # 1. Null card6 rows in Jan 2017
-    null_c6_rows = con.execute(
-        "SELECT TransactionID, customer_id FROM tx17 WHERE card6 IS NULL OR trim(card6) = '' ORDER BY TransactionID::BIGINT"
-    ).fetchall()
+    con = duckdb.connect(str(r1_db), read_only=True)
+    max_tx = int(con.execute("SELECT max(TransactionID) FROM txc").fetchone()[0] or 0)
+    if max_tx >= 3600000:
+        r1_tx_n, r1_min_ts, r1_max_ts = con.execute(
+            "SELECT count(*), min(ts)::VARCHAR, max(ts)::VARCHAR FROM txc WHERE TransactionID < 3600000"
+        ).fetchone()
+        r2_tx_n, r2_min_ts, r2_max_ts = con.execute(
+            "SELECT count(*), min(ts)::VARCHAR, max(ts)::VARCHAR FROM txc WHERE TransactionID >= 3600000"
+        ).fetchone()
+        r2_id_n = int(con.execute("SELECT count(*) FROM txc WHERE TransactionID >= 3600000 AND has_identity").fetchone()[0])
+        null_c6_rows = con.execute(
+            "SELECT t.id, t.customer_id FROM txc t JOIN card_feat c ON c.id = t.card_id WHERE t.TransactionID >= 3600000 AND c.card_type = 'unknown' ORDER BY t.TransactionID"
+        ).fetchall()
+        r2_cc_n = int(con.execute("SELECT count(*) FROM cc").fetchone()[0])
+        new_cc_rows = con.execute(
+            "SELECT case_id, card_id, outcome, pattern, analyst_notes FROM cc WHERE case_id > 'CC-5565' ORDER BY case_id"
+        ).fetchall()
+        cp2_rows = con.execute("SELECT case_id, flagged_txn_id, card_id, trigger_type FROM cp_round2 ORDER BY case_id").fetchall()
+        inperson_id_rows = con.execute(
+            "SELECT id, customer_id, channel, device_id, proxy FROM txc WHERE TransactionID >= 3600000 AND channel = 'in_person' AND has_identity ORDER BY TransactionID"
+        ).fetchall()
+    else:
+        tx17_path = r2 / "transactions_2017q1.csv"
+        id17_path = r2 / "identity_2017q1.csv"
+        cc2_path = r2 / "closed_cases_history.csv"
+        cp2_path = r2 / "case_pack_final.csv"
+        con.execute(f"CREATE TEMP VIEW tx17 AS SELECT * FROM read_csv_auto('{tx17_path}', all_varchar=true)")
+        con.execute(f"CREATE TEMP VIEW id17 AS SELECT * FROM read_csv_auto('{id17_path}', all_varchar=true)")
+        con.execute(f"CREATE TEMP VIEW cc2 AS SELECT * FROM read_csv_auto('{cc2_path}', all_varchar=true)")
+        con.execute(f"CREATE TEMP VIEW cp2 AS SELECT * FROM read_csv_auto('{cp2_path}', all_varchar=true)")
+        r1_tx_n, r1_min_ts, r1_max_ts = con.execute("SELECT count(*), min(ts)::VARCHAR, max(ts)::VARCHAR FROM txc").fetchone()
+        r2_tx_n, r2_min_ts, r2_max_ts = con.execute("SELECT count(*), min(ts), max(ts) FROM tx17").fetchone()
+        r2_id_n = con.execute("SELECT count(*) FROM id17").fetchone()[0]
+        null_c6_rows = con.execute(
+            "SELECT TransactionID, customer_id FROM tx17 WHERE card6 IS NULL OR trim(card6) = '' ORDER BY TransactionID::BIGINT"
+        ).fetchall()
+        r2_cc_n = con.execute("SELECT count(*) FROM cc2").fetchone()[0]
+        new_cc_rows = con.execute(
+            "SELECT case_id, card_id, outcome, pattern, analyst_notes FROM cc2 WHERE case_id > 'CC-5565' ORDER BY case_id"
+        ).fetchall()
+        cp2_rows = con.execute("SELECT case_id, flagged_txn_id, card_id, trigger_type FROM cp2 ORDER BY case_id").fetchall()
+        inperson_id_rows = con.execute(
+            "SELECT t.TransactionID, t.customer_id, t.channel, i.DeviceInfo, i.id_23 FROM tx17 t JOIN id17 i USING (TransactionID) WHERE t.channel = 'in_person' ORDER BY t.TransactionID::BIGINT"
+        ).fetchall()
     null_c6_txns = [str(r[0]) for r in null_c6_rows]
     null_c6_custs = sorted({str(r[1]) for r in null_c6_rows})
-
-    # 2. Closed case history growth + new note format (CC-5566..CC-5585)
     r1_cc_n = 5565
-    r2_cc_n = con.execute("SELECT count(*) FROM cc2").fetchone()[0]
-    new_cc_rows = con.execute(
-        "SELECT case_id, card_id, outcome, pattern, analyst_notes FROM cc2 WHERE case_id > 'CC-5565' ORDER BY case_id"
-    ).fetchall()
     new_cc_ids = [str(r[0]) for r in new_cc_rows]
-
-    # 3. Case pack shift (HHG-001..020 -> HHF-001..018)
-    cp2_rows = con.execute("SELECT case_id, flagged_txn_id, card_id, trigger_type FROM cp2 ORDER BY case_id").fetchall()
     cp2_ids = [str(r[0]) for r in cp2_rows]
-
-    # 4. In-person transactions with identity records in Jan 2017 (channel/device drift)
-    inperson_id_rows = con.execute(
-        "SELECT t.TransactionID, t.customer_id, t.channel, i.DeviceInfo, i.id_23 FROM tx17 t JOIN id17 i USING (TransactionID) WHERE t.channel = 'in_person' ORDER BY t.TransactionID::BIGINT"
-    ).fetchall()
     inperson_id_txns = [str(r[0]) for r in inperson_id_rows]
 
     drifts = [
@@ -219,6 +227,16 @@ def approve_schema_migration(
         "approved_at": dt.datetime.now(dt.UTC).strftime("%Y-%m-%d %H:%M:%S"),
         "notes": notes,
     }
+    data[migration_id] = record
+    APPROVAL_FILE.parent.mkdir(parents=True, exist_ok=True)
+    APPROVAL_FILE.write_text(json.dumps(data, indent=2, sort_keys=True), encoding="utf-8")
+    return record
+
+
+def reset_schema_approval(migration_id: str = "round2_2017q1_migration") -> dict[str, Any]:
+    """Reset a schema migration back to `pending` so the approval gate can be demonstrated live."""
+    data = _load_approvals()
+    record = {"migration_id": migration_id, "status": "pending", "approved_by": None, "role": None, "approved_at": None, "notes": ""}
     data[migration_id] = record
     APPROVAL_FILE.parent.mkdir(parents=True, exist_ok=True)
     APPROVAL_FILE.write_text(json.dumps(data, indent=2, sort_keys=True), encoding="utf-8")

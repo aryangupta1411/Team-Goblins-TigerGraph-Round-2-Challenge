@@ -36,6 +36,10 @@ def main(argv: list[str] | None = None) -> int:
     ap_var.add_argument("--dir", default=str(ROOT / "data" / "variant_bank_b"))
     ap_var.add_argument("--generate-fixture", action="store_true", help="Generate variant dataset first")
 
+    ap_gsql = sub.add_parser("gsql", help="Analyze .gsql competition schema(s) (Challenge 13: ISO 20022, BIAN, Temenos T24)")
+    ap_gsql.add_argument("--file", default="all", help="Path to .gsql file or 'all' for data/schemas/*.gsql")
+    ap_gsql.add_argument("--llm", action="store_true", help="Invoke live LLM backend to refine AST mapping")
+
     args = ap.parse_args(argv)
 
     if args.cmd == "drift":
@@ -110,6 +114,38 @@ def main(argv: list[str] | None = None) -> int:
         out_json = vdir / "discovered_mapping.json"
         out_json.write_text(json.dumps(rep, indent=2), encoding="utf-8")
         summary("variant schema mapped", {"mapped_columns": rep["n_mapped_columns"], "manifest": str(out_json)})
+        return 0
+
+    if args.cmd == "gsql":
+        from schema_engine.ai_analyst import analyze_gsql_schema
+
+        files = sorted((ROOT / "data" / "schemas").glob("*.gsql")) if args.file == "all" else [Path(args.file)]
+        for fp in files:
+            res = analyze_gsql_schema(fp, use_llm=args.llm)
+            ev = res.benchmark_eval
+            header(
+                "schema_engine.gsql",
+                f"Challenge 13 GSQL Ontology Mapper: {res.graph_name} ({res.architecture_family})",
+                {
+                    "file": fp.name,
+                    "analyzed_by": res.analyzed_by,
+                    "vertices": res.n_vertices,
+                    "edges": res.n_edges,
+                    "adapted_queries": len(res.adapted_queries),
+                    "ground_truth": f"{ev.get('status_matches', 0)}/{ev.get('total_targets', 0)} ({ev.get('accuracy', 0)*100:.1f}%)" if ev else "n/a",
+                },
+            )
+            t = Table(
+                Col("target", max_width=26),
+                Col("category", width=9),
+                Col("status", width=11),
+                Col("mapped_to", max_width=38),
+                Col("filter / hop path", max_width=36),
+                title=f"{res.graph_name} -> Canonical Fraud Ontology",
+            )
+            for m in res.mappings:
+                t.add_row(m["canonical_target"], m["category"], m["status"], m["mapped_to"] or "—", m["filter_or_path"] or "—")
+            t.print()
         return 0
 
     return 1

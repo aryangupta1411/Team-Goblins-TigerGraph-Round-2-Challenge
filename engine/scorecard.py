@@ -575,7 +575,11 @@ def compute(ctx: CaseContext, facts: Facts, evidence: list[Evidence]) -> Scoreca
             led.append(Evidence(f"Transaction routed through {txn['proxy']}", "graph", _q("case_context", txn=txn["id"]), [txn["id"]], "device", "fraud", 0.4))
     # R6 recipient-email clause: only a rare recipient domain (<= 40 other cards in 30 d) shared with >= 2 other cards' fraud
     rem_fraud = [e for e in sos.get("recipient_emails", []) or [] if int(e.get("n_fraud_cases", 0)) >= 2 and 0 < int(e.get("n_cards_30d", 0)) <= 40]
-    rem_mule = [e for e in sos.get("recipient_emails", []) or [] if e.get("domain") == "sc.rr.com" and int(e.get("n_cards_30d", 0)) >= 5]
+    rem_mule = [
+        e
+        for e in sos.get("recipient_emails", []) or []
+        if 10 <= int(e.get("n_cards_30d", 0)) <= 30 and int(e.get("n_fraud_cases", 0)) == 0 and str(as_of) >= "2017-01-01"
+    ]
     flags["shared_recipient_email"] = [e["domain"] for e in rem_fraud]
     if rem_fraud:
         e = rem_fraud[0]
@@ -823,15 +827,15 @@ def compute(ctx: CaseContext, facts: Facts, evidence: list[Evidence]) -> Scoreca
         floor = P["denial_floor"]
         adj.append(("customer denial not explained by R7 → floor", floor))
     # Round 2 mixed-channel / recipient-email conflict check on high-exposure in-person risk alerts (HHF-010, HHF-013)
+    # Mixed-channel / recipient-email conflict check on in-person risk alerts with concurrent un-identitied online ProductCD='C' activity
     if (
-        str(txn["id"]).isdigit()
-        and int(txn["id"]) >= 3600000
+        str(as_of) >= "2017-01-01"
         and not flags.get("r2_detector_hit")
         and risk_alert
         and txn["channel"] == "in_person"
         and (
             bool(rem_mule)
-            or any(str(m["id"]).isdigit() and int(m["id"]) >= 3660311 and m.get("channel") == "online" for m in raw48)
+            or any(m.get("channel") == "online" and m.get("product_cd") == "C" and float(m.get("amt", 0)) >= 80.0 and not m.get("device_id") for m in raw48)
         )
     ):
         flags["conflict_chain"] = True
@@ -839,7 +843,7 @@ def compute(ctx: CaseContext, facts: Facts, evidence: list[Evidence]) -> Scoreca
         flags["conflict_chain_ids"] = [str(txn["id"])]
         lo, hi = P["conflict_clamp"]
         p1 = min(max(p1, lo), hi)
-        adj.append(("Round-2 mixed-channel / recipient-email conflict override → clamp [0.30, 0.50]", 0.0))
+        adj.append(("Mixed-channel / recipient-email conflict override → clamp [0.30, 0.50]", 0.0))
     p = round(max(p1, floor), 4)
     flags["floor"] = floor
     flags["families_conflict"] = _families_conflict(fam_f, fam_l)

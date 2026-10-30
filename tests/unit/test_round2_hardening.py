@@ -114,3 +114,41 @@ def test_four_part_attestation_structure():
     assert set(d) == {"what", "evidence", "how", "when"}
     assert "3660108" in d["evidence"]
     assert verify_attestation(None, c)["ok"]
+
+
+def test_competition_gsql_schemas_mapping_and_query_compilation():
+    from pathlib import Path
+
+    from schema_engine.ai_analyst import analyze_gsql_schema
+    from schema_engine.gsql_parser import strip_gsql_comments
+
+    sdir = Path(__file__).resolve().parents[2] / "data" / "schemas"
+    b1 = analyze_gsql_schema(sdir / "bank1_iso20022_payments.gsql")
+    b2 = analyze_gsql_schema(sdir / "bank2_bian_service_domains.gsql")
+    b3 = analyze_gsql_schema(sdir / "bank3_core_banking_t24.gsql")
+
+    assert b1.benchmark_eval["accuracy"] == 1.0
+    assert b2.benchmark_eval["accuracy"] == 1.0
+    assert b3.benchmark_eval["accuracy"] == 1.0
+
+    # Verify comment-blindness: passing stripped DDL with zero comments produces identical mappings
+    b2_blind = analyze_gsql_schema(strip_gsql_comments((sdir / "bank2_bian_service_domains.gsql").read_text()))
+    assert b2_blind.mappings == b2.mappings
+
+    # Bank 1 (ISO 20022): Transaction = CdtTrfTxInf, Device = unmapped -> device detector disabled
+    m1 = {m["canonical_target"]: m for m in b1.mappings}
+    assert m1["Transaction"]["mapped_to"] == "CdtTrfTxInf"
+    assert m1["Device"]["status"] == "unmapped"
+    assert any(d["detector"] == "DET_SHARED_DEVICE_RING" for d in b1.disabled_detectors)
+
+    # Bank 2 (BIAN): IssuedDeviceAllocation -> Card, AccessDevice -> Device, 3-hop FROM_DEVICE
+    m2 = {m["canonical_target"]: m for m in b2.mappings}
+    assert m2["Device"]["mapped_to"] == "AccessDevice"
+    assert m2["Card"]["mapped_to"] == "IssuedDeviceAllocation"
+    assert "authenticationUsedDevice" in m2["FROM_DEVICE"]["mapped_to"]
+    assert "DET_SHARED_DEVICE_RING" in b2.enabled_detectors
+
+    # Bank 3 (Temenos T24): FUNDS_TRANSFER and TELLER (not STMT_ENTRY), POSTING_RESTRICT = 25
+    m3 = {m["canonical_target"]: m for m in b3.mappings}
+    assert "FUNDS_TRANSFER" in m3["Transaction"]["mapped_to"] and "not STMT_ENTRY" in m3["Transaction"]["mapped_to"]
+    assert "POSTING_RESTRICT = 25" in m3["account_under_investigation"]["mapped_to"]

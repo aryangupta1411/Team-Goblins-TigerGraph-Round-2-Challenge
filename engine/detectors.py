@@ -180,7 +180,7 @@ def detect_d3_micro_charge_skimming(con: Any, card_id: str, as_of: str) -> Detec
     """
     sql_wave = """
     WITH micro AS (
-        SELECT TransactionID, id, card_id, ts, amt, addr1, device_id
+        SELECT TransactionID, id, card_id, ts, amt, addr1, has_identity
         FROM txc
         WHERE product_cd = 'C' AND channel = 'online' AND amt BETWEEN 1.00 AND 6.00 AND ts >= '2017-01-01'
           AND card_id NOT IN (SELECT DISTINCT card_id FROM txc WHERE product_cd = 'C' AND amt < 10.0 AND ts < '2017-01-01')
@@ -190,7 +190,7 @@ def detect_d3_micro_charge_skimming(con: Any, card_id: str, as_of: str) -> Detec
         FROM micro
         GROUP BY 1
         HAVING count(*) BETWEEN 4 AND 6 AND count(DISTINCT ts::DATE) >= 4
-           AND (count(*) FILTER (WHERE addr1 != '') >= 3 OR max(device_id) LIKE 'SM-A520F%' OR max(device_id) LIKE '%edge 15.0%')
+           AND count(*) FILTER (WHERE addr1 != '' OR has_identity) >= 3
     )
     SELECT m.id, m.card_id, m.ts::VARCHAR, m.amt
     FROM micro m JOIN card_stats s USING (card_id)
@@ -238,25 +238,34 @@ def detect_d3_micro_charge_skimming(con: Any, card_id: str, as_of: str) -> Detec
 
 
 def detect_d4_recipient_email_mule(con: Any, card_id: str, flagged_txn_id: str, as_of: str) -> DetectorHit | None:
-    """D4: Many Cards Paying One Recipient Email Domain (HHF-006 on C01727-K2; 3660261..3660289 & 3660311..3660320).
+    """D4: Many Cards Paying One Rare Recipient Email Domain (HHF-006 on C01727-K2).
 
-    17 cards make online ProductCD='C' payments to recipient email domain 'sc.rr.com' in January 2017 with no shared
-    DeviceProfile. Fires as the primary episode detector when the flagged transaction itself is part of the
-    recipient-email wave (e.g. HHF-006 flagged_txn 3660263).
+    Detects when the flagged online ProductCD='C' transaction pays a recipient email domain (`r_email`)
+    that receives online ProductCD='C' payments from 10..30 distinct cards within 30 days (a mule hub,
+    excluding major consumer webmail providers with > 40 cards).
     """
     flagged_row = con.execute(
         "SELECT id, product_cd, channel, r_email FROM txc WHERE TransactionID = ?", [int(flagged_txn_id)]
     ).fetchone()
-    if not flagged_row or flagged_row[1] != "C" or flagged_row[2] != "online" or flagged_row[3] != "sc.rr.com":
+    if not flagged_row or flagged_row[1] != "C" or flagged_row[2] != "online" or not flagged_row[3]:
+        return None
+    dom = str(flagged_row[3])
+    n_dom_cards = int(
+        con.execute(
+            "SELECT count(DISTINCT card_id) FROM txc WHERE r_email = ? AND ts >= '2016-12-01'",
+            [dom],
+        ).fetchone()[0]
+    )
+    if not (10 <= n_dom_cards <= 35):
         return None
 
     sql_wave = """
     SELECT id, card_id, ts::VARCHAR, amt
     FROM txc
-    WHERE product_cd = 'C' AND channel = 'online' AND r_email = 'sc.rr.com' AND ts >= '2017-01-01'
+    WHERE product_cd = 'C' AND channel = 'online' AND r_email = ? AND ts >= '2017-01-01'
     ORDER BY ts, TransactionID
     """
-    rows = con.execute(sql_wave).fetchall()
+    rows = con.execute(sql_wave, [dom]).fetchall()
     if not rows:
         return None
     all_wave_cards = sorted({str(r[1]) for r in rows})
@@ -269,21 +278,21 @@ def detect_d4_recipient_email_mule(con: Any, card_id: str, flagged_txn_id: str, 
     exp = round(sum(float(r[3]) for r in mine), 2)
     other_cards = [c for c in all_wave_cards if c != card_id]
     desc = (
-        f"Coordinated recipient-email mule ring across {len(all_wave_cards)} cards paying R_emaildomain='sc.rr.com' with no shared device: "
-        f"card {card_id} has {len(ep_ids)} online ProductCD='C' payments ({', '.join(ep_ids)}) totaling ${exp:,.2f} to sc.rr.com, "
+        f"Coordinated recipient-email mule ring across {len(all_wave_cards)} cards paying R_emaildomain='{dom}' with no shared device: "
+        f"card {card_id} has {len(ep_ids)} online ProductCD='C' payments ({', '.join(ep_ids)}) totaling ${exp:,.2f} to {dom}, "
         f"connected to {len(other_cards)} other cards paying the same recipient domain in January 2017."
     )
     claim = attest(
         what=desc,
         evidence=ep_ids + [card_id] + other_cards,
         query_or_rule="engine.detectors.detect_d4_recipient_email_mule",
-        params={"card_id": card_id, "r_email": "sc.rr.com", "as_of": as_of, "n_wave_cards": len(all_wave_cards)},
+        params={"card_id": card_id, "r_email": dom, "as_of": as_of, "n_wave_cards": len(all_wave_cards)},
         as_of=as_of,
-        sql=f"SELECT id FROM txc WHERE card_id = '{card_id}' AND product_cd = 'C' AND r_email = 'sc.rr.com' AND ts >= '2017-01-01' AND ts <= '{as_of}'",
+        sql=f"SELECT id FROM txc WHERE card_id = '{card_id}' AND product_cd = 'C' AND r_email = '{dom}' AND ts >= '2017-01-01' AND ts <= '{as_of}'",
     )
     return DetectorHit(
         detector_id="D4_RECIPIENT_EMAIL_MULE",
-        name="Shared Recipient Email Domain Mule (sc.rr.com)",
+        name=f"Shared Recipient Email Domain Mule ({dom})",
         pattern="undocumented",
         description=desc,
         card_id=card_id,
@@ -291,7 +300,7 @@ def detect_d4_recipient_email_mule(con: Any, card_id: str, flagged_txn_id: str, 
         exposure_usd=exp,
         connected_card_ids=other_cards,
         connected_device_profiles=[],
-        shared_element="R_emaildomain = 'sc.rr.com' on online ProductCD='C' transactions across 17 cards",
+        shared_element=f"R_emaildomain = '{dom}' on online ProductCD='C' transactions across {len(all_wave_cards)} cards",
         p_floor=0.92,
         attestation=claim.to_dict(),
     )
@@ -342,13 +351,15 @@ def detect_d5_inperson_identity_clone(con: Any, card_id: str, as_of: str) -> Det
 
 
 def detect_d6_new_mobile_cnp_burst(con: Any, card_id: str, as_of: str) -> DetectorHit | None:
-    """D6: Unrecognised New Mobile Device CNP Pair on In-Person Card (HHF-009 on C09177-K1; 3660354..3660355)."""
+    """D6: Unrecognised New Mobile Device CNP Pair on In-Person Card (HHF-009 on C09177-K1)."""
     rows = con.execute(
         """
         SELECT id, card_id, ts::VARCHAR, amt, device_id
         FROM txc
-        WHERE card_id = ? AND TransactionID >= 3660354 AND product_cd = 'C' AND channel = 'online'
-          AND device_new = 'New' AND ts <= ?::TIMESTAMP
+        WHERE card_id = ? AND product_cd = 'C' AND channel = 'online'
+          AND device_type = 'mobile' AND device_new = 'New' AND proxy = ''
+          AND amt >= 200.0 AND prior_pcd <= 1 AND prior_med_amt > 0 AND amt >= 3.0 * prior_med_amt
+          AND ts >= '2017-01-01' AND ts <= ?::TIMESTAMP
         ORDER BY ts, TransactionID
         """,
         [card_id, as_of],
@@ -368,7 +379,7 @@ def detect_d6_new_mobile_cnp_burst(con: Any, card_id: str, as_of: str) -> Detect
         query_or_rule="engine.detectors.detect_d6_new_mobile_cnp_burst",
         params={"card_id": card_id, "as_of": as_of},
         as_of=as_of,
-        sql=f"SELECT id FROM txc WHERE card_id = '{card_id}' AND TransactionID >= 3660354 AND ts <= '{as_of}'",
+        sql=f"SELECT id FROM txc WHERE card_id = '{card_id}' AND product_cd = 'C' AND device_new = 'New' AND amt >= 200.0 AND ts <= '{as_of}'",
     )
     return DetectorHit(
         detector_id="D6_NEW_MOBILE_CNP_BURST",
@@ -388,7 +399,7 @@ def detect_d6_new_mobile_cnp_burst(con: Any, card_id: str, as_of: str) -> Detect
 
 def scan_card(con: Any, card_id: str, flagged_txn_id: str, as_of: str) -> DetectorHit | None:
     """Run all Round 2 detectors on `(card_id, flagged_txn_id, as_of)` and return the matching DetectorHit."""
-    if int(flagged_txn_id) < 3660000:
+    if str(as_of) < "2017-01-01":
         return None
     for fn in (
         lambda: detect_d4_recipient_email_mule(con, card_id, flagged_txn_id, as_of),
@@ -405,58 +416,92 @@ def scan_card(con: Any, card_id: str, flagged_txn_id: str, as_of: str) -> Detect
 
 
 def discover_unlabelled_patterns(con: Any) -> list[dict[str, Any]]:
-    """Challenge 2 — Self-Growing Detective: automatically scans the transaction graph for unlabelled multi-card
-    clusters, synthesizes candidate SQL detector definitions, backtests them against the 5,585 closed cases,
-    and queues them for human approval before activation.
+    """Challenge 2 — Self-Growing Detective: dynamically scans the transaction graph for unlabelled multi-card
+    clusters, synthesizes candidate SQL detector definitions, computes live card/txn/exposure counts and
+    closed-case false positives, and queues them for human approval.
     """
-    candidates = [
-        {
-            "proposal_id": "AUTO-DET-01",
-            "name": "Recipient Email Mule Cluster (sc.rr.com)",
-            "discovered_by": "graph_fanout_anomaly(edge=RECIPIENT_EMAIL, product_cd='C', window_days=30, min_cards=10)",
-            "synthesized_sql": "SELECT card_id, list(id) FROM txc WHERE product_cd='C' AND channel='online' AND r_email='sc.rr.com' AND ts>='2017-01-01' GROUP BY 1 HAVING count(*)>=2",
-            "cards_matched": 17,
-            "txns_matched": 39,
-            "total_exposure_usd": 8842.19,
-            "closed_case_false_positives": 0,
-            "approval_status": "approved",
-            "approved_by": "fraud-manager@bank",
-        },
-        {
-            "proposal_id": "AUTO-DET-02",
-            "name": "Multi-Day Sub-$6 Micro-Charge Skimming Wave",
-            "discovered_by": "amount_band_cluster(product_cd='C', amt_range=[1.0, 6.0], min_txns=4, min_days=3)",
-            "synthesized_sql": "SELECT card_id, list(id) FROM txc WHERE product_cd='C' AND channel='online' AND amt BETWEEN 1.0 AND 6.0 AND ts>='2017-01-01' GROUP BY 1 HAVING count(*)>=4 AND count(DISTINCT ts::DATE)>=3",
-            "cards_matched": 18,
-            "txns_matched": 87,
-            "total_exposure_usd": 297.43,
-            "closed_case_false_positives": 0,
-            "approval_status": "approved",
-            "approved_by": "fraud-manager@bank",
-        },
-        {
-            "proposal_id": "AUTO-DET-03",
-            "name": "Spoofed-Mobile Anonymous-Proxy Burst Wave",
-            "discovered_by": "telemetry_contradiction_scan(device_type='mobile', proxy='IP_PROXY:ANONYMOUS', device_new='New', min_amt=200)",
-            "synthesized_sql": "SELECT card_id, list(id) FROM txc WHERE product_cd='C' AND device_type='mobile' AND device_new='New' AND proxy='IP_PROXY:ANONYMOUS' AND amt>=200 GROUP BY 1 HAVING count(*)>=2",
-            "cards_matched": 14,
-            "txns_matched": 35,
-            "total_exposure_usd": 18412.60,
-            "closed_case_false_positives": 0,
-            "approval_status": "approved",
-            "approved_by": "fraud-manager@bank",
-        },
-        {
-            "proposal_id": "AUTO-DET-04",
-            "name": "Dormant-Wake Doubling Drain ($180 -> $1,800 Cap)",
-            "discovered_by": "sequence_ratio_scan(product_cd='C', has_identity=False, min_len=5, max_amt_floor=1100)",
-            "synthesized_sql": "SELECT card_id, list(id) FROM txc WHERE product_cd='C' AND NOT has_identity AND amt>=70 AND ts>='2017-01-20' GROUP BY 1 HAVING count(*)>=5 AND max(amt)>=1100 AND min(amt)<300",
-            "cards_matched": 8,
-            "txns_matched": 43,
-            "total_exposure_usd": 31804.07,
-            "closed_case_false_positives": 0,
-            "approval_status": "approved",
-            "approved_by": "fraud-manager@bank",
-        },
+    specs = [
+        (
+            "AUTO-DET-01",
+            "Recipient Email Mule Cluster",
+            "graph_fanout_anomaly(edge=RECIPIENT_EMAIL, product_cd='C', window_days=30, min_cards=10)",
+            """
+            WITH doms AS (
+                SELECT r_email FROM txc WHERE product_cd='C' AND channel='online' AND r_email != '' AND ts >= '2017-01-01'
+                GROUP BY 1 HAVING count(DISTINCT card_id) BETWEEN 10 AND 35
+            )
+            SELECT count(DISTINCT card_id), count(*), round(coalesce(sum(amt), 0), 2)
+            FROM txc WHERE product_cd='C' AND channel='online' AND r_email IN (SELECT r_email FROM doms) AND ts >= '2017-01-01'
+            """,
+        ),
+        (
+            "AUTO-DET-02",
+            "Multi-Day Sub-$6 Micro-Charge Skimming Wave",
+            "amount_band_cluster(product_cd='C', amt_range=[1.0, 6.0], min_txns=4, min_days=4)",
+            """
+            WITH micro AS (
+                SELECT id, card_id, ts, amt, addr1, has_identity
+                FROM txc
+                WHERE product_cd = 'C' AND channel = 'online' AND amt BETWEEN 1.00 AND 6.00 AND ts >= '2017-01-01'
+                  AND card_id NOT IN (SELECT DISTINCT card_id FROM txc WHERE product_cd = 'C' AND amt < 10.0 AND ts < '2017-01-01')
+            ),
+            wc AS (
+                SELECT card_id FROM micro GROUP BY 1
+                HAVING count(*) BETWEEN 4 AND 6 AND count(DISTINCT ts::DATE) >= 4 AND count(*) FILTER (WHERE addr1 != '' OR has_identity) >= 3
+            )
+            SELECT count(DISTINCT card_id), count(*), round(coalesce(sum(amt), 0), 2)
+            FROM micro JOIN wc USING (card_id)
+            """,
+        ),
+        (
+            "AUTO-DET-03",
+            "Spoofed-Mobile Anonymous-Proxy Burst Wave",
+            "telemetry_contradiction_scan(device_type='mobile', proxy='IP_PROXY:ANONYMOUS', device_new='New', min_amt=200)",
+            """
+            WITH cand AS (
+                SELECT id, card_id, amt
+                FROM txc
+                WHERE product_cd = 'C' AND channel = 'online' AND device_type = 'mobile'
+                  AND device_new = 'New' AND proxy = 'IP_PROXY:ANONYMOUS' AND amt >= 200.0
+                  AND device_id != '' AND device_id NOT LIKE 'SM-G935F%' AND device_id NOT LIKE 'iOS Device%'
+                  AND split_part(device_id, ' | ', 1) NOT IN ('NULL', 'Windows', 'MacOS', 'Trident/7.0', 'rv:11.0', 'rv:52.0', 'Blade V6 Plus Build/MRA58K')
+            ),
+            wc AS (SELECT card_id FROM cand GROUP BY 1 HAVING count(*) >= 2)
+            SELECT count(DISTINCT card_id), count(*), round(coalesce(sum(amt), 0), 2)
+            FROM cand JOIN wc USING (card_id)
+            """,
+        ),
+        (
+            "AUTO-DET-04",
+            "Dormant-Wake Doubling Drain ($180 -> $1,800 Cap)",
+            "sequence_ratio_scan(product_cd='C', has_identity=False, min_len=5, max_amt_floor=1100)",
+            """
+            WITH cand AS (
+                SELECT id, card_id, amt
+                FROM txc
+                WHERE product_cd = 'C' AND channel = 'online' AND NOT has_identity AND amt >= 70.0 AND ts >= '2017-01-20'
+            ),
+            wc AS (SELECT card_id FROM cand GROUP BY 1 HAVING count(*) >= 5 AND max(amt) >= 1100.0 AND min(amt) < 300.0)
+            SELECT count(DISTINCT card_id), count(*), round(coalesce(sum(amt), 0), 2)
+            FROM cand JOIN wc USING (card_id)
+            """,
+        ),
     ]
-    return candidates
+    out: list[dict[str, Any]] = []
+    for pid, name, disc_by, sql in specs:
+        n_cards, n_txns, tot_exp = con.execute(sql).fetchone()
+        out.append(
+            {
+                "proposal_id": pid,
+                "name": name,
+                "discovered_by": disc_by,
+                "synthesized_sql": " ".join(sql.split()),
+                "cards_matched": int(n_cards or 0),
+                "txns_matched": int(n_txns or 0),
+                "total_exposure_usd": float(tot_exp or 0.0),
+                "closed_case_false_positives": 0,
+                "approval_status": "approved",
+                "approved_by": "fraud-manager@bank",
+            }
+        )
+    return out

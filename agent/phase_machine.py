@@ -654,6 +654,8 @@ class PhaseMachine:
             chain.setdefault(
                 str(r["id"]), {"id": r["id"], "ts": r.get("ts", ""), "amt": r.get("amt", 0.0), "channel": "online", "addr1": "", "device_new": "New", "device_id": f.get("ring_id", ""), "proxy": ""}
             )
+        for r in f.get("r2_detector_rows", []) or []:
+            chain.setdefault(str(r["id"]), dict(r))
         affected = []
         for i in sc.episode_ids:
             row = chain.get(str(i)) or {"id": str(i), "ts": ts_of.get(str(i), ""), "amt": 0.0}

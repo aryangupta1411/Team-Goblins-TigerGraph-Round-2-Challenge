@@ -40,6 +40,11 @@ if c2.button(f"Import L1/L2 actions from run `{run_id}`", disabled=not run_id, h
     st.success(f"Queued/refreshed {n} L1/L2 actions from run {run_id}")
 show = c3.radio("Show", ["pending", "approved", "rejected", "all"], horizontal=True)
 
+if not approvals_db.rows() and run_id:
+    for cid in common.list_cases_in_run(run_id):
+        a = common.load_case_run(run_id, cid).answer
+        if a:
+            approvals_db.enqueue_from_answer(a)
 rows = approvals_db.rows(None if show == "all" else show)
 if not rows:
     st.info("Nothing here.")

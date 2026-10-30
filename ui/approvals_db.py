@@ -182,7 +182,7 @@ def write_to_graph(conn, row: dict) -> dict:
     event = run_query(
         conn,
         "append_case_event",
-        {"case_id": gid, "seq": APPROVAL_EVENT_SEQ_BASE + int(row["id"]), "kind": "approval", "payload": event_payload},
+        {"case_id": gid, "seq": APPROVAL_EVENT_SEQ_BASE + int(row["id"]), "kind": "approval", "event_at": decided_at, "payload": event_payload},
         timeout_ms=30_000,
     )
     return {"approval": approval, "event": event}

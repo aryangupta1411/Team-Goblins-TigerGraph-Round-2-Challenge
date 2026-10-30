@@ -94,3 +94,22 @@ def test_pages_render_without_exceptions(mock_run, page):
     at.session_state["case_id"] = "HHG-014"
     at.run()
     assert not at.exception, [e.value for e in at.exception]
+
+
+def test_queue_investigate_single_and_all(mock_run):
+    pytest.importorskip("streamlit", reason="AppTest needs streamlit (a project dependency; CI installs it)")
+    from streamlit.testing.v1 import AppTest
+
+    at = AppTest.from_file(str(common.ROOT / "ui/pages/1_queue.py"), default_timeout=60)
+    at.session_state["run_id"] = "t1"
+    at.session_state["case_id"] = "HHG-014"
+    at.run()
+    assert not at.exception, [e.value for e in at.exception]
+    labels = [b.label for b in at.button]
+    assert "▶ Investigate HHG-014" in labels
+    assert "▶▶ Investigate all 20 cases" in labels
+    at.slider[0].set_value(0.0)
+    at.button[0].click().run()
+    assert not at.exception, [e.value for e in at.exception]
+    at.button[1].click().run()
+    assert not at.exception, [e.value for e in at.exception]

@@ -75,5 +75,5 @@ def test_write_to_graph_calls_writers_with_contract_params(db, monkeypatch):
     assert n1 == "record_approval"
     assert p1 == {"case_id": "AC-HHG-014", "action": "FILE_REPORT", "route": "L2", "status": "approved", "decided_by": "manager@bank", "decided_at": "2026-09-20 10:00:00", "reason": "3a and R9"}
     assert n2 == "append_case_event"
-    assert p2["case_id"] == "AC-HHG-014" and p2["kind"] == "approval" and p2["seq"] == adb.APPROVAL_EVENT_SEQ_BASE + i
+    assert p2["case_id"] == "AC-HHG-014" and p2["kind"] == "approval" and p2["event_at"] == "2026-09-20 10:00:00" and p2["seq"] == adb.APPROVAL_EVENT_SEQ_BASE + i
     assert json.loads(p2["payload"])["approval_id"] == "AP-AC-HHG-014-FILE_REPORT"

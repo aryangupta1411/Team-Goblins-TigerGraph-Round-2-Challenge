@@ -138,6 +138,12 @@ async def _persist(pm: Any, ctx, sc, initial: list[dict], final: list[dict], req
         if a["route"] in ("L1", "L2"):
             aid = f"AP-{case_id}-{a['action']}"
             try:
+                from ui import approvals_db
+
+                approvals_db.enqueue(ctx.case_id, a["action"], a["route"], a.get("reason", ""))
+            except Exception as e:
+                log.note(f"approvals_db.enqueue {aid} failed", error=str(e)[:200])
+            try:
                 # M8: record_approval(case_id, action, route, status, decided_by, decided_at, reason) — the query
                 # derives the Approval id itself ("AP-" + case_id + "-" + action); there is no approval_id parameter
                 await run_query(pm.session, "record_approval", {"case_id": case_id, "action": a["action"], "route": a["route"],

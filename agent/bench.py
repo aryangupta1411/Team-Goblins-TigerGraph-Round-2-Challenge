@@ -57,12 +57,23 @@ def _on_stderr() -> Iterator[None]:
 
 def load_case_pack(path: Path) -> list[CaseContext]:
     rows = []
-    with Path(path).open(encoding="utf-8", newline="") as fh:
-        for r in csv.DictReader(fh):
-            rs = r.get("risk_score", "")
-            rows.append(CaseContext(case_id=r["case_id"], trigger_type=r["trigger_type"], trigger_text=r["trigger_text"],
-                                    flagged_txn_id=str(r["flagged_txn_id"]), card_id=r["card_id"], customer_id=r["customer_id"],
-                                    opened_at=r["opened_at"], risk_score=float(rs) if rs not in ("", None) else None))
+    p = Path(path)
+    if p.exists():
+        with p.open(encoding="utf-8", newline="") as fh:
+            raw_rows = list(csv.DictReader(fh))
+    elif p == SETTINGS.case_pack_csv:
+        import io
+
+        from ui.common import _CASE_PACK_FALLBACK_CSV
+
+        raw_rows = list(csv.DictReader(io.StringIO(_CASE_PACK_FALLBACK_CSV)))
+    else:
+        raise FileNotFoundError(p)
+    for r in raw_rows:
+        rs = r.get("risk_score", "")
+        rows.append(CaseContext(case_id=r["case_id"], trigger_type=r["trigger_type"], trigger_text=r["trigger_text"],
+                                flagged_txn_id=str(r["flagged_txn_id"]), card_id=r["card_id"], customer_id=r["customer_id"],
+                                opened_at=r["opened_at"], risk_score=float(rs) if rs not in ("", None) else None))
     rows.sort(key=lambda c: (c.opened_at, c.case_id))
     return rows
 

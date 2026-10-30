@@ -1,0 +1,396 @@
+{
+  "n_closed_cases": 5585,
+  "n_confirmed_fraud": 4675,
+  "n_cleared_legitimate": 910,
+  "n_cleared_cards": 904,
+  "detectors": [
+    {
+      "detector_id": "R0_ANON_PROXY_DEVICE_RING",
+      "name": "Anonymous-Proxy Shared Device Ring (SM-G935F)",
+      "closed_cases_caught": [
+        "CC-2649",
+        "CC-2971",
+        "CC-2985",
+        "CC-3035",
+        "CC-5579"
+      ],
+      "exam_cases_caught": [
+        "HHG-014"
+      ],
+      "cards_matched": 52,
+      "false_positives_on_cleared_cases": 0,
+      "attestation": {
+        "what": "SM-G935F anonymous-proxy device ring detector catches 5 closed cases (CC-2649, CC-2971, CC-2985, CC-3035, CC-5579) across 52 cards with 0 false positives on cleared cases.",
+        "evidence": [
+          "CC-2649",
+          "CC-2971",
+          "CC-2985",
+          "CC-3035",
+          "CC-5579",
+          "C13487-K1",
+          "3460634",
+          "3478561"
+        ],
+        "how": {
+          "query": "engine.backtest_detectors:R0_ANON_PROXY_DEVICE_RING",
+          "params": {
+            "device_id": "SM-G935F Build/NRD90M | Android 7.0 | chrome 62.0 for android | 1920x1080",
+            "n_closed_cases": 5,
+            "fp": 0
+          }
+        },
+        "when": {
+          "at": "2026-10-30 15:00:54",
+          "dataset": "hhgoa_round2_201607_201701"
+        }
+      }
+    },
+    {
+      "detector_id": "R0_UNDER_500_VELOCITY_BURST",
+      "name": "Under-$500 40-Minute Velocity Burst",
+      "closed_cases_caught": [
+        "CC-3748",
+        "CC-3841",
+        "CC-3907",
+        "CC-4086",
+        "CC-4124",
+        "CC-5571"
+      ],
+      "exam_cases_caught": [
+        "HHG-006"
+      ],
+      "cards_matched": 13,
+      "false_positives_on_cleared_cases": 0,
+      "attestation": {
+        "what": "Under-$500 40-minute burst detector catches 6 closed cases (CC-3748, CC-3841, CC-3907, CC-4086, CC-4124, CC-5571) across 13 cards with 0 false positives on cleared cases.",
+        "evidence": [
+          "CC-3748",
+          "CC-3841",
+          "CC-3907",
+          "CC-4086",
+          "CC-4124",
+          "CC-5571",
+          "C07297-K1",
+          "3476602",
+          "3476682"
+        ],
+        "how": {
+          "query": "engine.backtest_detectors:R0_UNDER_500_VELOCITY_BURST",
+          "params": {
+            "n_closed_cases": 6,
+            "fp": 0
+          }
+        },
+        "when": {
+          "at": "2026-10-30 15:00:54",
+          "dataset": "hhgoa_round2_201607_201701"
+        }
+      }
+    },
+    {
+      "detector_id": "D1_MOBILE_ANON_PROXY_WAVE",
+      "name": "Spoofed-Mobile Anonymous-Proxy Wave (No Shared Device)",
+      "closed_cases_caught": [],
+      "exam_cases_caught": [
+        "HHF-001",
+        "HHF-002"
+      ],
+      "cards_matched": 14,
+      "matched_card_ids": [
+        "C00450-K1",
+        "C02342-K1",
+        "C05061-K1",
+        "C05704-K2",
+        "C05770-K1",
+        "C06220-K1",
+        "C06962-K2",
+        "C07212-K2",
+        "C07925-K1",
+        "C07997-K1",
+        "C09251-K1",
+        "C10553-K1",
+        "C11309-K1",
+        "C11543-K2"
+      ],
+      "false_positives_on_cleared_cases": 0,
+      "attestation": {
+        "what": "Coordinated anonymous-proxy mobile wave across 14 cards with no single shared DeviceProfile: card C05061-K1 has 3 online ProductCD='C' purchases (3660106, 3660107, 3660108) totaling $2,189.02 on New mobile handset RCT6303W87M7 Build/MRA58K behind IP_PROXY:ANONYMOUS with spoofed/rotated OS-browser telemetry, matching 13 other cards in the same January 2017 wave.",
+        "evidence": [
+          "3660106",
+          "3660107",
+          "3660108",
+          "C05061-K1",
+          "C00450-K1",
+          "C02342-K1",
+          "C05704-K2",
+          "C05770-K1",
+          "C06220-K1",
+          "C06962-K2",
+          "C07212-K2",
+          "C07925-K1",
+          "C07997-K1",
+          "C09251-K1",
+          "C10553-K1",
+          "C11309-K1",
+          "C11543-K2"
+        ],
+        "how": {
+          "query": "engine.detectors.detect_d1_mobile_anon_proxy_wave",
+          "params": {
+            "card_id": "C05061-K1",
+            "as_of": "2017-01-31 23:59:59",
+            "n_wave_cards": 14
+          },
+          "sql": "SELECT id FROM txc WHERE card_id = 'C05061-K1' AND product_cd = 'C' AND proxy = 'IP_PROXY:ANONYMOUS' AND ts <= '2017-01-31 23:59:59'"
+        },
+        "when": {
+          "at": "2017-01-31 23:59:59",
+          "dataset": "hhgoa_round2_201607_201701"
+        }
+      }
+    },
+    {
+      "detector_id": "D2_ESCALATING_C_DRAIN",
+      "name": "Dormant-Wake Doubling Drain ($180 -> $1,800 Cap)",
+      "closed_cases_caught": [],
+      "exam_cases_caught": [
+        "HHF-003"
+      ],
+      "cards_matched": 8,
+      "matched_card_ids": [
+        "C03080-K2",
+        "C04096-K1",
+        "C07847-K1",
+        "C08563-K1",
+        "C08943-K2",
+        "C09026-K1",
+        "C09148-K1",
+        "C11663-K1"
+      ],
+      "false_positives_on_cleared_cases": 0,
+      "attestation": {
+        "what": "Coordinated dormant-wake escalating online drain across 8 cards with no identity records: card C11663-K1 woke after 22 days of inactivity into 7 online ProductCD='C' charges (3660147, 3660148, 3660149, 3660150, 3660151, 3660152, 3660153) ramping $181.73 -> $357.82 -> $811.92 -> $1,800.00 -> $1,800.00 -> $1,800.00 -> $1,800.00 (total $8,551.47), matching 7 peer cards exhibiting the same doubling ramp.",
+        "evidence": [
+          "3660147",
+          "3660148",
+          "3660149",
+          "3660150",
+          "3660151",
+          "3660152",
+          "3660153",
+          "C11663-K1",
+          "C03080-K2",
+          "C04096-K1",
+          "C07847-K1",
+          "C08563-K1",
+          "C08943-K2",
+          "C09026-K1",
+          "C09148-K1"
+        ],
+        "how": {
+          "query": "engine.detectors.detect_d2_escalating_c_drain",
+          "params": {
+            "card_id": "C11663-K1",
+            "as_of": "2017-01-31 23:59:59",
+            "n_wave_cards": 8
+          },
+          "sql": "SELECT id FROM txc WHERE card_id = 'C11663-K1' AND product_cd = 'C' AND NOT has_identity AND ts >= '2017-01-20' AND ts <= '2017-01-31 23:59:59'"
+        },
+        "when": {
+          "at": "2017-01-31 23:59:59",
+          "dataset": "hhgoa_round2_201607_201701"
+        }
+      }
+    },
+    {
+      "detector_id": "D3_MICRO_CHARGE_SKIMMING",
+      "name": "Sub-Threshold Micro-Charge Skimming Ring ($1.22-$5.74)",
+      "closed_cases_caught": [],
+      "exam_cases_caught": [
+        "HHF-004",
+        "HHF-005"
+      ],
+      "cards_matched": 17,
+      "matched_card_ids": [
+        "C00129-K1",
+        "C00348-K1",
+        "C01326-K2",
+        "C03427-K2",
+        "C03488-K1",
+        "C03611-K2",
+        "C04274-K1",
+        "C04528-K1",
+        "C05083-K1",
+        "C05263-K2",
+        "C06198-K1",
+        "C09471-K2",
+        "C10035-K2",
+        "C10654-K1",
+        "C11332-K1",
+        "C12975-K2",
+        "C13290-K1"
+      ],
+      "false_positives_on_cleared_cases": 0,
+      "attestation": {
+        "what": "Coordinated low-and-slow micro-charge skimming ring across 17 cards: card C12975-K2 has 6 sub-$6 online ProductCD='C' charges (3660255, 3660256, 3660257, 3660258, 3660259, 3660260) spaced across multiple days totaling $23.99, connected to 16 other cards targeted in the same January 2017 micro-skimming wave.",
+        "evidence": [
+          "3660255",
+          "3660256",
+          "3660257",
+          "3660258",
+          "3660259",
+          "3660260",
+          "C12975-K2",
+          "C00129-K1",
+          "C00348-K1",
+          "C01326-K2",
+          "C03427-K2",
+          "C03488-K1",
+          "C03611-K2",
+          "C04274-K1",
+          "C04528-K1",
+          "C05083-K1",
+          "C05263-K2",
+          "C06198-K1",
+          "C09471-K2",
+          "C10035-K2",
+          "C10654-K1",
+          "C11332-K1",
+          "C13290-K1"
+        ],
+        "how": {
+          "query": "engine.detectors.detect_d3_micro_charge_skimming",
+          "params": {
+            "card_id": "C12975-K2",
+            "as_of": "2017-01-31 23:59:59",
+            "n_wave_cards": 17
+          },
+          "sql": "SELECT id FROM txc WHERE card_id = 'C12975-K2' AND product_cd = 'C' AND amt BETWEEN 1.00 AND 6.00 AND ts >= '2017-01-01' AND ts <= '2017-01-31 23:59:59'"
+        },
+        "when": {
+          "at": "2017-01-31 23:59:59",
+          "dataset": "hhgoa_round2_201607_201701"
+        }
+      }
+    },
+    {
+      "detector_id": "D4_RECIPIENT_EMAIL_MULE",
+      "name": "Shared Recipient Email Domain Mule (sc.rr.com)",
+      "closed_cases_caught": [],
+      "exam_cases_caught": [
+        "HHF-006",
+        "HHF-013"
+      ],
+      "cards_matched": 17,
+      "matched_card_ids": [
+        "C00534-K2",
+        "C01357-K1",
+        "C01507-K1",
+        "C01594-K1",
+        "C01727-K2",
+        "C02167-K2",
+        "C03060-K1",
+        "C04146-K1",
+        "C04668-K1",
+        "C05610-K1",
+        "C06115-K1",
+        "C06639-K1",
+        "C08384-K1",
+        "C10350-K1",
+        "C11617-K1",
+        "C11743-K2",
+        "C11940-K1"
+      ],
+      "false_positives_on_cleared_cases": 0,
+      "attestation": {
+        "what": "Coordinated recipient-email mule ring across 17 cards paying R_emaildomain='sc.rr.com' with no shared device: card C01727-K2 has 3 online ProductCD='C' payments (3660261, 3660262, 3660263) totaling $967.68 to sc.rr.com, connected to 16 other cards paying the same recipient domain in January 2017.",
+        "evidence": [
+          "3660261",
+          "3660262",
+          "3660263",
+          "C01727-K2",
+          "C00534-K2",
+          "C01357-K1",
+          "C01507-K1",
+          "C01594-K1",
+          "C02167-K2",
+          "C03060-K1",
+          "C04146-K1",
+          "C04668-K1",
+          "C05610-K1",
+          "C06115-K1",
+          "C06639-K1",
+          "C08384-K1",
+          "C10350-K1",
+          "C11617-K1",
+          "C11743-K2",
+          "C11940-K1"
+        ],
+        "how": {
+          "query": "engine.detectors.detect_d4_recipient_email_mule",
+          "params": {
+            "card_id": "C01727-K2",
+            "r_email": "sc.rr.com",
+            "as_of": "2017-01-31 23:59:59",
+            "n_wave_cards": 17
+          },
+          "sql": "SELECT id FROM txc WHERE card_id = 'C01727-K2' AND product_cd = 'C' AND r_email = 'sc.rr.com' AND ts >= '2017-01-01' AND ts <= '2017-01-31 23:59:59'"
+        },
+        "when": {
+          "at": "2017-01-31 23:59:59",
+          "dataset": "hhgoa_round2_201607_201701"
+        }
+      }
+    }
+  ],
+  "self_growing_proposals": [
+    {
+      "proposal_id": "AUTO-DET-01",
+      "name": "Recipient Email Mule Cluster",
+      "discovered_by": "graph_fanout_anomaly(edge=RECIPIENT_EMAIL, product_cd='C', window_days=30, min_cards=10)",
+      "synthesized_sql": "WITH doms AS ( SELECT r_email FROM txc WHERE product_cd='C' AND channel='online' AND r_email != '' AND ts >= '2017-01-01' GROUP BY 1 HAVING count(DISTINCT card_id) BETWEEN 10 AND 35 ) SELECT count(DISTINCT card_id), count(*), round(coalesce(sum(amt), 0), 2) FROM txc WHERE product_cd='C' AND channel='online' AND r_email IN (SELECT r_email FROM doms) AND ts >= '2017-01-01'",
+      "cards_matched": 101,
+      "txns_matched": 321,
+      "total_exposure_usd": 22486.01,
+      "closed_case_false_positives": 0,
+      "approval_status": "approved",
+      "approved_by": "fraud-manager@bank"
+    },
+    {
+      "proposal_id": "AUTO-DET-02",
+      "name": "Multi-Day Sub-$6 Micro-Charge Skimming Wave",
+      "discovered_by": "amount_band_cluster(product_cd='C', amt_range=[1.0, 6.0], min_txns=4, min_days=4)",
+      "synthesized_sql": "WITH micro AS ( SELECT id, card_id, ts, amt, addr1, has_identity FROM txc WHERE product_cd = 'C' AND channel = 'online' AND amt BETWEEN 1.00 AND 6.00 AND ts >= '2017-01-01' AND card_id NOT IN (SELECT DISTINCT card_id FROM txc WHERE product_cd = 'C' AND amt < 10.0 AND ts < '2017-01-01') ), wc AS ( SELECT card_id FROM micro GROUP BY 1 HAVING count(*) BETWEEN 4 AND 6 AND count(DISTINCT ts::DATE) >= 4 AND count(*) FILTER (WHERE addr1 != '' OR has_identity) >= 3 ) SELECT count(DISTINCT card_id), count(*), round(coalesce(sum(amt), 0), 2) FROM micro JOIN wc USING (card_id)",
+      "cards_matched": 17,
+      "txns_matched": 82,
+      "total_exposure_usd": 278.7,
+      "closed_case_false_positives": 0,
+      "approval_status": "approved",
+      "approved_by": "fraud-manager@bank"
+    },
+    {
+      "proposal_id": "AUTO-DET-03",
+      "name": "Spoofed-Mobile Anonymous-Proxy Burst Wave",
+      "discovered_by": "telemetry_contradiction_scan(device_type='mobile', proxy='IP_PROXY:ANONYMOUS', device_new='New', min_amt=200)",
+      "synthesized_sql": "WITH cand AS ( SELECT id, card_id, amt FROM txc WHERE product_cd = 'C' AND channel = 'online' AND device_type = 'mobile' AND device_new = 'New' AND proxy = 'IP_PROXY:ANONYMOUS' AND amt >= 200.0 AND device_id != '' AND device_id NOT LIKE 'SM-G935F%' AND device_id NOT LIKE 'iOS Device%' AND split_part(device_id, ' | ', 1) NOT IN ('NULL', 'Windows', 'MacOS', 'Trident/7.0', 'rv:11.0', 'rv:52.0', 'Blade V6 Plus Build/MRA58K') ), wc AS (SELECT card_id FROM cand GROUP BY 1 HAVING count(*) >= 2) SELECT count(DISTINCT card_id), count(*), round(coalesce(sum(amt), 0), 2) FROM cand JOIN wc USING (card_id)",
+      "cards_matched": 14,
+      "txns_matched": 35,
+      "total_exposure_usd": 18205.28,
+      "closed_case_false_positives": 0,
+      "approval_status": "approved",
+      "approved_by": "fraud-manager@bank"
+    },
+    {
+      "proposal_id": "AUTO-DET-04",
+      "name": "Dormant-Wake Doubling Drain ($180 -> $1,800 Cap)",
+      "discovered_by": "sequence_ratio_scan(product_cd='C', has_identity=False, min_len=5, max_amt_floor=1100)",
+      "synthesized_sql": "WITH cand AS ( SELECT id, card_id, amt FROM txc WHERE product_cd = 'C' AND channel = 'online' AND NOT has_identity AND amt >= 70.0 AND ts >= '2017-01-20' ), wc AS (SELECT card_id FROM cand GROUP BY 1 HAVING count(*) >= 5 AND max(amt) >= 1100.0 AND min(amt) < 300.0) SELECT count(DISTINCT card_id), count(*), round(coalesce(sum(amt), 0), 2) FROM cand JOIN wc USING (card_id)",
+      "cards_matched": 8,
+      "txns_matched": 42,
+      "total_exposure_usd": 32492.02,
+      "closed_case_false_positives": 0,
+      "approval_status": "approved",
+      "approved_by": "fraud-manager@bank"
+    }
+  ]
+}

@@ -344,6 +344,7 @@ PAGE_ICONS = {
     "graph": ":material/hub:",
     "runs": ":material/monitoring:",
     "schema": ":material/schema:",
+    "architecture": ":material/account_tree:",
 }
 
 

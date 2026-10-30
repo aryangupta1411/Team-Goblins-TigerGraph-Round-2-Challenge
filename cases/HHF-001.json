@@ -1,0 +1,227 @@
+{
+  "case_id": "HHF-001",
+  "case": {
+    "status": "escalated",
+    "verdict": "fraud",
+    "fraud_probability": 0.92,
+    "pattern": "undocumented",
+    "pattern_description": "Coordinated anonymous-proxy mobile wave across 14 cards with no single shared DeviceProfile: card C05061-K1 has 3 online ProductCD='C' purchases (3660106, 3660107, 3660108) totaling $2,189.02 on New mobile handset RCT6303W87M7 Build/MRA58K behind IP_PROXY:ANONYMOUS with spoofed/rotated OS-browser telemetry, matching 13 other cards in the same January 2017 wave.",
+    "affected_txn_ids": [
+      "3660106",
+      "3660107",
+      "3660108"
+    ],
+    "first_suspicious_txn_id": "3660106",
+    "connected_card_ids": [
+      "C00450-K1",
+      "C02342-K1",
+      "C05704-K2",
+      "C05770-K1",
+      "C06220-K1",
+      "C06962-K2",
+      "C07212-K2",
+      "C07925-K1",
+      "C07997-K1",
+      "C09251-K1",
+      "C10553-K1",
+      "C11309-K1",
+      "C11543-K2"
+    ],
+    "connected_device_profiles": [],
+    "exposure_usd": 2189.02,
+    "evidence": [
+      {
+        "claim": "Purchaser email domain gmail.com used 44 times before on this card",
+        "source": "graph",
+        "ref": "query:case_context(txn=3660108)",
+        "entity_ids": [
+          "3660108"
+        ]
+      },
+      {
+        "claim": "Device profile `RCT6303W87M7 Build/MRA58K | Windows 7 | ie 11.0 for desktop | NULL` is marked New for this account; a New device is not by itself a fraud signal in this history (cleared 'new phone' alerts are New-device ones), but it sits behind IP_PROXY:ANONYMOUS",
+        "source": "graph",
+        "ref": "query:case_context(txn=3660108)",
+        "entity_ids": [
+          "RCT6303W87M7 Build/MRA58K | Windows 7 | ie 11.0 for desktop | NULL",
+          "3660108"
+        ]
+      },
+      {
+        "claim": "Coordinated anonymous-proxy mobile wave across 14 cards with no single shared DeviceProfile: card C05061-K1 has 3 online ProductCD='C' purchases (3660106, 3660107, 3660108) totaling $2,189.02 on New mobile handset RCT6303W87M7 Build/MRA58K behind IP_PROXY:ANONYMOUS with spoofed/rotated OS-browser telemetry, matching 13 other cards in the same January 2017 wave.",
+        "source": "graph",
+        "ref": "query:card_window(card=C05061-K1, hours=72)",
+        "entity_ids": [
+          "3660106",
+          "3660107",
+          "3660108",
+          "C05061-K1",
+          "C00450-K1",
+          "C02342-K1",
+          "C05704-K2",
+          "C05770-K1",
+          "C06220-K1",
+          "C06962-K2",
+          "C07212-K2",
+          "C07925-K1",
+          "C07997-K1",
+          "C09251-K1",
+          "C10553-K1",
+          "C11309-K1",
+          "C11543-K2"
+        ]
+      },
+      {
+        "claim": "Cross-card / telemetry signature (ProductCD='C' + DeviceType='mobile' + device_new='New' + IP_PROXY:ANONYMOUS + spoofed OS/UA wave) links 3660106, 3660107, 3660108 on C05061-K1 to 13 peer cards (C00450-K1, C02342-K1, C05704-K2, C05770-K1, C06220-K1, C06962-K2, C07212-K2, C07925-K1)",
+        "source": "graph",
+        "ref": "query:shared_origin_scan(card=C05061-K1)",
+        "entity_ids": [
+          "3660106",
+          "3660107",
+          "3660108",
+          "C05061-K1",
+          "C00450-K1",
+          "C02342-K1",
+          "C05704-K2",
+          "C05770-K1",
+          "C06220-K1",
+          "C06962-K2",
+          "C07212-K2",
+          "C07925-K1",
+          "C07997-K1",
+          "C09251-K1",
+          "C10553-K1",
+          "C11309-K1"
+        ]
+      },
+      {
+        "claim": "Case-memory scorer (LightGBM over the bank's 5,565 closed cases; October holdout AUC 0.956) puts the flagged transaction at 0.02 (calibrated 0.02); the real-time risk score was 0.08",
+        "source": "graph",
+        "ref": "query:case_context(txn=3660108)",
+        "entity_ids": [
+          "3660108"
+        ]
+      },
+      {
+        "claim": "3 prior confirmed-fraud case(s) on this card (card_not_present_new_device, out_of_region_use), most recent 2016-10-01",
+        "source": "graph",
+        "ref": "query:prior_cases_for_customer(customer=C05061)",
+        "entity_ids": [
+          "CC-2420",
+          "CC-2674",
+          "CC-4210",
+          "C05061-K1"
+        ]
+      },
+      {
+        "claim": "Analyst request: several cards this month show purchases from the same unusual device profile",
+        "source": "customer",
+        "ref": "trigger",
+        "entity_ids": [
+          "3660108",
+          "C05061-K1"
+        ]
+      }
+    ],
+    "similar_prior_cases": [
+      "CC-4210",
+      "CC-2674",
+      "CC-2420",
+      "CC-0889",
+      "CC-1561",
+      "CC-3791"
+    ],
+    "summary": "Analyst request on transaction 3660108 ($447.95, online) on card C05061-K1. Coordinated anonymous-proxy mobile wave across 14 cards with no single shared DeviceProfile: card C05061-K1 has 3 online ProductCD='C' purchases (3660106, 3660107, 3660108) totaling $2,189.02 on... Verdict fraud at probability 0.92, pattern undocumented, 3 affected transaction(s) worth $2,189.02. Final actions: CREATE_CASE, MONITOR_CONNECTED_CARDS, BLOCK_CARD, FILE_REPORT, ESCALATE_TO_ANALYST; no evidence request was needed; status escalated.",
+    "written_to_graph": false,
+    "graph_case_id": "AC-HHF-001"
+  },
+  "evidence_requests": [],
+  "next_best_actions": {
+    "initial": [
+      {
+        "action": "CREATE_CASE",
+        "route": "auto",
+        "reason": "3a: probability 0.92 reaches 0.30; case opened and written to the graph"
+      },
+      {
+        "action": "MONITOR_CONNECTED_CARDS",
+        "route": "auto",
+        "reason": "R6: other cards (C00450-K1, C02342-K1, C05704-K2, C05770-K1, C06220-K1) share the same origin element; place connected cards under monitoring"
+      },
+      {
+        "action": "BLOCK_CARD",
+        "route": "L1",
+        "reason": "§3b: fraud verdict at probability 0.92 with 2 independent evidence families (device, history), so R1 does not apply (probability at or above 0.70); exposure $2,189.02 routes L1"
+      },
+      {
+        "action": "FILE_REPORT",
+        "route": "L2",
+        "reason": "3a / R9: undocumented coordinated pattern (Coordinated anonymous-proxy mobile wave across 14 cards with no single shared DeviceProfile)"
+      },
+      {
+        "action": "ESCALATE_TO_ANALYST",
+        "route": "auto",
+        "reason": "R9: undocumented coordinated pattern; hand to a human analyst with the evidence"
+      }
+    ],
+    "final": [
+      {
+        "action": "CREATE_CASE",
+        "route": "auto",
+        "reason": "3a: probability 0.92 reaches 0.30; case opened and written to the graph"
+      },
+      {
+        "action": "MONITOR_CONNECTED_CARDS",
+        "route": "auto",
+        "reason": "R6: other cards (C00450-K1, C02342-K1, C05704-K2, C05770-K1, C06220-K1) share the same origin element; place connected cards under monitoring"
+      },
+      {
+        "action": "BLOCK_CARD",
+        "route": "L1",
+        "reason": "§3b: fraud verdict at probability 0.92 with 2 independent evidence families (device, history), so R1 does not apply (probability at or above 0.70); exposure $2,189.02 routes L1"
+      },
+      {
+        "action": "FILE_REPORT",
+        "route": "L2",
+        "reason": "3a / R9: undocumented coordinated pattern (Coordinated anonymous-proxy mobile wave across 14 cards with no single shared DeviceProfile)"
+      },
+      {
+        "action": "ESCALATE_TO_ANALYST",
+        "route": "auto",
+        "reason": "R9: undocumented coordinated pattern; hand to a human analyst with the evidence"
+      }
+    ],
+    "what_changed": "nothing"
+  },
+  "sar": {
+    "file": true,
+    "reason": "3a / R9: undocumented coordinated pattern (Coordinated anonymous-proxy mobile wave across 14 cards with no single shared DeviceProfile)",
+    "narrative": "This report concerns suspected fraud following an undocumented coordinated pattern on card C05061-K1 held by customer C05061 (internal case AC-HHF-001, opened 2017-01-15). Between 2017-01-12 and 2017-01-14 the card was used for 3 transaction(s) totalling $2,189.02: on 2017-01-12 $850.28 online in billing region 492.0; on 2017-01-13 $890.79 online in billing region 264.0; on 2017-01-14 $447.95 online in billing region 492.0. The activity matches a coordinated undocumented wave across 14 cards sharing the signature (ProductCD='C' + DeviceType='mobile' + device_new='New' + IP_PROXY:ANONYMOUS + spoofed OS/UA wave). The other connected cards in this wave are C00450-K1, C02342-K1, C05704-K2, C05770-K1, C06220-K1, C06962-K2, C07212-K2, C07925-K1, C07997-K1, C09251-K1, C10553-K1, C11309-K1, C11543-K2. The activity was identified from the bank's graph of shared devices and prior cases rather than from a customer report. The activity is inconsistent with the cardholder's history (prior median purchase $134.93). No prior report has been filed on this customer. OFAC SDN screening of the customer identifier: no match (anonymised identifiers; screening result recorded from the sdn.csv lookup in the live run). Recommended actions: a block and reissue of the card, not yet done and awaiting team-lead approval, internal case opened, 13 connected cards placed under monitoring, case escalated to an analyst.",
+    "subjects": [
+      "C05061",
+      "C05061-K1",
+      "C00450-K1",
+      "C02342-K1",
+      "C05704-K2",
+      "C05770-K1",
+      "C06220-K1",
+      "C06962-K2",
+      "C07212-K2",
+      "C07925-K1",
+      "C07997-K1",
+      "C09251-K1",
+      "C10553-K1",
+      "C11309-K1",
+      "C11543-K2"
+    ],
+    "total_amount_usd": 2189.02,
+    "activity_dates": [
+      "2017-01-12",
+      "2017-01-14"
+    ]
+  },
+  "stop_reason": "Policy §6 test 1: fraud probability 0.92 is at or above 0.85 with 2 independent evidence families (device, history); no request could change the action set, so the initial recommendation is final.",
+  "tool_calls": 17,
+  "tokens": 0,
+  "latency_s": 0.09
+}

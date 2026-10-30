@@ -1,0 +1,115 @@
+{
+  "case_id": "HHF-012",
+  "case": {
+    "status": "closed_legitimate",
+    "verdict": "legitimate",
+    "fraud_probability": 0.0,
+    "pattern": "none",
+    "pattern_description": "",
+    "affected_txn_ids": [],
+    "first_suspicious_txn_id": "",
+    "connected_card_ids": [],
+    "connected_device_profiles": [],
+    "exposure_usd": 0.0,
+    "evidence": [
+      {
+        "claim": "Billing region 476.0 is the card's modal in-person region (138 prior purchases on 94 days)",
+        "source": "graph",
+        "ref": "query:region_history(card=C12223-K1, addr1=476.0)",
+        "entity_ids": [
+          "3655457",
+          "C12223-K1"
+        ]
+      },
+      {
+        "claim": "Case-memory scorer (LightGBM over the bank's 5,565 closed cases; October holdout AUC 0.956) puts the flagged transaction at 0.00 (calibrated 0.00); the real-time risk score was 0.05",
+        "source": "graph",
+        "ref": "query:case_context(txn=3655457)",
+        "entity_ids": [
+          "3655457"
+        ]
+      },
+      {
+        "claim": "1 prior confirmed-fraud case(s) on this card (account_takeover), most recent 2016-07-07",
+        "source": "graph",
+        "ref": "query:prior_cases_for_customer(customer=C12223)",
+        "entity_ids": [
+          "CC-0179",
+          "C12223-K1"
+        ]
+      },
+      {
+        "claim": "The card's 1 prior account-takeover case(s) were confirmed in its modal region, so an in-region purchase is also the card's established fraud shape",
+        "source": "graph",
+        "ref": "query:prior_cases_for_customer(customer=C12223)",
+        "entity_ids": [
+          "CC-0179",
+          "C12223-K1"
+        ]
+      },
+      {
+        "claim": "Customer confirmed the activity when asked (assumed reply)",
+        "source": "customer",
+        "ref": "evidence_request:1",
+        "entity_ids": []
+      }
+    ],
+    "similar_prior_cases": [
+      "CC-0179"
+    ],
+    "summary": "Risk-score alert (0.53) on transaction 3655457 ($261.51, in person) for card C12223-K1. Customer confirmed the activity when asked (assumed reply). Verdict legitimate at probability 0.00. Final actions: CREATE_CASE, ALLOW_TRANSACTION, CLOSE_NO_FRAUD after the assumed customer_validation reply; status closed_legitimate.",
+    "written_to_graph": false,
+    "graph_case_id": "AC-HHF-012"
+  },
+  "evidence_requests": [
+    {
+      "type": "customer_validation",
+      "asked_after_step": 15,
+      "assumed_response": "ASSUMED (simulated): customer confirmed travel to billing region 476.0 and recognises the $261.51 purchase"
+    }
+  ],
+  "next_best_actions": {
+    "initial": [
+      {
+        "action": "CREATE_CASE",
+        "route": "auto",
+        "reason": "3a: evidence requested; case opened and written to the graph"
+      },
+      {
+        "action": "VERIFY_WITH_CUSTOMER",
+        "route": "auto",
+        "reason": "R1: probability 0.00 rests on a single evidence family (none); ask the cardholder which of the transactions were theirs before any block"
+      }
+    ],
+    "final": [
+      {
+        "action": "CREATE_CASE",
+        "route": "auto",
+        "reason": "3a: evidence requested; case opened and written to the graph"
+      },
+      {
+        "action": "ALLOW_TRANSACTION",
+        "route": "auto",
+        "reason": "R3: alert cleared; let the flagged transaction stand"
+      },
+      {
+        "action": "CLOSE_NO_FRAUD",
+        "route": "auto",
+        "reason": "R3: customer confirmed the activity; the confirmation is noted in the case"
+      }
+    ],
+    "what_changed": "The assumed reply (customer_validation: customer confirmed travel to billing region 476.0 and recognises the $261.51 purchase) left the probability at 0.00 and the verdict became legitimate. Added ALLOW_TRANSACTION, CLOSE_NO_FRAUD. Dropped VERIFY_WITH_CUSTOMER. Counterfactual: had the customer denied the purchase, R2 would have applied: BLOCK_CARD (L1) and CREATE_CASE."
+  },
+  "sar": {
+    "file": false,
+    "reason": "3a not met: verdict legitimate (fraud not confirmed or strongly suspected), exposure $0.00; no report",
+    "narrative": "",
+    "subjects": [],
+    "total_amount_usd": 0.0,
+    "activity_dates": []
+  },
+  "stop_reason": "Policy §6 test 2: the assumed customer confirmation settled the question.",
+  "tool_calls": 15,
+  "tokens": 0,
+  "latency_s": 0.07
+}

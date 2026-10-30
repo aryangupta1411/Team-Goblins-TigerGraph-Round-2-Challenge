@@ -1,0 +1,150 @@
+{
+  "case_id": "HHF-014",
+  "case": {
+    "status": "closed_legitimate",
+    "verdict": "legitimate",
+    "fraud_probability": 0.1,
+    "pattern": "none",
+    "pattern_description": "",
+    "affected_txn_ids": [],
+    "first_suspicious_txn_id": "",
+    "connected_card_ids": [],
+    "connected_device_profiles": [],
+    "exposure_usd": 0.0,
+    "evidence": [
+      {
+        "claim": "Billing region 315.0 is known to the card: 199 prior purchases on 102 days since 2016-07-02 (modal region 325.0, 53 regions used)",
+        "source": "graph",
+        "ref": "query:region_history(card=C00750-K2, addr1=315.0)",
+        "entity_ids": [
+          "3602445",
+          "C00750-K2"
+        ]
+      },
+      {
+        "claim": "$1,053.79 +-1% under product code W is a recurring price point on this card: 21 prior purchases",
+        "source": "graph",
+        "ref": "query:recurring_charge_check(txn=3602445)",
+        "entity_ids": [
+          "3602445",
+          "C00750-K2"
+        ]
+      },
+      {
+        "claim": "Case-memory scorer (LightGBM over the bank's 5,565 closed cases; October holdout AUC 0.956) puts the flagged transaction at 0.00 (calibrated 0.00); the real-time risk score was 0.06; the scorer is unreliable here (card has 4400 transactions, position 4399)",
+        "source": "graph",
+        "ref": "query:case_context(txn=3602445)",
+        "entity_ids": [
+          "3602445"
+        ]
+      },
+      {
+        "claim": "16 prior confirmed-fraud case(s) on this card (account_takeover, card_not_present_fraud, card_not_present_new_device, out_of_region_use), most recent 2016-10-29",
+        "source": "graph",
+        "ref": "query:prior_cases_for_customer(customer=C00750)",
+        "entity_ids": [
+          "CC-0121",
+          "CC-0480",
+          "CC-0691",
+          "CC-0989",
+          "CC-1338",
+          "CC-1930",
+          "CC-2194",
+          "CC-2635",
+          "CC-2865",
+          "CC-3150",
+          "CC-3470",
+          "CC-4066",
+          "C00750-K2"
+        ]
+      },
+      {
+        "claim": "1 prior risk-score alert(s) on this card were cleared after the customer confirmed the activity (CC-0591); the cleared alert had the same shape as this one",
+        "source": "graph",
+        "ref": "query:prior_cases_for_customer(customer=C00750)",
+        "entity_ids": [
+          "CC-0591",
+          "C00750-K2"
+        ]
+      },
+      {
+        "claim": "Customer confirmed the activity when asked (assumed reply)",
+        "source": "customer",
+        "ref": "evidence_request:1",
+        "entity_ids": []
+      }
+    ],
+    "similar_prior_cases": [
+      "CC-5431",
+      "CC-4964",
+      "CC-4387",
+      "CC-4214",
+      "CC-4066",
+      "CC-3470"
+    ],
+    "summary": "Risk-score alert (0.57) on transaction 3602445 ($1,053.79, in person) for card C00750-K2. Customer confirmed the activity when asked (assumed reply). Verdict legitimate at probability 0.10. Final actions: CREATE_CASE, ALLOW_TRANSACTION, CLOSE_NO_FRAUD after the assumed customer_validation reply; status closed_legitimate.",
+    "written_to_graph": false,
+    "graph_case_id": "AC-HHF-014"
+  },
+  "evidence_requests": [
+    {
+      "type": "customer_validation",
+      "asked_after_step": 15,
+      "assumed_response": "ASSUMED (simulated): customer confirmed travel to billing region 315.0 and recognises the $1,053.79 purchase"
+    }
+  ],
+  "next_best_actions": {
+    "initial": [
+      {
+        "action": "CREATE_CASE",
+        "route": "auto",
+        "reason": "3a: evidence requested; case opened and written to the graph"
+      },
+      {
+        "action": "VERIFY_WITH_CUSTOMER",
+        "route": "auto",
+        "reason": "R1: probability 0.15 rests on a single evidence family (history, memory); ask the cardholder which of the transactions were theirs before any block"
+      },
+      {
+        "action": "MONITOR_CARD",
+        "route": "auto",
+        "reason": "§3b / §5: verdict uncertain; raise monitoring for 72 h while the verification is pending"
+      },
+      {
+        "action": "ESCALATE_TO_ANALYST",
+        "route": "auto",
+        "reason": "R8: verdict uncertain and exposure $1,053.79 exceeds $500"
+      }
+    ],
+    "final": [
+      {
+        "action": "CREATE_CASE",
+        "route": "auto",
+        "reason": "3a: evidence requested; case opened and written to the graph"
+      },
+      {
+        "action": "ALLOW_TRANSACTION",
+        "route": "auto",
+        "reason": "R3: alert cleared; let the flagged transaction stand"
+      },
+      {
+        "action": "CLOSE_NO_FRAUD",
+        "route": "auto",
+        "reason": "R3: customer confirmed the activity; the confirmation is noted in the case"
+      }
+    ],
+    "what_changed": "The assumed reply (customer_validation: customer confirmed travel to billing region 315.0 and recognises the $1,053.79 purchase) probability moved from 0.15 to 0.10 and the verdict became legitimate. Added ALLOW_TRANSACTION, CLOSE_NO_FRAUD. Dropped VERIFY_WITH_CUSTOMER, MONITOR_CARD, ESCALATE_TO_ANALYST. Counterfactual: had the customer denied the purchase, R2 would have applied: BLOCK_CARD (L1) and CREATE_CASE."
+  },
+  "sar": {
+    "file": false,
+    "reason": "3a not met: verdict legitimate (fraud not confirmed or strongly suspected), exposure $0.00; no report",
+    "narrative": "",
+    "subjects": [],
+    "total_amount_usd": 0.0,
+    "activity_dates": []
+  },
+  "stop_reason": "Policy §6 test 2: the assumed customer confirmation settled the question. Probability 0.10 with 3 families also meets §6 test 1.",
+  "tool_calls": 15,
+  "tokens": 0,
+  "latency_s": 0.11
+}

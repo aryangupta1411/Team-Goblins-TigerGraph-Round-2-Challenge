@@ -86,6 +86,7 @@ def main() -> None:
     common.link_to("pages/4_graph.py", label="Graph — case subgraph, Ring Replay slider & Containment Planner", icon=common.PAGE_ICONS["graph"])
     common.link_to("pages/5_runs.py", label="Runs — tokens, tool calls, latency, agreement", icon=common.PAGE_ICONS["runs"])
     common.link_to("pages/6_schema.py", label="Schema & Innovation — Drift Survival, Variant Mapper, DQ Detective, New Typologies & Security", icon=common.PAGE_ICONS["schema"])
+    common.link_to("pages/7_architecture.py", label="Architecture — interactive animated end-to-end system flow & live case tracer", icon=common.PAGE_ICONS["architecture"])
 
     with st.expander("How this run was produced"):
         st.json(common.run_manifest(run_id) or {"note": "no run_manifest.json"})

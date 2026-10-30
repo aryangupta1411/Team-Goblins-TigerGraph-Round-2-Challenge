@@ -1,0 +1,702 @@
+tx_ref_id,client_form_factor,device_seen_flag,proxy_classification,ua_device_bundle
+3600859,desktop,Found,,rv:57.0 | NULL | firefox 57.0 | NULL
+3600870,desktop,Found,,NULL | NULL | chrome 62.0 | NULL
+3601218,mobile,New,,iOS Device | iOS 11.2.1 | mobile safari 11.0 | 1334x750
+3601220,mobile,Found,,SM-G950U Build/NRD90M | Android 7.0 | chrome 63.0 for android | 2220x1080
+3601454,desktop,New,,MacOS | Mac OS X 10_11_3 | chrome 63.0 | 1920x1080
+3601456,,,,NULL | NULL | NULL | NULL
+3601734,desktop,New,,Windows | Windows 10 | chrome 62.0 | 1920x1080
+3601888,desktop,New,,Windows | NULL | chrome generic | NULL
+3602214,desktop,Found,,MacOS | Mac OS X 10_12_5 | safari generic | 1440x900
+3602443,mobile,New,,iOS Device | iOS 11.1.2 | mobile safari 11.0 | 2436x1125
+3602447,mobile,New,,iOS Device | iOS 11.1.2 | mobile safari 11.0 | 2436x1125
+3602448,mobile,Found,,SM-G550T Build/MMB29K | Android 6.0.1 | chrome 59.0 for android | 1280x720
+3602449,desktop,New,,MacOS | Mac OS X 10_10_5 | safari generic | 1680x1050
+3602450,desktop,Found,,Windows | Windows 7 | chrome 62.0 | 1366x768
+3602453,desktop,New,,Windows | Windows 10 | chrome 62.0 | 1600x900
+3602457,desktop,New,,MacOS | Mac OS X 10_12_6 | chrome 62.0 | 1920x1080
+3602458,desktop,New,,MacOS | Mac OS X 10_12_6 | chrome 62.0 | 1920x1080
+3602461,desktop,New,,Windows | Windows 10 | firefox 57.0 | 1920x1080
+3602462,desktop,Found,,Windows | Windows 7 | chrome 62.0 | 1366x768
+3602463,desktop,New,,Windows | Windows 10 | chrome 62.0 | 1600x900
+3602464,mobile,New,,iOS Device | iOS 11.1.1 | mobile safari 11.0 | 1334x750
+3602465,desktop,New,,Windows | Windows 10 | edge 15.0 | NULL
+3602467,desktop,Found,,Windows | Windows 7 | chrome 62.0 | 1366x768
+3602468,desktop,Found,,MacOS | Mac OS X 10_13_1 | chrome 62.0 | 2560x1600
+3602470,desktop,New,,Windows | Windows 10 | edge 15.0 | NULL
+3602472,desktop,Found,,MacOS | Mac OS X 10_9_5 | chrome 62.0 | 1920x1080
+3602473,desktop,New,,Windows | Windows 10 | chrome 62.0 | 1600x900
+3602475,desktop,New,,Windows | Windows 10 | edge 15.0 | 1600x900
+3602476,desktop,New,,Windows | Windows 10 | chrome 62.0 | 1600x900
+3602477,desktop,Found,,Windows | Windows 7 | chrome 62.0 | 1366x768
+3602478,desktop,New,,Windows | Windows 10 | edge 15.0 | NULL
+3602480,desktop,New,,MacOS | Mac OS X 10_12_6 | chrome 62.0 | 1920x1080
+3602481,mobile,New,,iOS Device | iOS 11.1.2 | mobile safari 11.0 | 2436x1125
+3602484,desktop,New,,Windows | Windows 10 | edge 15.0 | NULL
+3602485,desktop,New,,Windows | Windows 10 | firefox 57.0 | 1920x1080
+3602486,desktop,New,,MacOS | Mac OS X 10_10_5 | safari generic | 1680x1050
+3602487,mobile,New,,iOS Device | iOS 11.1.2 | mobile safari 11.0 | 2436x1125
+3602488,desktop,New,,Windows | Windows 10 | edge 15.0 | NULL
+3602489,desktop,New,,Windows | Windows 10 | edge 15.0 | NULL
+3602493,desktop,New,,Windows | Windows 10 | firefox 57.0 | 1920x1080
+3602494,mobile,Found,,SM-G550T Build/MMB29K | Android 6.0.1 | chrome 59.0 for android | 1280x720
+3602496,desktop,New,,Trident/7.0 | Windows 8.1 | ie 11.0 for desktop | 1366x768
+3602497,desktop,Found,,Windows | Windows 7 | chrome 62.0 | 1366x768
+3602498,desktop,Found,,MacOS | Mac OS X 10_13_1 | chrome 62.0 | 2560x1600
+3602502,desktop,New,,MacOS | Mac OS X 10_10_5 | safari generic | 1680x1050
+3602503,desktop,Found,,MacOS | Mac OS X 10_9_5 | chrome 62.0 | 1920x1080
+3602504,desktop,Found,,MacOS | Mac OS X 10_13_1 | chrome 62.0 | 2560x1600
+3602505,mobile,New,,iOS Device | iOS 11.1.2 | mobile safari 11.0 | 2436x1125
+3602508,desktop,New,,Windows | Windows 10 | edge 15.0 | 1600x900
+3602509,mobile,New,,iOS Device | iOS 11.1.1 | mobile safari 11.0 | 1334x750
+3602513,desktop,New,,Trident/7.0 | Windows 8.1 | ie 11.0 for desktop | 1366x768
+3602514,mobile,New,,iOS Device | iOS 11.1.2 | mobile safari 11.0 | 2436x1125
+3602517,desktop,New,,Windows | Windows 10 | chrome 62.0 | 1600x900
+3602518,desktop,Found,,Windows | Windows 7 | chrome 62.0 | 1366x768
+3602519,desktop,New,,Windows | Windows 10 | firefox 57.0 | 1920x1080
+3602520,desktop,New,,Windows | Windows 10 | edge 15.0 | 1600x900
+3602523,mobile,New,,iOS Device | iOS 11.1.1 | mobile safari 11.0 | 1334x750
+3602526,desktop,New,,Windows | Windows 10 | chrome 62.0 | 1600x900
+3602527,desktop,New,,Windows | Windows 10 | firefox 57.0 | 1920x1080
+3602534,desktop,New,,Trident/7.0 | Windows 8.1 | ie 11.0 for desktop | 1366x768
+3602535,mobile,New,,iOS Device | iOS 11.1.2 | mobile safari 11.0 | 2436x1125
+3602536,desktop,New,,MacOS | Mac OS X 10_12_6 | chrome 62.0 | 1920x1080
+3602538,desktop,New,,Windows | Windows 10 | chrome 62.0 | 1600x900
+3602539,mobile,Found,,SM-G550T Build/MMB29K | Android 6.0.1 | chrome 59.0 for android | 1280x720
+3602540,desktop,New,,Windows | Windows 7 | ie 11.0 for desktop | NULL
+3602541,mobile,Found,,SM-G550T Build/MMB29K | Android 6.0.1 | chrome 59.0 for android | 1280x720
+3602542,desktop,New,,MacOS | Mac OS X 10_10_5 | safari generic | 1680x1050
+3602543,desktop,New,,MacOS | Mac OS X 10_10_5 | safari generic | 1680x1050
+3602546,desktop,New,,MacOS | Mac OS X 10_10_5 | safari generic | 1680x1050
+3602548,desktop,Found,,MacOS | Mac OS X 10_13_1 | chrome 62.0 | 2560x1600
+3602549,mobile,New,,iOS Device | iOS 11.1.2 | mobile safari 11.0 | 2436x1125
+3602550,mobile,New,,iOS Device | iOS 11.1.1 | mobile safari 11.0 | 1334x750
+3602551,desktop,New,,Windows | Windows 10 | edge 15.0 | 1600x900
+3602553,desktop,New,,MacOS | Mac OS X 10_10_5 | safari generic | 1680x1050
+3602556,desktop,New,,Windows | Windows 10 | edge 15.0 | NULL
+3602559,desktop,New,,MacOS | Mac OS X 10_9_5 | chrome 62.0 | 1920x1080
+3602562,desktop,New,,Windows | Windows 10 | firefox 57.0 | 1920x1080
+3602563,desktop,New,,Windows | Windows 10 | firefox 57.0 | 1920x1080
+3602564,desktop,New,,MacOS | Mac OS X 10_10_5 | safari generic | 1680x1050
+3602565,desktop,New,,Windows | Windows 10 | firefox 57.0 | 1920x1080
+3602566,desktop,Found,,MacOS | Mac OS X 10_13_1 | chrome 62.0 | 2560x1600
+3602567,mobile,Found,,SM-G550T Build/MMB29K | Android 6.0.1 | chrome 59.0 for android | 1280x720
+3602571,mobile,New,,iOS Device | iOS 11.1.1 | mobile safari 11.0 | 1334x750
+3602572,desktop,New,,Windows | Windows 10 | edge 15.0 | NULL
+3602576,desktop,New,,MacOS | Mac OS X 10_9_5 | chrome 62.0 | 1920x1080
+3602577,desktop,Found,,Windows | Windows 7 | chrome 62.0 | 1366x768
+3603305,desktop,Found,,Windows | Windows 10 | chrome 62.0 | 1920x1080
+3603660,desktop,New,,Windows | Windows 10 | edge 16.0 | NULL
+3603994,desktop,New,,Windows | NULL | chrome 63.0 | NULL
+3603999,desktop,Found,,NULL | NULL | chrome 63.0 | NULL
+3604292,desktop,Found,,Trident/7.0 | Windows 8.1 | ie 11.0 for desktop | NULL
+3604813,desktop,Found,,rv:48.0 | Mac | firefox 48.0 | 1280x800
+3604827,desktop,Found,,Windows | Windows 7 | chrome 62.0 | 1920x1080
+3605141,mobile,New,,iOS Device | iOS 10.3.2 | mobile safari 10.0 | 1136x640
+3605144,mobile,New,,SM-N900T | Android 4.4.2 | chrome 62.0 for android | 1920x1080
+3605267,desktop,Found,,Windows | Windows 10 | chrome 63.0 | 1366x768
+3605629,mobile,Unknown,,NULL | NULL | mobile safari generic | NULL
+3605890,desktop,New,,MacOS | Mac OS X 10_11_6 | safari generic | 2880x1800
+3605998,desktop,Found,,Windows | NULL | chrome 64.0 | NULL
+3606077,desktop,Found,,Trident/7.0 | Windows 7 | ie 11.0 for desktop | 1296x774
+3606137,mobile,Found,,LG-H840 Build/NRD90U | NULL | chrome 62.0 for android | NULL
+3606223,desktop,Found,,Windows | NULL | chrome 62.0 | NULL
+3606258,desktop,New,,NULL | NULL | chrome 62.0 | NULL
+3606277,desktop,Found,,Windows | NULL | chrome 62.0 | NULL
+3606295,mobile,New,,TRT-L53 Build/HUAWEITRT-L53 | NULL | chrome 62.0 for android | NULL
+3607005,desktop,Found,,Windows | Windows 10 | edge 14.0 | 1366x768
+3607089,desktop,New,,Trident/7.0 | Windows 7 | ie 11.0 for desktop | 1280x1024
+3607090,mobile,Found,,iOS Device | iOS 11.1.2 | mobile safari 11.0 | 2208x1242
+3607092,desktop,New,,Trident/7.0 | Windows 7 | ie 11.0 for desktop | 1280x1024
+3607098,mobile,New,,iOS Device | iOS 11.1.2 | mobile safari 11.0 | 2208x1242
+3607127,desktop,Unknown,,Windows | Windows 7 | chrome 63.0 | 1600x900
+3607252,mobile,Found,IP_PROXY:TRANSPARENT,iOS Device | iOS 11.0.3 | mobile safari generic | 1334x750
+3607271,desktop,Found,,MacOS | Mac OS X 10_12_1 | safari generic | 2880x1800
+3607316,mobile,Found,,SM-G920V Build/MMB29K | Android 6.0.1 | chrome 62.0 for android | 2560x1440
+3607350,desktop,Found,,Windows | Windows 10 | chrome 62.0 | 1920x1080
+3607445,mobile,New,,NULL | Android | chrome 61.0 | 855x480
+3607476,desktop,Found,,Windows | Windows 10 | chrome 62.0 | 1920x1080
+3607567,desktop,Found,,Windows | NULL | chrome 63.0 | NULL
+3607816,desktop,Found,,MacOS | Mac OS X 10_7_5 | chrome 49.0 | 1920x1080
+3608561,mobile,New,IP_PROXY:HIDDEN,SM-G950U Build/NRD90M | Android 7.0 | chrome 63.0 for android | 2220x1080
+3608562,desktop,Found,,Windows | Windows 8.1 | chrome 63.0 | 1366x768
+3608962,desktop,Found,,NULL | NULL | chrome 62.0 | NULL
+3608975,desktop,Found,,Windows | NULL | chrome 62.0 | NULL
+3609041,mobile,Found,,SM-A300H Build/LRX22G | NULL | chrome 62.0 for android | NULL
+3609081,desktop,Found,,rv:11.0 | NULL | ie 11.0 for desktop | NULL
+3609766,desktop,New,,Windows | NULL | chrome 63.0 | NULL
+3609854,desktop,Found,,Windows | Windows 10 | edge 15.0 | NULL
+3609962,desktop,New,,Windows | Windows 10 | chrome 62.0 | 1920x1080
+3610386,desktop,New,,MacOS | Mac OS X 10_11_6 | safari generic | 1366x768
+3610727,mobile,Found,,Ilium LT510 Build/MRA58K | NULL | chrome 60.0 for android | NULL
+3610971,desktop,New,,Windows | Windows 10 | chrome 62.0 | 1600x900
+3610975,mobile,New,,iOS Device | iOS 11.1.2 | mobile safari 11.0 | 1334x750
+3610976,desktop,New,,Windows | Windows 10 | chrome 62.0 | 1600x900
+3610980,desktop,New,,Windows | Windows 10 | chrome 62.0 | 1600x900
+3610986,desktop,New,,Windows | Windows 10 | chrome 62.0 | 1600x900
+3610989,mobile,New,,iOS Device | iOS 11.1.2 | mobile safari 11.0 | 1334x750
+3610991,mobile,New,,iOS Device | iOS 11.1.2 | mobile safari 11.0 | 1334x750
+3611005,desktop,New,,Windows | Windows 10 | chrome 62.0 | 1600x900
+3611014,desktop,New,,Windows | Windows 10 | chrome 62.0 | 1600x900
+3611054,mobile,New,,iOS Device | iOS 11.1.2 | mobile safari 11.0 | 1334x750
+3611055,desktop,New,,Windows | Windows 10 | chrome 62.0 | 1600x900
+3611066,desktop,New,,Windows | Windows 10 | chrome 62.0 | 1600x900
+3611097,mobile,New,,iOS Device | iOS 11.1.2 | mobile safari 11.0 | 1334x750
+3611555,mobile,New,,SM-J700M Build/MMB29K | NULL | chrome 62.0 for android | NULL
+3611612,desktop,Found,,Trident/7.0 | Windows 7 | ie 11.0 for desktop | 1600x900
+3611721,desktop,Found,,Windows | Windows 10 | edge 14.0 | NULL
+3612003,mobile,Found,,iOS Device | iOS 11.2.0 | mobile safari 11.0 | 2048x1536
+3612006,mobile,Found,,SAMSUNG SM-G930P Build/NRD90M | Android 7.0 | samsung browser 6.2 | 1920x1080
+3612010,desktop,Unknown,IP_PROXY:ANONYMOUS,Trident/7.0 | NULL | ie 11.0 for desktop | NULL
+3612011,desktop,Unknown,IP_PROXY:ANONYMOUS,Trident/7.0 | NULL | ie 11.0 for desktop | NULL
+3612015,mobile,Unknown,,iOS Device | iOS 10.3.3 | mobile safari 10.0 | 2048x1536
+3612019,desktop,Unknown,,rv:11.0 | NULL | ie 11.0 for desktop | NULL
+3612021,desktop,Unknown,,rv:11.0 | NULL | ie 11.0 for desktop | NULL
+3612024,desktop,Unknown,,rv:11.0 | NULL | ie 11.0 for desktop | NULL
+3612025,desktop,Found,,Windows | Windows 10 | chrome 62.0 | 1600x900
+3612026,desktop,New,,MacOS | Mac OS X 10_10_5 | safari generic | 1280x800
+3612433,desktop,Found,,Windows | Windows 10 | firefox 59.0 | 1600x900
+3612937,desktop,New,,Windows | Windows 7 | chrome 63.0 | 1366x768
+3613075,desktop,New,,Windows | NULL | chrome 66.0 | NULL
+3613205,desktop,New,,Trident/7.0 | Windows 10 | ie 11.0 for desktop | 1920x1080
+3613499,desktop,Found,,Windows | Windows 10 | edge 15.0 | NULL
+3613573,desktop,Found,,MacOS | Mac OS X 10_12_6 | chrome 62.0 | 1440x900
+3613581,desktop,Found,,NULL | NULL | safari generic | NULL
+3614600,desktop,New,,Windows | NULL | chrome 62.0 | NULL
+3614766,desktop,Found,,Windows | Windows 8.1 | chrome 63.0 | 1920x1080
+3614773,desktop,New,,Trident/7.0 | Windows 7 | ie 11.0 for desktop | 1920x1080
+3614774,desktop,New,,Trident/7.0 | Windows 7 | ie 11.0 for desktop | 1920x1080
+3614804,mobile,Found,IP_PROXY:TRANSPARENT,NULL | Android | chrome 61.0 | 855x480
+3614816,desktop,New,,Windows | Windows 8.1 | firefox 57.0 | 1366x768
+3614992,desktop,Found,,MacOS | Mac OS X 10_12_6 | chrome 62.0 | 1440x900
+3615190,mobile,Found,,iOS Device | iOS 11.2.1 | mobile safari generic | 1334x750
+3615534,mobile,New,,iOS Device | iOS 11.2.1 | mobile safari 11.0 | 1136x640
+3615756,mobile,New,,NULL | NULL | mobile safari 11.0 | NULL
+3615843,desktop,Found,,Windows | Windows 7 | chrome 63.0 | 1920x1080
+3615882,desktop,Found,,rv:52.0 | NULL | firefox | NULL
+3616073,mobile,New,,iOS Device | iOS 11.1.2 | mobile safari 11.0 | 2048x1536
+3616231,desktop,New,,Windows | Windows 10 | edge 15.0 | 1920x1080
+3616637,desktop,New,,Windows | Windows 10 | chrome 63.0 | 1920x1080
+3616938,desktop,Found,IP_PROXY:HIDDEN,Windows | Windows 7 | chrome 62.0 | 1920x1080
+3617240,desktop,Found,,Windows | Windows 8.1 | chrome 62.0 | 1600x900
+3617410,desktop,New,,rv:11.0 | NULL | ie 11.0 for desktop | NULL
+3617662,mobile,New,,iOS Device | iOS 11.1.2 | mobile safari 11.0 | 2208x1242
+3617689,desktop,New,,MacOS | Mac OS X 10_11_6 | safari generic | 1440x900
+3617692,desktop,Found,,Windows | Windows 10 | chrome 63.0 | 1920x1080
+3617702,desktop,New,,Windows | Windows 10 | firefox 57.0 | 1920x1080
+3617946,desktop,Found,,MacOS | Mac OS X 10_12_6 | chrome 62.0 | 1440x900
+3617973,mobile,New,,SM-G955U Build/NRD90M | Android 7.0 | chrome 62.0 for android | NULL
+3618031,desktop,Unknown,,NULL | NULL | safari generic | NULL
+3618038,desktop,Found,,Trident/7.0 | NULL | ie 11.0 for desktop | NULL
+3618216,desktop,Found,,Windows | Windows 10 | edge 15.0 | 1600x900
+3618243,mobile,Found,,Moto G (4) Build/NPJS25.93-14-10 | NULL | chrome generic | NULL
+3618483,mobile,Found,,iOS Device | iOS 11.1.2 | mobile safari 11.0 | 2048x1536
+3618651,desktop,New,,Windows | Windows 10 | chrome 62.0 | 3000x2000
+3618725,desktop,Found,,Trident/7.0 | Windows 7 | ie 11.0 for desktop | 1280x1024
+3618976,mobile,Found,,iOS Device | iOS 11.1.2 | mobile safari generic | 2208x1242
+3619195,,,,NULL | NULL | NULL | NULL
+3619200,desktop,Found,,Windows | Windows 10 | chrome 62.0 | 1366x768
+3619283,mobile,New,,iOS Device | iOS 11.1.2 | mobile safari 11.0 | 1334x750
+3619489,desktop,New,,Windows | Windows 10 | chrome 60.0 | 1366x768
+3619660,mobile,New,,iOS Device | iOS 11.1.2 | mobile safari 11.0 | 2208x1242
+3619753,desktop,Found,,Windows | NULL | chrome 62.0 | NULL
+3619822,desktop,Found,,Windows | Windows 10 | firefox 57.0 | 1366x768
+3620332,desktop,Found,,NULL | NULL | chrome 63.0 | NULL
+3620333,mobile,Found,,SM-G570M Build/MMB29K | NULL | chrome 63.0 for android | NULL
+3620342,desktop,New,,Windows | NULL | chrome 62.0 | NULL
+3620475,desktop,Found,,Windows | Windows 10 | edge 15.0 | NULL
+3620846,,,,NULL | NULL | NULL | NULL
+3621455,mobile,New,,Z981 Build/MMB29M | Android 6.0.1 | chrome 62.0 for android | 1920x1080
+3621728,mobile,Unknown,,XT1528 | Android | chrome 62.0 for android | 960x540
+3621729,desktop,Found,,Trident/7.0 | Windows 7 | ie 11.0 for desktop | NULL
+3621730,mobile,New,,Moto E (4) Build/NDQS26.69-23-2-3 | Android 7.1.1 | chrome generic | 1280x720
+3621731,mobile,Unknown,,XT1528 | Android | chrome 62.0 for android | 960x540
+3621733,desktop,Found,,Windows | Windows 7 | chrome 63.0 | 1366x768
+3621734,desktop,Found,,Trident/7.0 | Windows 7 | ie 11.0 for desktop | NULL
+3621735,mobile,Unknown,,XT1528 | Android | chrome 62.0 for android | 960x540
+3621736,mobile,New,,Moto E (4) Build/NDQS26.69-23-2-3 | Android 7.1.1 | chrome generic | 1280x720
+3621738,desktop,New,,Windows | Windows 10 | chrome 63.0 | 1280x1024
+3621739,desktop,Found,,Windows | Windows 7 | chrome 63.0 | 1366x768
+3621740,desktop,New,,Windows | Windows 10 | chrome 63.0 | 1280x1024
+3621741,desktop,Found,,rv:11.0 | Windows 7 | ie 11.0 for desktop | 1440x900
+3621742,desktop,Found,,Trident/7.0 | Windows 10 | ie 11.0 for tablet | NULL
+3621744,mobile,New,,iOS Device | iOS 10.0.2 | mobile safari 10.0 | 1136x640
+3621746,desktop,New,,Trident/7.0 | Windows 10 | ie 11.0 for tablet | 1920x1080
+3621953,desktop,Found,,Windows | Windows 10 | chrome 62.0 | 1366x768
+3622855,mobile,New,,iOS Device | iOS 11.1.2 | mobile safari 11.0 | 2001x1125
+3623071,desktop,Found,,MacOS | Mac OS X 10_13_1 | chrome 62.0 | 1440x900
+3623285,mobile,New,,SM-G920I Build/NRD90M | NULL | chrome 62.0 for android | NULL
+3623296,mobile,New,,Moto C Plus Build/NRD90M.05.022 | NULL | chrome 56.0 for android | NULL
+3623408,desktop,New,,MacOS | Mac OS X 10_13_1 | chrome 63.0 | 2880x1800
+3623629,mobile,New,,iOS Device | iOS 11.2.0 | mobile safari 11.0 | 2001x1125
+3624007,mobile,Found,,SAMSUNG SM-T587P Build/NRD90M | Android 7.0 | samsung browser 6.2 | 1920x1200
+3624369,desktop,Found,,Windows | Windows 7 | chrome 62.0 | 1366x768
+3624519,desktop,Found,,NULL | NULL | firefox 57.0 | NULL
+3625489,mobile,Found,,C6743 Build/LMY47V | Android 5.1.1 | android browser 4.0 | 960x540
+3625816,desktop,New,,Windows | NULL | chrome 63.0 | NULL
+3626002,desktop,Found,,NULL | NULL | chrome 60.0 | NULL
+3626072,desktop,Found,,Windows | Windows 10 | chrome 63.0 | 1600x900
+3626140,desktop,Found,,Windows | Windows 10 | edge 15.0 | NULL
+3626179,desktop,New,,Trident/7.0 | Windows 10 | ie 11.0 for desktop | NULL
+3626616,mobile,Unknown,,iOS Device | iOS 11.2.1 | mobile safari 11.0 | 2436x1125
+3626916,desktop,Found,,Windows | Windows 10 | chrome 62.0 | 1920x1080
+3627225,desktop,Found,,Windows | Windows 10 | firefox 57.0 | 1920x1080
+3627362,mobile,Found,,SM-J710F Build/NRD90M | NULL | chrome 66.0 for android | NULL
+3627389,mobile,Unknown,,iOS Device | iOS 10.3.3 | mobile safari 10.0 | 1334x750
+3627398,mobile,New,,iOS Device | iOS 11.1.2 | mobile safari 11.0 | 1334x750
+3627436,desktop,New,,Windows | Windows 10 | chrome 62.0 | NULL
+3627437,mobile,New,,iOS Device | iOS 11.1.2 | mobile safari 11.0 | 2048x1536
+3627438,desktop,New,,MacOS | Mac OS X 10_11_6 | safari generic | 1920x1080
+3627439,desktop,New,,Trident/7.0 | Windows 7 | ie 11.0 for desktop | NULL
+3627441,desktop,New,,Windows | Windows 7 | chrome 62.0 | 1600x900
+3627442,desktop,Found,,Trident/7.0 | Windows 7 | ie 11.0 for desktop | 1920x1080
+3627443,desktop,Found,,Windows | Windows 10 | chrome 62.0 | 1920x1080
+3627444,mobile,New,,iOS Device | iOS 11.1.2 | mobile safari 11.0 | 2048x1536
+3627446,desktop,New,IP_PROXY:HIDDEN,Windows | Windows 7 | chrome 62.0 | NULL
+3627447,mobile,New,,iOS Device | iOS 11.1.2 | mobile safari 11.0 | 2048x1536
+3627448,mobile,New,,iOS Device | iOS 10.2.1 | mobile safari 10.0 | 2048x1536
+3627449,,,,NULL | NULL | NULL | NULL
+3627451,desktop,New,,Trident/7.0 | Windows 7 | ie 11.0 for desktop | NULL
+3627452,desktop,Found,,Windows | Windows 10 | chrome 62.0 | 1680x1050
+3627453,desktop,New,,Windows | Windows 7 | chrome 62.0 | 1600x900
+3627455,desktop,Found,IP_PROXY:HIDDEN,Windows | Windows 7 | chrome 62.0 | NULL
+3627456,desktop,New,,MacOS | Mac OS X 10_11_6 | safari generic | 1920x1080
+3627457,desktop,Found,,Windows | Windows 10 | chrome 62.0 | 1680x1050
+3627458,desktop,New,,MacOS | Mac OS X 10_10_5 | safari generic | 5120x2880
+3627459,mobile,New,,iOS Device | iOS 11.1.2 | mobile safari 11.0 | 2048x1536
+3627460,mobile,New,,iOS Device | iOS 11.1.2 | mobile safari 11.0 | 2048x1536
+3627461,mobile,New,,iOS Device | iOS 11.1.2 | mobile safari 11.0 | 2048x1536
+3627462,desktop,New,,MacOS | Mac OS X 10_11_6 | safari generic | 1920x1080
+3627463,desktop,New,,Windows | Windows 7 | chrome 62.0 | 1600x900
+3627464,desktop,New,,Windows | Windows 8.1 | ie 11.0 for desktop | NULL
+3627465,desktop,New,,Windows | Windows 10 | chrome 62.0 | NULL
+3627467,desktop,Found,,Trident/7.0 | Windows 7 | ie 11.0 for desktop | 1920x1080
+3627468,desktop,New,,Windows | Windows 8.1 | ie 11.0 for desktop | NULL
+3627469,desktop,New,,Trident/7.0 | Windows 7 | ie 11.0 for desktop | NULL
+3627470,desktop,Found,IP_PROXY:HIDDEN,Windows | Windows 7 | chrome 62.0 | NULL
+3627471,desktop,New,IP_PROXY:HIDDEN,Windows | Windows 7 | chrome 62.0 | NULL
+3627472,mobile,New,,iOS Device | iOS 10.2.1 | mobile safari 10.0 | 2048x1536
+3627473,desktop,New,,MacOS | Mac OS X 10_11_6 | safari generic | 1920x1080
+3627474,mobile,New,,iOS Device | iOS 11.1.1 | mobile safari 11.0 | 2048x1536
+3627475,desktop,New,,MacOS | Mac OS X 10_10_5 | safari generic | 5120x2880
+3627476,desktop,New,,Windows | Windows 7 | chrome 62.0 | 1600x900
+3627477,desktop,Found,,MacOS | Mac OS X 10_11_6 | safari generic | 1440x900
+3627479,,,,NULL | NULL | NULL | NULL
+3627480,desktop,Found,,MacOS | Mac OS X 10_11_6 | safari generic | 1440x900
+3627481,mobile,New,,iOS Device | iOS 10.2.1 | mobile safari 10.0 | 2048x1536
+3627482,desktop,Unknown,,rv:11.0 | NULL | ie 11.0 for desktop | NULL
+3627484,desktop,Found,,Trident/7.0 | Windows 7 | ie 11.0 for desktop | 1920x1080
+3627485,desktop,New,,Windows | Windows 8.1 | ie 11.0 for desktop | NULL
+3627486,desktop,Found,,Windows | Windows 10 | chrome 62.0 | 1680x1050
+3627488,desktop,New,IP_PROXY:HIDDEN,Windows | Windows 7 | chrome 62.0 | NULL
+3627489,,,,NULL | NULL | NULL | NULL
+3627490,desktop,New,,Windows | Windows 7 | chrome 62.0 | 1600x900
+3627491,desktop,Unknown,,rv:11.0 | NULL | ie 11.0 for desktop | NULL
+3627493,desktop,New,,MacOS | Mac OS X 10_11_6 | safari generic | 1920x1080
+3627494,desktop,Found,,Trident/7.0 | Windows 7 | ie 11.0 for desktop | 1920x1080
+3627495,desktop,New,,MacOS | Mac OS X 10_10_5 | safari generic | 5120x2880
+3627496,mobile,New,,iOS Device | iOS 11.1.2 | mobile safari 11.0 | 2048x1536
+3627498,desktop,New,,Windows | Windows 10 | chrome 62.0 | NULL
+3627499,desktop,New,IP_PROXY:HIDDEN,Windows | Windows 7 | chrome 62.0 | NULL
+3627500,desktop,New,,Trident/7.0 | Windows 7 | ie 11.0 for desktop | NULL
+3627502,,,,NULL | NULL | NULL | NULL
+3627503,desktop,New,,Trident/7.0 | Windows 7 | ie 11.0 for desktop | NULL
+3627504,desktop,New,,Windows | Windows 7 | chrome 62.0 | 1600x900
+3627505,,,,NULL | NULL | NULL | NULL
+3627506,mobile,New,,iOS Device | iOS 11.1.2 | mobile safari 11.0 | 2048x1536
+3627510,mobile,New,,iOS Device | iOS 11.1.2 | mobile safari 11.0 | 2048x1536
+3627524,desktop,Found,,MacOS | Mac OS X 10_12_6 | chrome 62.0 | 2880x1800
+3627539,mobile,New,,iOS Device | iOS 11.1.2 | chrome 62.0 for ios | 2048x1536
+3627568,desktop,Found,,Trident/7.0 | Windows 10 | ie 11.0 for desktop | NULL
+3627676,mobile,Found,,SAMSUNG SM-A300H Build/LRX22G | NULL | chrome generic | NULL
+3628284,mobile,New,,iOS Device | iOS | mobile safari 9.0 | 2208x1242
+3628321,mobile,Found,,iOS Device | iOS 11.1.2 | mobile safari 11.0 | 1136x640
+3628401,desktop,New,,Windows | NULL | chrome 62.0 | NULL
+3628419,desktop,Found,,NULL | NULL | chrome 62.0 | NULL
+3628455,desktop,Found,,NULL | NULL | chrome 62.0 | NULL
+3628995,desktop,New,,Trident/7.0 | NULL | ie 11.0 for desktop | NULL
+3628997,desktop,Found,,Windows | NULL | chrome 62.0 | NULL
+3629163,mobile,New,,SM-G610M Build/MMB29K | NULL | chrome 62.0 for android | NULL
+3629167,mobile,New,,BLL-L23 Build/HUAWEIBLL-L23 | NULL | chrome 62.0 for android | NULL
+3629173,desktop,New,,NULL | NULL | chrome 62.0 | NULL
+3629220,desktop,New,,NULL | NULL | chrome 62.0 | NULL
+3629359,desktop,Found,,Windows | Windows 7 | chrome 62.0 | 1366x768
+3629430,mobile,New,,Ilium X710 Build/MRA58K | NULL | chrome 62.0 for android | NULL
+3629473,mobile,New,,SM-G610M Build/MMB29K | NULL | chrome 62.0 for android | NULL
+3629486,desktop,New,,Trident/7.0 | NULL | ie 11.0 for desktop | NULL
+3630084,,,,NULL | NULL | NULL | NULL
+3630085,mobile,Unknown,,NULL | NULL | mobile safari 11.0 | NULL
+3630161,desktop,New,,Windows | NULL | chrome 62.0 | NULL
+3630162,desktop,Found,,NULL | NULL | chrome 63.0 | NULL
+3630268,desktop,Found,,Windows | Windows 10 | chrome 62.0 | 2112x1188
+3630815,desktop,Found,,Windows | Windows 10 | chrome 64.0 | 1920x1080
+3631327,desktop,Found,,rv:11.0 | Windows 7 | ie 11.0 for desktop | NULL
+3631378,desktop,Found,,MacOS | Mac OS X 10_9_5 | safari generic | 2560x1600
+3631379,desktop,New,,Windows | NULL | chrome 62.0 | NULL
+3631380,desktop,Found,,Windows | Windows 10 | chrome 62.0 | 1440x900
+3631381,desktop,New,,Windows | NULL | chrome 62.0 | NULL
+3631384,desktop,Found,,Windows | Windows 8.1 | chrome 62.0 | 1600x900
+3631386,desktop,Found,,MacOS | Mac OS X 10_9_5 | safari generic | 2560x1600
+3631388,mobile,Found,,SM-T530NU Build/LRX22G | Android 5.0.2 | chrome 62.0 for android | 1280x800
+3631389,desktop,Found,,MacOS | Mac OS X 10_13_1 | safari generic | 2560x1600
+3631391,desktop,Found,,Windows | Windows 10 | chrome 62.0 | 1440x900
+3631394,desktop,Found,,Windows | Windows 10 | firefox 57.0 | 1600x900
+3631395,mobile,Found,,SM-T530NU Build/LRX22G | Android 5.0.2 | chrome 62.0 for android | 1280x800
+3631396,mobile,New,,iOS Device | iOS 11.1.2 | mobile safari 11.0 | 2208x1242
+3631398,desktop,Found,,MacOS | Mac OS X 10_9_5 | safari generic | 2560x1600
+3631399,desktop,Found,,Windows | Windows 10 | firefox 57.0 | 1600x900
+3631400,desktop,Found,,Windows | Windows 8.1 | chrome 62.0 | 1600x900
+3631401,desktop,Found,,Windows | Windows 10 | firefox 57.0 | 1600x900
+3631402,desktop,New,,Windows | NULL | chrome 62.0 | NULL
+3631403,desktop,Found,,MacOS | Mac OS X 10_9_5 | safari generic | 2560x1600
+3631405,desktop,Found,,MacOS | Mac OS X 10_11_3 | chrome 62.0 | 2560x1600
+3631408,desktop,New,,Windows | NULL | chrome 62.0 | NULL
+3631410,mobile,Found,,SM-T530NU Build/LRX22G | Android 5.0.2 | chrome 62.0 for android | 1280x800
+3631413,desktop,Found,,Windows | Windows 7 | chrome 62.0 | 1280x1024
+3631414,desktop,Found,,Windows | Windows 10 | firefox 57.0 | 1600x900
+3631415,mobile,Found,,SM-T530NU Build/LRX22G | Android 5.0.2 | chrome 62.0 for android | 1280x800
+3631416,desktop,New,,Windows | Windows 10 | chrome 62.0 | 1366x768
+3631417,desktop,Found,,Windows | Windows 7 | chrome 62.0 | 1280x1024
+3631418,mobile,Found,,SM-T530NU Build/LRX22G | Android 5.0.2 | chrome 62.0 for android | 1280x800
+3631420,desktop,New,,Windows | NULL | chrome 62.0 | NULL
+3631423,desktop,Found,,Trident/7.0 | Windows 7 | ie 11.0 for desktop | 1920x1080
+3631426,desktop,Found,,Windows | NULL | chrome 62.0 | NULL
+3631427,desktop,Found,,Trident/7.0 | Windows 7 | ie 11.0 for desktop | 1920x1080
+3631428,desktop,New,,Windows | Windows 10 | chrome 62.0 | 1366x768
+3631429,desktop,Found,,MacOS | Mac OS X 10_9_5 | safari generic | 2560x1600
+3631431,desktop,New,,Windows | Windows 10 | chrome 62.0 | 1366x768
+3631433,mobile,New,,iOS Device | iOS 11.1.2 | mobile safari 11.0 | 2208x1242
+3631506,desktop,Found,,Windows | Windows 10 | chrome 62.0 | 1600x900
+3631678,mobile,Unknown,,NULL | NULL | mobile safari 11.0 | NULL
+3631764,desktop,Found,,NULL | NULL | chrome 63.0 | NULL
+3631796,mobile,Unknown,,NULL | NULL | mobile safari 11.0 | NULL
+3631803,desktop,New,,Trident/7.0 | NULL | ie 11.0 for desktop | NULL
+3631947,mobile,New,,iOS Device | iOS 11.1.1 | mobile safari 11.0 | 2208x1242
+3632532,desktop,Found,,Trident/7.0 | Windows 7 | ie 11.0 for desktop | 1920x1080
+3632583,desktop,Found,,MacOS | Mac OS X 10_12_6 | chrome 62.0 | 1440x900
+3632739,desktop,New,,Windows | NULL | chrome 62.0 | NULL
+3633111,desktop,Found,,Windows | Windows 10 | edge 15.0 | 1680x1050
+3633894,desktop,New,,MacOS | Mac OS X 10_12_6 | safari generic | 2560x1600
+3633916,desktop,Found,,Windows | Windows 10 | edge 15.0 | NULL
+3634476,desktop,Found,,Windows | NULL | chrome 63.0 | NULL
+3634859,desktop,Found,,Trident/7.0 | Windows 7 | ie 11.0 for desktop | 1920x1080
+3634860,desktop,Found,,Windows | Windows 10 | edge 16.0 | 1920x1080
+3634862,desktop,Found,,Windows | Windows 10 | firefox 52.0 | 1920x1080
+3634864,mobile,New,,iOS Device | iOS 10.3.3 | mobile safari generic | 1136x640
+3634865,desktop,New,,Trident/7.0 | Windows 10 | ie 11.0 for desktop | 1920x1080
+3634866,desktop,Found,,Windows | Windows 10 | chrome 61.0 | 1366x768
+3634867,desktop,Found,,Windows | Windows 10 | chrome 62.0 | NULL
+3634868,desktop,New,,MacOS | Mac OS X 10_11_6 | safari generic | 1920x1080
+3634869,desktop,New,,MacOS | Mac OS X 10_11_6 | safari generic | 1920x1080
+3634870,desktop,Found,IP_PROXY:HIDDEN,Trident/7.0 | Windows 7 | ie 11.0 for desktop | 1280x1024
+3634871,desktop,New,,MacOS | Mac OS X 10_11_6 | safari generic | 1920x1080
+3634872,desktop,New,IP_PROXY:HIDDEN,Trident/7.0 | Windows 7 | ie 11.0 for desktop | 1280x1024
+3634874,,,,NULL | NULL | NULL | NULL
+3634875,desktop,Found,,Windows | Windows 10 | firefox 52.0 | 1920x1080
+3634877,desktop,New,,Windows | Windows 10 | chrome 62.0 | 1920x1080
+3634879,desktop,Found,,Windows | Windows 10 | chrome 61.0 | 1366x768
+3634880,desktop,Found,,Windows | Windows 10 | chrome 61.0 | 1366x768
+3634881,mobile,New,,iOS Device | iOS 10.3.3 | mobile safari generic | 1136x640
+3634882,mobile,New,,iOS Device | iOS 11.1.2 | mobile safari 11.0 | 2208x1242
+3634884,desktop,New,,MacOS | Mac OS X 10_11_6 | safari generic | 1920x1080
+3634888,mobile,New,,iOS Device | iOS 11.1.1 | mobile safari 11.0 | 1334x750
+3634890,desktop,Found,,Windows | Windows 10 | chrome 61.0 | 1366x768
+3634891,mobile,New,,iOS Device | iOS 11.1.1 | mobile safari 11.0 | 1334x750
+3634892,desktop,New,IP_PROXY:HIDDEN,Trident/7.0 | Windows 7 | ie 11.0 for desktop | 1280x1024
+3634894,desktop,Found,,Windows | Windows 10 | chrome 61.0 | 1366x768
+3634896,desktop,Found,,Windows | Windows 10 | edge 15.0 | NULL
+3634971,desktop,New,,MacOS | Mac OS X 10_11_6 | safari generic | 1440x900
+3635646,mobile,New,,iOS Device | iOS 11.1.2 | mobile safari 11.0 | 2001x1125
+3635739,mobile,New,,iOS Device | iOS 11.1.2 | mobile safari 11.0 | 2208x1242
+3635758,desktop,New,,MacOS | Mac OS X 10_13_1 | safari generic | 1280x800
+3635838,mobile,Found,,Ilium LT510 Build/MRA58K | NULL | chrome 59.0 for android | NULL
+3636033,desktop,Found,,Windows | Windows 10 | chrome 63.0 | 1920x1080
+3636172,mobile,New,,LG-M210 Build/NRD90U | Android 7.0 | chrome 62.0 for android | 1280x720
+3636381,desktop,Found,,NULL | NULL | chrome 63.0 | NULL
+3636562,desktop,Found,,Windows | Windows 10 | chrome 62.0 | 1600x900
+3636613,desktop,Found,,Windows | Windows 10 | chrome 63.0 | 1680x1050
+3636648,desktop,Found,,Windows | Windows 7 | chrome 63.0 | 1920x1080
+3636683,desktop,Found,,Trident/7.0 | Windows 10 | ie 11.0 for desktop | 1920x1080
+3636740,desktop,Found,,Windows | NULL | chrome 62.0 | NULL
+3636744,desktop,New,,Windows | NULL | chrome 62.0 | NULL
+3636753,desktop,New,,NULL | NULL | chrome 62.0 | NULL
+3636815,mobile,Unknown,,NULL | NULL | mobile safari 10.0 | NULL
+3637388,desktop,Found,,MacOS | Mac OS X 10_11_6 | chrome | 1440x900
+3637435,desktop,New,,MacOS | Mac OS X 10_11_6 | safari generic | 1280x800
+3637875,mobile,Found,IP_PROXY:TRANSPARENT,iOS Device | iOS 11.1.1 | mobile safari 11.0 | 1334x750
+3638068,mobile,Found,,iOS Device | iOS 10.3.3 | mobile safari 10.0 | 1334x750
+3638490,mobile,New,,iOS Device | iOS 11.0.3 | mobile safari 11.0 | 2208x1242
+3638502,desktop,Found,,Windows | Windows 10 | chrome 63.0 | 1920x1080
+3638809,mobile,New,,iOS Device | iOS 10.3.3 | mobile safari 10.0 | 1334x750
+3638813,desktop,New,IP_PROXY:ANONYMOUS,Windows | Windows 7 | chrome 61.0 | 1680x1050
+3638815,desktop,New,,Trident/7.0 | Windows 7 | ie 11.0 for desktop | 1920x1080
+3638823,desktop,New,,Trident/7.0 | Windows 7 | ie 11.0 for desktop | 1920x1080
+3638824,desktop,New,,Windows | Windows 7 | chrome 62.0 | 1600x900
+3638829,desktop,New,IP_PROXY:ANONYMOUS,Windows | Windows 7 | chrome 61.0 | 1680x1050
+3638834,desktop,New,,Trident/7.0 | Windows 7 | ie 11.0 for desktop | 1920x1080
+3638836,mobile,Found,,iOS Device | iOS 10.3.3 | mobile safari generic | 1136x640
+3638840,desktop,New,,Windows | Windows 7 | chrome 62.0 | 1600x900
+3638844,mobile,New,,iOS Device | iOS 10.3.3 | mobile safari 10.0 | 1334x750
+3638847,desktop,New,,Windows | Windows 7 | chrome 62.0 | 1600x900
+3638848,mobile,New,,iOS Device | iOS 11.1.1 | mobile safari 11.0 | 2436x1125
+3638857,desktop,New,,Windows | Windows 7 | chrome 62.0 | 1600x900
+3638863,desktop,New,,Windows | Windows 7 | chrome 62.0 | 1600x900
+3638868,desktop,New,IP_PROXY:ANONYMOUS,Windows | Windows 7 | chrome 61.0 | 1680x1050
+3638870,desktop,New,IP_PROXY:ANONYMOUS,Windows | Windows 7 | chrome 61.0 | 1680x1050
+3638872,desktop,New,,Windows | Windows 7 | chrome 62.0 | 1600x900
+3638875,desktop,New,,Trident/7.0 | Windows 7 | ie 11.0 for desktop | 1920x1080
+3638878,desktop,New,IP_PROXY:ANONYMOUS,Windows | Windows 7 | chrome 61.0 | 1680x1050
+3638890,mobile,New,,iOS Device | iOS 11.1.1 | mobile safari 11.0 | 2436x1125
+3638891,desktop,New,,Trident/7.0 | Windows 7 | ie 11.0 for desktop | 1920x1080
+3638895,desktop,New,,Trident/7.0 | Windows 7 | ie 11.0 for desktop | 1920x1080
+3638900,mobile,Found,,iOS Device | iOS 10.3.3 | mobile safari generic | 1136x640
+3638901,mobile,New,,iOS Device | iOS 10.3.3 | mobile safari 10.0 | 1334x750
+3638906,desktop,Found,,Windows | Windows 7 | chrome 62.0 | 1600x900
+3638910,mobile,Found,,iOS Device | iOS 10.3.3 | mobile safari generic | 1136x640
+3638911,mobile,New,,iOS Device | iOS 10.3.3 | mobile safari 10.0 | 1334x750
+3638912,desktop,New,,Trident/7.0 | Windows 7 | ie 11.0 for desktop | 1920x1080
+3638920,desktop,Found,,Windows | Windows 7 | chrome 62.0 | 1600x900
+3638921,desktop,New,,Trident/7.0 | Windows 7 | ie 11.0 for desktop | 1920x1080
+3638927,desktop,New,,Windows | Windows 7 | chrome 62.0 | 1600x900
+3638932,desktop,Found,,Windows | Windows 7 | chrome 62.0 | 1600x900
+3638936,mobile,New,,iOS Device | iOS 11.1.1 | mobile safari 11.0 | 2436x1125
+3639103,mobile,Unknown,,NULL | NULL | mobile safari generic | NULL
+3639214,desktop,Found,,Trident/7.0 | Windows 7 | ie 11.0 for desktop | NULL
+3639272,mobile,New,,iOS Device | iOS 11.1.2 | mobile safari 11.0 | 2208x1242
+3639343,desktop,Found,,NULL | NULL | chrome 62.0 | NULL
+3639368,mobile,Unknown,,NULL | NULL | mobile safari 10.0 | NULL
+3639927,desktop,Found,,Windows | Windows Vista | chrome 49.0 | 1366x768
+3640336,desktop,New,,Windows | Windows 10 | chrome 62.0 | 1920x1080
+3640466,mobile,Found,,iOS Device | iOS 11.1.2 | mobile safari 11.0 | 1334x750
+3640540,mobile,New,,iOS Device | iOS 11.1.2 | mobile safari 11.0 | 2048x1536
+3640654,mobile,Found,,SM-G955U Build/NRD90M | Android 7.0 | chrome 63.0 for android | 2961x1442
+3640658,mobile,Found,,SM-G955U Build/NRD90M | Android 7.0 | chrome 63.0 for android | 2961x1442
+3640666,desktop,New,,Windows | Windows 10 | chrome 63.0 | 1920x1080
+3640669,desktop,New,,Windows | Windows 10 | chrome 63.0 | 1920x1080
+3640671,mobile,Found,,SM-G955U Build/NRD90M | Android 7.0 | chrome 63.0 for android | 2961x1442
+3640673,desktop,New,,Windows | Windows 10 | chrome 63.0 | 1920x1080
+3640841,mobile,Found,,iOS Device | iOS 11.1.1 | mobile safari 11.0 | 2208x1242
+3640842,mobile,Found,,iOS Device | iOS 11.1.1 | mobile safari 11.0 | 2208x1242
+3640852,desktop,Found,,Windows | Windows 7 | chrome 62.0 | 1920x1080
+3640857,desktop,Found,,Windows | Windows 10 | edge 15.0 | 1600x900
+3640864,mobile,New,,iOS Device | iOS 11.1.2 | mobile safari 11.0 | 2048x1536
+3640872,desktop,Found,,Windows | Windows 10 | edge 15.0 | 1600x900
+3640876,mobile,New,,iOS Device | iOS 11.1.1 | mobile safari 11.0 | 2208x1242
+3640879,mobile,Found,,iOS Device | iOS 11.1.1 | mobile safari 11.0 | 2208x1242
+3640885,desktop,New,,Windows | Windows 7 | chrome 62.0 | 1440x900
+3640893,mobile,Found,,iOS Device | iOS 11.1.1 | mobile safari 11.0 | 2208x1242
+3640898,mobile,Found,,iOS Device | iOS 11.1.1 | mobile safari 11.0 | 2208x1242
+3640902,desktop,New,,Windows | Windows 7 | chrome 62.0 | 1440x900
+3640905,mobile,New,,iOS Device | iOS 11.1.1 | mobile safari 11.0 | 2208x1242
+3640907,desktop,New,,Windows | Windows 7 | chrome 62.0 | 1440x900
+3640911,mobile,New,,iOS Device | iOS 11.1.1 | mobile safari 11.0 | 2208x1242
+3640917,mobile,New,,iOS Device | iOS 11.1.1 | mobile safari 11.0 | 2208x1242
+3640921,desktop,Found,,Windows | Windows 10 | edge 15.0 | 1600x900
+3640922,desktop,Found,,Windows | Windows 10 | edge 15.0 | 1600x900
+3640925,desktop,New,,Windows | Windows 7 | chrome 62.0 | 1440x900
+3640927,mobile,New,,iOS Device | iOS 11.1.2 | mobile safari 11.0 | 2048x1536
+3640928,mobile,New,,iOS Device | iOS 11.1.2 | mobile safari 11.0 | 2048x1536
+3640929,mobile,New,,iOS Device | iOS 11.1.2 | mobile safari 11.0 | 2048x1536
+3640935,desktop,Found,,Windows | Windows 7 | chrome 62.0 | 1920x1080
+3640937,mobile,New,,iOS Device | iOS 11.1.2 | mobile safari 11.0 | 2048x1536
+3640939,mobile,New,,iOS Device | iOS 11.1.2 | mobile safari 11.0 | 2048x1536
+3640941,desktop,Found,,Windows | Windows 7 | chrome 62.0 | 1920x1080
+3640944,desktop,New,,Windows | Windows 7 | chrome 62.0 | 1440x900
+3640946,mobile,New,,iOS Device | iOS 11.1.2 | mobile safari 11.0 | 2048x1536
+3640956,desktop,Found,,Windows | Windows 7 | chrome 62.0 | 1920x1080
+3640958,mobile,New,,iOS Device | iOS 11.1.2 | mobile safari 11.0 | 2048x1536
+3640964,mobile,Found,,iOS Device | iOS 11.1.1 | mobile safari 11.0 | 2208x1242
+3641066,desktop,Found,,Windows | Windows 10 | chrome 62.0 | 1600x900
+3641380,desktop,New,,MacOS | Mac OS X 10_13_2 | safari generic | 1440x900
+3642368,desktop,Found,,NULL | Linux | chrome 62.0 | 2560x1440
+3642376,desktop,New,,Windows | Windows 10 | edge 16.0 | 1920x1080
+3642799,desktop,New,,MacOS | Mac OS X 10_13_1 | safari generic | 1920x1080
+3643055,desktop,New,,MacOS | Mac OS X 10_8_5 | safari generic | 1440x900
+3643339,desktop,New,,MacOS | Mac | chrome 62.0 | 1280x800
+3643797,desktop,New,,Trident/7.0 | Windows 7 | ie 11.0 for desktop | NULL
+3644109,desktop,Found,,Windows | Windows XP | chrome 49.0 | 1366x768
+3644111,desktop,Found,,MacOS | Mac OS X 10_13_2 | chrome 63.0 | 2880x1800
+3644898,mobile,New,,iOS Device | iOS 11.1.1 | mobile safari 11.0 | 1334x750
+3645317,desktop,Found,,rv:56.0 | Mac OS X 10.11 | firefox 56.0 | 1280x800
+3645411,desktop,New,,NULL | NULL | chrome 64.0 | NULL
+3645650,mobile,New,,iOS Device | iOS 11.1.2 | mobile safari 11.0 | 2048x1536
+3645653,desktop,Unknown,,MacOS | Mac OS X 10_10_5 | safari generic | 2560x1600
+3645734,mobile,Found,,SM-G900M Build/LRX21T | NULL | chrome 64.0 for android | NULL
+3645757,desktop,Found,,Windows | Windows 7 | chrome 62.0 | 1920x1080
+3645808,desktop,Found,,Windows | Windows 10 | edge 15.0 | NULL
+3645826,desktop,Found,,Windows | Windows 10 | edge 15.0 | NULL
+3645880,desktop,Found,,Windows | Windows 10 | edge 15.0 | NULL
+3646170,desktop,New,,Windows | Windows 7 | firefox 59.0 | 1366x768
+3646412,mobile,New,,iOS Device | iOS 11.1.2 | mobile safari 11.0 | 2001x1125
+3647149,desktop,Found,,rv:11.0 | Windows 7 | ie 11.0 for desktop | 1600x900
+3647166,desktop,New,,Windows | Windows 10 | chrome 63.0 | 1920x1080
+3647302,desktop,Found,,Windows | Windows 10 | chrome 63.0 | 1366x768
+3647424,desktop,Found,,Windows | Windows 10 | edge 16.0 | NULL
+3647490,desktop,New,,Windows | Windows 10 | edge 15.0 | 1920x1080
+3647621,desktop,New,,Windows | NULL | chrome 62.0 | NULL
+3647820,desktop,Found,,Windows | NULL | chrome 62.0 | NULL
+3647865,desktop,Found,,NULL | NULL | chrome 62.0 | NULL
+3647872,desktop,Found,,NULL | NULL | chrome 62.0 | NULL
+3647875,,,,NULL | NULL | NULL | NULL
+3648079,mobile,New,,iOS Device | iOS 11.2.1 | mobile safari 11.0 | 1334x750
+3648154,mobile,New,,iOS Device | iOS 10.3.3 | mobile safari 10.0 | 2048x1536
+3648329,mobile,Found,,LG-K540 Build/MMB29M | Android 6.0.1 | chrome 62.0 for android | 1280x720
+3648338,mobile,New,,iOS Device | iOS 11.1.2 | mobile safari 11.0 | 2208x1242
+3648477,mobile,Found,,SAMSUNG-SM-T337A Build/LMY47X | Android 5.1.1 | chrome 62.0 for android | NULL
+3648540,desktop,Found,,Windows | NULL | chrome 62.0 | NULL
+3648700,desktop,New,,Windows | Windows 7 | chrome 62.0 | 1366x768
+3648735,desktop,Found,,Trident/7.0 | Windows 10 | ie 11.0 for desktop | 1366x768
+3648795,desktop,New,,MacOS | Mac OS X 10_11_6 | safari generic | 1440x900
+3648796,desktop,Found,,Windows | Windows 10 | chrome 62.0 | 1920x1080
+3648841,mobile,New,,iOS Device | iOS 11.0.3 | mobile safari 11.0 | 1334x750
+3648852,desktop,Found,,Windows | Windows 10 | chrome 62.0 | 1920x1080
+3649569,desktop,New,,Windows | Windows 10 | firefox 57.0 | 2560x1440
+3649597,mobile,New,,iOS Device | iOS 11.1.2 | mobile safari 11.0 | 2208x1242
+3649627,desktop,Found,,Windows | NULL | chrome 63.0 | NULL
+3649883,desktop,Found,,Windows | Windows 10 | chrome 63.0 | 1920x1080
+3649980,desktop,Found,,Windows | Windows 7 | chrome 63.0 | 1600x900
+3650026,desktop,New,,Windows | Windows 10 | chrome 62.0 | 1920x1080
+3650364,desktop,Found,,Windows | Windows 10 | chrome 62.0 | 1366x768
+3650403,desktop,New,,MacOS | Mac OS X 10_12_6 | safari generic | 5120x2880
+3650413,desktop,Found,,Windows | Windows 7 | chrome 62.0 | 1366x768
+3650990,desktop,New,,Windows | NULL | chrome 62.0 | NULL
+3651005,desktop,New,,Trident/7.0 | NULL | ie 11.0 for desktop | NULL
+3651007,desktop,Found,,Windows | NULL | chrome 62.0 | NULL
+3651014,mobile,New,,LG-K500 Build/MMB29M | NULL | chrome 62.0 for android | NULL
+3651049,desktop,Found,IP_PROXY:TRANSPARENT,Windows | Windows 7 | chrome 64.0 | 1600x900
+3651110,,,,NULL | NULL | NULL | NULL
+3651130,desktop,New,,Windows | Windows 10 | firefox 57.0 | 1600x900
+3651299,desktop,New,,Windows | Windows 10 | chrome 62.0 | 1366x768
+3651696,mobile,Found,,SM-G531H Build/LMY48B | NULL | chrome 61.0 for android | NULL
+3651711,desktop,New,,NULL | NULL | chrome 62.0 | NULL
+3651788,mobile,Found,,SM-G531H Build/LMY48B | NULL | chrome 61.0 for android | NULL
+3651805,desktop,Found,,Windows | NULL | chrome 62.0 | NULL
+3652031,mobile,New,,WAS-LX3 Build/HUAWEIWAS-LX3 | NULL | chrome 63.0 for android | NULL
+3652038,mobile,Unknown,,NULL | NULL | mobile safari 11.0 | NULL
+3652300,mobile,Found,,Blade A510 Build/MRA58K | NULL | chrome 66.0 for android | NULL
+3652700,desktop,Found,,Windows | Windows 10 | edge 16.0 | NULL
+3652794,desktop,Found,,Windows | NULL | chrome 62.0 | NULL
+3652807,desktop,Found,,NULL | NULL | chrome 49.0 | NULL
+3653014,desktop,Found,,Windows | Windows 10 | chrome 63.0 | 3200x1800
+3653292,desktop,New,,Windows | NULL | chrome 55.0 | NULL
+3653419,mobile,Unknown,,NULL | NULL | mobile safari 11.0 | NULL
+3653488,desktop,Found,,Windows | NULL | chrome 62.0 | NULL
+3653517,desktop,Found,,Windows | NULL | chrome 62.0 | NULL
+3653579,mobile,Unknown,,NULL | NULL | mobile safari 11.0 | NULL
+3653606,mobile,Found,,SM-T710 Build/NRD90M | NULL | chrome 62.0 for android | NULL
+3654090,desktop,Found,,Trident/7.0 | Windows 7 | ie 11.0 for desktop | 1920x1080
+3654198,mobile,Unknown,,NULL | NULL | mobile safari 11.0 | NULL
+3654199,mobile,Unknown,,NULL | NULL | mobile safari 11.0 | NULL
+3654330,mobile,New,,iOS Device | iOS 11.1.2 | mobile safari 11.0 | 2001x1125
+3654348,mobile,New,,iOS Device | iOS 10.3.1 | mobile safari 10.0 | 1334x750
+3654418,desktop,New,,rv:52.0 | Windows Vista | firefox 52.0 | 1440x900
+3655157,desktop,New,,Windows | Windows 7 | chrome 64.0 | 1440x900
+3655355,desktop,New,,MacOS | Mac OS X 10_13_1 | safari generic | 1920x1080
+3655419,desktop,Found,,Windows | Windows 10 | edge 13.0 | 1366x768
+3655449,desktop,New,,Windows | Windows 7 | chrome 63.0 | 1920x1080
+3655458,desktop,New,,Trident/7.0 | Windows 7 | ie 11.0 for desktop | 1600x1200
+3655638,desktop,Found,,Windows | NULL | chrome 62.0 | NULL
+3655661,desktop,Found,,Windows | Windows 10 | chrome 63.0 | 1920x1080
+3655765,mobile,Found,,NULL | Android | chrome 62.0 | 1280x720
+3656258,desktop,Found,IP_PROXY:HIDDEN,Windows | Windows 7 | chrome 62.0 | NULL
+3656558,mobile,Unknown,,SM-G950F Build/R16NW | NULL | chrome 64.0 for android | NULL
+3656581,desktop,Found,,Windows | Windows 10 | edge 16.0 | 1920x1080
+3657221,desktop,New,,Windows | Windows 10 | ie 11.0 for desktop | 1920x1080
+3657313,desktop,Found,,Windows | Windows 8.1 | chrome 62.0 | 1920x1080
+3657521,desktop,Found,,Windows | Windows 10 | chrome 62.0 | 1600x900
+3657596,desktop,Found,,Windows | Windows 7 | chrome 63.0 | 1280x1024
+3657635,desktop,Found,,Trident/7.0 | Windows 7 | ie 11.0 for desktop | 1920x1080
+3657678,mobile,New,,iOS Device | iOS 11.1.2 | mobile safari 11.0 | 1334x750
+3657684,mobile,New,,iOS Device | iOS 11.1.2 | mobile safari 11.0 | 2001x1125
+3657787,mobile,New,,iOS Device | iOS 11.2.1 | mobile safari 11.0 | 2208x1242
+3657920,mobile,Found,,SAMSUNG SM-G950U1 Build/NRD90M | Android 7.0 | samsung browser 6.2 | 2220x1080
+3658154,mobile,New,,iOS Device | iOS 11.1.2 | mobile safari 11.0 | 1334x750
+3658219,mobile,New,,SM-P550 Build/MMB29M | NULL | chrome 62.0 for android | NULL
+3658268,desktop,Found,,NULL | NULL | firefox 57.0 | NULL
+3658309,mobile,Found,,iOS Device | iOS 11.2.1 | mobile safari generic | 1334x750
+3658311,mobile,Found,,iOS Device | iOS 11.2.1 | mobile safari 11.0 | 1334x750
+3658319,mobile,Found,,iOS Device | iOS 11.2.1 | mobile safari 11.0 | 1334x750
+3658321,mobile,Found,,iOS Device | iOS 11.2.1 | mobile safari generic | 1334x750
+3658322,desktop,Found,,rv:11.0 | NULL | ie 11.0 for desktop | NULL
+3658388,desktop,Found,,NULL | NULL | chrome 62.0 | NULL
+3658469,mobile,New,,HUAWEI RIO-L03 Build/HUAWEIRIO-L03 | NULL | chrome generic | NULL
+3658822,desktop,Found,,Windows | Windows 10 | chrome 63.0 | 1920x1080
+3658854,mobile,New,,SM-G950U Build/NRD90M | Android 7.0 | chrome 63.0 for android | 2220x1080
+3659103,desktop,Found,,NULL | NULL | safari generic | NULL
+3660096,mobile,New,IP_PROXY:ANONYMOUS,SM-G925P Build/NRD90M | Windows 10 | ie 11.0 for desktop | NULL
+3660097,mobile,New,IP_PROXY:ANONYMOUS,SM-G925P Build/NRD90M | Windows 10 | ie 11.0 for desktop | NULL
+3660098,mobile,New,IP_PROXY:ANONYMOUS,SM-G925P Build/NRD90M | Mac OS X 10_13_1 | safari generic | 2560x1440
+3660099,mobile,New,IP_PROXY:ANONYMOUS,VS500 | Windows 8.1 | chrome 62.0 | 1366x768
+3660100,mobile,New,IP_PROXY:ANONYMOUS,VS500 | NULL | NULL | NULL
+3660101,mobile,New,IP_PROXY:ANONYMOUS,Z970 | Windows 8.1 | firefox 57.0 | 1680x1050
+3660102,mobile,New,IP_PROXY:ANONYMOUS,Z970 | NULL | NULL | NULL
+3660103,mobile,New,IP_PROXY:ANONYMOUS,Z970 | Mac OS X 10_13_1 | safari generic | 2880x1800
+3660104,mobile,New,IP_PROXY:ANONYMOUS,KYOCERA-C6742A Build/LMY47V | Windows 10 | chrome 62.0 | 2560x1440
+3660105,mobile,New,IP_PROXY:ANONYMOUS,KYOCERA-C6742A Build/LMY47V | Windows 7 | firefox 57.0 | 1600x900
+3660106,mobile,New,IP_PROXY:ANONYMOUS,RCT6303W87M7 Build/MRA58K | Windows 7 | ie 11.0 for desktop | NULL
+3660107,mobile,New,IP_PROXY:ANONYMOUS,RCT6303W87M7 Build/MRA58K | Windows 10 | ie 11.0 for tablet | 1920x1080
+3660108,mobile,New,IP_PROXY:ANONYMOUS,RCT6303W87M7 Build/MRA58K | Windows 7 | ie 11.0 for desktop | NULL
+3660109,mobile,New,IP_PROXY:ANONYMOUS,SM-G925W8 | NULL | NULL | NULL
+3660110,mobile,New,IP_PROXY:ANONYMOUS,SM-G925W8 | NULL | NULL | NULL
+3660111,mobile,New,IP_PROXY:ANONYMOUS,LGLS775 Build/MXB48T | NULL | NULL | NULL
+3660112,mobile,New,IP_PROXY:ANONYMOUS,LGLS775 Build/MXB48T | NULL | NULL | NULL
+3660113,mobile,New,IP_PROXY:ANONYMOUS,XT1565 | NULL | NULL | NULL
+3660114,mobile,New,IP_PROXY:ANONYMOUS,XT1565 | NULL | NULL | NULL
+3660115,mobile,New,IP_PROXY:ANONYMOUS,SAMSUNG-SM-G890A Build/NRD90M | NULL | NULL | NULL
+3660116,mobile,New,IP_PROXY:ANONYMOUS,SAMSUNG-SM-G890A Build/NRD90M | NULL | NULL | NULL
+3660117,mobile,New,IP_PROXY:ANONYMOUS,HTC6545LVW | NULL | NULL | NULL
+3660118,mobile,New,IP_PROXY:ANONYMOUS,HTC6545LVW | NULL | NULL | NULL
+3660119,mobile,New,IP_PROXY:ANONYMOUS,HTC6545LVW | NULL | NULL | NULL
+3660120,mobile,New,IP_PROXY:ANONYMOUS,Moto G (4) | Windows 10 | firefox 57.0 | 1440x900
+3660121,mobile,New,IP_PROXY:ANONYMOUS,Moto G (4) | NULL | NULL | NULL
+3660122,mobile,New,IP_PROXY:ANONYMOUS,LG-K425 | NULL | NULL | NULL
+3660123,mobile,New,IP_PROXY:ANONYMOUS,LG-K425 | NULL | NULL | NULL
+3660124,mobile,New,IP_PROXY:ANONYMOUS,LG-K425 | NULL | NULL | NULL
+3660125,mobile,New,IP_PROXY:ANONYMOUS,SM-J700T1 | iOS 11.1.2 | mobile safari 11.0 | 2048x1536
+3660126,mobile,New,IP_PROXY:ANONYMOUS,SM-J700T1 | iOS 11.1.1 | mobile safari 11.0 | 2048x1536
+3660127,mobile,New,IP_PROXY:ANONYMOUS,SM-J700T1 | NULL | NULL | NULL
+3660128,mobile,New,IP_PROXY:ANONYMOUS,ALCATEL ONE TOUCH 5056N | NULL | NULL | NULL
+3660129,mobile,New,IP_PROXY:ANONYMOUS,ALCATEL ONE TOUCH 5056N | NULL | NULL | NULL
+3660130,mobile,New,IP_PROXY:ANONYMOUS,ALCATEL ONE TOUCH 5056N | NULL | NULL | NULL
+3660133,desktop,Found,,MacOS | Mac OS X 10_11_3 | chrome 63.0 | 1600x900
+3660175,desktop,New,,Trident/7.0 | Windows 10 | ie 11.0 for desktop | 1920x1080
+3660177,desktop,New,,Trident/7.0 | Windows 10 | ie 11.0 for desktop | 1920x1080
+3660179,mobile,New,,SM-A520F Build/NRD90M | NULL | chrome 66.0 for android | NULL
+3660180,mobile,New,,SM-A520F Build/NRD90M | NULL | chrome 66.0 for android | NULL
+3660181,mobile,New,,SM-A520F Build/NRD90M | NULL | chrome 66.0 for android | NULL
+3660182,mobile,New,,SM-A520F Build/NRD90M | NULL | chrome 66.0 for android | NULL
+3660193,mobile,Unknown,,NULL | NULL | mobile safari 11.0 | NULL
+3660194,,,,NULL | NULL | NULL | NULL
+3660195,desktop,Found,,Windows | NULL | chrome 63.0 | NULL
+3660196,desktop,Found,,Windows | NULL | edge 15.0 | NULL
+3660197,desktop,Found,,Windows | NULL | chrome 63.0 | NULL
+3660219,desktop,Found,,Windows | Windows 10 | chrome 62.0 | 1680x1050
+3660220,desktop,Found,,Windows | Windows 10 | chrome 62.0 | 1680x1050
+3660221,mobile,New,,iOS Device | iOS 11.1.2 | mobile safari 11.0 | 1334x750
+3660226,mobile,New,,iOS Device | iOS 10.2.1 | mobile safari 10.0 | 1136x640
+3660235,mobile,Found,,iOS Device | iOS 10.3.3 | mobile safari 10.0 | 1334x750
+3660240,desktop,Found,,Windows | Windows 7 | firefox 57.0 | 1600x900
+3660259,desktop,Found,,rv:11.0 | NULL | ie 11.0 for desktop | NULL
+3660266,mobile,New,,iOS Device | iOS 10.2.1 | mobile safari 10.0 | 1334x750
+3660271,mobile,Found,,NULL | Android | chrome 61.0 | 855x480
+3660273,desktop,New,,MacOS | Mac OS X 10_10_5 | safari generic | 1440x900
+3660274,,,,NULL | NULL | NULL | NULL
+3660275,,,,NULL | NULL | NULL | NULL
+3660285,desktop,New,,Windows | Windows 10 | edge 15.0 | 1600x900
+3660299,desktop,Found,,MacOS | Mac OS X 10_13_1 | safari generic | 2880x1800
+3660301,desktop,Found,,MacOS | Mac OS X 10_13_1 | safari generic | 2880x1800
+3660315,mobile,New,,iOS Device | iOS 11.0.0 | mobile safari generic | 2208x1242
+3660316,mobile,New,,iOS Device | iOS 11.0.0 | mobile safari generic | 2208x1242
+3660322,desktop,Found,,Windows | Windows 10 | chrome 62.0 | 1920x1080
+3660325,desktop,Found,,Windows | Windows 10 | chrome 62.0 | 1440x900
+3660327,desktop,Found,,Windows | Windows 10 | chrome 62.0 | 1680x1050
+3660331,mobile,Found,,iOS Device | iOS 11.1.2 | mobile safari 11.0 | 1334x750
+3660337,desktop,New,,MacOS | Mac OS X 10_11_6 | safari generic | 2880x1800
+3660338,mobile,New,,SM-G928V Build/NRD90M | Android 7.0 | chrome 62.0 for android | NULL
+3660339,mobile,New,,SM-G928V Build/NRD90M | Android 7.0 | chrome 62.0 for android | NULL
+3660350,mobile,New,,NULL | NULL | NULL | NULL
+3660351,mobile,New,,iOS Device | iOS 11.1.2 | mobile safari 11.0 | 2208x1242
+3660352,desktop,Found,,Windows | Windows 10 | chrome 61.0 | 1366x768
+3660353,desktop,Found,IP_PROXY:HIDDEN,Trident/7.0 | Windows 7 | ie 11.0 for desktop | 1280x1024
+3660354,mobile,New,,LG-H831 | NULL | NULL | NULL
+3660355,mobile,New,,LG-H831 | NULL | NULL | NULL

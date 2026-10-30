@@ -1,0 +1,134 @@
+{
+  "case_id": "HHF-018",
+  "case": {
+    "status": "closed_legitimate",
+    "verdict": "legitimate",
+    "fraud_probability": 0.0,
+    "pattern": "none",
+    "pattern_description": "",
+    "affected_txn_ids": [],
+    "first_suspicious_txn_id": "",
+    "connected_card_ids": [],
+    "connected_device_profiles": [],
+    "exposure_usd": 0.0,
+    "evidence": [
+      {
+        "claim": "Amount $34.22 sits inside the card's baseline (prior median $150.56, prior maximum $3,162.97 over 110 transactions)",
+        "source": "graph",
+        "ref": "query:case_context(txn=3612011)",
+        "entity_ids": [
+          "3612011",
+          "C02753-K1"
+        ]
+      },
+      {
+        "claim": "Purchaser email domain aol.com used 5 times before on this card",
+        "source": "graph",
+        "ref": "query:case_context(txn=3612011)",
+        "entity_ids": [
+          "3612011"
+        ]
+      },
+      {
+        "claim": "Transaction routed through IP_PROXY:ANONYMOUS",
+        "source": "graph",
+        "ref": "query:case_context(txn=3612011)",
+        "entity_ids": [
+          "3612011"
+        ]
+      },
+      {
+        "claim": "Case-memory scorer (LightGBM over the bank's 5,565 closed cases; October holdout AUC 0.956) puts the flagged transaction at 0.00 (calibrated 0.00); the real-time risk score was 0.03",
+        "source": "graph",
+        "ref": "query:case_context(txn=3612011)",
+        "entity_ids": [
+          "3612011"
+        ]
+      },
+      {
+        "claim": "2 prior confirmed-fraud case(s) on this card (out_of_region_use), most recent 2016-09-27",
+        "source": "graph",
+        "ref": "query:prior_cases_for_customer(customer=C02753)",
+        "entity_ids": [
+          "CC-1739",
+          "CC-4010",
+          "C02753-K1"
+        ]
+      },
+      {
+        "claim": "1 prior risk-score alert(s) on this card were cleared after the customer confirmed the activity (CC-4570); the cleared alert had the same shape as this one",
+        "source": "graph",
+        "ref": "query:prior_cases_for_customer(customer=C02753)",
+        "entity_ids": [
+          "CC-4570",
+          "C02753-K1"
+        ]
+      },
+      {
+        "claim": "Customer confirmed the activity when asked (assumed reply)",
+        "source": "customer",
+        "ref": "evidence_request:1",
+        "entity_ids": []
+      }
+    ],
+    "similar_prior_cases": [
+      "CC-4570",
+      "CC-4010",
+      "CC-1739"
+    ],
+    "summary": "Risk-score alert (0.80) on transaction 3612011 ($34.22, online) for card C02753-K1. Customer confirmed the activity when asked (assumed reply). Verdict legitimate at probability 0.00. Final actions: CREATE_CASE, ALLOW_TRANSACTION, CLOSE_NO_FRAUD after the assumed customer_validation reply; status closed_legitimate.",
+    "written_to_graph": false,
+    "graph_case_id": "AC-HHF-018"
+  },
+  "evidence_requests": [
+    {
+      "type": "customer_validation",
+      "asked_after_step": 15,
+      "assumed_response": "ASSUMED (simulated): customer confirmed an unusual amount of $34.22 consistent with stated intent"
+    }
+  ],
+  "next_best_actions": {
+    "initial": [
+      {
+        "action": "CREATE_CASE",
+        "route": "auto",
+        "reason": "3a: evidence requested; case opened and written to the graph"
+      },
+      {
+        "action": "VERIFY_WITH_CUSTOMER",
+        "route": "auto",
+        "reason": "R1: probability 0.00 rests on a single evidence family (history, memory); ask the cardholder which of the transactions were theirs before any block"
+      }
+    ],
+    "final": [
+      {
+        "action": "CREATE_CASE",
+        "route": "auto",
+        "reason": "3a: evidence requested; case opened and written to the graph"
+      },
+      {
+        "action": "ALLOW_TRANSACTION",
+        "route": "auto",
+        "reason": "R3: alert cleared; let the flagged transaction stand"
+      },
+      {
+        "action": "CLOSE_NO_FRAUD",
+        "route": "auto",
+        "reason": "R3: customer confirmed the activity; the confirmation is noted in the case"
+      }
+    ],
+    "what_changed": "The assumed reply (customer_validation: customer confirmed an unusual amount of $34.22 consistent with stated intent) left the probability at 0.00 and the verdict became legitimate. Added ALLOW_TRANSACTION, CLOSE_NO_FRAUD. Dropped VERIFY_WITH_CUSTOMER. Counterfactual: had the customer denied the purchase, R2 would have applied: BLOCK_CARD (L1) and CREATE_CASE."
+  },
+  "sar": {
+    "file": false,
+    "reason": "3a not met: verdict legitimate (fraud not confirmed or strongly suspected), exposure $0.00; no report",
+    "narrative": "",
+    "subjects": [],
+    "total_amount_usd": 0.0,
+    "activity_dates": []
+  },
+  "stop_reason": "Policy §6 test 2: the assumed customer confirmation settled the question. Probability 0.00 with 3 families also meets §6 test 1.",
+  "tool_calls": 15,
+  "tokens": 0,
+  "latency_s": 0.08
+}

@@ -1,0 +1,3831 @@
+{
+ "case_pack": "case_pack_final.csv",
+ "n_cases": 18,
+ "teams": {
+  ".claude": {
+   "cases_answered": 0,
+   "hard": 18,
+   "policy": 0,
+   "warning": 0,
+   "clean": 0,
+   "cases": {
+    "HHF-001": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-001.json not found"
+      ]
+     ]
+    },
+    "HHF-002": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-002.json not found"
+      ]
+     ]
+    },
+    "HHF-003": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-003.json not found"
+      ]
+     ]
+    },
+    "HHF-004": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-004.json not found"
+      ]
+     ]
+    },
+    "HHF-005": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-005.json not found"
+      ]
+     ]
+    },
+    "HHF-006": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-006.json not found"
+      ]
+     ]
+    },
+    "HHF-007": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-007.json not found"
+      ]
+     ]
+    },
+    "HHF-008": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-008.json not found"
+      ]
+     ]
+    },
+    "HHF-009": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-009.json not found"
+      ]
+     ]
+    },
+    "HHF-010": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-010.json not found"
+      ]
+     ]
+    },
+    "HHF-011": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-011.json not found"
+      ]
+     ]
+    },
+    "HHF-012": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-012.json not found"
+      ]
+     ]
+    },
+    "HHF-013": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-013.json not found"
+      ]
+     ]
+    },
+    "HHF-014": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-014.json not found"
+      ]
+     ]
+    },
+    "HHF-015": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-015.json not found"
+      ]
+     ]
+    },
+    "HHF-016": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-016.json not found"
+      ]
+     ]
+    },
+    "HHF-017": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-017.json not found"
+      ]
+     ]
+    },
+    "HHF-018": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-018.json not found"
+      ]
+     ]
+    }
+   }
+  },
+  ".git": {
+   "cases_answered": 0,
+   "hard": 18,
+   "policy": 0,
+   "warning": 0,
+   "clean": 0,
+   "cases": {
+    "HHF-001": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-001.json not found"
+      ]
+     ]
+    },
+    "HHF-002": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-002.json not found"
+      ]
+     ]
+    },
+    "HHF-003": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-003.json not found"
+      ]
+     ]
+    },
+    "HHF-004": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-004.json not found"
+      ]
+     ]
+    },
+    "HHF-005": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-005.json not found"
+      ]
+     ]
+    },
+    "HHF-006": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-006.json not found"
+      ]
+     ]
+    },
+    "HHF-007": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-007.json not found"
+      ]
+     ]
+    },
+    "HHF-008": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-008.json not found"
+      ]
+     ]
+    },
+    "HHF-009": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-009.json not found"
+      ]
+     ]
+    },
+    "HHF-010": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-010.json not found"
+      ]
+     ]
+    },
+    "HHF-011": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-011.json not found"
+      ]
+     ]
+    },
+    "HHF-012": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-012.json not found"
+      ]
+     ]
+    },
+    "HHF-013": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-013.json not found"
+      ]
+     ]
+    },
+    "HHF-014": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-014.json not found"
+      ]
+     ]
+    },
+    "HHF-015": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-015.json not found"
+      ]
+     ]
+    },
+    "HHF-016": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-016.json not found"
+      ]
+     ]
+    },
+    "HHF-017": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-017.json not found"
+      ]
+     ]
+    },
+    "HHF-018": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-018.json not found"
+      ]
+     ]
+    }
+   }
+  },
+  ".github": {
+   "cases_answered": 0,
+   "hard": 18,
+   "policy": 0,
+   "warning": 0,
+   "clean": 0,
+   "cases": {
+    "HHF-001": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-001.json not found"
+      ]
+     ]
+    },
+    "HHF-002": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-002.json not found"
+      ]
+     ]
+    },
+    "HHF-003": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-003.json not found"
+      ]
+     ]
+    },
+    "HHF-004": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-004.json not found"
+      ]
+     ]
+    },
+    "HHF-005": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-005.json not found"
+      ]
+     ]
+    },
+    "HHF-006": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-006.json not found"
+      ]
+     ]
+    },
+    "HHF-007": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-007.json not found"
+      ]
+     ]
+    },
+    "HHF-008": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-008.json not found"
+      ]
+     ]
+    },
+    "HHF-009": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-009.json not found"
+      ]
+     ]
+    },
+    "HHF-010": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-010.json not found"
+      ]
+     ]
+    },
+    "HHF-011": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-011.json not found"
+      ]
+     ]
+    },
+    "HHF-012": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-012.json not found"
+      ]
+     ]
+    },
+    "HHF-013": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-013.json not found"
+      ]
+     ]
+    },
+    "HHF-014": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-014.json not found"
+      ]
+     ]
+    },
+    "HHF-015": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-015.json not found"
+      ]
+     ]
+    },
+    "HHF-016": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-016.json not found"
+      ]
+     ]
+    },
+    "HHF-017": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-017.json not found"
+      ]
+     ]
+    },
+    "HHF-018": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-018.json not found"
+      ]
+     ]
+    }
+   }
+  },
+  ".ruff_cache": {
+   "cases_answered": 0,
+   "hard": 18,
+   "policy": 0,
+   "warning": 0,
+   "clean": 0,
+   "cases": {
+    "HHF-001": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-001.json not found"
+      ]
+     ]
+    },
+    "HHF-002": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-002.json not found"
+      ]
+     ]
+    },
+    "HHF-003": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-003.json not found"
+      ]
+     ]
+    },
+    "HHF-004": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-004.json not found"
+      ]
+     ]
+    },
+    "HHF-005": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-005.json not found"
+      ]
+     ]
+    },
+    "HHF-006": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-006.json not found"
+      ]
+     ]
+    },
+    "HHF-007": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-007.json not found"
+      ]
+     ]
+    },
+    "HHF-008": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-008.json not found"
+      ]
+     ]
+    },
+    "HHF-009": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-009.json not found"
+      ]
+     ]
+    },
+    "HHF-010": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-010.json not found"
+      ]
+     ]
+    },
+    "HHF-011": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-011.json not found"
+      ]
+     ]
+    },
+    "HHF-012": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-012.json not found"
+      ]
+     ]
+    },
+    "HHF-013": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-013.json not found"
+      ]
+     ]
+    },
+    "HHF-014": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-014.json not found"
+      ]
+     ]
+    },
+    "HHF-015": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-015.json not found"
+      ]
+     ]
+    },
+    "HHF-016": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-016.json not found"
+      ]
+     ]
+    },
+    "HHF-017": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-017.json not found"
+      ]
+     ]
+    },
+    "HHF-018": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-018.json not found"
+      ]
+     ]
+    }
+   }
+  },
+  ".streamlit": {
+   "cases_answered": 0,
+   "hard": 18,
+   "policy": 0,
+   "warning": 0,
+   "clean": 0,
+   "cases": {
+    "HHF-001": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-001.json not found"
+      ]
+     ]
+    },
+    "HHF-002": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-002.json not found"
+      ]
+     ]
+    },
+    "HHF-003": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-003.json not found"
+      ]
+     ]
+    },
+    "HHF-004": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-004.json not found"
+      ]
+     ]
+    },
+    "HHF-005": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-005.json not found"
+      ]
+     ]
+    },
+    "HHF-006": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-006.json not found"
+      ]
+     ]
+    },
+    "HHF-007": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-007.json not found"
+      ]
+     ]
+    },
+    "HHF-008": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-008.json not found"
+      ]
+     ]
+    },
+    "HHF-009": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-009.json not found"
+      ]
+     ]
+    },
+    "HHF-010": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-010.json not found"
+      ]
+     ]
+    },
+    "HHF-011": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-011.json not found"
+      ]
+     ]
+    },
+    "HHF-012": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-012.json not found"
+      ]
+     ]
+    },
+    "HHF-013": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-013.json not found"
+      ]
+     ]
+    },
+    "HHF-014": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-014.json not found"
+      ]
+     ]
+    },
+    "HHF-015": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-015.json not found"
+      ]
+     ]
+    },
+    "HHF-016": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-016.json not found"
+      ]
+     ]
+    },
+    "HHF-017": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-017.json not found"
+      ]
+     ]
+    },
+    "HHF-018": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-018.json not found"
+      ]
+     ]
+    }
+   }
+  },
+  ".venv": {
+   "cases_answered": 0,
+   "hard": 18,
+   "policy": 0,
+   "warning": 0,
+   "clean": 0,
+   "cases": {
+    "HHF-001": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-001.json not found"
+      ]
+     ]
+    },
+    "HHF-002": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-002.json not found"
+      ]
+     ]
+    },
+    "HHF-003": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-003.json not found"
+      ]
+     ]
+    },
+    "HHF-004": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-004.json not found"
+      ]
+     ]
+    },
+    "HHF-005": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-005.json not found"
+      ]
+     ]
+    },
+    "HHF-006": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-006.json not found"
+      ]
+     ]
+    },
+    "HHF-007": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-007.json not found"
+      ]
+     ]
+    },
+    "HHF-008": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-008.json not found"
+      ]
+     ]
+    },
+    "HHF-009": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-009.json not found"
+      ]
+     ]
+    },
+    "HHF-010": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-010.json not found"
+      ]
+     ]
+    },
+    "HHF-011": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-011.json not found"
+      ]
+     ]
+    },
+    "HHF-012": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-012.json not found"
+      ]
+     ]
+    },
+    "HHF-013": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-013.json not found"
+      ]
+     ]
+    },
+    "HHF-014": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-014.json not found"
+      ]
+     ]
+    },
+    "HHF-015": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-015.json not found"
+      ]
+     ]
+    },
+    "HHF-016": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-016.json not found"
+      ]
+     ]
+    },
+    "HHF-017": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-017.json not found"
+      ]
+     ]
+    },
+    "HHF-018": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-018.json not found"
+      ]
+     ]
+    }
+   }
+  },
+  "agent": {
+   "cases_answered": 0,
+   "hard": 18,
+   "policy": 0,
+   "warning": 0,
+   "clean": 0,
+   "cases": {
+    "HHF-001": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-001.json not found"
+      ]
+     ]
+    },
+    "HHF-002": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-002.json not found"
+      ]
+     ]
+    },
+    "HHF-003": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-003.json not found"
+      ]
+     ]
+    },
+    "HHF-004": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-004.json not found"
+      ]
+     ]
+    },
+    "HHF-005": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-005.json not found"
+      ]
+     ]
+    },
+    "HHF-006": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-006.json not found"
+      ]
+     ]
+    },
+    "HHF-007": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-007.json not found"
+      ]
+     ]
+    },
+    "HHF-008": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-008.json not found"
+      ]
+     ]
+    },
+    "HHF-009": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-009.json not found"
+      ]
+     ]
+    },
+    "HHF-010": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-010.json not found"
+      ]
+     ]
+    },
+    "HHF-011": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-011.json not found"
+      ]
+     ]
+    },
+    "HHF-012": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-012.json not found"
+      ]
+     ]
+    },
+    "HHF-013": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-013.json not found"
+      ]
+     ]
+    },
+    "HHF-014": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-014.json not found"
+      ]
+     ]
+    },
+    "HHF-015": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-015.json not found"
+      ]
+     ]
+    },
+    "HHF-016": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-016.json not found"
+      ]
+     ]
+    },
+    "HHF-017": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-017.json not found"
+      ]
+     ]
+    },
+    "HHF-018": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-018.json not found"
+      ]
+     ]
+    }
+   }
+  },
+  "cases": {
+   "cases_answered": 18,
+   "hard": 0,
+   "policy": 0,
+   "warning": 0,
+   "clean": 18,
+   "cases": {
+    "HHF-001": {
+     "findings": []
+    },
+    "HHF-002": {
+     "findings": []
+    },
+    "HHF-003": {
+     "findings": []
+    },
+    "HHF-004": {
+     "findings": []
+    },
+    "HHF-005": {
+     "findings": []
+    },
+    "HHF-006": {
+     "findings": []
+    },
+    "HHF-007": {
+     "findings": []
+    },
+    "HHF-008": {
+     "findings": []
+    },
+    "HHF-009": {
+     "findings": []
+    },
+    "HHF-010": {
+     "findings": []
+    },
+    "HHF-011": {
+     "findings": []
+    },
+    "HHF-012": {
+     "findings": []
+    },
+    "HHF-013": {
+     "findings": []
+    },
+    "HHF-014": {
+     "findings": []
+    },
+    "HHF-015": {
+     "findings": []
+    },
+    "HHF-016": {
+     "findings": []
+    },
+    "HHF-017": {
+     "findings": []
+    },
+    "HHF-018": {
+     "findings": []
+    }
+   }
+  },
+  "contracts": {
+   "cases_answered": 0,
+   "hard": 18,
+   "policy": 0,
+   "warning": 0,
+   "clean": 0,
+   "cases": {
+    "HHF-001": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-001.json not found"
+      ]
+     ]
+    },
+    "HHF-002": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-002.json not found"
+      ]
+     ]
+    },
+    "HHF-003": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-003.json not found"
+      ]
+     ]
+    },
+    "HHF-004": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-004.json not found"
+      ]
+     ]
+    },
+    "HHF-005": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-005.json not found"
+      ]
+     ]
+    },
+    "HHF-006": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-006.json not found"
+      ]
+     ]
+    },
+    "HHF-007": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-007.json not found"
+      ]
+     ]
+    },
+    "HHF-008": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-008.json not found"
+      ]
+     ]
+    },
+    "HHF-009": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-009.json not found"
+      ]
+     ]
+    },
+    "HHF-010": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-010.json not found"
+      ]
+     ]
+    },
+    "HHF-011": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-011.json not found"
+      ]
+     ]
+    },
+    "HHF-012": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-012.json not found"
+      ]
+     ]
+    },
+    "HHF-013": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-013.json not found"
+      ]
+     ]
+    },
+    "HHF-014": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-014.json not found"
+      ]
+     ]
+    },
+    "HHF-015": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-015.json not found"
+      ]
+     ]
+    },
+    "HHF-016": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-016.json not found"
+      ]
+     ]
+    },
+    "HHF-017": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-017.json not found"
+      ]
+     ]
+    },
+    "HHF-018": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-018.json not found"
+      ]
+     ]
+    }
+   }
+  },
+  "data": {
+   "cases_answered": 0,
+   "hard": 18,
+   "policy": 0,
+   "warning": 0,
+   "clean": 0,
+   "cases": {
+    "HHF-001": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-001.json not found"
+      ]
+     ]
+    },
+    "HHF-002": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-002.json not found"
+      ]
+     ]
+    },
+    "HHF-003": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-003.json not found"
+      ]
+     ]
+    },
+    "HHF-004": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-004.json not found"
+      ]
+     ]
+    },
+    "HHF-005": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-005.json not found"
+      ]
+     ]
+    },
+    "HHF-006": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-006.json not found"
+      ]
+     ]
+    },
+    "HHF-007": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-007.json not found"
+      ]
+     ]
+    },
+    "HHF-008": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-008.json not found"
+      ]
+     ]
+    },
+    "HHF-009": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-009.json not found"
+      ]
+     ]
+    },
+    "HHF-010": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-010.json not found"
+      ]
+     ]
+    },
+    "HHF-011": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-011.json not found"
+      ]
+     ]
+    },
+    "HHF-012": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-012.json not found"
+      ]
+     ]
+    },
+    "HHF-013": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-013.json not found"
+      ]
+     ]
+    },
+    "HHF-014": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-014.json not found"
+      ]
+     ]
+    },
+    "HHF-015": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-015.json not found"
+      ]
+     ]
+    },
+    "HHF-016": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-016.json not found"
+      ]
+     ]
+    },
+    "HHF-017": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-017.json not found"
+      ]
+     ]
+    },
+    "HHF-018": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-018.json not found"
+      ]
+     ]
+    }
+   }
+  },
+  "docs": {
+   "cases_answered": 0,
+   "hard": 18,
+   "policy": 0,
+   "warning": 0,
+   "clean": 0,
+   "cases": {
+    "HHF-001": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-001.json not found"
+      ]
+     ]
+    },
+    "HHF-002": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-002.json not found"
+      ]
+     ]
+    },
+    "HHF-003": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-003.json not found"
+      ]
+     ]
+    },
+    "HHF-004": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-004.json not found"
+      ]
+     ]
+    },
+    "HHF-005": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-005.json not found"
+      ]
+     ]
+    },
+    "HHF-006": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-006.json not found"
+      ]
+     ]
+    },
+    "HHF-007": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-007.json not found"
+      ]
+     ]
+    },
+    "HHF-008": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-008.json not found"
+      ]
+     ]
+    },
+    "HHF-009": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-009.json not found"
+      ]
+     ]
+    },
+    "HHF-010": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-010.json not found"
+      ]
+     ]
+    },
+    "HHF-011": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-011.json not found"
+      ]
+     ]
+    },
+    "HHF-012": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-012.json not found"
+      ]
+     ]
+    },
+    "HHF-013": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-013.json not found"
+      ]
+     ]
+    },
+    "HHF-014": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-014.json not found"
+      ]
+     ]
+    },
+    "HHF-015": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-015.json not found"
+      ]
+     ]
+    },
+    "HHF-016": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-016.json not found"
+      ]
+     ]
+    },
+    "HHF-017": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-017.json not found"
+      ]
+     ]
+    },
+    "HHF-018": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-018.json not found"
+      ]
+     ]
+    }
+   }
+  },
+  "engine": {
+   "cases_answered": 0,
+   "hard": 18,
+   "policy": 0,
+   "warning": 0,
+   "clean": 0,
+   "cases": {
+    "HHF-001": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-001.json not found"
+      ]
+     ]
+    },
+    "HHF-002": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-002.json not found"
+      ]
+     ]
+    },
+    "HHF-003": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-003.json not found"
+      ]
+     ]
+    },
+    "HHF-004": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-004.json not found"
+      ]
+     ]
+    },
+    "HHF-005": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-005.json not found"
+      ]
+     ]
+    },
+    "HHF-006": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-006.json not found"
+      ]
+     ]
+    },
+    "HHF-007": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-007.json not found"
+      ]
+     ]
+    },
+    "HHF-008": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-008.json not found"
+      ]
+     ]
+    },
+    "HHF-009": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-009.json not found"
+      ]
+     ]
+    },
+    "HHF-010": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-010.json not found"
+      ]
+     ]
+    },
+    "HHF-011": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-011.json not found"
+      ]
+     ]
+    },
+    "HHF-012": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-012.json not found"
+      ]
+     ]
+    },
+    "HHF-013": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-013.json not found"
+      ]
+     ]
+    },
+    "HHF-014": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-014.json not found"
+      ]
+     ]
+    },
+    "HHF-015": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-015.json not found"
+      ]
+     ]
+    },
+    "HHF-016": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-016.json not found"
+      ]
+     ]
+    },
+    "HHF-017": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-017.json not found"
+      ]
+     ]
+    },
+    "HHF-018": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-018.json not found"
+      ]
+     ]
+    }
+   }
+  },
+  "etl": {
+   "cases_answered": 0,
+   "hard": 18,
+   "policy": 0,
+   "warning": 0,
+   "clean": 0,
+   "cases": {
+    "HHF-001": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-001.json not found"
+      ]
+     ]
+    },
+    "HHF-002": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-002.json not found"
+      ]
+     ]
+    },
+    "HHF-003": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-003.json not found"
+      ]
+     ]
+    },
+    "HHF-004": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-004.json not found"
+      ]
+     ]
+    },
+    "HHF-005": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-005.json not found"
+      ]
+     ]
+    },
+    "HHF-006": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-006.json not found"
+      ]
+     ]
+    },
+    "HHF-007": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-007.json not found"
+      ]
+     ]
+    },
+    "HHF-008": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-008.json not found"
+      ]
+     ]
+    },
+    "HHF-009": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-009.json not found"
+      ]
+     ]
+    },
+    "HHF-010": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-010.json not found"
+      ]
+     ]
+    },
+    "HHF-011": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-011.json not found"
+      ]
+     ]
+    },
+    "HHF-012": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-012.json not found"
+      ]
+     ]
+    },
+    "HHF-013": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-013.json not found"
+      ]
+     ]
+    },
+    "HHF-014": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-014.json not found"
+      ]
+     ]
+    },
+    "HHF-015": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-015.json not found"
+      ]
+     ]
+    },
+    "HHF-016": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-016.json not found"
+      ]
+     ]
+    },
+    "HHF-017": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-017.json not found"
+      ]
+     ]
+    },
+    "HHF-018": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-018.json not found"
+      ]
+     ]
+    }
+   }
+  },
+  "graph": {
+   "cases_answered": 0,
+   "hard": 18,
+   "policy": 0,
+   "warning": 0,
+   "clean": 0,
+   "cases": {
+    "HHF-001": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-001.json not found"
+      ]
+     ]
+    },
+    "HHF-002": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-002.json not found"
+      ]
+     ]
+    },
+    "HHF-003": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-003.json not found"
+      ]
+     ]
+    },
+    "HHF-004": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-004.json not found"
+      ]
+     ]
+    },
+    "HHF-005": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-005.json not found"
+      ]
+     ]
+    },
+    "HHF-006": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-006.json not found"
+      ]
+     ]
+    },
+    "HHF-007": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-007.json not found"
+      ]
+     ]
+    },
+    "HHF-008": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-008.json not found"
+      ]
+     ]
+    },
+    "HHF-009": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-009.json not found"
+      ]
+     ]
+    },
+    "HHF-010": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-010.json not found"
+      ]
+     ]
+    },
+    "HHF-011": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-011.json not found"
+      ]
+     ]
+    },
+    "HHF-012": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-012.json not found"
+      ]
+     ]
+    },
+    "HHF-013": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-013.json not found"
+      ]
+     ]
+    },
+    "HHF-014": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-014.json not found"
+      ]
+     ]
+    },
+    "HHF-015": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-015.json not found"
+      ]
+     ]
+    },
+    "HHF-016": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-016.json not found"
+      ]
+     ]
+    },
+    "HHF-017": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-017.json not found"
+      ]
+     ]
+    },
+    "HHF-018": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-018.json not found"
+      ]
+     ]
+    }
+   }
+  },
+  "mcp": {
+   "cases_answered": 0,
+   "hard": 18,
+   "policy": 0,
+   "warning": 0,
+   "clean": 0,
+   "cases": {
+    "HHF-001": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-001.json not found"
+      ]
+     ]
+    },
+    "HHF-002": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-002.json not found"
+      ]
+     ]
+    },
+    "HHF-003": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-003.json not found"
+      ]
+     ]
+    },
+    "HHF-004": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-004.json not found"
+      ]
+     ]
+    },
+    "HHF-005": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-005.json not found"
+      ]
+     ]
+    },
+    "HHF-006": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-006.json not found"
+      ]
+     ]
+    },
+    "HHF-007": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-007.json not found"
+      ]
+     ]
+    },
+    "HHF-008": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-008.json not found"
+      ]
+     ]
+    },
+    "HHF-009": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-009.json not found"
+      ]
+     ]
+    },
+    "HHF-010": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-010.json not found"
+      ]
+     ]
+    },
+    "HHF-011": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-011.json not found"
+      ]
+     ]
+    },
+    "HHF-012": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-012.json not found"
+      ]
+     ]
+    },
+    "HHF-013": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-013.json not found"
+      ]
+     ]
+    },
+    "HHF-014": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-014.json not found"
+      ]
+     ]
+    },
+    "HHF-015": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-015.json not found"
+      ]
+     ]
+    },
+    "HHF-016": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-016.json not found"
+      ]
+     ]
+    },
+    "HHF-017": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-017.json not found"
+      ]
+     ]
+    },
+    "HHF-018": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-018.json not found"
+      ]
+     ]
+    }
+   }
+  },
+  "ops": {
+   "cases_answered": 0,
+   "hard": 18,
+   "policy": 0,
+   "warning": 0,
+   "clean": 0,
+   "cases": {
+    "HHF-001": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-001.json not found"
+      ]
+     ]
+    },
+    "HHF-002": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-002.json not found"
+      ]
+     ]
+    },
+    "HHF-003": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-003.json not found"
+      ]
+     ]
+    },
+    "HHF-004": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-004.json not found"
+      ]
+     ]
+    },
+    "HHF-005": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-005.json not found"
+      ]
+     ]
+    },
+    "HHF-006": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-006.json not found"
+      ]
+     ]
+    },
+    "HHF-007": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-007.json not found"
+      ]
+     ]
+    },
+    "HHF-008": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-008.json not found"
+      ]
+     ]
+    },
+    "HHF-009": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-009.json not found"
+      ]
+     ]
+    },
+    "HHF-010": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-010.json not found"
+      ]
+     ]
+    },
+    "HHF-011": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-011.json not found"
+      ]
+     ]
+    },
+    "HHF-012": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-012.json not found"
+      ]
+     ]
+    },
+    "HHF-013": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-013.json not found"
+      ]
+     ]
+    },
+    "HHF-014": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-014.json not found"
+      ]
+     ]
+    },
+    "HHF-015": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-015.json not found"
+      ]
+     ]
+    },
+    "HHF-016": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-016.json not found"
+      ]
+     ]
+    },
+    "HHF-017": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-017.json not found"
+      ]
+     ]
+    },
+    "HHF-018": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-018.json not found"
+      ]
+     ]
+    }
+   }
+  },
+  "policy": {
+   "cases_answered": 0,
+   "hard": 18,
+   "policy": 0,
+   "warning": 0,
+   "clean": 0,
+   "cases": {
+    "HHF-001": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-001.json not found"
+      ]
+     ]
+    },
+    "HHF-002": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-002.json not found"
+      ]
+     ]
+    },
+    "HHF-003": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-003.json not found"
+      ]
+     ]
+    },
+    "HHF-004": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-004.json not found"
+      ]
+     ]
+    },
+    "HHF-005": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-005.json not found"
+      ]
+     ]
+    },
+    "HHF-006": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-006.json not found"
+      ]
+     ]
+    },
+    "HHF-007": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-007.json not found"
+      ]
+     ]
+    },
+    "HHF-008": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-008.json not found"
+      ]
+     ]
+    },
+    "HHF-009": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-009.json not found"
+      ]
+     ]
+    },
+    "HHF-010": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-010.json not found"
+      ]
+     ]
+    },
+    "HHF-011": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-011.json not found"
+      ]
+     ]
+    },
+    "HHF-012": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-012.json not found"
+      ]
+     ]
+    },
+    "HHF-013": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-013.json not found"
+      ]
+     ]
+    },
+    "HHF-014": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-014.json not found"
+      ]
+     ]
+    },
+    "HHF-015": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-015.json not found"
+      ]
+     ]
+    },
+    "HHF-016": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-016.json not found"
+      ]
+     ]
+    },
+    "HHF-017": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-017.json not found"
+      ]
+     ]
+    },
+    "HHF-018": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-018.json not found"
+      ]
+     ]
+    }
+   }
+  },
+  "qa": {
+   "cases_answered": 0,
+   "hard": 18,
+   "policy": 0,
+   "warning": 0,
+   "clean": 0,
+   "cases": {
+    "HHF-001": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-001.json not found"
+      ]
+     ]
+    },
+    "HHF-002": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-002.json not found"
+      ]
+     ]
+    },
+    "HHF-003": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-003.json not found"
+      ]
+     ]
+    },
+    "HHF-004": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-004.json not found"
+      ]
+     ]
+    },
+    "HHF-005": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-005.json not found"
+      ]
+     ]
+    },
+    "HHF-006": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-006.json not found"
+      ]
+     ]
+    },
+    "HHF-007": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-007.json not found"
+      ]
+     ]
+    },
+    "HHF-008": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-008.json not found"
+      ]
+     ]
+    },
+    "HHF-009": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-009.json not found"
+      ]
+     ]
+    },
+    "HHF-010": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-010.json not found"
+      ]
+     ]
+    },
+    "HHF-011": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-011.json not found"
+      ]
+     ]
+    },
+    "HHF-012": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-012.json not found"
+      ]
+     ]
+    },
+    "HHF-013": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-013.json not found"
+      ]
+     ]
+    },
+    "HHF-014": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-014.json not found"
+      ]
+     ]
+    },
+    "HHF-015": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-015.json not found"
+      ]
+     ]
+    },
+    "HHF-016": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-016.json not found"
+      ]
+     ]
+    },
+    "HHF-017": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-017.json not found"
+      ]
+     ]
+    },
+    "HHF-018": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-018.json not found"
+      ]
+     ]
+    }
+   }
+  },
+  "rag": {
+   "cases_answered": 0,
+   "hard": 18,
+   "policy": 0,
+   "warning": 0,
+   "clean": 0,
+   "cases": {
+    "HHF-001": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-001.json not found"
+      ]
+     ]
+    },
+    "HHF-002": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-002.json not found"
+      ]
+     ]
+    },
+    "HHF-003": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-003.json not found"
+      ]
+     ]
+    },
+    "HHF-004": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-004.json not found"
+      ]
+     ]
+    },
+    "HHF-005": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-005.json not found"
+      ]
+     ]
+    },
+    "HHF-006": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-006.json not found"
+      ]
+     ]
+    },
+    "HHF-007": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-007.json not found"
+      ]
+     ]
+    },
+    "HHF-008": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-008.json not found"
+      ]
+     ]
+    },
+    "HHF-009": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-009.json not found"
+      ]
+     ]
+    },
+    "HHF-010": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-010.json not found"
+      ]
+     ]
+    },
+    "HHF-011": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-011.json not found"
+      ]
+     ]
+    },
+    "HHF-012": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-012.json not found"
+      ]
+     ]
+    },
+    "HHF-013": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-013.json not found"
+      ]
+     ]
+    },
+    "HHF-014": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-014.json not found"
+      ]
+     ]
+    },
+    "HHF-015": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-015.json not found"
+      ]
+     ]
+    },
+    "HHF-016": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-016.json not found"
+      ]
+     ]
+    },
+    "HHF-017": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-017.json not found"
+      ]
+     ]
+    },
+    "HHF-018": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-018.json not found"
+      ]
+     ]
+    }
+   }
+  },
+  "runs": {
+   "cases_answered": 0,
+   "hard": 18,
+   "policy": 0,
+   "warning": 0,
+   "clean": 0,
+   "cases": {
+    "HHF-001": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-001.json not found"
+      ]
+     ]
+    },
+    "HHF-002": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-002.json not found"
+      ]
+     ]
+    },
+    "HHF-003": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-003.json not found"
+      ]
+     ]
+    },
+    "HHF-004": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-004.json not found"
+      ]
+     ]
+    },
+    "HHF-005": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-005.json not found"
+      ]
+     ]
+    },
+    "HHF-006": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-006.json not found"
+      ]
+     ]
+    },
+    "HHF-007": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-007.json not found"
+      ]
+     ]
+    },
+    "HHF-008": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-008.json not found"
+      ]
+     ]
+    },
+    "HHF-009": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-009.json not found"
+      ]
+     ]
+    },
+    "HHF-010": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-010.json not found"
+      ]
+     ]
+    },
+    "HHF-011": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-011.json not found"
+      ]
+     ]
+    },
+    "HHF-012": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-012.json not found"
+      ]
+     ]
+    },
+    "HHF-013": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-013.json not found"
+      ]
+     ]
+    },
+    "HHF-014": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-014.json not found"
+      ]
+     ]
+    },
+    "HHF-015": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-015.json not found"
+      ]
+     ]
+    },
+    "HHF-016": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-016.json not found"
+      ]
+     ]
+    },
+    "HHF-017": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-017.json not found"
+      ]
+     ]
+    },
+    "HHF-018": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-018.json not found"
+      ]
+     ]
+    }
+   }
+  },
+  "schema_engine": {
+   "cases_answered": 0,
+   "hard": 18,
+   "policy": 0,
+   "warning": 0,
+   "clean": 0,
+   "cases": {
+    "HHF-001": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-001.json not found"
+      ]
+     ]
+    },
+    "HHF-002": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-002.json not found"
+      ]
+     ]
+    },
+    "HHF-003": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-003.json not found"
+      ]
+     ]
+    },
+    "HHF-004": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-004.json not found"
+      ]
+     ]
+    },
+    "HHF-005": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-005.json not found"
+      ]
+     ]
+    },
+    "HHF-006": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-006.json not found"
+      ]
+     ]
+    },
+    "HHF-007": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-007.json not found"
+      ]
+     ]
+    },
+    "HHF-008": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-008.json not found"
+      ]
+     ]
+    },
+    "HHF-009": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-009.json not found"
+      ]
+     ]
+    },
+    "HHF-010": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-010.json not found"
+      ]
+     ]
+    },
+    "HHF-011": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-011.json not found"
+      ]
+     ]
+    },
+    "HHF-012": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-012.json not found"
+      ]
+     ]
+    },
+    "HHF-013": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-013.json not found"
+      ]
+     ]
+    },
+    "HHF-014": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-014.json not found"
+      ]
+     ]
+    },
+    "HHF-015": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-015.json not found"
+      ]
+     ]
+    },
+    "HHF-016": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-016.json not found"
+      ]
+     ]
+    },
+    "HHF-017": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-017.json not found"
+      ]
+     ]
+    },
+    "HHF-018": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-018.json not found"
+      ]
+     ]
+    }
+   }
+  },
+  "tests": {
+   "cases_answered": 0,
+   "hard": 18,
+   "policy": 0,
+   "warning": 0,
+   "clean": 0,
+   "cases": {
+    "HHF-001": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-001.json not found"
+      ]
+     ]
+    },
+    "HHF-002": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-002.json not found"
+      ]
+     ]
+    },
+    "HHF-003": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-003.json not found"
+      ]
+     ]
+    },
+    "HHF-004": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-004.json not found"
+      ]
+     ]
+    },
+    "HHF-005": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-005.json not found"
+      ]
+     ]
+    },
+    "HHF-006": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-006.json not found"
+      ]
+     ]
+    },
+    "HHF-007": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-007.json not found"
+      ]
+     ]
+    },
+    "HHF-008": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-008.json not found"
+      ]
+     ]
+    },
+    "HHF-009": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-009.json not found"
+      ]
+     ]
+    },
+    "HHF-010": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-010.json not found"
+      ]
+     ]
+    },
+    "HHF-011": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-011.json not found"
+      ]
+     ]
+    },
+    "HHF-012": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-012.json not found"
+      ]
+     ]
+    },
+    "HHF-013": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-013.json not found"
+      ]
+     ]
+    },
+    "HHF-014": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-014.json not found"
+      ]
+     ]
+    },
+    "HHF-015": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-015.json not found"
+      ]
+     ]
+    },
+    "HHF-016": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-016.json not found"
+      ]
+     ]
+    },
+    "HHF-017": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-017.json not found"
+      ]
+     ]
+    },
+    "HHF-018": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-018.json not found"
+      ]
+     ]
+    }
+   }
+  },
+  "ui": {
+   "cases_answered": 0,
+   "hard": 18,
+   "policy": 0,
+   "warning": 0,
+   "clean": 0,
+   "cases": {
+    "HHF-001": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-001.json not found"
+      ]
+     ]
+    },
+    "HHF-002": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-002.json not found"
+      ]
+     ]
+    },
+    "HHF-003": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-003.json not found"
+      ]
+     ]
+    },
+    "HHF-004": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-004.json not found"
+      ]
+     ]
+    },
+    "HHF-005": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-005.json not found"
+      ]
+     ]
+    },
+    "HHF-006": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-006.json not found"
+      ]
+     ]
+    },
+    "HHF-007": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-007.json not found"
+      ]
+     ]
+    },
+    "HHF-008": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-008.json not found"
+      ]
+     ]
+    },
+    "HHF-009": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-009.json not found"
+      ]
+     ]
+    },
+    "HHF-010": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-010.json not found"
+      ]
+     ]
+    },
+    "HHF-011": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-011.json not found"
+      ]
+     ]
+    },
+    "HHF-012": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-012.json not found"
+      ]
+     ]
+    },
+    "HHF-013": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-013.json not found"
+      ]
+     ]
+    },
+    "HHF-014": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-014.json not found"
+      ]
+     ]
+    },
+    "HHF-015": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-015.json not found"
+      ]
+     ]
+    },
+    "HHF-016": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-016.json not found"
+      ]
+     ]
+    },
+    "HHF-017": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-017.json not found"
+      ]
+     ]
+    },
+    "HHF-018": {
+     "findings": [
+      [
+       "hard",
+       "missing_answer_file",
+       "HHF-018.json not found"
+      ]
+     ]
+    }
+   }
+  }
+ }
+}

@@ -1,0 +1,1632 @@
+{
+  "variant_dir": "/Users/jayanth-gvs/Documents/Tiger-graph-dev/data/variant_bank_b",
+  "discovered_at": "2026-10-30 06:34:03",
+  "table_roles": {
+    "bank_b_alerts.csv": "case_pack",
+    "bank_b_ledger.csv": "transactions",
+    "bank_b_telemetry.csv": "identity"
+  },
+  "mappings": [
+    {
+      "source_file": "bank_b_alerts.csv",
+      "table_role": "case_pack",
+      "source_column": "alert_ticket_id",
+      "canonical_column": "case_id",
+      "transform": "identity",
+      "confidence": 0.99,
+      "rationale": "Matches exam case_id regex (^HH[GF]-\\d{3}$)",
+      "sample_records": [
+        {
+          "record_id": "1",
+          "raw_value": "HHF-001",
+          "canonical_value": "HHF-001"
+        },
+        {
+          "record_id": "2",
+          "raw_value": "HHF-002",
+          "canonical_value": "HHF-002"
+        },
+        {
+          "record_id": "3",
+          "raw_value": "HHF-003",
+          "canonical_value": "HHF-003"
+        },
+        {
+          "record_id": "4",
+          "raw_value": "HHF-004",
+          "canonical_value": "HHF-004"
+        },
+        {
+          "record_id": "5",
+          "raw_value": "HHF-005",
+          "canonical_value": "HHF-005"
+        }
+      ],
+      "attestation": {
+        "what": "Map bank_b_alerts.csv:alert_ticket_id -> case_pack.case_id (transform=identity, confidence=0.99): Matches exam case_id regex (^HH[GF]-\\d{3}$)",
+        "evidence": [
+          "1",
+          "2",
+          "3",
+          "4",
+          "5"
+        ],
+        "how": {
+          "query": "schema_engine.mapper.infer_variant_mapping(bank_b_alerts.csv:alert_ticket_id)",
+          "params": {
+            "source_file": "bank_b_alerts.csv",
+            "source_column": "alert_ticket_id",
+            "canonical_table": "case_pack",
+            "canonical_column": "case_id",
+            "transform": "identity"
+          }
+        },
+        "when": {
+          "at": "2026-10-30 06:34:03",
+          "dataset": "variant:variant_bank_b"
+        }
+      }
+    },
+    {
+      "source_file": "bank_b_alerts.csv",
+      "table_role": "case_pack",
+      "source_column": "alert_opened_iso",
+      "canonical_column": "opened_at",
+      "transform": "identity",
+      "confidence": 0.99,
+      "rationale": "Matches case opened_at ISO timestamp",
+      "sample_records": [
+        {
+          "record_id": "1",
+          "raw_value": "2017-01-15 01:25:19",
+          "canonical_value": "2017-01-15 01:25:19"
+        },
+        {
+          "record_id": "2",
+          "raw_value": "2017-01-19 23:18:58",
+          "canonical_value": "2017-01-19 23:18:58"
+        },
+        {
+          "record_id": "3",
+          "raw_value": "2017-01-31 20:31:28",
+          "canonical_value": "2017-01-31 20:31:28"
+        },
+        {
+          "record_id": "4",
+          "raw_value": "2017-01-26 21:09:37",
+          "canonical_value": "2017-01-26 21:09:37"
+        },
+        {
+          "record_id": "5",
+          "raw_value": "2017-01-28 23:45:16",
+          "canonical_value": "2017-01-28 23:45:16"
+        }
+      ],
+      "attestation": {
+        "what": "Map bank_b_alerts.csv:alert_opened_iso -> case_pack.opened_at (transform=identity, confidence=0.99): Matches case opened_at ISO timestamp",
+        "evidence": [
+          "1",
+          "2",
+          "3",
+          "4",
+          "5"
+        ],
+        "how": {
+          "query": "schema_engine.mapper.infer_variant_mapping(bank_b_alerts.csv:alert_opened_iso)",
+          "params": {
+            "source_file": "bank_b_alerts.csv",
+            "source_column": "alert_opened_iso",
+            "canonical_table": "case_pack",
+            "canonical_column": "opened_at",
+            "transform": "identity"
+          }
+        },
+        "when": {
+          "at": "2026-10-30 06:34:03",
+          "dataset": "variant:variant_bank_b"
+        }
+      }
+    },
+    {
+      "source_file": "bank_b_alerts.csv",
+      "table_role": "case_pack",
+      "source_column": "intake_source",
+      "canonical_column": "trigger_type",
+      "transform": "identity",
+      "confidence": 0.97,
+      "rationale": "Trigger category ['analyst_request', 'customer_report', 'risk_score']",
+      "sample_records": [
+        {
+          "record_id": "1",
+          "raw_value": "analyst_request",
+          "canonical_value": "analyst_request"
+        },
+        {
+          "record_id": "2",
+          "raw_value": "analyst_request",
+          "canonical_value": "analyst_request"
+        },
+        {
+          "record_id": "3",
+          "raw_value": "customer_report",
+          "canonical_value": "customer_report"
+        },
+        {
+          "record_id": "4",
+          "raw_value": "customer_report",
+          "canonical_value": "customer_report"
+        },
+        {
+          "record_id": "5",
+          "raw_value": "customer_report",
+          "canonical_value": "customer_report"
+        }
+      ],
+      "attestation": {
+        "what": "Map bank_b_alerts.csv:intake_source -> case_pack.trigger_type (transform=identity, confidence=0.97): Trigger category ['analyst_request', 'customer_report', 'risk_score']",
+        "evidence": [
+          "1",
+          "2",
+          "3",
+          "4",
+          "5"
+        ],
+        "how": {
+          "query": "schema_engine.mapper.infer_variant_mapping(bank_b_alerts.csv:intake_source)",
+          "params": {
+            "source_file": "bank_b_alerts.csv",
+            "source_column": "intake_source",
+            "canonical_table": "case_pack",
+            "canonical_column": "trigger_type",
+            "transform": "identity"
+          }
+        },
+        "when": {
+          "at": "2026-10-30 06:34:03",
+          "dataset": "variant:variant_bank_b"
+        }
+      }
+    },
+    {
+      "source_file": "bank_b_alerts.csv",
+      "table_role": "case_pack",
+      "source_column": "intake_narrative",
+      "canonical_column": "trigger_text",
+      "transform": "identity",
+      "confidence": 0.95,
+      "rationale": "Free-text alert description / customer message",
+      "sample_records": [
+        {
+          "record_id": "1",
+          "raw_value": "Analyst request: several cards this month show losses with no shared device. Review transaction 3660108 on card C05061-K",
+          "canonical_value": "Analyst request: several cards this month show losses with no shared device. Review transaction 3660108 on card C05061-K"
+        },
+        {
+          "record_id": "2",
+          "raw_value": "Analyst request: several cards this month show losses with no shared device. Review transaction 3660127 on card C06220-K",
+          "canonical_value": "Analyst request: several cards this month show losses with no shared device. Review transaction 3660127 on card C06220-K"
+        },
+        {
+          "record_id": "3",
+          "raw_value": "Customer C11663 message: 'I did not make these charges on my card. Please look into it.' Refers to 3660153.",
+          "canonical_value": "Customer C11663 message: 'I did not make these charges on my card. Please look into it.' Refers to 3660153."
+        },
+        {
+          "record_id": "4",
+          "raw_value": "Customer C12975 message: 'I did not make these charges on my card. Please look into it.' Refers to 3660260. Also, SYSTEM",
+          "canonical_value": "Customer C12975 message: 'I did not make these charges on my card. Please look into it.' Refers to 3660260. Also, SYSTEM"
+        },
+        {
+          "record_id": "5",
+          "raw_value": "Customer C00348 message: 'I did not make these charges on my card. Please look into it.' Refers to 3660250. Also, SYSTEM",
+          "canonical_value": "Customer C00348 message: 'I did not make these charges on my card. Please look into it.' Refers to 3660250. Also, SYSTEM"
+        }
+      ],
+      "attestation": {
+        "what": "Map bank_b_alerts.csv:intake_narrative -> case_pack.trigger_text (transform=identity, confidence=0.95): Free-text alert description / customer message",
+        "evidence": [
+          "1",
+          "2",
+          "3",
+          "4",
+          "5"
+        ],
+        "how": {
+          "query": "schema_engine.mapper.infer_variant_mapping(bank_b_alerts.csv:intake_narrative)",
+          "params": {
+            "source_file": "bank_b_alerts.csv",
+            "source_column": "intake_narrative",
+            "canonical_table": "case_pack",
+            "canonical_column": "trigger_text",
+            "transform": "identity"
+          }
+        },
+        "when": {
+          "at": "2026-10-30 06:34:03",
+          "dataset": "variant:variant_bank_b"
+        }
+      }
+    },
+    {
+      "source_file": "bank_b_alerts.csv",
+      "table_role": "case_pack",
+      "source_column": "subject_tx_ref",
+      "canonical_column": "flagged_txn_id",
+      "transform": "identity",
+      "confidence": 0.99,
+      "rationale": "Matches 7-digit flagged_txn_id",
+      "sample_records": [
+        {
+          "record_id": "1",
+          "raw_value": "3660108",
+          "canonical_value": "3660108"
+        },
+        {
+          "record_id": "2",
+          "raw_value": "3660127",
+          "canonical_value": "3660127"
+        },
+        {
+          "record_id": "3",
+          "raw_value": "3660153",
+          "canonical_value": "3660153"
+        },
+        {
+          "record_id": "4",
+          "raw_value": "3660260",
+          "canonical_value": "3660260"
+        },
+        {
+          "record_id": "5",
+          "raw_value": "3660250",
+          "canonical_value": "3660250"
+        }
+      ],
+      "attestation": {
+        "what": "Map bank_b_alerts.csv:subject_tx_ref -> case_pack.flagged_txn_id (transform=identity, confidence=0.99): Matches 7-digit flagged_txn_id",
+        "evidence": [
+          "1",
+          "2",
+          "3",
+          "4",
+          "5"
+        ],
+        "how": {
+          "query": "schema_engine.mapper.infer_variant_mapping(bank_b_alerts.csv:subject_tx_ref)",
+          "params": {
+            "source_file": "bank_b_alerts.csv",
+            "source_column": "subject_tx_ref",
+            "canonical_table": "case_pack",
+            "canonical_column": "flagged_txn_id",
+            "transform": "identity"
+          }
+        },
+        "when": {
+          "at": "2026-10-30 06:34:03",
+          "dataset": "variant:variant_bank_b"
+        }
+      }
+    },
+    {
+      "source_file": "bank_b_alerts.csv",
+      "table_role": "case_pack",
+      "source_column": "instrument_id",
+      "canonical_column": "card_id",
+      "transform": "identity",
+      "confidence": 0.99,
+      "rationale": "Matches card_id regex (^C\\d{5}-K\\d$)",
+      "sample_records": [
+        {
+          "record_id": "1",
+          "raw_value": "C05061-K1",
+          "canonical_value": "C05061-K1"
+        },
+        {
+          "record_id": "2",
+          "raw_value": "C06220-K1",
+          "canonical_value": "C06220-K1"
+        },
+        {
+          "record_id": "3",
+          "raw_value": "C11663-K1",
+          "canonical_value": "C11663-K1"
+        },
+        {
+          "record_id": "4",
+          "raw_value": "C12975-K2",
+          "canonical_value": "C12975-K2"
+        },
+        {
+          "record_id": "5",
+          "raw_value": "C00348-K1",
+          "canonical_value": "C00348-K1"
+        }
+      ],
+      "attestation": {
+        "what": "Map bank_b_alerts.csv:instrument_id -> case_pack.card_id (transform=identity, confidence=0.99): Matches card_id regex (^C\\d{5}-K\\d$)",
+        "evidence": [
+          "1",
+          "2",
+          "3",
+          "4",
+          "5"
+        ],
+        "how": {
+          "query": "schema_engine.mapper.infer_variant_mapping(bank_b_alerts.csv:instrument_id)",
+          "params": {
+            "source_file": "bank_b_alerts.csv",
+            "source_column": "instrument_id",
+            "canonical_table": "case_pack",
+            "canonical_column": "card_id",
+            "transform": "identity"
+          }
+        },
+        "when": {
+          "at": "2026-10-30 06:34:03",
+          "dataset": "variant:variant_bank_b"
+        }
+      }
+    },
+    {
+      "source_file": "bank_b_alerts.csv",
+      "table_role": "case_pack",
+      "source_column": "acct_holder_id",
+      "canonical_column": "customer_id",
+      "transform": "identity",
+      "confidence": 0.99,
+      "rationale": "Matches customer_id regex (^C\\d{5}$)",
+      "sample_records": [
+        {
+          "record_id": "1",
+          "raw_value": "C05061",
+          "canonical_value": "C05061"
+        },
+        {
+          "record_id": "2",
+          "raw_value": "C06220",
+          "canonical_value": "C06220"
+        },
+        {
+          "record_id": "3",
+          "raw_value": "C11663",
+          "canonical_value": "C11663"
+        },
+        {
+          "record_id": "4",
+          "raw_value": "C12975",
+          "canonical_value": "C12975"
+        },
+        {
+          "record_id": "5",
+          "raw_value": "C00348",
+          "canonical_value": "C00348"
+        }
+      ],
+      "attestation": {
+        "what": "Map bank_b_alerts.csv:acct_holder_id -> case_pack.customer_id (transform=identity, confidence=0.99): Matches customer_id regex (^C\\d{5}$)",
+        "evidence": [
+          "1",
+          "2",
+          "3",
+          "4",
+          "5"
+        ],
+        "how": {
+          "query": "schema_engine.mapper.infer_variant_mapping(bank_b_alerts.csv:acct_holder_id)",
+          "params": {
+            "source_file": "bank_b_alerts.csv",
+            "source_column": "acct_holder_id",
+            "canonical_table": "case_pack",
+            "canonical_column": "customer_id",
+            "transform": "identity"
+          }
+        },
+        "when": {
+          "at": "2026-10-30 06:34:03",
+          "dataset": "variant:variant_bank_b"
+        }
+      }
+    },
+    {
+      "source_file": "bank_b_alerts.csv",
+      "table_role": "case_pack",
+      "source_column": "model_score",
+      "canonical_column": "risk_score",
+      "transform": "identity",
+      "confidence": 0.94,
+      "rationale": "Alert risk_score column",
+      "sample_records": [
+        {
+          "record_id": "8",
+          "raw_value": "0.81",
+          "canonical_value": "0.81"
+        },
+        {
+          "record_id": "9",
+          "raw_value": "0.80",
+          "canonical_value": "0.80"
+        },
+        {
+          "record_id": "10",
+          "raw_value": "0.66",
+          "canonical_value": "0.66"
+        },
+        {
+          "record_id": "11",
+          "raw_value": "0.71",
+          "canonical_value": "0.71"
+        },
+        {
+          "record_id": "12",
+          "raw_value": "0.53",
+          "canonical_value": "0.53"
+        }
+      ],
+      "attestation": {
+        "what": "Map bank_b_alerts.csv:model_score -> case_pack.risk_score (transform=identity, confidence=0.94): Alert risk_score column",
+        "evidence": [
+          "8",
+          "9",
+          "10",
+          "11",
+          "12"
+        ],
+        "how": {
+          "query": "schema_engine.mapper.infer_variant_mapping(bank_b_alerts.csv:model_score)",
+          "params": {
+            "source_file": "bank_b_alerts.csv",
+            "source_column": "model_score",
+            "canonical_table": "case_pack",
+            "canonical_column": "risk_score",
+            "transform": "identity"
+          }
+        },
+        "when": {
+          "at": "2026-10-30 06:34:03",
+          "dataset": "variant:variant_bank_b"
+        }
+      }
+    },
+    {
+      "source_file": "bank_b_ledger.csv",
+      "table_role": "transactions",
+      "source_column": "tx_ref_id",
+      "canonical_column": "TransactionID",
+      "transform": "identity",
+      "confidence": 0.99,
+      "rationale": "99%+ match 7-digit TransactionID regex (^\\d{7}$); n_distinct=2495",
+      "sample_records": [
+        {
+          "record_id": "1",
+          "raw_value": "3601722",
+          "canonical_value": "3601722"
+        },
+        {
+          "record_id": "2",
+          "raw_value": "3602445",
+          "canonical_value": "3602445"
+        },
+        {
+          "record_id": "3",
+          "raw_value": "3611104",
+          "canonical_value": "3611104"
+        },
+        {
+          "record_id": "4",
+          "raw_value": "3625489",
+          "canonical_value": "3625489"
+        },
+        {
+          "record_id": "5",
+          "raw_value": "3638829",
+          "canonical_value": "3638829"
+        }
+      ],
+      "attestation": {
+        "what": "Map bank_b_ledger.csv:tx_ref_id -> transactions.TransactionID (transform=identity, confidence=0.99): 99%+ match 7-digit TransactionID regex (^\\d{7}$); n_distinct=2495",
+        "evidence": [
+          "1",
+          "2",
+          "3",
+          "4",
+          "5"
+        ],
+        "how": {
+          "query": "schema_engine.mapper.infer_variant_mapping(bank_b_ledger.csv:tx_ref_id)",
+          "params": {
+            "source_file": "bank_b_ledger.csv",
+            "source_column": "tx_ref_id",
+            "canonical_table": "transactions",
+            "canonical_column": "TransactionID",
+            "transform": "identity"
+          }
+        },
+        "when": {
+          "at": "2026-10-30 06:34:03",
+          "dataset": "variant:variant_bank_b"
+        }
+      }
+    },
+    {
+      "source_file": "bank_b_ledger.csv",
+      "table_role": "transactions",
+      "source_column": "acct_holder_id",
+      "canonical_column": "customer_id",
+      "transform": "identity",
+      "confidence": 0.99,
+      "rationale": "Matches customer_id regex (^C\\d{5}$)",
+      "sample_records": [
+        {
+          "record_id": "1",
+          "raw_value": "C00543",
+          "canonical_value": "C00543"
+        },
+        {
+          "record_id": "2",
+          "raw_value": "C00750",
+          "canonical_value": "C00750"
+        },
+        {
+          "record_id": "3",
+          "raw_value": "C02502",
+          "canonical_value": "C02502"
+        },
+        {
+          "record_id": "4",
+          "raw_value": "C05851",
+          "canonical_value": "C05851"
+        },
+        {
+          "record_id": "5",
+          "raw_value": "C08842",
+          "canonical_value": "C08842"
+        }
+      ],
+      "attestation": {
+        "what": "Map bank_b_ledger.csv:acct_holder_id -> transactions.customer_id (transform=identity, confidence=0.99): Matches customer_id regex (^C\\d{5}$)",
+        "evidence": [
+          "1",
+          "2",
+          "3",
+          "4",
+          "5"
+        ],
+        "how": {
+          "query": "schema_engine.mapper.infer_variant_mapping(bank_b_ledger.csv:acct_holder_id)",
+          "params": {
+            "source_file": "bank_b_ledger.csv",
+            "source_column": "acct_holder_id",
+            "canonical_table": "transactions",
+            "canonical_column": "customer_id",
+            "transform": "identity"
+          }
+        },
+        "when": {
+          "at": "2026-10-30 06:34:03",
+          "dataset": "variant:variant_bank_b"
+        }
+      }
+    },
+    {
+      "source_file": "bank_b_ledger.csv",
+      "table_role": "transactions",
+      "source_column": "event_epoch",
+      "canonical_column": "ts",
+      "transform": "epoch_to_iso",
+      "confidence": 0.96,
+      "rationale": "Unix epoch in 2016-2017 range (p50=1483251579.5); reshaped via epoch_to_iso",
+      "sample_records": [
+        {
+          "record_id": "1",
+          "raw_value": "1483228820",
+          "canonical_value": "2017-01-01 00:00:20"
+        },
+        {
+          "record_id": "2",
+          "raw_value": "1483228825",
+          "canonical_value": "2017-01-01 00:00:25"
+        },
+        {
+          "record_id": "3",
+          "raw_value": "1483228840",
+          "canonical_value": "2017-01-01 00:00:40"
+        },
+        {
+          "record_id": "4",
+          "raw_value": "1483228851",
+          "canonical_value": "2017-01-01 00:00:51"
+        },
+        {
+          "record_id": "5",
+          "raw_value": "1483228926",
+          "canonical_value": "2017-01-01 00:02:06"
+        }
+      ],
+      "attestation": {
+        "what": "Map bank_b_ledger.csv:event_epoch -> transactions.ts (transform=epoch_to_iso, confidence=0.96): Unix epoch in 2016-2017 range (p50=1483251579.5); reshaped via epoch_to_iso",
+        "evidence": [
+          "1",
+          "2",
+          "3",
+          "4",
+          "5"
+        ],
+        "how": {
+          "query": "schema_engine.mapper.infer_variant_mapping(bank_b_ledger.csv:event_epoch)",
+          "params": {
+            "source_file": "bank_b_ledger.csv",
+            "source_column": "event_epoch",
+            "canonical_table": "transactions",
+            "canonical_column": "ts",
+            "transform": "epoch_to_iso"
+          }
+        },
+        "when": {
+          "at": "2026-10-30 06:34:03",
+          "dataset": "variant:variant_bank_b"
+        }
+      }
+    },
+    {
+      "source_file": "bank_b_ledger.csv",
+      "table_role": "transactions",
+      "source_column": "amount_cents",
+      "canonical_column": "TransactionAmt",
+      "transform": "cents_to_usd",
+      "confidence": 0.95,
+      "rationale": "Integer amount in cents (p50=7234.5, p90=27845.0); divide by 100.0 -> USD",
+      "sample_records": [
+        {
+          "record_id": "1",
+          "raw_value": "16898",
+          "canonical_value": "168.98"
+        },
+        {
+          "record_id": "2",
+          "raw_value": "105379",
+          "canonical_value": "1053.79"
+        },
+        {
+          "record_id": "3",
+          "raw_value": "302517",
+          "canonical_value": "3025.17"
+        },
+        {
+          "record_id": "4",
+          "raw_value": "54453",
+          "canonical_value": "544.53"
+        },
+        {
+          "record_id": "5",
+          "raw_value": "4392",
+          "canonical_value": "43.92"
+        }
+      ],
+      "attestation": {
+        "what": "Map bank_b_ledger.csv:amount_cents -> transactions.TransactionAmt (transform=cents_to_usd, confidence=0.95): Integer amount in cents (p50=7234.5, p90=27845.0); divide by 100.0 -> USD",
+        "evidence": [
+          "1",
+          "2",
+          "3",
+          "4",
+          "5"
+        ],
+        "how": {
+          "query": "schema_engine.mapper.infer_variant_mapping(bank_b_ledger.csv:amount_cents)",
+          "params": {
+            "source_file": "bank_b_ledger.csv",
+            "source_column": "amount_cents",
+            "canonical_table": "transactions",
+            "canonical_column": "TransactionAmt",
+            "transform": "cents_to_usd"
+          }
+        },
+        "when": {
+          "at": "2026-10-30 06:34:03",
+          "dataset": "variant:variant_bank_b"
+        }
+      }
+    },
+    {
+      "source_file": "bank_b_ledger.csv",
+      "table_role": "transactions",
+      "source_column": "lob_code",
+      "canonical_column": "ProductCD",
+      "transform": "identity",
+      "confidence": 0.98,
+      "rationale": "Categorical domain ['c', 'h', 'r', 's', 'w'] matches ProductCD {W,H,C,S,R}",
+      "sample_records": [
+        {
+          "record_id": "1",
+          "raw_value": "W",
+          "canonical_value": "W"
+        },
+        {
+          "record_id": "2",
+          "raw_value": "W",
+          "canonical_value": "W"
+        },
+        {
+          "record_id": "3",
+          "raw_value": "W",
+          "canonical_value": "W"
+        },
+        {
+          "record_id": "4",
+          "raw_value": "C",
+          "canonical_value": "C"
+        },
+        {
+          "record_id": "5",
+          "raw_value": "H",
+          "canonical_value": "H"
+        }
+      ],
+      "attestation": {
+        "what": "Map bank_b_ledger.csv:lob_code -> transactions.ProductCD (transform=identity, confidence=0.98): Categorical domain ['c', 'h', 'r', 's', 'w'] matches ProductCD {W,H,C,S,R}",
+        "evidence": [
+          "1",
+          "2",
+          "3",
+          "4",
+          "5"
+        ],
+        "how": {
+          "query": "schema_engine.mapper.infer_variant_mapping(bank_b_ledger.csv:lob_code)",
+          "params": {
+            "source_file": "bank_b_ledger.csv",
+            "source_column": "lob_code",
+            "canonical_table": "transactions",
+            "canonical_column": "ProductCD",
+            "transform": "identity"
+          }
+        },
+        "when": {
+          "at": "2026-10-30 06:34:03",
+          "dataset": "variant:variant_bank_b"
+        }
+      }
+    },
+    {
+      "source_file": "bank_b_ledger.csv",
+      "table_role": "transactions",
+      "source_column": "pos_or_web",
+      "canonical_column": "channel",
+      "transform": "channel_synonym",
+      "confidence": 0.97,
+      "rationale": "Categorical domain ['pos', 'web'] maps to channel {online, in_person}",
+      "sample_records": [
+        {
+          "record_id": "1",
+          "raw_value": "POS",
+          "canonical_value": "in_person"
+        },
+        {
+          "record_id": "2",
+          "raw_value": "POS",
+          "canonical_value": "in_person"
+        },
+        {
+          "record_id": "3",
+          "raw_value": "POS",
+          "canonical_value": "in_person"
+        },
+        {
+          "record_id": "4",
+          "raw_value": "WEB",
+          "canonical_value": "online"
+        },
+        {
+          "record_id": "5",
+          "raw_value": "WEB",
+          "canonical_value": "online"
+        }
+      ],
+      "attestation": {
+        "what": "Map bank_b_ledger.csv:pos_or_web -> transactions.channel (transform=channel_synonym, confidence=0.97): Categorical domain ['pos', 'web'] maps to channel {online, in_person}",
+        "evidence": [
+          "1",
+          "2",
+          "3",
+          "4",
+          "5"
+        ],
+        "how": {
+          "query": "schema_engine.mapper.infer_variant_mapping(bank_b_ledger.csv:pos_or_web)",
+          "params": {
+            "source_file": "bank_b_ledger.csv",
+            "source_column": "pos_or_web",
+            "canonical_table": "transactions",
+            "canonical_column": "channel",
+            "transform": "channel_synonym"
+          }
+        },
+        "when": {
+          "at": "2026-10-30 06:34:03",
+          "dataset": "variant:variant_bank_b"
+        }
+      }
+    },
+    {
+      "source_file": "bank_b_ledger.csv",
+      "table_role": "transactions",
+      "source_column": "card_funding_type",
+      "canonical_column": "card6",
+      "transform": "card6_synonym",
+      "confidence": 0.96,
+      "rationale": "Categorical domain ['cr', 'dr'] maps to card6 {debit, credit}",
+      "sample_records": [
+        {
+          "record_id": "1",
+          "raw_value": "CR",
+          "canonical_value": "credit"
+        },
+        {
+          "record_id": "2",
+          "raw_value": "CR",
+          "canonical_value": "credit"
+        },
+        {
+          "record_id": "3",
+          "raw_value": "DR",
+          "canonical_value": "debit"
+        },
+        {
+          "record_id": "4",
+          "raw_value": "DR",
+          "canonical_value": "debit"
+        },
+        {
+          "record_id": "5",
+          "raw_value": "DR",
+          "canonical_value": "debit"
+        }
+      ],
+      "attestation": {
+        "what": "Map bank_b_ledger.csv:card_funding_type -> transactions.card6 (transform=card6_synonym, confidence=0.96): Categorical domain ['cr', 'dr'] maps to card6 {debit, credit}",
+        "evidence": [
+          "1",
+          "2",
+          "3",
+          "4",
+          "5"
+        ],
+        "how": {
+          "query": "schema_engine.mapper.infer_variant_mapping(bank_b_ledger.csv:card_funding_type)",
+          "params": {
+            "source_file": "bank_b_ledger.csv",
+            "source_column": "card_funding_type",
+            "canonical_table": "transactions",
+            "canonical_column": "card6",
+            "transform": "card6_synonym"
+          }
+        },
+        "when": {
+          "at": "2026-10-30 06:34:03",
+          "dataset": "variant:variant_bank_b"
+        }
+      }
+    },
+    {
+      "source_file": "bank_b_ledger.csv",
+      "table_role": "transactions",
+      "source_column": "network_brand",
+      "canonical_column": "card4",
+      "transform": "identity",
+      "confidence": 0.97,
+      "rationale": "Categorical domain ['american express', 'discover', 'mastercard', 'visa'] matches card4 network",
+      "sample_records": [
+        {
+          "record_id": "1",
+          "raw_value": "visa",
+          "canonical_value": "visa"
+        },
+        {
+          "record_id": "2",
+          "raw_value": "discover",
+          "canonical_value": "discover"
+        },
+        {
+          "record_id": "3",
+          "raw_value": "mastercard",
+          "canonical_value": "mastercard"
+        },
+        {
+          "record_id": "4",
+          "raw_value": "mastercard",
+          "canonical_value": "mastercard"
+        },
+        {
+          "record_id": "5",
+          "raw_value": "visa",
+          "canonical_value": "visa"
+        }
+      ],
+      "attestation": {
+        "what": "Map bank_b_ledger.csv:network_brand -> transactions.card4 (transform=identity, confidence=0.97): Categorical domain ['american express', 'discover', 'mastercard', 'visa'] matches card4 network",
+        "evidence": [
+          "1",
+          "2",
+          "3",
+          "4",
+          "5"
+        ],
+        "how": {
+          "query": "schema_engine.mapper.infer_variant_mapping(bank_b_ledger.csv:network_brand)",
+          "params": {
+            "source_file": "bank_b_ledger.csv",
+            "source_column": "network_brand",
+            "canonical_table": "transactions",
+            "canonical_column": "card4",
+            "transform": "identity"
+          }
+        },
+        "when": {
+          "at": "2026-10-30 06:34:03",
+          "dataset": "variant:variant_bank_b"
+        }
+      }
+    },
+    {
+      "source_file": "bank_b_ledger.csv",
+      "table_role": "transactions",
+      "source_column": "billing_zip_region",
+      "canonical_column": "addr1",
+      "transform": "identity",
+      "confidence": 0.94,
+      "rationale": "Billing region code in [100..600] (p50=299.0)",
+      "sample_records": [
+        {
+          "record_id": "1",
+          "raw_value": "325.0",
+          "canonical_value": "325.0"
+        },
+        {
+          "record_id": "2",
+          "raw_value": "315.0",
+          "canonical_value": "315.0"
+        },
+        {
+          "record_id": "3",
+          "raw_value": "123.0",
+          "canonical_value": "123.0"
+        },
+        {
+          "record_id": "4",
+          "raw_value": "420.0",
+          "canonical_value": "420.0"
+        },
+        {
+          "record_id": "5",
+          "raw_value": "299.0",
+          "canonical_value": "299.0"
+        }
+      ],
+      "attestation": {
+        "what": "Map bank_b_ledger.csv:billing_zip_region -> transactions.addr1 (transform=identity, confidence=0.94): Billing region code in [100..600] (p50=299.0)",
+        "evidence": [
+          "1",
+          "2",
+          "3",
+          "4",
+          "5"
+        ],
+        "how": {
+          "query": "schema_engine.mapper.infer_variant_mapping(bank_b_ledger.csv:billing_zip_region)",
+          "params": {
+            "source_file": "bank_b_ledger.csv",
+            "source_column": "billing_zip_region",
+            "canonical_table": "transactions",
+            "canonical_column": "addr1",
+            "transform": "identity"
+          }
+        },
+        "when": {
+          "at": "2026-10-30 06:34:03",
+          "dataset": "variant:variant_bank_b"
+        }
+      }
+    },
+    {
+      "source_file": "bank_b_ledger.csv",
+      "table_role": "transactions",
+      "source_column": "country_num",
+      "canonical_column": "addr2",
+      "transform": "identity",
+      "confidence": 0.92,
+      "rationale": "Billing country code (p50=87.0)",
+      "sample_records": [
+        {
+          "record_id": "1",
+          "raw_value": "87.0",
+          "canonical_value": "87.0"
+        },
+        {
+          "record_id": "2",
+          "raw_value": "87.0",
+          "canonical_value": "87.0"
+        },
+        {
+          "record_id": "3",
+          "raw_value": "87.0",
+          "canonical_value": "87.0"
+        },
+        {
+          "record_id": "4",
+          "raw_value": "87.0",
+          "canonical_value": "87.0"
+        },
+        {
+          "record_id": "5",
+          "raw_value": "87.0",
+          "canonical_value": "87.0"
+        }
+      ],
+      "attestation": {
+        "what": "Map bank_b_ledger.csv:country_num -> transactions.addr2 (transform=identity, confidence=0.92): Billing country code (p50=87.0)",
+        "evidence": [
+          "1",
+          "2",
+          "3",
+          "4",
+          "5"
+        ],
+        "how": {
+          "query": "schema_engine.mapper.infer_variant_mapping(bank_b_ledger.csv:country_num)",
+          "params": {
+            "source_file": "bank_b_ledger.csv",
+            "source_column": "country_num",
+            "canonical_table": "transactions",
+            "canonical_column": "addr2",
+            "transform": "identity"
+          }
+        },
+        "when": {
+          "at": "2026-10-30 06:34:03",
+          "dataset": "variant:variant_bank_b"
+        }
+      }
+    },
+    {
+      "source_file": "bank_b_ledger.csv",
+      "table_role": "transactions",
+      "source_column": "miles_dist",
+      "canonical_column": "dist1",
+      "transform": "identity",
+      "confidence": 0.9,
+      "rationale": "Distance metric (p50=8.0, max=2576.0)",
+      "sample_records": [
+        {
+          "record_id": "1",
+          "raw_value": "2.0",
+          "canonical_value": "2.0"
+        },
+        {
+          "record_id": "3",
+          "raw_value": "2.0",
+          "canonical_value": "2.0"
+        },
+        {
+          "record_id": "6",
+          "raw_value": "827.0",
+          "canonical_value": "827.0"
+        },
+        {
+          "record_id": "10",
+          "raw_value": "15.0",
+          "canonical_value": "15.0"
+        },
+        {
+          "record_id": "11",
+          "raw_value": "2.0",
+          "canonical_value": "2.0"
+        }
+      ],
+      "attestation": {
+        "what": "Map bank_b_ledger.csv:miles_dist -> transactions.dist1 (transform=identity, confidence=0.90): Distance metric (p50=8.0, max=2576.0)",
+        "evidence": [
+          "1",
+          "3",
+          "6",
+          "10",
+          "11"
+        ],
+        "how": {
+          "query": "schema_engine.mapper.infer_variant_mapping(bank_b_ledger.csv:miles_dist)",
+          "params": {
+            "source_file": "bank_b_ledger.csv",
+            "source_column": "miles_dist",
+            "canonical_table": "transactions",
+            "canonical_column": "dist1",
+            "transform": "identity"
+          }
+        },
+        "when": {
+          "at": "2026-10-30 06:34:03",
+          "dataset": "variant:variant_bank_b"
+        }
+      }
+    },
+    {
+      "source_file": "bank_b_ledger.csv",
+      "table_role": "transactions",
+      "source_column": "buyer_email_host",
+      "canonical_column": "R_emaildomain",
+      "transform": "identity",
+      "confidence": 0.95,
+      "rationale": "Email domain column with recipient/payee role semantics and higher null rate",
+      "sample_records": [
+        {
+          "record_id": "1",
+          "raw_value": "anonymous.com",
+          "canonical_value": "anonymous.com"
+        },
+        {
+          "record_id": "2",
+          "raw_value": "aol.com",
+          "canonical_value": "aol.com"
+        },
+        {
+          "record_id": "3",
+          "raw_value": "gmail.com",
+          "canonical_value": "gmail.com"
+        },
+        {
+          "record_id": "4",
+          "raw_value": "gmail.com",
+          "canonical_value": "gmail.com"
+        },
+        {
+          "record_id": "5",
+          "raw_value": "yahoo.com",
+          "canonical_value": "yahoo.com"
+        }
+      ],
+      "attestation": {
+        "what": "Map bank_b_ledger.csv:buyer_email_host -> transactions.R_emaildomain (transform=identity, confidence=0.95): Email domain column with recipient/payee role semantics and higher null rate",
+        "evidence": [
+          "1",
+          "2",
+          "3",
+          "4",
+          "5"
+        ],
+        "how": {
+          "query": "schema_engine.mapper.infer_variant_mapping(bank_b_ledger.csv:buyer_email_host)",
+          "params": {
+            "source_file": "bank_b_ledger.csv",
+            "source_column": "buyer_email_host",
+            "canonical_table": "transactions",
+            "canonical_column": "R_emaildomain",
+            "transform": "identity"
+          }
+        },
+        "when": {
+          "at": "2026-10-30 06:34:03",
+          "dataset": "variant:variant_bank_b"
+        }
+      }
+    },
+    {
+      "source_file": "bank_b_ledger.csv",
+      "table_role": "transactions",
+      "source_column": "payee_email_host",
+      "canonical_column": "R_emaildomain",
+      "transform": "identity",
+      "confidence": 0.95,
+      "rationale": "Email domain column with recipient/payee role semantics and higher null rate",
+      "sample_records": [
+        {
+          "record_id": "7",
+          "raw_value": "gmail.com",
+          "canonical_value": "gmail.com"
+        },
+        {
+          "record_id": "8",
+          "raw_value": "yahoo.com",
+          "canonical_value": "yahoo.com"
+        },
+        {
+          "record_id": "26",
+          "raw_value": "hotmail.com",
+          "canonical_value": "hotmail.com"
+        },
+        {
+          "record_id": "27",
+          "raw_value": "gmail.com",
+          "canonical_value": "gmail.com"
+        },
+        {
+          "record_id": "29",
+          "raw_value": "gmail.com",
+          "canonical_value": "gmail.com"
+        }
+      ],
+      "attestation": {
+        "what": "Map bank_b_ledger.csv:payee_email_host -> transactions.R_emaildomain (transform=identity, confidence=0.95): Email domain column with recipient/payee role semantics and higher null rate",
+        "evidence": [
+          "7",
+          "8",
+          "26",
+          "27",
+          "29"
+        ],
+        "how": {
+          "query": "schema_engine.mapper.infer_variant_mapping(bank_b_ledger.csv:payee_email_host)",
+          "params": {
+            "source_file": "bank_b_ledger.csv",
+            "source_column": "payee_email_host",
+            "canonical_table": "transactions",
+            "canonical_column": "R_emaildomain",
+            "transform": "identity"
+          }
+        },
+        "when": {
+          "at": "2026-10-30 06:34:03",
+          "dataset": "variant:variant_bank_b"
+        }
+      }
+    },
+    {
+      "source_file": "bank_b_ledger.csv",
+      "table_role": "transactions",
+      "source_column": "realtime_risk_pct",
+      "canonical_column": "risk_score",
+      "transform": "pct_to_prob",
+      "confidence": 0.95,
+      "rationale": "Percentage risk score in [0, 100] (p50=10.0, max=63.0); divide by 100.0",
+      "sample_records": [
+        {
+          "record_id": "1",
+          "raw_value": "6.0",
+          "canonical_value": "0.0600"
+        },
+        {
+          "record_id": "2",
+          "raw_value": "6.0",
+          "canonical_value": "0.0600"
+        },
+        {
+          "record_id": "3",
+          "raw_value": "20.0",
+          "canonical_value": "0.2000"
+        },
+        {
+          "record_id": "4",
+          "raw_value": "18.0",
+          "canonical_value": "0.1800"
+        },
+        {
+          "record_id": "5",
+          "raw_value": "1.0",
+          "canonical_value": "0.0100"
+        }
+      ],
+      "attestation": {
+        "what": "Map bank_b_ledger.csv:realtime_risk_pct -> transactions.risk_score (transform=pct_to_prob, confidence=0.95): Percentage risk score in [0, 100] (p50=10.0, max=63.0); divide by 100.0",
+        "evidence": [
+          "1",
+          "2",
+          "3",
+          "4",
+          "5"
+        ],
+        "how": {
+          "query": "schema_engine.mapper.infer_variant_mapping(bank_b_ledger.csv:realtime_risk_pct)",
+          "params": {
+            "source_file": "bank_b_ledger.csv",
+            "source_column": "realtime_risk_pct",
+            "canonical_table": "transactions",
+            "canonical_column": "risk_score",
+            "transform": "pct_to_prob"
+          }
+        },
+        "when": {
+          "at": "2026-10-30 06:34:03",
+          "dataset": "variant:variant_bank_b"
+        }
+      }
+    },
+    {
+      "source_file": "bank_b_telemetry.csv",
+      "table_role": "identity",
+      "source_column": "tx_ref_id",
+      "canonical_column": "TransactionID",
+      "transform": "identity",
+      "confidence": 0.99,
+      "rationale": "Foreign key joining to transactions.TransactionID (^\\d{7}$)",
+      "sample_records": [
+        {
+          "record_id": "1",
+          "raw_value": "3600859",
+          "canonical_value": "3600859"
+        },
+        {
+          "record_id": "2",
+          "raw_value": "3600870",
+          "canonical_value": "3600870"
+        },
+        {
+          "record_id": "3",
+          "raw_value": "3601218",
+          "canonical_value": "3601218"
+        },
+        {
+          "record_id": "4",
+          "raw_value": "3601220",
+          "canonical_value": "3601220"
+        },
+        {
+          "record_id": "5",
+          "raw_value": "3601454",
+          "canonical_value": "3601454"
+        }
+      ],
+      "attestation": {
+        "what": "Map bank_b_telemetry.csv:tx_ref_id -> identity.TransactionID (transform=identity, confidence=0.99): Foreign key joining to transactions.TransactionID (^\\d{7}$)",
+        "evidence": [
+          "1",
+          "2",
+          "3",
+          "4",
+          "5"
+        ],
+        "how": {
+          "query": "schema_engine.mapper.infer_variant_mapping(bank_b_telemetry.csv:tx_ref_id)",
+          "params": {
+            "source_file": "bank_b_telemetry.csv",
+            "source_column": "tx_ref_id",
+            "canonical_table": "identity",
+            "canonical_column": "TransactionID",
+            "transform": "identity"
+          }
+        },
+        "when": {
+          "at": "2026-10-30 06:34:03",
+          "dataset": "variant:variant_bank_b"
+        }
+      }
+    },
+    {
+      "source_file": "bank_b_telemetry.csv",
+      "table_role": "identity",
+      "source_column": "client_form_factor",
+      "canonical_column": "DeviceType",
+      "transform": "identity",
+      "confidence": 0.98,
+      "rationale": "Categorical domain ['desktop', 'mobile'] matches DeviceType {mobile, desktop}",
+      "sample_records": [
+        {
+          "record_id": "1",
+          "raw_value": "desktop",
+          "canonical_value": "desktop"
+        },
+        {
+          "record_id": "2",
+          "raw_value": "desktop",
+          "canonical_value": "desktop"
+        },
+        {
+          "record_id": "3",
+          "raw_value": "mobile",
+          "canonical_value": "mobile"
+        },
+        {
+          "record_id": "4",
+          "raw_value": "mobile",
+          "canonical_value": "mobile"
+        },
+        {
+          "record_id": "5",
+          "raw_value": "desktop",
+          "canonical_value": "desktop"
+        }
+      ],
+      "attestation": {
+        "what": "Map bank_b_telemetry.csv:client_form_factor -> identity.DeviceType (transform=identity, confidence=0.98): Categorical domain ['desktop', 'mobile'] matches DeviceType {mobile, desktop}",
+        "evidence": [
+          "1",
+          "2",
+          "3",
+          "4",
+          "5"
+        ],
+        "how": {
+          "query": "schema_engine.mapper.infer_variant_mapping(bank_b_telemetry.csv:client_form_factor)",
+          "params": {
+            "source_file": "bank_b_telemetry.csv",
+            "source_column": "client_form_factor",
+            "canonical_table": "identity",
+            "canonical_column": "DeviceType",
+            "transform": "identity"
+          }
+        },
+        "when": {
+          "at": "2026-10-30 06:34:03",
+          "dataset": "variant:variant_bank_b"
+        }
+      }
+    },
+    {
+      "source_file": "bank_b_telemetry.csv",
+      "table_role": "identity",
+      "source_column": "device_seen_flag",
+      "canonical_column": "id_15",
+      "transform": "identity",
+      "confidence": 0.97,
+      "rationale": "Categorical domain ['found', 'new', 'unknown'] matches device_new (id_15)",
+      "sample_records": [
+        {
+          "record_id": "1",
+          "raw_value": "Found",
+          "canonical_value": "Found"
+        },
+        {
+          "record_id": "2",
+          "raw_value": "Found",
+          "canonical_value": "Found"
+        },
+        {
+          "record_id": "3",
+          "raw_value": "New",
+          "canonical_value": "New"
+        },
+        {
+          "record_id": "4",
+          "raw_value": "Found",
+          "canonical_value": "Found"
+        },
+        {
+          "record_id": "5",
+          "raw_value": "New",
+          "canonical_value": "New"
+        }
+      ],
+      "attestation": {
+        "what": "Map bank_b_telemetry.csv:device_seen_flag -> identity.id_15 (transform=identity, confidence=0.97): Categorical domain ['found', 'new', 'unknown'] matches device_new (id_15)",
+        "evidence": [
+          "1",
+          "2",
+          "3",
+          "4",
+          "5"
+        ],
+        "how": {
+          "query": "schema_engine.mapper.infer_variant_mapping(bank_b_telemetry.csv:device_seen_flag)",
+          "params": {
+            "source_file": "bank_b_telemetry.csv",
+            "source_column": "device_seen_flag",
+            "canonical_table": "identity",
+            "canonical_column": "id_15",
+            "transform": "identity"
+          }
+        },
+        "when": {
+          "at": "2026-10-30 06:34:03",
+          "dataset": "variant:variant_bank_b"
+        }
+      }
+    },
+    {
+      "source_file": "bank_b_telemetry.csv",
+      "table_role": "identity",
+      "source_column": "proxy_classification",
+      "canonical_column": "id_23",
+      "transform": "identity",
+      "confidence": 0.98,
+      "rationale": "Proxy type string matching IP_PROXY:(ANONYMOUS|TRANSPARENT|HIDDEN)",
+      "sample_records": [
+        {
+          "record_id": "112",
+          "raw_value": "IP_PROXY:TRANSPARENT",
+          "canonical_value": "IP_PROXY:TRANSPARENT"
+        },
+        {
+          "record_id": "120",
+          "raw_value": "IP_PROXY:HIDDEN",
+          "canonical_value": "IP_PROXY:HIDDEN"
+        },
+        {
+          "record_id": "149",
+          "raw_value": "IP_PROXY:ANONYMOUS",
+          "canonical_value": "IP_PROXY:ANONYMOUS"
+        },
+        {
+          "record_id": "150",
+          "raw_value": "IP_PROXY:ANONYMOUS",
+          "canonical_value": "IP_PROXY:ANONYMOUS"
+        },
+        {
+          "record_id": "168",
+          "raw_value": "IP_PROXY:TRANSPARENT",
+          "canonical_value": "IP_PROXY:TRANSPARENT"
+        }
+      ],
+      "attestation": {
+        "what": "Map bank_b_telemetry.csv:proxy_classification -> identity.id_23 (transform=identity, confidence=0.98): Proxy type string matching IP_PROXY:(ANONYMOUS|TRANSPARENT|HIDDEN)",
+        "evidence": [
+          "112",
+          "120",
+          "149",
+          "150",
+          "168"
+        ],
+        "how": {
+          "query": "schema_engine.mapper.infer_variant_mapping(bank_b_telemetry.csv:proxy_classification)",
+          "params": {
+            "source_file": "bank_b_telemetry.csv",
+            "source_column": "proxy_classification",
+            "canonical_table": "identity",
+            "canonical_column": "id_23",
+            "transform": "identity"
+          }
+        },
+        "when": {
+          "at": "2026-10-30 06:34:03",
+          "dataset": "variant:variant_bank_b"
+        }
+      }
+    },
+    {
+      "source_file": "bank_b_telemetry.csv",
+      "table_role": "identity",
+      "source_column": "ua_device_bundle",
+      "canonical_column": "device_bundle",
+      "transform": "split_device_bundle",
+      "confidence": 0.97,
+      "rationale": "Reshaped composite 'DeviceInfo | id_30 | id_31 | id_33' string",
+      "sample_records": [
+        {
+          "record_id": "1",
+          "raw_value": "rv:57.0 | NULL | firefox 57.0 | NULL",
+          "canonical_value": "DeviceInfo=rv:57.0, id_30=NULL, id_31=firefox 57.0, id_33=NULL"
+        },
+        {
+          "record_id": "2",
+          "raw_value": "NULL | NULL | chrome 62.0 | NULL",
+          "canonical_value": "DeviceInfo=NULL, id_30=NULL, id_31=chrome 62.0, id_33=NULL"
+        },
+        {
+          "record_id": "3",
+          "raw_value": "iOS Device | iOS 11.2.1 | mobile safari 11.0 | 1334x750",
+          "canonical_value": "DeviceInfo=iOS Device, id_30=iOS 11.2.1, id_31=mobile safari 11.0, id_33=1334x750"
+        },
+        {
+          "record_id": "4",
+          "raw_value": "SM-G950U Build/NRD90M | Android 7.0 | chrome 63.0 for android | 2220x1080",
+          "canonical_value": "DeviceInfo=SM-G950U Build/NRD90M, id_30=Android 7.0, id_31=chrome 63.0 for android, id_33=2220x1080"
+        },
+        {
+          "record_id": "5",
+          "raw_value": "MacOS | Mac OS X 10_11_3 | chrome 63.0 | 1920x1080",
+          "canonical_value": "DeviceInfo=MacOS, id_30=Mac OS X 10_11_3, id_31=chrome 63.0, id_33=1920x1080"
+        }
+      ],
+      "attestation": {
+        "what": "Map bank_b_telemetry.csv:ua_device_bundle -> identity.device_bundle (transform=split_device_bundle, confidence=0.97): Reshaped composite 'DeviceInfo | id_30 | id_31 | id_33' string",
+        "evidence": [
+          "1",
+          "2",
+          "3",
+          "4",
+          "5"
+        ],
+        "how": {
+          "query": "schema_engine.mapper.infer_variant_mapping(bank_b_telemetry.csv:ua_device_bundle)",
+          "params": {
+            "source_file": "bank_b_telemetry.csv",
+            "source_column": "ua_device_bundle",
+            "canonical_table": "identity",
+            "canonical_column": "device_bundle",
+            "transform": "split_device_bundle"
+          }
+        },
+        "when": {
+          "at": "2026-10-30 06:34:03",
+          "dataset": "variant:variant_bank_b"
+        }
+      }
+    }
+  ],
+  "n_mapped_columns": 27
+}

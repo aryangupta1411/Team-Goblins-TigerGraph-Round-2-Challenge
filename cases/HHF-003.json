@@ -1,0 +1,205 @@
+{
+  "case_id": "HHF-003",
+  "case": {
+    "status": "escalated",
+    "verdict": "fraud",
+    "fraud_probability": 0.94,
+    "pattern": "undocumented",
+    "pattern_description": "Coordinated dormant-wake escalating online drain across 8 cards with no identity records: card C11663-K1 woke after 22 days of inactivity into 7 online ProductCD='C' charges (3660147, 3660148, 3660149, 3660150, 3660151, 3660152, 3660153) ramping $181.73 -> $357.82 -> $811.92 -> $1,800.00 -> $1,800.00 -> $1,800.00 -> $1,800.00 (total $8,551.47), matching 7 peer cards exhibiting the same doubling ramp.",
+    "affected_txn_ids": [
+      "3660147",
+      "3660148",
+      "3660149",
+      "3660150",
+      "3660151",
+      "3660152",
+      "3660153"
+    ],
+    "first_suspicious_txn_id": "3660147",
+    "connected_card_ids": [
+      "C03080-K2",
+      "C04096-K1",
+      "C07847-K1",
+      "C08563-K1",
+      "C08943-K2",
+      "C09026-K1",
+      "C09148-K1"
+    ],
+    "connected_device_profiles": [],
+    "exposure_usd": 8551.47,
+    "evidence": [
+      {
+        "claim": "Billing region 315.0 on the online purchase is the card's known region (9 prior purchases on 9 days)",
+        "source": "graph",
+        "ref": "query:region_history(card=C11663-K1, addr1=315.0)",
+        "entity_ids": [
+          "3660153",
+          "C11663-K1"
+        ]
+      },
+      {
+        "claim": "Purchaser email domain yahoo.com used 48 times before on this card",
+        "source": "graph",
+        "ref": "query:case_context(txn=3660153)",
+        "entity_ids": [
+          "3660153"
+        ]
+      },
+      {
+        "claim": "Coordinated dormant-wake escalating online drain across 8 cards with no identity records: card C11663-K1 woke after 22 days of inactivity into 7 online ProductCD='C' charges (3660147, 3660148, 3660149, 3660150, 3660151, 3660152, 3660153) ramping $181.73 -> $357.82 -> $811.92 -> $1,800.00 -> $1,800.00 -> $1,800.00 -> $1,800.00 (total $8,551.47), matching 7 peer cards exhibiting the same doubling ramp.",
+        "source": "graph",
+        "ref": "query:card_window(card=C11663-K1, hours=72)",
+        "entity_ids": [
+          "3660147",
+          "3660148",
+          "3660149",
+          "3660150",
+          "3660151",
+          "3660152",
+          "3660153",
+          "C11663-K1",
+          "C03080-K2",
+          "C04096-K1",
+          "C07847-K1",
+          "C08563-K1",
+          "C08943-K2",
+          "C09026-K1",
+          "C09148-K1"
+        ]
+      },
+      {
+        "claim": "Cross-card / telemetry signature (Dormant wake + un-identitied online ProductCD='C' doubling ramp to $1,800 ceiling) links 3660147, 3660148, 3660149, 3660150, 3660151, 3660152 on C11663-K1 to 7 peer cards (C03080-K2, C04096-K1, C07847-K1, C08563-K1, C08943-K2, C09026-K1, C09148-K1)",
+        "source": "graph",
+        "ref": "query:shared_origin_scan(card=C11663-K1)",
+        "entity_ids": [
+          "3660147",
+          "3660148",
+          "3660149",
+          "3660150",
+          "3660151",
+          "3660152",
+          "C11663-K1",
+          "C03080-K2",
+          "C04096-K1",
+          "C07847-K1",
+          "C08563-K1",
+          "C08943-K2",
+          "C09026-K1",
+          "C09148-K1"
+        ]
+      },
+      {
+        "claim": "Case-memory scorer (LightGBM over the bank's 5,565 closed cases; October holdout AUC 0.956) puts the flagged transaction at 0.00 (calibrated 0.00); the real-time risk score was 0.09",
+        "source": "graph",
+        "ref": "query:case_context(txn=3660153)",
+        "entity_ids": [
+          "3660153"
+        ]
+      },
+      {
+        "claim": "Customer C11663 reports they did not make the $1,800.00 purchase 3660153 (the denial is evidence: 4,665/4,665 customer-reported closed cases were confirmed fraud, 0 denials were cleared)",
+        "source": "customer",
+        "ref": "trigger",
+        "entity_ids": [
+          "3660153",
+          "C11663"
+        ]
+      },
+      {
+        "claim": "No identity record for this online transaction: the device is unknown, not new",
+        "source": "graph",
+        "ref": "query:case_context(txn=3660153)",
+        "entity_ids": [
+          "3660153"
+        ]
+      }
+    ],
+    "similar_prior_cases": [],
+    "summary": "Customer C11663 disputed transaction 3660153 ($1,800.00, online) on card C11663-K1. Coordinated dormant-wake escalating online drain across 8 cards with no identity records: card C11663-K1 woke after 22 days of inactivity into 7 online ProductCD='C' charges (3660147, 3660148... Verdict fraud at probability 0.94, pattern undocumented, 7 affected transaction(s) worth $8,551.47. Final actions: CREATE_CASE, MONITOR_CONNECTED_CARDS, BLOCK_CARD, FILE_REPORT, ESCALATE_TO_ANALYST; no evidence request was needed; status escalated.",
+    "written_to_graph": false,
+    "graph_case_id": "AC-HHF-003"
+  },
+  "evidence_requests": [],
+  "next_best_actions": {
+    "initial": [
+      {
+        "action": "CREATE_CASE",
+        "route": "auto",
+        "reason": "3a: customer dispute; case opened and written to the graph"
+      },
+      {
+        "action": "MONITOR_CONNECTED_CARDS",
+        "route": "auto",
+        "reason": "R6: other cards (C03080-K2, C04096-K1, C07847-K1, C08563-K1, C08943-K2) share the same origin element; place connected cards under monitoring"
+      },
+      {
+        "action": "BLOCK_CARD",
+        "route": "L2",
+        "reason": "R2: customer denied the transaction; exposure $8,551.47 exceeds $2,500 so route L2"
+      },
+      {
+        "action": "FILE_REPORT",
+        "route": "L2",
+        "reason": "3a / R9: undocumented coordinated pattern (Coordinated dormant-wake escalating online drain across 8 cards with no identity records)"
+      },
+      {
+        "action": "ESCALATE_TO_ANALYST",
+        "route": "auto",
+        "reason": "R9: undocumented coordinated pattern; hand to a human analyst with the evidence"
+      }
+    ],
+    "final": [
+      {
+        "action": "CREATE_CASE",
+        "route": "auto",
+        "reason": "3a: customer dispute; case opened and written to the graph"
+      },
+      {
+        "action": "MONITOR_CONNECTED_CARDS",
+        "route": "auto",
+        "reason": "R6: other cards (C03080-K2, C04096-K1, C07847-K1, C08563-K1, C08943-K2) share the same origin element; place connected cards under monitoring"
+      },
+      {
+        "action": "BLOCK_CARD",
+        "route": "L2",
+        "reason": "R2: customer denied the transaction; exposure $8,551.47 exceeds $2,500 so route L2"
+      },
+      {
+        "action": "FILE_REPORT",
+        "route": "L2",
+        "reason": "3a / R9: undocumented coordinated pattern (Coordinated dormant-wake escalating online drain across 8 cards with no identity records)"
+      },
+      {
+        "action": "ESCALATE_TO_ANALYST",
+        "route": "auto",
+        "reason": "R9: undocumented coordinated pattern; hand to a human analyst with the evidence"
+      }
+    ],
+    "what_changed": "nothing"
+  },
+  "sar": {
+    "file": true,
+    "reason": "3a / R9: undocumented coordinated pattern (Coordinated dormant-wake escalating online drain across 8 cards with no identity records)",
+    "narrative": "This report concerns suspected fraud following an undocumented coordinated pattern on card C11663-K1 held by customer C11663 (internal case AC-HHF-003, opened 2017-01-31). Between 2017-01-22 and 2017-01-31 the card was used for 7 transaction(s) totalling $8,551.47: on 2017-01-22 $181.73 online in billing region 327.0; on 2017-01-23 $357.82 online in billing region 327.0; on 2017-01-24 $811.92 online in billing region 327.0; on 2017-01-26 $1,800.00 online in billing region 327.0; on 2017-01-27 $1,800.00 online in billing region 327.0; on 2017-01-28 $1,800.00 online in billing region 327.0; on 2017-01-31 $1,800.00 online in billing region 315.0. The activity matches a coordinated undocumented wave across 8 cards sharing the signature (Dormant wake + un-identitied online ProductCD='C' doubling ramp to $1,800 ceiling). The other connected cards in this wave are C03080-K2, C04096-K1, C07847-K1, C08563-K1, C08943-K2, C09026-K1, C09148-K1. The cardholder reported that they did not make the purchase and still hold the card. The activity is inconsistent with the cardholder's history (prior median purchase $91.98). No prior report has been filed on this customer. OFAC SDN screening of the customer identifier: no match (anonymised identifiers; screening result recorded from the sdn.csv lookup in the live run). Recommended actions: a block and reissue of the card, not yet done and awaiting fraud-manager approval, internal case opened, 7 connected cards placed under monitoring, case escalated to an analyst.",
+    "subjects": [
+      "C11663",
+      "C11663-K1",
+      "C03080-K2",
+      "C04096-K1",
+      "C07847-K1",
+      "C08563-K1",
+      "C08943-K2",
+      "C09026-K1",
+      "C09148-K1"
+    ],
+    "total_amount_usd": 8551.47,
+    "activity_dates": [
+      "2017-01-22",
+      "2017-01-31"
+    ]
+  },
+  "stop_reason": "Policy §6 test 1: fraud probability 0.94 is at or above 0.85 with 3 independent evidence families (customer, device, history); no request could change the action set, so the initial recommendation is final.",
+  "tool_calls": 17,
+  "tokens": 0,
+  "latency_s": 0.07
+}

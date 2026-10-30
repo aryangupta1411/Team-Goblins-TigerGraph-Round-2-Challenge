@@ -1,0 +1,104 @@
+{
+  "case_id": "HHF-015",
+  "case": {
+    "status": "closed_legitimate",
+    "verdict": "legitimate",
+    "fraud_probability": 0.0,
+    "pattern": "none",
+    "pattern_description": "",
+    "affected_txn_ids": [],
+    "first_suspicious_txn_id": "",
+    "connected_card_ids": [],
+    "connected_device_profiles": [],
+    "exposure_usd": 0.0,
+    "evidence": [
+      {
+        "claim": "Amount $112.75 sits inside the card's baseline (prior median $167.00, prior maximum $418.03 over 116 transactions)",
+        "source": "graph",
+        "ref": "query:case_context(txn=3601725)",
+        "entity_ids": [
+          "3601725",
+          "C00543-K1"
+        ]
+      },
+      {
+        "claim": "Billing region 485.0 is known to the card: 9 prior purchases on 9 days since 2016-07-10 (modal region 325.0, 7 regions used)",
+        "source": "graph",
+        "ref": "query:region_history(card=C00543-K1, addr1=485.0)",
+        "entity_ids": [
+          "3601725",
+          "C00543-K1"
+        ]
+      },
+      {
+        "claim": "Case-memory scorer (LightGBM over the bank's 5,565 closed cases; October holdout AUC 0.956) puts the flagged transaction at 0.00 (calibrated 0.00); the real-time risk score was 0.07",
+        "source": "graph",
+        "ref": "query:case_context(txn=3601725)",
+        "entity_ids": [
+          "3601725"
+        ]
+      },
+      {
+        "claim": "Customer confirmed the activity when asked (assumed reply)",
+        "source": "customer",
+        "ref": "evidence_request:1",
+        "entity_ids": []
+      }
+    ],
+    "similar_prior_cases": [],
+    "summary": "Risk-score alert (0.71) on transaction 3601725 ($112.75, in person) for card C00543-K1. Customer confirmed the activity when asked (assumed reply). Verdict legitimate at probability 0.00. Final actions: CREATE_CASE, ALLOW_TRANSACTION, CLOSE_NO_FRAUD after the assumed customer_validation reply; status closed_legitimate.",
+    "written_to_graph": false,
+    "graph_case_id": "AC-HHF-015"
+  },
+  "evidence_requests": [
+    {
+      "type": "customer_validation",
+      "asked_after_step": 15,
+      "assumed_response": "ASSUMED (simulated): customer confirmed travel to billing region 485.0 and recognises the $112.75 purchase"
+    }
+  ],
+  "next_best_actions": {
+    "initial": [
+      {
+        "action": "CREATE_CASE",
+        "route": "auto",
+        "reason": "3a: evidence requested; case opened and written to the graph"
+      },
+      {
+        "action": "VERIFY_WITH_CUSTOMER",
+        "route": "auto",
+        "reason": "R1: probability 0.00 rests on a single evidence family (history, memory); ask the cardholder which of the transactions were theirs before any block"
+      }
+    ],
+    "final": [
+      {
+        "action": "CREATE_CASE",
+        "route": "auto",
+        "reason": "3a: evidence requested; case opened and written to the graph"
+      },
+      {
+        "action": "ALLOW_TRANSACTION",
+        "route": "auto",
+        "reason": "R3: alert cleared; let the flagged transaction stand"
+      },
+      {
+        "action": "CLOSE_NO_FRAUD",
+        "route": "auto",
+        "reason": "R3: customer confirmed the activity; the confirmation is noted in the case"
+      }
+    ],
+    "what_changed": "The assumed reply (customer_validation: customer confirmed travel to billing region 485.0 and recognises the $112.75 purchase) left the probability at 0.00 and the verdict became legitimate. Added ALLOW_TRANSACTION, CLOSE_NO_FRAUD. Dropped VERIFY_WITH_CUSTOMER. Counterfactual: had the customer denied the purchase, R2 would have applied: BLOCK_CARD (L1) and CREATE_CASE."
+  },
+  "sar": {
+    "file": false,
+    "reason": "3a not met: verdict legitimate (fraud not confirmed or strongly suspected), exposure $0.00; no report",
+    "narrative": "",
+    "subjects": [],
+    "total_amount_usd": 0.0,
+    "activity_dates": []
+  },
+  "stop_reason": "Policy §6 test 2: the assumed customer confirmation settled the question. Probability 0.00 with 3 families also meets §6 test 1.",
+  "tool_calls": 15,
+  "tokens": 0,
+  "latency_s": 0.06
+}

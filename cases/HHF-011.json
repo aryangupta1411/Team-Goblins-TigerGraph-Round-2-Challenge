@@ -1,0 +1,160 @@
+{
+  "case_id": "HHF-011",
+  "case": {
+    "status": "escalated",
+    "verdict": "uncertain",
+    "fraud_probability": 0.3,
+    "pattern": "out_of_region_use",
+    "pattern_description": "",
+    "affected_txn_ids": [
+      "3640919"
+    ],
+    "first_suspicious_txn_id": "3640919",
+    "connected_card_ids": [],
+    "connected_device_profiles": [],
+    "exposure_usd": 881.55,
+    "evidence": [
+      {
+        "claim": "Amount $881.55 exceeds the card's prior maximum ($712.82); prior median $61.28",
+        "source": "graph",
+        "ref": "query:case_context(txn=3640919)",
+        "entity_ids": [
+          "3640919",
+          "C09241-K1"
+        ]
+      },
+      {
+        "claim": "Billing region 494.0 is known to the card: 11 prior purchases on 9 days since 2017-01-01 (modal region 441.0, 8 regions used)",
+        "source": "graph",
+        "ref": "query:region_history(card=C09241-K1, addr1=494.0)",
+        "entity_ids": [
+          "3640919",
+          "C09241-K1"
+        ]
+      },
+      {
+        "claim": "Mixed-channel chain of 12 transactions worth $1,903.74 inside 48 h: in-person purchases up to $881.55 against a card median of $61.41, then online activity",
+        "source": "graph",
+        "ref": "query:episode_candidates(txn=3640919)",
+        "entity_ids": [
+          "3640963",
+          "3640871",
+          "3640970",
+          "3640964",
+          "3640968",
+          "3640928",
+          "3640931",
+          "3640863",
+          "3640907",
+          "3640854",
+          "3640880",
+          "3640919"
+        ]
+      },
+      {
+        "claim": "Case-memory scorer (LightGBM over the bank's 5,565 closed cases; October holdout AUC 0.956) puts the flagged transaction at 0.01 (calibrated 0.01); the real-time risk score was 0.31",
+        "source": "graph",
+        "ref": "query:case_context(txn=3640919)",
+        "entity_ids": [
+          "3640919"
+        ]
+      },
+      {
+        "claim": "Customer's other card(s) carry 20 confirmed-fraud case(s): C09241-K2",
+        "source": "graph",
+        "ref": "query:prior_cases_for_customer(customer=C09241)",
+        "entity_ids": [
+          "CC-0254",
+          "CC-0548",
+          "CC-0771",
+          "CC-1002",
+          "CC-1537",
+          "CC-1779"
+        ]
+      },
+      {
+        "claim": "No reply within 24 hours / verification not completed (assumed); probability unchanged",
+        "source": "customer",
+        "ref": "evidence_request:1",
+        "entity_ids": []
+      }
+    ],
+    "similar_prior_cases": [
+      "CC-5469",
+      "CC-5190",
+      "CC-4933",
+      "CC-4762",
+      "CC-4636",
+      "CC-4469"
+    ],
+    "summary": "Risk-score alert (0.71) on transaction 3640919 ($881.55, in person) for card C09241-K1. Mixed-channel chain of 12 transactions worth $1,903.74 inside 48 h: in-person purchases up to $881.55 against a card median of $61.41, then online activity. Verdict uncertain at probability 0.30, pattern out_of_region_use, 1 affected transaction(s) worth $881.55. Final actions: CREATE_CASE, MONITOR_CARD, DECLINE_TRANSACTION, ESCALATE_TO_ANALYST after the assumed customer_validation reply; status escalated.",
+    "written_to_graph": false,
+    "graph_case_id": "AC-HHF-011"
+  },
+  "evidence_requests": [
+    {
+      "type": "customer_validation",
+      "asked_after_step": 15,
+      "assumed_response": "ASSUMED (simulated): no reply from the customer within 24 hours"
+    }
+  ],
+  "next_best_actions": {
+    "initial": [
+      {
+        "action": "CREATE_CASE",
+        "route": "auto",
+        "reason": "3a: probability 0.30 reaches 0.30; case opened and written to the graph"
+      },
+      {
+        "action": "VERIFY_WITH_CUSTOMER",
+        "route": "auto",
+        "reason": "R1: probability 0.30 rests on a single evidence family (history); ask the cardholder which of the transactions were theirs before any block"
+      },
+      {
+        "action": "MONITOR_CARD",
+        "route": "auto",
+        "reason": "§3b / §5: verdict uncertain; raise monitoring for 72 h while the verification is pending"
+      },
+      {
+        "action": "ESCALATE_TO_ANALYST",
+        "route": "auto",
+        "reason": "R8: verdict uncertain and exposure $881.55 exceeds $500"
+      }
+    ],
+    "final": [
+      {
+        "action": "CREATE_CASE",
+        "route": "auto",
+        "reason": "3a: probability 0.30 reaches 0.30; case opened and written to the graph"
+      },
+      {
+        "action": "MONITOR_CARD",
+        "route": "auto",
+        "reason": "R4: no reply within 24 h; raise monitoring sensitivity for 72 h"
+      },
+      {
+        "action": "DECLINE_TRANSACTION",
+        "route": "L1",
+        "reason": "R4: no reply within 24 h; decline pending / further authorisations on this card (card stays active)"
+      },
+      {
+        "action": "ESCALATE_TO_ANALYST",
+        "route": "auto",
+        "reason": "R8: verdict uncertain and exposure $881.55 exceeds $500"
+      }
+    ],
+    "what_changed": "The assumed reply (customer_validation: no reply from the customer within 24 hours) left the probability at 0.30 and the verdict became uncertain. Added DECLINE_TRANSACTION. Dropped VERIFY_WITH_CUSTOMER. Counterfactual: a confirmation would have closed the alert (R3); a denial would have led to BLOCK_CARD and CREATE_CASE (R2)."
+  },
+  "sar": {
+    "file": false,
+    "reason": "3a not met: verdict uncertain (fraud not confirmed or strongly suspected), exposure $881.55; no report",
+    "narrative": "",
+    "subjects": [],
+    "total_amount_usd": 0.0,
+    "activity_dates": []
+  },
+  "stop_reason": "Policy §6 test 3: the verification was not answered within the window; R4 applies (monitor + decline pending authorisations) and the case is escalated to an analyst (R8), so no further automated step would change the recommendation until a reply arrives.",
+  "tool_calls": 15,
+  "tokens": 0,
+  "latency_s": 0.06
+}

@@ -1,0 +1,118 @@
+{
+  "case_id": "HHF-009",
+  "case": {
+    "status": "closed_fraud",
+    "verdict": "fraud",
+    "fraud_probability": 0.9,
+    "pattern": "card_not_present_new_device",
+    "pattern_description": "",
+    "affected_txn_ids": [
+      "3660354",
+      "3660355"
+    ],
+    "first_suspicious_txn_id": "3660354",
+    "connected_card_ids": [],
+    "connected_device_profiles": [],
+    "exposure_usd": 489.62,
+    "evidence": [
+      {
+        "claim": "Billing region 337.0 on the online purchase is the card's modal region (149 prior purchases on 95 days)",
+        "source": "graph",
+        "ref": "query:region_history(card=C09177-K1, addr1=337.0)",
+        "entity_ids": [
+          "3660355",
+          "C09177-K1"
+        ]
+      },
+      {
+        "claim": "Purchaser email domain anonymous.com used 5 times before on this card",
+        "source": "graph",
+        "ref": "query:case_context(txn=3660355)",
+        "entity_ids": [
+          "3660355"
+        ]
+      },
+      {
+        "claim": "Matched Round-2 detector (card_not_present_new_device) across 2 transactions (3660354, 3660355)",
+        "source": "graph",
+        "ref": "query:card_window(card=C09177-K1, hours=72)",
+        "entity_ids": [
+          "3660354",
+          "3660355",
+          "C09177-K1"
+        ]
+      },
+      {
+        "claim": "Cross-card / telemetry signature (LG-H831 | NULL | NULL | NULL) links 3660354, 3660355 on C09177-K1",
+        "source": "graph",
+        "ref": "query:shared_origin_scan(card=C09177-K1)",
+        "entity_ids": [
+          "3660354",
+          "3660355",
+          "C09177-K1"
+        ]
+      },
+      {
+        "claim": "Case-memory scorer (LightGBM over the bank's 5,565 closed cases; October holdout AUC 0.956) puts the flagged transaction at 0.00 (calibrated 0.00); the real-time risk score was 0.10",
+        "source": "graph",
+        "ref": "query:case_context(txn=3660355)",
+        "entity_ids": [
+          "3660355"
+        ]
+      },
+      {
+        "claim": "Device profile `LG-H831 | NULL | NULL | NULL` is marked New for this account; a New device is not by itself a fraud signal in this history (cleared 'new phone' alerts are New-device ones)",
+        "source": "graph",
+        "ref": "query:case_context(txn=3660355)",
+        "entity_ids": [
+          "LG-H831 | NULL | NULL | NULL",
+          "3660355"
+        ]
+      }
+    ],
+    "similar_prior_cases": [],
+    "summary": "Risk-score alert (0.80) on transaction 3660355 ($228.01, online) for card C09177-K1. Matched Round-2 detector (card_not_present_new_device) across 2 transactions (3660354, 3660355). Verdict fraud at probability 0.90, pattern card_not_present_new_device, 2 affected transaction(s) worth $489.62. Final actions: CREATE_CASE, BLOCK_CARD; no evidence request was needed; status closed_fraud.",
+    "written_to_graph": false,
+    "graph_case_id": "AC-HHF-009"
+  },
+  "evidence_requests": [],
+  "next_best_actions": {
+    "initial": [
+      {
+        "action": "CREATE_CASE",
+        "route": "auto",
+        "reason": "3a: probability 0.90 reaches 0.30; case opened and written to the graph"
+      },
+      {
+        "action": "BLOCK_CARD",
+        "route": "L1",
+        "reason": "§3b: fraud verdict at probability 0.90 with 2 independent evidence families (device, history), so R1 does not apply (probability at or above 0.70); exposure $489.62 routes L1"
+      }
+    ],
+    "final": [
+      {
+        "action": "CREATE_CASE",
+        "route": "auto",
+        "reason": "3a: probability 0.90 reaches 0.30; case opened and written to the graph"
+      },
+      {
+        "action": "BLOCK_CARD",
+        "route": "L1",
+        "reason": "§3b: fraud verdict at probability 0.90 with 2 independent evidence families (device, history), so R1 does not apply (probability at or above 0.70); exposure $489.62 routes L1"
+      }
+    ],
+    "what_changed": "nothing"
+  },
+  "sar": {
+    "file": false,
+    "reason": "3a not met: exposure $489.62 <= $1,000; the New profile `LG-H831 | NULL | NULL | NULL` is a common, non-distinctive profile (not a strong device profile), so it is not a shared-origin signal; no shared region cluster; no other customer's fraud connected; documented pattern",
+    "narrative": "",
+    "subjects": [],
+    "total_amount_usd": 0.0,
+    "activity_dates": []
+  },
+  "stop_reason": "Policy §6 test 1: fraud probability 0.90 is at or above 0.85 with 2 independent evidence families (device, history); no request could change the action set, so the initial recommendation is final.",
+  "tool_calls": 17,
+  "tokens": 0,
+  "latency_s": 0.08
+}

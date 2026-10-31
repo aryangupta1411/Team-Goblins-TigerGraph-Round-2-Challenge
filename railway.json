@@ -13,7 +13,15 @@
       "/ops/**",
       "/rag/**",
       "/cases/**",
-      "/runs/live-final-2/**"
+      "/runs/live-final-2/**",
+      "/agent/__init__.py",
+      "/agent/security.py",
+      "/schema_engine/__init__.py",
+      "/schema_engine/attestation.py",
+      "/engine/out/detector_backtest.json",
+      "/engine/out/containment_summary.json",
+      "/engine/out/proof_snapshot.json",
+      "/runs/r2-final/**"
     ]
   },
   "deploy": {

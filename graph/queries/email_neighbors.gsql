@@ -21,6 +21,7 @@ CREATE OR REPLACE QUERY email_neighbors(VERTEX<EmailDomain> e, VERTEX<Card> c, D
       POST-ACCUM @@cards += CardRow(k.id, k.@n);
 
   P = SELECT p FROM (k:C)-[:REV_ON_CARD]->(p:ClosedCase)
+      WHERE p.closed_at <= to_ts
       POST-ACCUM @@closed_cases += ClosedRow(p.id, p.card_id, p.pattern);
 
   PRINT @@cards AS cards, @@closed_cases AS closed_cases;

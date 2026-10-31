@@ -1,22 +1,67 @@
-# Demo script — 3:30–4:30, recorded on day 13 (PLAN §5 storyline)
+# Demo script: Final Round, 5 minutes, judge picks the case
 
-**Before recording (30 min):** `make awake && make keepalive &` (workspace warm), `make ui`, GraphStudio open on FraudGraph in a second tab, `runs/final/` selected in the UI sidebar, approvals inbox emptied (`rm ui/approvals.sqlite`), screen at 1920×1080, browser zoom 110 %, notifications off. Fallback if the workspace misbehaves: `RUN_MODE=mock` replays the recorded traces from `runs/final/` — the queue's ▶ Investigate button streams `calls.jsonl`, so the shots below are identical.
+Every number spoken below is shown on screen from a file. Each one is named next to the shot that shows it, so nothing
+is quoted from memory.
 
-Pick the ambiguous alert at recording time from HHG-019 / HHG-002 / HHG-005: the one whose pre-evidence probability sits in the uncertain band and whose final action set visibly changes (check the queue's `changed` column).
+## Before the session (15 min)
 
-| Time | Shot | What is on screen | Voice-over (short) |
-|---|---|---|---|
-| 0:00–0:30 | Title + architecture slide (`docs/architecture.svg`) | one diagram: case pack → agent phase machine P0–P10 (claude-agent-sdk) → TigerGraph MCP → Savanna FraudGraph + TigerVector; engine/policy gate; runs/ + UI | "Fraud analysts gather history, trace devices, read policy, decide and document. We built an agent that does that through TigerGraph: 25 installed GSQL queries as MCP tools, GraphRAG over closed cases and FinCEN guidance, and a policy gate that decides who may approve what." |
-| 0:30–0:50 | UI → **Queue** | 20 cases, `opened_at` order, verdict mix roughly half legitimate | "Twenty exam alerts. Half are legitimate — an agent that blocks everything fails." |
-| 0:50–1:25 | Select the ambiguous risk-score alert → ▶ **Investigate** | tool calls stream: `case_context`, `card_profile`, `card_window`, `prior_cases_for_customer`, `similar_prior_cases`, `grounding_chunks`, then the playbook (`device_history`, `episode_candidates` …) | "Every call is `tigergraph__run_installed_query` through the TigerGraph MCP, time-boxed to the moment the alert opened." |
-| 1:25–1:50 | **Case** → Evidence tab | claims with source badges (graph / document / customer), refs, entity ids; then Families & score: probability with its evidence families, scorer + adjustments | "Evidence is typed and cited. The probability is calibrated on the bank's own 5,565 closed cases, then moved only by graph facts." |
-| 1:50–2:15 | **Actions** tab | initial = `CREATE_CASE` + `VERIFY_WITH_CUSTOMER` (R1 / 3a), a block shown as *forbidden by policy*; VoI says a reply would change the set; Evidence requests tab shows the simulated reply; final set changes with `what_changed` and the counterfactual branch | "Below 0.70 on one family, R1 forbids a block. The value-of-information check says asking can change the action — so we ask, simulate the reply as the README requires, and the recommendation flips. The other branch is recorded too." |
-| 2:15–2:35 | GraphStudio | `AgentCase AC-HHG-0nn` with `CASE_INVOLVES`, `CASE_ON_CARD`, `CASE_SIMILAR_TO`, `HAS_EVENT` | "The case is written back into the graph: later investigations retrieve it." |
-| 2:35–3:20 | **HHG-014** (analyst request) | Investigate → `device_neighbors` → **Graph** page: the profile-centric ring, 27 connected cards, 4 prior undocumented closed cases; pattern `undocumented` in the agent's own words; actions R6 / R9 with `FILE_REPORT` (L2) and `BLOCK_CARD` (L1) | "An analyst suspects a device. `device_neighbors` on the strong profile behind an anonymous proxy finds 27 other cards this wave and four closed cases from August. WCC alone would not have found this — hub devices join 5,000 cards — the strength-filtered profile rule does." |
-| 3:20–3:45 | **SAR** tab → **Approvals** | FinCEN-grounded narrative, validator badges green; `FILE_REPORT` L2 pending → **Approve** → toast "written to graph"; GraphStudio shows the `Approval` vertex | "The SAR is drafted on retrieved FinCEN guidance and validated. L2 actions wait for a fraud manager; approving writes an Approval vertex and a CaseEvent." |
-| 3:45–4:10 | **Runs** page + a later case's summary | tokens / tool calls / latency per case; agreement across two runs; a later case (or monitoring alert) naming `AC-HHG-006`; `qa/calibration.png` | "Memory compounds: a later case cites an earlier agent-written one. Twenty cases, about N tool calls and M tokens each; two runs agree on ≥ 90 % of verdicts and actions." |
-| 4:10–4:25 | Repo README | 20 files in `cases/`, blog link, social post | "Repo, twenty answer files, blog. Built on TigerGraph Savanna, TigerGraph MCP, TigerVector and the Claude Agent SDK." |
+1. Wake the workspace and keep it awake: `make demo-warm` (`make awake` + `make keepalive`).
+2. Start the dashboard: `make ui`, at http://localhost:8501. It opens on the canonical run `runs/r2-final`, the
+   source of `cases/HHF-*.json`.
+3. Approvals needs an approver directory (`ui/principals.json`, git-ignored). Without one, nobody can approve; the page says
+   "missing → nobody can approve (fail closed)". To show a real sign-in, create one team lead and one fraud manager:
+   `uv run python -m ui.approvals_db add-principal lead@bank --role team_lead` and the same with `--role fraud_manager` (each prompts for a passphrase). The wrong-role drill itself needs no directory, because it runs in a temp store.
+4. Screen at 1920×1080, browser zoom 110 %, notifications off. A terminal is open on the repo for the fallback.
+5. Know the live re-run's state. On the current code, a live January case calls `typology_scan` in the graph. That query
+   is installed on the workspace (2026-10-31), but `runs/r2-final` was produced before it, so say so if asked. Confirm
+   it is still there before the demo (`graph/check_typology_parity.py --installed`, read-only); if it is missing, a live
+   re-run stops with `CaseDataMissing` and writes no answer, which is the fail-closed drill below.
 
-**Cut list if over 4:30:** drop the GraphStudio shot at 2:15 (say it instead), shorten the runs page to one sentence.
+## The 5 minutes
 
-**Recording checklist:** `make keepalive` running · two takes minimum · export 1080p · upload (YouTube unlisted) · paste the link into README and `docs/social.md` · keep the raw recording.
+| Time | Page | What is on screen | Say (short) | Source of what is shown |
+|---|---|---|---|---|
+| 0:00–0:30 | **Overview** | The decision board: 18 HHF rows with trigger, verdict, final actions, SAR, evidence request, approvals and run state; a click on a case opens its Case file. Ask the judge to pick any case. | "Eighteen alerts, one live run on Gemini 2.5 Flash. Seven fraud, three uncertain, eight legitimate. Six SARs, all on the multi-card waves. Pick any row." | `runs/r2-final/HHF-*/answer.json` |
+| 0:30–1:00 | **Case file**: decision card | Verdict, probability, pattern, status, final actions with routes (auto / L1 / L2), SAR yes or no, tool calls, tokens, latency for the picked case | "This is the answer file as submitted, byte for byte. The routes come from the written policy: auto runs, L1 goes to a team lead, L2 to a fraud manager." | `cases/<case>.json` (byte-identical to `runs/r2-final/<case>/answer.json`) |
+| 1:00–1:45 | **Case file** → tab **Decision path P0–P10** | Each phase in order: P0 harness facts, P2 the model's own query choices, P3 the scorecard and its score moves, P4 the model's ±0.10 adjustment, P5/P7 actions inside the admissible set, P8 SAR, P9 summary. Point at any clamp or `policy_override` note. | "The engine decides; the model explains, picks extra queries and may move p by at most 0.10. Any action it proposes outside the policy's admissible set is replaced." | `runs/r2-final/<case>/phases.jsonl` |
+| 1:45–2:30 | **Case file** → tab **Evidence ledger** | One row per claim, with what / evidence / how / when checkboxes, the matched call and its timestamp, and simulated replies marked `ASSUMED` | "Every claim names what it says, the ids it rests on, the query that returned them and when that query ran. All of it is time-boxed to the moment the alert opened." | `answer.json` `case.evidence` joined with `calls.jsonl` |
+| 2:30–3:15 | **Graph** | The case's neighbourhood in FraudGraph, and the write-back rows (`AgentCase AC-<case>`, `CaseEvent`s, `Approval`s, `CASE_*` edges). For a wave case (HHF-001 … 006), the connected cards that share no device. | "The waves share no device, so a device traversal finds nothing. The detectors scan the transactions themselves. The case is written back, so later cases retrieve it." | `runs/r2-final/<case>/calls.jsonl` (`caller=persist`); in live mode, `case_subgraph` on the workspace |
+| 3:15–4:00 | One **Proof** page: **Detectors & containment** (if the judge prefers, **Runs & consistency**) | The D1-D4 backtest over 5,585 closed cases: 0 cleared cases hit by D1-D3, 1 by D4. The containment table: 0 legitimate customers touched by the targeted plans, against 55 / 3 / 91 / 26 extra customers for a broad rule. | "We backtest every detector on the bank's closed cases and name the legitimate customers it would act against. The targeted block set touches none." | `engine/out/detector_backtest.json`, `engine/out/containment_summary.json` |
+| 4:00–4:45 | **Approvals** → **Wrong-role drill** → "Run wrong-role drill in a sandbox" | 4 / 4 blocked by the server: a team lead deciding an L2 `FILE_REPORT`, a role claimed by the client, a session re-labelled outside `authenticate()`, and an overwrite of a decided approval. Then the audit log tab. | "The role comes from the server's directory, never from the request. Decided approvals are immutable: SQLite triggers refuse the update. The drill runs in a throwaway store, so the real inbox is untouched." | `ui.approvals_db.run_rbac_drills()`; the same four drills are in `agent.security.run_attack_ablation()` (ATK-08, 22, 23, 09) |
+| 4:45–5:00 | Back to **Overview** | The board again | "Every number you saw is computed from a file in this repo. The README names each file." | `README.md` (sources line under each table) |
+
+If there is time, or if the judge asks for a live run: on the **Case file**, the re-run dialog lists its side effects. It
+writes `AC-<case>` and its events to the shared graph, adds inbox rows, spends tokens, and writes `runs/<run_id>/`. It
+starts only after the checkbox is ticked. A live re-run takes about as long as the decision card's latency (median
+104.8 s, max 306.0 s in `runs/r2-final`).
+
+## If the live re-run fails
+
+Say what failed and show the failure. Do not switch data silently.
+
+1. **The workspace is unreachable.** `GraphUnavailable` arrives after up to `TG_RESUME_MAX_WAIT_S` (240 s). No answer is
+   written and the run table marks the case failed. Show that row, then carry on from the recorded run: every page
+   reads `runs/r2-final` through the run picker.
+2. **The case stops with `CaseDataMissing`** (expected only if `typology_scan` has been removed from the workspace). Open the failed run's
+   `phases.jsonl` (`case failed`, "typology_scan failed … no answer written"). That stop is the fail-closed rule: a
+   January case is never scored without its detector evidence.
+3. **The model backend fails** (quota, timeout, unparseable output after 3 attempts). The case fails and no partial answer is promoted.
+   Show the `kind=llm` error row in `calls.jsonl`.
+4. **Offline proof that it runs from a clean clone.** In the terminal, run the one-command drill. It needs no keys and no graph,
+   and it is the same step CI runs:
+
+   ```bash
+   RUN_MODE=mock uv run python -m agent.bench --cases HHF-004 --run-id demo-drill --mock && uv run python -m agent.validator --db data/ids.duckdb runs/demo-drill/HHF-004/answer.json
+   ```
+
+   Then, if asked, show that the deterministic engine reproduces all 18 verdicts, SAR decisions and final action sets:
+   `uv run python -m engine.run_cases --cases HHF-001 … HHF-018 --out <dir> --sheet <dir>/sheet.md`.
+5. **The UI itself will not start.** Fall back to `RUN_MODE=mock make ui`, which uses the same pages over the recorded
+   run, or to the files: `cases/MANIFEST.md` (per-case table), then `runs/r2-final/<case>/answer.json` and `sar.md`.
+
+## What not to say
+
+- No accuracy against the answer key: the organisers hold it.
+- No claim that the in-graph typology scan has run live. The submitted run computed D1-D4 on the local DuckDB snapshot
+  (`runs/r2-final/*/calls.jsonl` has no `typology_scan` call).
+- The three candidate detectors were written by us, not invented by the agent (`docs/INNOVATION.md`, "What is not claimed").

@@ -11,7 +11,7 @@ CREATE OR REPLACE QUERY prior_cases_for_customer(VERTEX<Customer> cu, DATETIME a
 
   S = {cu};
   P = SELECT p FROM (s:S)-[:OWNS]->(c:Card)-[:REV_ON_CARD]->(p:ClosedCase)
-      WHERE p.opened_at <= as_of
+      WHERE p.opened_at <= as_of AND p.closed_at <= as_of
       POST-ACCUM @@closed_cases += ClosedRow(datetime_format(p.opened_at), p.id, p.card_id, p.outcome, p.pattern,
                                              p.exposure_usd, p.report_filed, p.n_txns, p.template_id);
   A = SELECT a FROM (s:S)-[:OWNS]->(c:Card)-[:REV_CASE_ON_CARD]->(a:AgentCase)

@@ -1,96 +1,132 @@
 {
   "case_id": "HHF-014",
   "case": {
-    "status": "closed_legitimate",
-    "verdict": "legitimate",
-    "fraud_probability": 0.1,
-    "pattern": "none",
+    "status": "escalated",
+    "verdict": "uncertain",
+    "fraud_probability": 0.3,
+    "pattern": "out_of_region_use",
     "pattern_description": "",
-    "affected_txn_ids": [],
-    "first_suspicious_txn_id": "",
+    "affected_txn_ids": [
+      "3602445"
+    ],
+    "first_suspicious_txn_id": "3602445",
     "connected_card_ids": [],
     "connected_device_profiles": [],
-    "exposure_usd": 0.0,
+    "exposure_usd": 1053.79,
     "evidence": [
       {
-        "claim": "Billing region 315.0 is known to the card: 199 prior purchases on 102 days since 2016-07-02 (modal region 325.0, 53 regions used)",
+        "claim": "An episode on card C00750-K2 includes an in-person transaction 3602445 for $1053.79 at 2017-01-01 00:00:25 and an online transaction 3602461 for $64.83 at 2017-01-01 00:17:39, showing mixed-channel activity.",
         "source": "graph",
-        "ref": "query:region_history(card=C00750-K2, addr1=315.0)",
+        "ref": "query:episode_candidates(t=3602445, as_of=2017-01-01 05:00:25, gap_h=48)",
+        "entity_ids": [
+          "C00750-K2",
+          "3602445",
+          "3602461"
+        ]
+      },
+      {
+        "claim": "The online transaction 3602461 was associated with a new device profile 'Windows | Windows 10 | firefox 57.0 | 1920x1080'.",
+        "source": "graph",
+        "ref": "query:episode_candidates(t=3602445, as_of=2017-01-01 05:00:25, gap_h=48)",
+        "entity_ids": [
+          "3602461",
+          "Windows | Windows 10 | firefox 57.0 | 1920x1080"
+        ]
+      },
+      {
+        "claim": "Card C00750-K2 has 16 prior confirmed fraud cases, including account_takeover, card_not_present_fraud, card_not_present_new_device, and out_of_region_use, with the most recent confirmed on 2016-10-29.",
+        "source": "graph",
+        "ref": "query:prior_cases_for_customer(cu=C00750, as_of=2017-01-01 05:00:25)",
+        "entity_ids": [
+          "C00750-K2",
+          "C00750",
+          "CC-5431",
+          "CC-4964",
+          "CC-4387",
+          "CC-4214",
+          "CC-4066",
+          "CC-3470",
+          "CC-3150",
+          "CC-2865",
+          "CC-2635",
+          "CC-2194",
+          "CC-1930",
+          "CC-1338",
+          "CC-0989",
+          "CC-0691",
+          "CC-0480",
+          "CC-0121"
+        ]
+      },
+      {
+        "claim": "Recent online activity on card C00750-K2 with product code 'C' paid recipient email domain mac.com, which is shared by 20 other cards in the 30 days prior to opening.",
+        "source": "graph",
+        "ref": "query:shared_origin_scan(c=C00750-K2, as_of=2017-01-01 05:00:25, days=30)",
+        "entity_ids": [
+          "C00750-K2"
+        ]
+      },
+      {
+        "claim": "The flagged in-person transaction 3602445 occurred in region 315.0, which is a known region for card C00750-K2 with 199 prior purchases across 103 days.",
+        "source": "graph",
+        "ref": "query:region_history(c=C00750-K2, addr1=315.0, as_of=2017-01-01 05:00:25)",
         "entity_ids": [
           "3602445",
           "C00750-K2"
         ]
       },
       {
-        "claim": "$1,053.79 +-1% under product code W is a recurring price point on this card: 21 prior purchases",
+        "claim": "The $1053.79 transaction (3602445) under product code W is a recurring charge pattern for card C00750-K2, with 21 prior purchases at +/- 1% of the amount.",
         "source": "graph",
-        "ref": "query:recurring_charge_check(txn=3602445)",
+        "ref": "query:recurring_charge_check(t=3602445, tol=0.01, as_of=2017-01-01 05:00:25)",
         "entity_ids": [
           "3602445",
           "C00750-K2"
         ]
       },
       {
-        "claim": "Case-memory scorer (LightGBM over the bank's 5,565 closed cases; October holdout AUC 0.956) puts the flagged transaction at 0.00 (calibrated 0.00); the real-time risk score was 0.06; the scorer is unreliable here (card has 4400 transactions, position 4399)",
+        "claim": "Card C00750-K2 has one prior risk-score alert (CC-0591) that was cleared after customer confirmation, matching the general shape of the current alert.",
         "source": "graph",
-        "ref": "query:case_context(txn=3602445)",
+        "ref": "query:prior_cases_for_customer(cu=C00750, as_of=2017-01-01 05:00:25)",
+        "entity_ids": [
+          "C00750-K2",
+          "CC-0591"
+        ]
+      },
+      {
+        "claim": "The real-time risk score for transaction 3602445 was 0.06, and the case-memory scorer's calibrated probability is 0.00, though the scorer is unreliable for this card due to its high transaction count (4399 prior transactions).",
+        "source": "graph",
+        "ref": "query:case_context(t=3602445, as_of=2017-01-01 05:00:25)",
         "entity_ids": [
           "3602445"
         ]
       },
       {
-        "claim": "16 prior confirmed-fraud case(s) on this card (account_takeover, card_not_present_fraud, card_not_present_new_device, out_of_region_use), most recent 2016-10-29",
-        "source": "graph",
-        "ref": "query:prior_cases_for_customer(customer=C00750)",
-        "entity_ids": [
-          "CC-0121",
-          "CC-0480",
-          "CC-0691",
-          "CC-0989",
-          "CC-1338",
-          "CC-1930",
-          "CC-2194",
-          "CC-2635",
-          "CC-2865",
-          "CC-3150",
-          "CC-3470",
-          "CC-4066",
-          "C00750-K2"
-        ]
-      },
-      {
-        "claim": "1 prior risk-score alert(s) on this card were cleared after the customer confirmed the activity (CC-0591); the cleared alert had the same shape as this one",
-        "source": "graph",
-        "ref": "query:prior_cases_for_customer(customer=C00750)",
-        "entity_ids": [
-          "CC-0591",
-          "C00750-K2"
-        ]
-      },
-      {
-        "claim": "Customer confirmed the activity when asked (assumed reply)",
+        "claim": "Assumed reply: no reply from the customer within 24 hours",
         "source": "customer",
         "ref": "evidence_request:1",
-        "entity_ids": []
+        "entity_ids": [
+          "3602445"
+        ]
       }
     ],
     "similar_prior_cases": [
-      "CC-5431",
-      "CC-4964",
-      "CC-4387",
-      "CC-4214",
-      "CC-4066",
-      "CC-3470"
+      "CC-5077",
+      "CC-3901",
+      "CC-3458",
+      "CC-3150",
+      "CC-3470",
+      "CC-3868"
     ],
-    "summary": "Risk-score alert (0.57) on transaction 3602445 ($1,053.79, in person) for card C00750-K2. Customer confirmed the activity when asked (assumed reply). Verdict legitimate at probability 0.10. Final actions: CREATE_CASE, ALLOW_TRANSACTION, CLOSE_NO_FRAUD after the assumed customer_validation reply; status closed_legitimate.",
-    "written_to_graph": false,
+    "summary": "The case remains uncertain with a fraud probability of 0.3. The episode, involving transactions 3602445 and 3602461 for a total exposure of $1,053.79, exhibits mixed-channel activity and new device use, although the flagged transaction is a recurring charge in a known region. A customer verification request received no reply, leading to recommended actions including CREATE_CASE, MONITOR_CARD, DECLINE_TRANSACTION (L1), and ESCALATE_TO_ANALYST.",
+    "written_to_graph": true,
     "graph_case_id": "AC-HHF-014"
   },
   "evidence_requests": [
     {
       "type": "customer_validation",
-      "asked_after_step": 15,
-      "assumed_response": "ASSUMED (simulated): customer confirmed travel to billing region 315.0 and recognises the $1,053.79 purchase"
+      "asked_after_step": 16,
+      "assumed_response": "ASSUMED (simulated): no reply from the customer within 24 hours"
     }
   ],
   "next_best_actions": {
@@ -98,53 +134,58 @@
       {
         "action": "CREATE_CASE",
         "route": "auto",
-        "reason": "3a: evidence requested; case opened and written to the graph"
+        "reason": "3a: probability is 0.30."
       },
       {
         "action": "VERIFY_WITH_CUSTOMER",
         "route": "auto",
-        "reason": "R1: probability 0.15 rests on a single evidence family (history, memory); ask the cardholder which of the transactions were theirs before any block"
+        "reason": "R1: probability is 0.30 with a single evidence family for fraud."
       },
       {
         "action": "MONITOR_CARD",
         "route": "auto",
-        "reason": "§3b / §5: verdict uncertain; raise monitoring for 72 h while the verification is pending"
+        "reason": "§3b: monitoring is needed while customer verification is pending."
       },
       {
         "action": "ESCALATE_TO_ANALYST",
         "route": "auto",
-        "reason": "R8: verdict uncertain and exposure $1,053.79 exceeds $500"
+        "reason": "R8: verdict is uncertain, exposure is $1,053.79 > $500, and there is conflicting evidence."
       }
     ],
     "final": [
       {
         "action": "CREATE_CASE",
         "route": "auto",
-        "reason": "3a: evidence requested; case opened and written to the graph"
+        "reason": "3a: a case is required at a probability of 0.30 or higher and after a customer verification request."
       },
       {
-        "action": "ALLOW_TRANSACTION",
+        "action": "MONITOR_CARD",
         "route": "auto",
-        "reason": "R3: alert cleared; let the flagged transaction stand"
+        "reason": "R4: monitoring is needed after no customer reply within 24 hours."
       },
       {
-        "action": "CLOSE_NO_FRAUD",
+        "action": "DECLINE_TRANSACTION",
+        "route": "L1",
+        "reason": "R4: no reply received from the customer within 24 hours for pending authorizations."
+      },
+      {
+        "action": "ESCALATE_TO_ANALYST",
         "route": "auto",
-        "reason": "R3: customer confirmed the activity; the confirmation is noted in the case"
+        "reason": "R4: escalation is required because no reply was received within 24 hours and exposure is $1,053.79, which is over $500."
       }
     ],
-    "what_changed": "The assumed reply (customer_validation: customer confirmed travel to billing region 315.0 and recognises the $1,053.79 purchase) probability moved from 0.15 to 0.10 and the verdict became legitimate. Added ALLOW_TRANSACTION, CLOSE_NO_FRAUD. Dropped VERIFY_WITH_CUSTOMER, MONITOR_CARD, ESCALATE_TO_ANALYST. Counterfactual: had the customer denied the purchase, R2 would have applied: BLOCK_CARD (L1) and CREATE_CASE."
+    "what_changed": "The assumed customer validation reply (no_reply) left the probability at 0.30 and kept the verdict uncertain, adding DECLINE_TRANSACTION, removing VERIFY_WITH_CUSTOMER. Counterfactual: a confirmation would have closed the alert (R3); a denial would have led to BLOCK_CARD and CREATE_CASE (R2)."
   },
   "sar": {
     "file": false,
-    "reason": "3a not met: verdict legitimate (fraud not confirmed or strongly suspected), exposure $0.00; no report",
+    "reason": "3a not met: verdict uncertain (fraud not confirmed or strongly suspected), exposure $1,053.79; no report",
     "narrative": "",
     "subjects": [],
-    "total_amount_usd": 0.0,
+    "total_amount_usd": 0,
     "activity_dates": []
   },
-  "stop_reason": "Policy §6 test 2: the assumed customer confirmation settled the question. Probability 0.10 with 3 families also meets §6 test 1.",
-  "tool_calls": 15,
-  "tokens": 0,
-  "latency_s": 0.11
+  "stop_reason": "Policy §6 test 3 was met: the customer verification request received no reply within 24 hours. Rule R4 applies, leading to monitoring and declining pending authorizations, and no further automated step would change the recommendation.",
+  "tool_calls": 16,
+  "tokens": 201999,
+  "latency_s": 87.0
 }

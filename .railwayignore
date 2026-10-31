@@ -1,5 +1,6 @@
 # `railway up` uploads the working tree minus .gitignore and this file. The Dockerfile needs only
-# requirements-ui.txt, .streamlit/, ops/, rag/, cases/, runs/live-final-2/ and ui/, so skip the bulk
+# requirements-ui.txt, .streamlit/, ops/, rag/, cases/, runs/r2-final/, runs/live-final-2/, three files of
+# engine/out/, agent/__init__.py + agent/security.py, schema_engine/ (attestation.py) and ui/, so skip the bulk
 # (data/ and graph/ alone are over 150 MB). Exclusions only: a `!` line here overrides .gitignore
 # and could upload .env or local runs.
 .env
@@ -8,8 +9,14 @@
 data/
 graph/
 docs/
-agent/
-engine/
+# agent/ minus the two stdlib-only files the image copies (tracked source; a parent dir excluded with `agent/`
+# could not be re-included)
+agent/*
+!agent/__init__.py
+!agent/security.py
+# engine/out/ stays (about 1.5 MB): the UI reads its detector backtest, containment summary and proof snapshot
+engine/*.py
+engine/__pycache__/
 etl/
 mcp/
 qa/

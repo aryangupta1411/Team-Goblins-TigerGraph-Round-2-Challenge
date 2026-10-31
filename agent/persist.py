@@ -110,6 +110,7 @@ async def _persist(pm: Any, ctx, sc, initial: list[dict], final: list[dict], req
     }
     t0 = time.time()
     written = False
+    failed: list[str] = []          # every write that did not land; written_to_graph is true only when none failed
     # 1. single pyTigerGraph upsert with the embedding
     try:
         vec = tools_local.embed_document(embed_text_for_case(ctx, sc, closing, sar, initial, final, requests))
@@ -120,6 +121,8 @@ async def _persist(pm: Any, ctx, sc, initial: list[dict], final: list[dict], req
     except Exception as e:
         log.record_tool("pytg:upsertVertex(AgentCase)", {"id": case_id}, time.time() - t0, 0, ok=False, error=str(e), caller="persist")
         log.note("AgentCase upsert failed", error=str(e)[:300])
+    if not written:
+        failed.append("AgentCase")
     # 2. events + approvals through the MCP writers
     seq = 0
     event_ids: list[str] = []
@@ -133,6 +136,7 @@ async def _persist(pm: Any, ctx, sc, initial: list[dict], final: list[dict], req
             event_ids.append(eid)
         except Exception as e:
             log.note(f"append_case_event {eid} failed", error=str(e)[:200])
+            failed.append(eid)
     approval_ids: list[str] = []
     for a in final:
         if a["route"] in ("L1", "L2"):
@@ -151,6 +155,7 @@ async def _persist(pm: Any, ctx, sc, initial: list[dict], final: list[dict], req
                 approval_ids.append(aid)
             except Exception as e:
                 log.note(f"record_approval {aid} failed", error=str(e)[:200])
+                failed.append(aid)
     # 3. edges through tigergraph__add_edges (batched by edge type; same src/tgt types per batch)
     edges: dict[str, list[dict]] = {
         "CASE_ON_CARD": [{"target_id": ctx.card_id}],
@@ -172,8 +177,11 @@ async def _persist(pm: Any, ctx, sc, initial: list[dict], final: list[dict], req
             res = await call_tool_with_resume(pm.session, "tigergraph__add_edges", {"edge_type": etype, "edges": payload})
             ok = not getattr(res, "is_error", False) and '"success": true' in "".join(getattr(c, "text", "") for c in res.content).lower()
             log.record_tool(f"mcp:add_edges({etype})", {"n": len(payload)}, time.time() - t1, 0, ok=ok, caller="persist")
+            if not ok:
+                failed.append(f"edges:{etype}")
         except Exception as e:
             log.record_tool(f"mcp:add_edges({etype})", {"n": len(payload)}, time.time() - t1, 0, ok=False, error=str(e), caller="persist")
+            failed.append(f"edges:{etype}")
     # 4. index poll so the next case can retrieve this one
     if written:
         try:
@@ -188,5 +196,9 @@ async def _persist(pm: Any, ctx, sc, initial: list[dict], final: list[dict], req
             log.note("vector index status after persist", ready=ready)
         except Exception as e:
             log.note("vector index poll failed", error=str(e)[:200])
-    log.record_phase("P10", {"written_to_graph": written, "events": len(event_ids), "approvals": approval_ids, "status": status})
-    return written
+    complete = written and not failed
+    if written and failed:
+        # never report a partial write-back as saved (drill: graph fails during P10)
+        log.note("partial write-back: written_to_graph=false", failed=failed[:20], n_failed=len(failed))
+    log.record_phase("P10", {"written_to_graph": complete, "events": len(event_ids), "approvals": approval_ids, "status": status, "failed_writes": failed})
+    return complete

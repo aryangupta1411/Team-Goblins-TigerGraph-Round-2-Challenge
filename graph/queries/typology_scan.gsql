@@ -1,0 +1,119 @@
+// typology_scan -- the January 2017 cross-card typology detectors D1-D4 (engine/detectors.py), run inside the graph.
+// The detectors find waves of cards that share no device, so there is no vertex to walk from: each is a filtered scan of
+// the online ProductCD='C' transactions with per-card accumulators, exactly the shapes engine.detectors.WAVE_SQL states:
+//   D1 spoofed-mobile anonymous-proxy wave   cards with >= 2 New-mobile IP_PROXY:ANONYMOUS purchases >= $200 whose device
+//                                            first token is not a desktop/emulator string (from data_start)
+//   D2 dormant-wake escalating drain         from 2017-01-01: >= 5 no-identity purchases >= $70, max >= $1,100, min < $300,
+//                                            and the run's first purchase follows >= 21 days of silence (NEXT.gap_seconds)
+//   D3 micro-charge skimming                 from 2017-01-01: 4-6 purchases of $1-$6 on >= 4 distinct days, >= 3 with a
+//                                            region or an identity record, on a card with no earlier ProductCD='C' < $10
+//   D4 recipient-email mule                  the flagged transaction's recipient domain took online 'C' payments from 10-35
+//                                            cards in the 30 days to as_of, <= 40 cards ever, and the data starts >= 60 days
+//                                            before as_of (rarity needs history)
+// Peers are NOT time-boxed for D1-D3 (the wave is defined over the whole dataset, as WAVE_SQL does); D4 is boxed to as_of.
+// Rows are (id, card_id, ts, amt, device_id). `card_rows` are the full rows of card c's own transactions <= as_of that sit in
+// any wave: the facts engine.scorecard reads as round2_detector_rows. engine.detectors.hit_from_scan turns the rows into the
+// DetectorHit, the attestation and the description, so this query and DuckFacts.typology_scan share one output shape.
+USE GRAPH FraudGraph
+CREATE OR REPLACE QUERY typology_scan(VERTEX<Card> c, VERTEX<Transaction> t, DATETIME as_of, DATETIME data_start) FOR GRAPH FraudGraph SYNTAX v3 {
+  TYPEDEF TUPLE<STRING id, STRING card_id, STRING ts, FLOAT amt, STRING device_id> WaveRow;
+  TYPEDEF TUPLE<STRING id, STRING ts, FLOAT amt, STRING product_cd, STRING channel, STRING addr1, STRING p_email,
+                STRING r_email, STRING device_id, STRING device_new, STRING proxy_type, FLOAT cms_p> CardRow;
+
+  ListAccum<WaveRow> @@d1_rows, @@d2_rows, @@d3_rows, @@d4_rows;
+  ListAccum<CardRow> @@card_rows;
+  MapAccum<STRING, SumAccum<INT>> @@d1_n, @@d2_n, @@d3_n, @@d3_ok;
+  MapAccum<STRING, MaxAccum<FLOAT>> @@d2_max;
+  MapAccum<STRING, MinAccum<FLOAT>> @@d2_min;
+  MapAccum<STRING, MinAccum<INT>> @@d2_first;
+  SetAccum<INT> @d3_days;
+  SetAccum<STRING> @@d1_ok, @@woke, @@has_prev, @@d3_shape, @@d3_excl, @@wave_ids, @@d4_win, @@d4_ever;
+  MaxAccum<STRING> @@d4_domain;
+
+  // ---- candidates: three filtered scans of the Transaction vertices, each keeping its vertex set and per-card counters
+  // equality filters first (cheap, over the whole vertex set); the device-string exclusions run in ACCUM on the few survivors
+  // (the same LIKE chain in a WHERE clause takes minutes on the interpreter)
+  V1a = SELECT x FROM (x:Transaction)
+        WHERE x.product_cd == "C" AND x.channel == "online" AND x.ts >= data_start AND x.amt >= 200.0
+          AND x.device_type == "mobile" AND x.device_new == "New" AND x.proxy_type == "IP_PROXY:ANONYMOUS" AND x.device_id != "";
+  V1b = SELECT x FROM (x:V1a)
+        ACCUM IF NOT x.device_id LIKE "SM-G935F%" AND NOT x.device_id LIKE "iOS Device%"
+                 AND NOT (x.device_id == "NULL" OR x.device_id LIKE "NULL | %")
+                 AND NOT (x.device_id == "Windows" OR x.device_id LIKE "Windows | %")
+                 AND NOT (x.device_id == "MacOS" OR x.device_id LIKE "MacOS | %")
+                 AND NOT (x.device_id == "Trident/7.0" OR x.device_id LIKE "Trident/7.0 | %")
+                 AND NOT (x.device_id == "rv:11.0" OR x.device_id LIKE "rv:11.0 | %")
+                 AND NOT (x.device_id == "rv:52.0" OR x.device_id LIKE "rv:52.0 | %")
+                 AND NOT (x.device_id == "Blade V6 Plus Build/MRA58K" OR x.device_id LIKE "Blade V6 Plus Build/MRA58K | %") THEN
+                @@d1_ok += x.id,
+                @@d1_n += (x.card_id -> 1)
+              END;
+
+  V2 = SELECT x FROM (x:Transaction)
+       WHERE x.product_cd == "C" AND x.channel == "online" AND x.ts >= data_start AND x.ts >= to_datetime("2017-01-01 00:00:00")
+         AND NOT x.has_identity AND x.amt >= 70.0
+       ACCUM @@d2_n += (x.card_id -> 1),
+             @@d2_max += (x.card_id -> x.amt),
+             @@d2_min += (x.card_id -> x.amt),
+             @@d2_first += (x.card_id -> datetime_to_epoch(x.ts));
+
+  V3 = SELECT x FROM (x:Transaction)
+       WHERE x.product_cd == "C" AND x.channel == "online" AND x.ts >= data_start AND x.ts >= to_datetime("2017-01-01 00:00:00")
+         AND x.amt >= 1.0 AND x.amt <= 6.0
+       ACCUM @@d3_n += (x.card_id -> 1),
+             IF x.addr1 != "" OR x.has_identity THEN @@d3_ok += (x.card_id -> 1) END;
+
+  C3 = SELECT cc FROM (x:V3)-[:REV_MADE]->(cc:Card) ACCUM cc.@d3_days += datetime_to_epoch(x.ts) / 86400;
+
+  // ---- D1 wave: cards with >= 2 qualifying purchases
+  R1 = SELECT x FROM (x:V1a) WHERE @@d1_ok.contains(x.id) AND @@d1_n.get(x.card_id) >= 2
+       ACCUM @@d1_rows += WaveRow(x.id, x.card_id, x.ts_str, x.amt, x.device_id), @@wave_ids += x.id;
+
+  // ---- D2 wave: a climbing run whose first purchase follows >= 21 days of silence on the card
+  W1 = SELECT x FROM (x:V2)-[e:REV_NEXT]->(p:Transaction)
+       WHERE datetime_to_epoch(x.ts) == @@d2_first.get(x.card_id)
+       ACCUM @@has_prev += x.card_id,
+             IF e.gap_seconds >= 21 * 86400 THEN @@woke += x.card_id END;
+  W0 = SELECT x FROM (x:V2)
+       WHERE datetime_to_epoch(x.ts) == @@d2_first.get(x.card_id) AND NOT @@has_prev.contains(x.card_id)
+       ACCUM @@woke += x.card_id;
+  R2 = SELECT x FROM (x:V2)
+       WHERE @@d2_n.get(x.card_id) >= 5 AND @@d2_max.get(x.card_id) >= 1100.0 AND @@d2_min.get(x.card_id) < 300.0
+         AND @@woke.contains(x.card_id)
+       ACCUM @@d2_rows += WaveRow(x.id, x.card_id, x.ts_str, x.amt, x.device_id), @@wave_ids += x.id;
+
+  // ---- D3 wave: the micro-charge shape, minus cards that already paid under $10 on ProductCD='C' before 2017-01-01
+  K3 = SELECT cc FROM (cc:C3)
+       WHERE @@d3_n.get(cc.id) >= 4 AND @@d3_n.get(cc.id) <= 6 AND cc.@d3_days.size() >= 4 AND @@d3_ok.get(cc.id) >= 3
+       ACCUM @@d3_shape += cc.id;
+  X3 = SELECT cc FROM (cc:K3)-[:MADE]->(p:Transaction)
+       WHERE p.product_cd == "C" AND p.amt < 10.0 AND p.ts < to_datetime("2017-01-01 00:00:00")
+       ACCUM @@d3_excl += cc.id;
+  R3 = SELECT x FROM (x:V3) WHERE @@d3_shape.contains(x.card_id) AND NOT @@d3_excl.contains(x.card_id)
+       ACCUM @@d3_rows += WaveRow(x.id, x.card_id, x.ts_str, x.amt, x.device_id), @@wave_ids += x.id;
+
+  // ---- D4: the flagged transaction's recipient domain, judged on the 30 days to as_of
+  T0 = {t};
+  T1 = SELECT x FROM (x:T0) WHERE x.product_cd == "C" AND x.channel == "online" AND x.r_email != "";
+  E1 = SELECT e FROM (x:T1)-[:RECIPIENT_EMAIL]->(e:EmailDomain);
+  U1 = SELECT u FROM (e:E1)-[:REV_RECIPIENT_EMAIL]->(u:Transaction)
+       WHERE u.product_cd == "C" AND u.channel == "online" AND u.ts <= as_of
+       ACCUM @@d4_ever += u.card_id,
+             IF datetime_to_epoch(u.ts) > datetime_to_epoch(as_of) - 30 * 86400 THEN @@d4_win += u.card_id END;
+  R4 = SELECT u FROM (u:U1)
+       WHERE datetime_to_epoch(u.ts) > datetime_to_epoch(as_of) - 30 * 86400
+         AND @@d4_win.size() >= 10 AND @@d4_win.size() <= 35 AND @@d4_ever.size() <= 40
+         AND datetime_to_epoch(data_start) <= datetime_to_epoch(as_of) - 60 * 86400
+       ACCUM @@d4_rows += WaveRow(u.id, u.card_id, u.ts_str, u.amt, u.device_id), @@wave_ids += u.id, @@d4_domain += u.r_email;
+
+  // ---- the card's own transactions that sit in any wave, in full (round2_detector_rows)
+  S = {c};
+  M = SELECT x FROM (s:S)-[:MADE]->(x:Transaction)
+      WHERE x.ts <= as_of AND @@wave_ids.contains(x.id)
+      ACCUM @@card_rows += CardRow(x.id, x.ts_str, x.amt, x.product_cd, x.channel, x.addr1, x.p_email, x.r_email,
+                                   x.device_id, x.device_new, x.proxy_type, x.cms_p);
+
+  PRINT @@d1_rows AS d1_rows, @@d2_rows AS d2_rows, @@d3_rows AS d3_rows, @@d4_rows AS d4_rows,
+        @@d4_domain AS d4_domain,
+        @@card_rows AS card_rows;
+}

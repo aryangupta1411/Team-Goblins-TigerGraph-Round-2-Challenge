@@ -24,7 +24,7 @@ CREATE OR REPLACE QUERY similar_cases_structural(INT k, STRING card_id, STRING c
   INT window_s = 120 * 86400;
 
   cc = SELECT c FROM (c:ClosedCase)
-       WHERE c.opened_at <= as_of AND datetime_diff(as_of, c.opened_at) <= window_s
+       WHERE c.opened_at <= as_of AND c.closed_at <= as_of AND datetime_diff(as_of, c.opened_at) <= window_s
          AND ((card_id != "" AND c.card_id == card_id)
            OR (customer_id != "" AND c.customer_id == customer_id)
            OR (addr1 != "" AND c.note_region == addr1)
@@ -57,7 +57,7 @@ CREATE OR REPLACE QUERY similar_cases_structural(INT k, STRING card_id, STRING c
     // ACCUM clause with other statements on this multi-hop pattern (the compiler mis-scopes alias `d`), so
     // it runs as a second, single-hop pass over the vertex set the first SELECT already produced.
     cd = SELECT c FROM (d:DeviceProfile WHERE d.id == device_id)<-[:FROM_DEVICE]-(t:Transaction)<-[:INVOLVES]-(c:ClosedCase)
-         WHERE c.opened_at <= as_of AND datetime_diff(as_of, c.opened_at) <= window_s
+         WHERE c.opened_at <= as_of AND c.closed_at <= as_of AND datetime_diff(as_of, c.opened_at) <= window_s
          ACCUM c.@score += 3.0, c.@overlap_reasons += "same_device", c.@kind += "closed",
                c.@outcome_or_verdict += c.outcome, c.@pattern += c.pattern, c.@exposure_usd += c.exposure_usd;
     cd = SELECT c FROM (c:cd)

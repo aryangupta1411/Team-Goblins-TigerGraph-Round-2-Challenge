@@ -19,7 +19,7 @@ CREATE OR REPLACE QUERY similar_prior_cases_closed(LIST<FLOAT> q, INT k, STRING 
   INT kk = k * 3;
 
   cc_all = SELECT c FROM (c:ClosedCase)
-           WHERE c.opened_at <= as_of AND datetime_diff(as_of, c.opened_at) <= window_s
+           WHERE c.opened_at <= as_of AND c.closed_at <= as_of AND datetime_diff(as_of, c.opened_at) <= window_s
            ACCUM c.@kind += "closed", c.@outcome_or_verdict += c.outcome, c.@pattern += c.pattern,
                  c.@exposure_usd += c.exposure_usd, c.@opened_at += datetime_format(c.opened_at, "%Y-%m-%d %H:%M:%S");
   cand = SELECT c FROM (c:cc_all)
@@ -34,7 +34,7 @@ CREATE OR REPLACE QUERY similar_prior_cases_closed(LIST<FLOAT> q, INT k, STRING 
            IF pattern_sig != "" AND c.pattern == pattern_sig THEN c.@overlap_reasons += "same_pattern" END;
   IF device_id != "" THEN
     cc_dev = SELECT c FROM (d:DeviceProfile WHERE d.id == device_id)<-[:FROM_DEVICE]-(t:Transaction)<-[:INVOLVES]-(c:ClosedCase)
-             WHERE c.opened_at <= as_of AND datetime_diff(as_of, c.opened_at) <= window_s
+             WHERE c.opened_at <= as_of AND c.closed_at <= as_of AND datetime_diff(as_of, c.opened_at) <= window_s
              ACCUM c.@overlap_reasons += "same_device", c.@kind += "closed", c.@outcome_or_verdict += c.outcome,
                    c.@pattern += c.pattern, c.@exposure_usd += c.exposure_usd, c.@opened_at += datetime_format(c.opened_at, "%Y-%m-%d %H:%M:%S");
     cand = cand UNION cc_dev;

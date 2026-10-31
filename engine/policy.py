@@ -154,6 +154,10 @@ def cite(name: str, branch: dict | None = None) -> str:
     return str((branch or {}).get("cite") or rule.get("cite") or name)
 
 
+
+IMPACT_ACTIONS = ("BLOCK_CARD", "BLOCK_ALL_CARDS", "DECLINE_TRANSACTION", "FILE_REPORT")
+VERDICT_FORBIDS = {"fraud": ("CLOSE_NO_FRAUD", "ALLOW_TRANSACTION"), "uncertain": ("CLOSE_NO_FRAUD",)}
+
 def admissible(ctx: CaseContext, sc: Scorecard, stage: str) -> dict:
     P = params()
     c = conditions(ctx, sc, stage)
@@ -188,6 +192,17 @@ def admissible(ctx: CaseContext, sc: Scorecard, stage: str) -> dict:
     conflicts = {a: (required[a], forbidden[a]) for a in required if a in forbidden}
     for a in conflicts:
         required.pop(a)
+    # The actions that act against a customer or file with a regulator are never optional: they are admissible only when a
+    # rule requires them (a block / decline / report the model adds on its own would harm a customer the policy does not
+    # call for — on a legitimate case that scores zero). The model may still add the low-impact optional actions.
+    for a in IMPACT_ACTIONS:
+        if a not in required:
+            forbidden.setdefault(a, []).append("3a" if a == "FILE_REPORT" else "§2")
+    # An action set never contradicts its own verdict (a fraud case is never closed or allowed; an uncertain one is not
+    # closed as no-fraud): a schema-valid model reply that says otherwise is corrected here, before any answer is written.
+    for a in VERDICT_FORBIDS.get(sc.verdict, ()):
+        if a not in required:
+            forbidden.setdefault(a, []).append("§6")
     allowed = [a for a in P["actions"] if a not in forbidden]
     routes = {a: route(a, sc.exposure_usd) for a in P["actions"]}
     citations = {a: sorted(set(v)) for a, v in required.items()}

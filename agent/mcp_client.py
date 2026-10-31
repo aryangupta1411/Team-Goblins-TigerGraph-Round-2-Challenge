@@ -109,6 +109,9 @@ BUILTIN_QUERIES: dict[str, dict] = {
     # harness-only (not exposed to the model as tools)
     "post_open_activity": {"harness_only": True, "description": "Activity after opening (monitoring note, never exposure).",
                            "parameters": {"c": {"type": "VERTEX<Card>", "example": {"id": "C13487-K1"}}, "opened_at": {"type": _DT, "example": "2016-11-22 20:11:00"}, "days": {"type": "INT", "example": 7}}},
+    "typology_scan": {"harness_only": True, "description": "January 2017 cross-card typology detectors D1-D4 (waves of cards sharing no device).",
+                      "parameters": {"c": {"type": "VERTEX<Card>", "example": {"id": "C05061-K1"}}, "t": {"type": "VERTEX<Transaction>", "example": {"id": "3660108"}},
+                                     "as_of": {"type": _DT, "example": "2017-01-15 01:25:19"}, "data_start": {"type": _DT, "example": "2016-07-01 00:00:00"}}},
     "case_subgraph": {"harness_only": True, "description": "UI subgraph.", "parameters": {"c": {"type": "VERTEX<Card>"}, "as_of": {"type": _DT}, "hours": {"type": "INT"}}},
     "similar_prior_cases": {"harness_only": True, "description": "Vector + structural similar cases.", "parameters": {"q": {"type": "LIST<FLOAT>"}, "k": {"type": "INT"}, "card_id": {"type": "STRING"}, "customer_id": {"type": "STRING"}, "device_id": {"type": "STRING"}, "addr1": {"type": "STRING"}, "pattern_sig": {"type": "STRING"}, "as_of": {"type": _DT}}},
     "grounding_chunks": {"harness_only": True, "description": "Policy / regulation chunks.", "parameters": {"q": {"type": "LIST<FLOAT>"}, "k": {"type": "INT"}, "doc_filter": {"type": "STRING"}, "kind_filter": {"type": "STRING"}}},
@@ -795,7 +798,16 @@ async def call_query_tool(session: Any, tctx: ToolContext, qname: str, params: d
         current_caller.reset(token)
     result = _timebox(tctx, qname, result)
     record_result(tctx, qname, params, result)
-    payload = {"query": qname, "params": params, "result": llm_view(qname, result, tctx.opened_at, tctx.facts)}
+    from agent.security import sanitize_record_text
+
+    # free text stored in the graph (closed-case notes, agent summaries) is data: instructions in it never reach the model
+    view, injected = sanitize_record_text(llm_view(qname, result, tctx.opened_at, tctx.facts), qname)
+    payload = {"query": qname, "params": params, "result": view}
+    if injected:
+        notes = [*(notes or []), f"{len(injected)} instruction-like sentence(s) removed from stored text ({', '.join(sorted({f.code for f in injected}))})"]
+        log = current_runlog.get()
+        if log is not None:
+            log.note(f"security: instruction text removed from {qname} result", codes=sorted({f.code for f in injected}))
     if notes:
         payload["notes"] = notes
     return compact_json(payload, tctx.max_chars)

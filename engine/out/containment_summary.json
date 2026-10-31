@@ -1,0 +1,47 @@
+{
+ "HHF-001": {
+  "wave": "D1_MOBILE_ANON_PROXY_WAVE",
+  "cards": 14,
+  "exposure": 18205.28,
+  "pre_as_of": 4835.96,
+  "post_as_of": 13369.32,
+  "legit_touched_targeted": 0,
+  "broad_rule_extra_customers": 55
+ },
+ "HHF-003": {
+  "wave": "D2_ESCALATING_C_DRAIN",
+  "cards": 6,
+  "exposure": 25602.59,
+  "pre_as_of": 25602.59,
+  "post_as_of": 0.0,
+  "legit_touched_targeted": 0,
+  "broad_rule_extra_customers": 3
+ },
+ "HHF-004": {
+  "wave": "D3_MICRO_CHARGE_SKIMMING",
+  "cards": 17,
+  "exposure": 278.7,
+  "pre_as_of": 243.1,
+  "post_as_of": 35.6,
+  "legit_touched_targeted": 0,
+  "broad_rule_extra_customers": 91
+ },
+ "HHF-006": {
+  "wave": "D4_RECIPIENT_EMAIL_MULE",
+  "cards": 17,
+  "exposure": 7848.29,
+  "pre_as_of": 7612.44,
+  "post_as_of": 235.85,
+  "legit_touched_targeted": 0,
+  "broad_rule_extra_customers": 26
+ },
+ "HHG-014": {
+  "wave": "R0_SM_G935F_DEVICE_RING",
+  "cards": 52,
+  "exposure": 18192.55,
+  "pre_as_of": 11465.15,
+  "post_as_of": 6727.4,
+  "legit_touched_targeted": 0,
+  "broad_rule_extra_customers": 953
+ }
+}

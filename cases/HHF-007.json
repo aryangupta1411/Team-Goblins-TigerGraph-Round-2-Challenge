@@ -19,24 +19,16 @@
     "exposure_usd": 246.38,
     "evidence": [
       {
-        "claim": "5 online purchases within 48 h on a card that is 99% in-person",
-        "source": "graph",
-        "ref": "query:card_window(card=C09582-K1, hours=72)",
+        "claim": "Customer C09582 reports they did not make the $236.28 purchase 3660350, which is strong evidence of fraud given that 4,665 out of 4,665 prior customer-reported closed cases were confirmed fraud.",
+        "source": "customer",
+        "ref": "trigger",
         "entity_ids": [
           "3660350",
-          "C09582-K1"
+          "C09582"
         ]
       },
       {
-        "claim": "Purchaser email domain gmail.com used 389 times before on this card",
-        "source": "graph",
-        "ref": "query:case_context(txn=3660350)",
-        "entity_ids": [
-          "3660350"
-        ]
-      },
-      {
-        "claim": "4 online authorisations under $5 within 60 minutes (2017-01-14 13:05:30 to 2017-01-14 13:32:30) followed by a larger purchase: card-testing sequence (R5)",
+        "claim": "A card testing sequence was detected, consisting of four online authorizations under $5 (transactions 3660346, 3660347, 3660348, 3660349) within 27 minutes, followed by the larger flagged online purchase 3660350 for $236.28 that cleared.",
         "source": "graph",
         "ref": "query:card_testing_check(card=C09582-K1)",
         "entity_ids": [
@@ -44,11 +36,12 @@
           "3660347",
           "3660348",
           "3660349",
-          "3660350"
+          "3660350",
+          "C09582-K1"
         ]
       },
       {
-        "claim": "Case-memory scorer (LightGBM over the bank's 5,565 closed cases; October holdout AUC 0.956) puts the flagged transaction at 0.01 (calibrated 0.01); the real-time risk score was 0.19",
+        "claim": "Transaction 3660350 occurred online and used a device marked as 'New'.",
         "source": "graph",
         "ref": "query:case_context(txn=3660350)",
         "entity_ids": [
@@ -56,30 +49,41 @@
         ]
       },
       {
-        "claim": "1 prior confirmed-fraud case(s) on this card (out_of_region_use), most recent 2016-08-31",
+        "claim": "The card C09582-K1 has 1 prior confirmed fraud case (CC-2822, for 'out_of_region_use') as of 2016-08-31.",
         "source": "graph",
         "ref": "query:prior_cases_for_customer(customer=C09582)",
         "entity_ids": [
+          "C09582-K1",
           "CC-2822",
+          "C09582"
+        ]
+      },
+      {
+        "claim": "The flagged transaction 3660350 for $236.28 is not a recurring charge on card C09582-K1, as no matching groups were found.",
+        "source": "graph",
+        "ref": "query:recurring_charge_check(as_of=2017-01-14 15:57:30, tol=0.01, t=3660350)",
+        "entity_ids": [
+          "3660350",
           "C09582-K1"
         ]
       },
       {
-        "claim": "Customer C09582 reports they did not make the $236.28 purchase 3660350 (the denial is evidence: 4,665/4,665 customer-reported closed cases were confirmed fraud, 0 denials were cleared)",
-        "source": "customer",
-        "ref": "trigger",
+        "claim": "The transaction 3660350 had a real-time risk score of 0.19 and a calibrated cms_p of 0.006.",
+        "source": "graph",
+        "ref": "query:case_context(txn=3660350)",
         "entity_ids": [
-          "3660350",
-          "C09582"
+          "3660350"
         ]
       }
     ],
     "similar_prior_cases": [
-      "CC-2822",
-      "CC-1645"
+      "CC-3963",
+      "CC-4629",
+      "CC-5305",
+      "CC-3757"
     ],
-    "summary": "Customer C09582 disputed transaction 3660350 ($236.28, online) on card C09582-K1. Customer C09582 reports they did not make the $236.28 purchase 3660350 (the denial is evidence: 4,665/4,665 customer-reported closed cases were confirmed fraud, 0 denials were cleared). Verdict fraud at probability 0.92, pattern card_testing, 5 affected transaction(s) worth $246.38. Final actions: CREATE_CASE, STEP_UP_AUTH, DECLINE_TRANSACTION, BLOCK_CARD; no evidence request was needed; status closed_fraud.",
-    "written_to_graph": false,
+    "summary": "Verdict is fraud with 0.92 probability. The episode, totaling $246.38, involves a card testing pattern (transactions 3660346-3660349) immediately preceding the customer-denied flagged purchase 3660350. The decisive facts are the customer's direct denial and the confirmed card testing run where a purchase over $100 cleared. We recommended BLOCK_CARD (L1) and DECLINE_TRANSACTION (L1), and requested STEP_UP_AUTH to scope the episode.",
+    "written_to_graph": true,
     "graph_case_id": "AC-HHF-007"
   },
   "evidence_requests": [],
@@ -88,44 +92,44 @@
       {
         "action": "CREATE_CASE",
         "route": "auto",
-        "reason": "3a: customer dispute; case opened and written to the graph"
+        "reason": "3a: probability 0.92 \n\t\t\t\t\t\t≥ 0.30 and customer denied the flagged transaction."
       },
       {
         "action": "STEP_UP_AUTH",
         "route": "auto",
-        "reason": "R5: card-testing sequence observed; require a one-time passcode / app confirmation before further activity"
+        "reason": "§5: request step-up authentication to determine the full scope of potentially compromised transactions beyond the denied one."
       },
       {
         "action": "DECLINE_TRANSACTION",
         "route": "L1",
-        "reason": "R5: card-testing sequence observed; decline the purchase"
+        "reason": "R5: a card testing pattern was detected and the customer denied the flagged transaction."
       },
       {
         "action": "BLOCK_CARD",
         "route": "L1",
-        "reason": "R2: customer denied the transaction; exposure $246.38 is at or under $2,500 so route L1"
+        "reason": "R5: a card testing pattern was confirmed with a cleared purchase over $100, and R2: the customer denied the flagged transaction; exposure $246.38 ≤ $2,500."
       }
     ],
     "final": [
       {
         "action": "CREATE_CASE",
         "route": "auto",
-        "reason": "3a: customer dispute; case opened and written to the graph"
+        "reason": "3a: probability 0.92 \n\t\t\t\t\t\t≥ 0.30 and customer denied the flagged transaction."
       },
       {
         "action": "STEP_UP_AUTH",
         "route": "auto",
-        "reason": "R5: card-testing sequence observed; require a one-time passcode / app confirmation before further activity"
+        "reason": "§5: request step-up authentication to determine the full scope of potentially compromised transactions beyond the denied one."
       },
       {
         "action": "DECLINE_TRANSACTION",
         "route": "L1",
-        "reason": "R5: card-testing sequence observed; decline the purchase"
+        "reason": "R5: a card testing pattern was detected and the customer denied the flagged transaction."
       },
       {
         "action": "BLOCK_CARD",
         "route": "L1",
-        "reason": "R2: customer denied the transaction; exposure $246.38 is at or under $2,500 so route L1"
+        "reason": "R5: a card testing pattern was confirmed with a cleared purchase over $100, and R2: the customer denied the flagged transaction; exposure $246.38 ≤ $2,500."
       }
     ],
     "what_changed": "nothing"
@@ -135,11 +139,11 @@
     "reason": "3a not met: exposure $246.38 <= $1,000; no device profile shared with other cards' fraud; no shared region cluster; no other customer's fraud connected; documented pattern",
     "narrative": "",
     "subjects": [],
-    "total_amount_usd": 0.0,
+    "total_amount_usd": 0,
     "activity_dates": []
   },
   "stop_reason": "Policy §6 test 1: fraud probability 0.92 is at or above 0.85 with 2 independent evidence families (customer, history); no request could change the action set, so the initial recommendation is final.",
-  "tool_calls": 15,
-  "tokens": 0,
-  "latency_s": 0.09
+  "tool_calls": 19,
+  "tokens": 155902,
+  "latency_s": 62.9
 }

@@ -36,7 +36,7 @@ CREATE OR REPLACE QUERY shared_origin_scan(VERTEX<Card> c, DATETIME as_of, INT d
        ACCUM e.@cards30 += u.card_id;
 
   E3 = SELECT e FROM (e:E)-[:REV_RECIPIENT_EMAIL]->(u:Transaction)-[:REV_INVOLVES]->(p:ClosedCase)
-       WHERE p.outcome == "confirmed_fraud" AND u.ts > from30 AND u.ts <= as_of AND u.card_id != @@cid
+       WHERE p.outcome == "confirmed_fraud" AND p.closed_at <= as_of AND u.ts > from30 AND u.ts <= as_of AND u.card_id != @@cid
        ACCUM e.@fraud_cases += p.id;
 
   E4 = SELECT e FROM (e:E)

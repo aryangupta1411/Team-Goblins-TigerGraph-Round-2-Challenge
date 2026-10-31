@@ -32,6 +32,16 @@ When you are done, reply with a short plain-text note (three to eight sentences)
 5. The probability still has to be honest: a denial with a weak graph picture can stay `uncertain` (0.55 ≤ p < 0.70); R8 then adds `ESCALATE_TO_ANALYST` when exposure > $500 or the evidence conflicts. The admissible set the harness gives you is authoritative for the exact actions.
 6. A card with thousands of transactions or a very short history makes the scorer unreliable; say so and lean on the graph facts.
 
+## Playbook E — `analyst_request` with **no shared device** ("several cards show losses with no shared device")
+
+The link is not a device profile. Use the tools to find what the affected cards share instead, and name it with ids:
+
+1. `case_context` (in the brief) → product code, channel, `r_email`, proxy, device type, `device_new`, identity record present or not, amount.
+2. `shared_origin_scan(card, opened_at, 30)` → recipient email domains with their 30-day card counts: a rare domain paid by many cards is the shared element.
+3. `email_neighbors(domain, card, opened_at − 30 d, opened_at)` → the other cards paying it (name them).
+4. `card_window(card, …)` / `episode_candidates` → the card's own run: many tiny charges over days, a climb after weeks of silence, or several New-mobile purchases behind an anonymous proxy.
+5. The scorecard's detector result (if any) names the wave and its cards; your claims must agree with it and cite the transaction ids. Coordinated, undocumented, more than one card: `pattern: undocumented`, R9 and §3a apply whatever the dollar amount.
+
 ## Playbook D — `analyst_request` trigger (an analyst names a shared element)
 
 1. `case_context` (in the brief) → is the flagged transaction on a strong profile, behind a proxy, with `ring_hit`?

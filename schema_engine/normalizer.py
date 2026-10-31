@@ -21,7 +21,7 @@ import numpy as np
 import pandas as pd
 
 from schema_engine.data_quality import run_data_quality_scan
-from schema_engine.drift import approve_schema_migration, detect_round2_drift, get_schema_approval
+from schema_engine.drift import detect_round2_drift, get_schema_approval
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -101,14 +101,6 @@ def normalize_and_merge_round2(
 
     approval = get_schema_approval("round2_2017q1_migration")
     if approval.get("status") != "approved":
-        if auto_approve:
-            approval = approve_schema_migration(
-                "round2_2017q1_migration",
-                approved_by="fraud-manager@bank",
-                role="fraud_manager",
-                notes="Approved Round 2 schema drift recovery (60,196 Jan 2017 txns, 54 null card6 rows, CC-5566..5585 templates, HHF-001..018).",
-            )
-        else:
             raise RuntimeError("Schema migration 'round2_2017q1_migration' is pending human approval.")
 
     tx17_csv = r2 / "transactions_2017q1.csv"

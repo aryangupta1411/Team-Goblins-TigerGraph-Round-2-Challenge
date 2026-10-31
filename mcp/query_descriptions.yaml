@@ -204,6 +204,24 @@ queries:
       hours: 'INT — look-back in hours (72).'
     example: {"c": {"id": "C13487-K1"}, "as_of": "2016-11-22 20:11:00", "hours": 72}
     prints: [nodes, edges]
+  typology_scan:
+    harness_only: true      # the engine consumes the waves; the model sees them as evidence, not as a tool
+    description: >
+      The January 2017 cross-card typology detectors run in the graph. Cards that share no device cannot be found by
+      walking from the flagged card, so each detector is a filtered scan of online ProductCD='C' transactions with
+      per-card counters: D1 spoofed-mobile anonymous-proxy wave (>= 2 New-mobile IP_PROXY:ANONYMOUS purchases >= $200),
+      D2 dormant-wake escalating drain (>= 5 no-identity purchases, max >= $1,100, min < $300, first one after >= 21 days
+      of silence), D3 micro-charge skimming (4-6 charges of $1-$6 on >= 4 days, no earlier sub-$10 'C' charge), D4
+      recipient-email mule (the flagged recipient domain paid by 10-35 cards in 30 days, <= 40 ever). Returns the wave
+      rows d1_rows..d4_rows {id, card_id, ts, amt, device_id}, the D4 domain, and card_rows: the full
+      rows of the card's own transactions <= as_of that sit in a wave.
+    parameters:
+      c: 'VERTEX<Card> — the flagged card as {"id": "C05061-K1"}.'
+      t: 'VERTEX<Transaction> — the flagged transaction as {"id": "3660108"} (D4 reads its recipient domain).'
+      as_of: 'DATETIME — evidence cut-off (case opened_at); D4 and card_rows are boxed to it, D1-D3 define the wave over the whole dataset.'
+      data_start: 'DATETIME — first day of the dataset, "2016-07-01 00:00:00"; D1 scans from here and D4 needs 60 days of it before as_of.'
+    example: {"c": {"id": "C05061-K1"}, "t": {"id": "3660108"}, "as_of": "2017-01-15 01:25:19", "data_start": "2016-07-01 00:00:00"}
+    prints: [d1_rows, d2_rows, d3_rows, d4_rows, d4_domain, card_rows]
   post_open_activity:
     harness_only: true      # monitoring note only — never a typed tool for the model (it must not reach exposure)
     description: >

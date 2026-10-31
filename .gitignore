@@ -1,17 +1,30 @@
 # secrets and local state
 .env
-ui/approvals.sqlite
+ui/approvals*.sqlite
+# approver directory (scrypt hashes, server-side only; ui/approvals_db.py add-principal)
+ui/principals.json
 # runs are local output, except the canonical final run (the source of cases/*.json), which the
 # dashboard and the Railway image show. `runs/*` rather than `runs/` so the exceptions can apply.
 runs/*
 !runs/.gitkeep
 !runs/live-final-2/
+# the Final Round live run (source of cases/HHF-*.json)
+!runs/r2-final/
 
 # raw data (708 MB) and the full DuckDB; the id-only data/ids.duckdb IS checked in for CI
 data/raw/
 data/hhgoa.duckdb
 data/hhgoa.duckdb.wal
 data/out/
+# delta mode (etl/delta.py): the work DB, the engine facts DB for base + month, and the delta chunks with their undo pack
+data/hhgoa_engine_base.duckdb
+data/hhgoa_v2.duckdb
+data/hhgoa_v2.duckdb.wal
+data/hhgoa_engine_r2.duckdb
+data/hhgoa_engine_r2.duckdb.wal
+data/out_delta/
+# the read-only copy of the Transaction JSON columns that exist only in the graph (ops/backup_txn_json.py)
+data/backup/
 data/corpus/raw/
 data/ofac/*.csv
 

@@ -37,27 +37,48 @@
     "exposure_usd": 23.17,
     "evidence": [
       {
-        "claim": "Amount $4.05 sits inside the card's baseline (prior median $58.98, prior maximum $774.08 over 149 transactions)",
-        "source": "graph",
-        "ref": "query:case_context(txn=3660250)",
+        "claim": "Customer C00348 explicitly denied making the $4.05 purchase 3660250.",
+        "source": "customer",
+        "ref": "trigger",
         "entity_ids": [
-          "3660250",
-          "C00348-K1"
+          "C00348",
+          "3660250"
         ]
       },
       {
-        "claim": "Billing region 264.0 on the online purchase is the card's known region (54 prior purchases on 40 days)",
+        "claim": "Card C00348-K1 is part of a coordinated low-and-slow micro-charge skimming ring, with 6 online ProductCD='C' charges (3660245, 3660246, 3660247, 3660248, 3660249, 3660250) totaling $23.17, linked to 16 other cards in a January 2017 micro-skimming wave.",
         "source": "graph",
-        "ref": "query:region_history(card=C00348-K1, addr1=264.0)",
+        "ref": "scorecard: r2_detector",
         "entity_ids": [
+          "C00348-K1",
+          "3660245",
+          "3660246",
+          "3660247",
+          "3660248",
+          "3660249",
           "3660250",
-          "C00348-K1"
+          "C00129-K1",
+          "C01326-K2",
+          "C03427-K2",
+          "C03488-K1",
+          "C03611-K2",
+          "C04274-K1",
+          "C04528-K1",
+          "C05083-K1",
+          "C05263-K2",
+          "C06198-K1",
+          "C09471-K2",
+          "C10035-K2",
+          "C10654-K1",
+          "C11332-K1",
+          "C12975-K2",
+          "C13290-K1"
         ]
       },
       {
-        "claim": "Coordinated low-and-slow micro-charge skimming ring across 17 cards: card C00348-K1 has 6 sub-$6 online ProductCD='C' charges (3660245, 3660246, 3660247, 3660248, 3660249, 3660250) spaced across multiple days totaling $23.17, connected to 16 other cards targeted in the same January 2017 micro-skimming wave.",
+        "claim": "The transactions 3660245, 3660246, 3660247, 3660248, 3660249, 3660250 exhibit a cross-card / telemetry signature of multi-day sub-$6 online ProductCD='C' micro-charges, linking C00348-K1 to 16 peer cards.",
         "source": "graph",
-        "ref": "query:card_window(card=C00348-K1, hours=72)",
+        "ref": "scorecard: r2_detector",
         "entity_ids": [
           "3660245",
           "3660246",
@@ -80,37 +101,12 @@
           "C10035-K2",
           "C10654-K1",
           "C11332-K1",
-          "C12975-K2"
+          "C12975-K2",
+          "C13290-K1"
         ]
       },
       {
-        "claim": "Cross-card / telemetry signature (Multi-day sub-$6 online ProductCD='C' micro-charge skimming wave across 18 cards) links 3660245, 3660246, 3660247, 3660248, 3660249, 3660250 on C00348-K1 to 16 peer cards (C00129-K1, C01326-K2, C03427-K2, C03488-K1, C03611-K2, C04274-K1, C04528-K1, C05083-K1)",
-        "source": "graph",
-        "ref": "query:shared_origin_scan(card=C00348-K1)",
-        "entity_ids": [
-          "3660245",
-          "3660246",
-          "3660247",
-          "3660248",
-          "3660249",
-          "3660250",
-          "C00348-K1",
-          "C00129-K1",
-          "C01326-K2",
-          "C03427-K2",
-          "C03488-K1",
-          "C03611-K2",
-          "C04274-K1",
-          "C04528-K1",
-          "C05083-K1",
-          "C05263-K2",
-          "C06198-K1",
-          "C09471-K2",
-          "C10035-K2"
-        ]
-      },
-      {
-        "claim": "Case-memory scorer (LightGBM over the bank's 5,565 closed cases; October holdout AUC 0.956) puts the flagged transaction at 0.00 (calibrated 0.00); the real-time risk score was 0.04",
+        "claim": "The flagged online transaction 3660250 for $4.05 has no device identity record, indicating an unknown device rather than a new one.",
         "source": "graph",
         "ref": "query:case_context(txn=3660250)",
         "entity_ids": [
@@ -118,26 +114,51 @@
         ]
       },
       {
-        "claim": "Customer C00348 reports they did not make the $4.05 purchase 3660250 (the denial is evidence: 4,665/4,665 customer-reported closed cases were confirmed fraud, 0 denials were cleared)",
-        "source": "customer",
-        "ref": "trigger",
+        "claim": "The flagged transaction 3660250 for $4.05 occurred in billing region 264.0, which is a known region for card C00348-K1 with 54 prior purchases over 40 days.",
+        "source": "graph",
+        "ref": "query:region_history(card=C00348-K1, addr1=264.0)",
         "entity_ids": [
           "3660250",
-          "C00348"
+          "C00348-K1"
         ]
       },
       {
-        "claim": "No identity record for this online transaction: the device is unknown, not new",
+        "claim": "The amount of transaction 3660250 ($4.05) is significantly lower than the card's prior median amount of $58.98 and prior maximum of $774.08 over 149 transactions.",
+        "source": "graph",
+        "ref": "query:case_context(txn=3660250)",
+        "entity_ids": [
+          "3660250",
+          "C00348-K1"
+        ]
+      },
+      {
+        "claim": "The flagged transaction 3660250 has a low calibrated memory score (cms_p 0.001196) and a low real-time risk score (0.04).",
         "source": "graph",
         "ref": "query:case_context(txn=3660250)",
         "entity_ids": [
           "3660250"
+        ]
+      },
+      {
+        "claim": "No recurring charge pattern was detected for transaction 3660250 on card C00348-K1.",
+        "source": "graph",
+        "ref": "query:recurring_charge_check(t=3660250)",
+        "entity_ids": [
+          "3660250",
+          "C00348-K1"
         ]
       }
     ],
-    "similar_prior_cases": [],
-    "summary": "Customer C00348 disputed transaction 3660250 ($4.05, online) on card C00348-K1. Coordinated low-and-slow micro-charge skimming ring across 17 cards: card C00348-K1 has 6 sub-$6 online ProductCD='C' charges (3660245, 3660246, 3660247, 3660248, 3660249, 3660250) spaced across... Verdict fraud at probability 0.92, pattern undocumented, 6 affected transaction(s) worth $23.17. Final actions: CREATE_CASE, MONITOR_CONNECTED_CARDS, BLOCK_CARD, FILE_REPORT, ESCALATE_TO_ANALYST; no evidence request was needed; status escalated.",
-    "written_to_graph": false,
+    "similar_prior_cases": [
+      "CC-5572",
+      "CC-5009",
+      "CC-5391",
+      "CC-4349",
+      "CC-5401",
+      "CC-4596"
+    ],
+    "summary": "Verdict: fraud (0.92). The customer denied transaction 3660250, part of a six-transaction online micro-skimming episode totaling $23.17 exposure. This undocumented pattern involves low-value Product C charges spread over days on C00348-K1 and 16 other cards. A block of card C00348-K1 (L1) and filing a SAR (L2) are recommended.",
+    "written_to_graph": true,
     "graph_case_id": "AC-HHF-005"
   },
   "evidence_requests": [],
@@ -146,54 +167,54 @@
       {
         "action": "CREATE_CASE",
         "route": "auto",
-        "reason": "3a: customer dispute; case opened and written to the graph"
+        "reason": "3a: a customer dispute occurred, and an undocumented pattern was identified."
       },
       {
         "action": "MONITOR_CONNECTED_CARDS",
         "route": "auto",
-        "reason": "R6: other cards (C00129-K1, C01326-K2, C03427-K2, C03488-K1, C03611-K2) share the same origin element; place connected cards under monitoring"
+        "reason": "R6: shared origin confirmed for a micro-skimming ring across 17 cards."
       },
       {
         "action": "BLOCK_CARD",
         "route": "L1",
-        "reason": "R2: customer denied the transaction; exposure $23.17 is at or under $2,500 so route L1"
+        "reason": "R2: customer denied the transaction; exposure $23.17 \n\t\t\t\t\t\t\t≤ $2,500."
       },
       {
         "action": "FILE_REPORT",
         "route": "L2",
-        "reason": "3a / R9: undocumented coordinated pattern (Coordinated low-and-slow micro-charge skimming ring across 17 cards)"
+        "reason": "3a: fraud is strongly suspected due to customer denial and an undocumented pattern."
       },
       {
         "action": "ESCALATE_TO_ANALYST",
         "route": "auto",
-        "reason": "R9: undocumented coordinated pattern; hand to a human analyst with the evidence"
+        "reason": "R9: the case fits an undocumented, coordinated abuse pattern (micro-skimming ring)."
       }
     ],
     "final": [
       {
         "action": "CREATE_CASE",
         "route": "auto",
-        "reason": "3a: customer dispute; case opened and written to the graph"
+        "reason": "3a: a customer dispute occurred, and an undocumented pattern was identified."
       },
       {
         "action": "MONITOR_CONNECTED_CARDS",
         "route": "auto",
-        "reason": "R6: other cards (C00129-K1, C01326-K2, C03427-K2, C03488-K1, C03611-K2) share the same origin element; place connected cards under monitoring"
+        "reason": "R6: shared origin confirmed for a micro-skimming ring across 17 cards."
       },
       {
         "action": "BLOCK_CARD",
         "route": "L1",
-        "reason": "R2: customer denied the transaction; exposure $23.17 is at or under $2,500 so route L1"
+        "reason": "R2: customer denied the transaction; exposure $23.17 \n\t\t\t\t\t\t\t≤ $2,500."
       },
       {
         "action": "FILE_REPORT",
         "route": "L2",
-        "reason": "3a / R9: undocumented coordinated pattern (Coordinated low-and-slow micro-charge skimming ring across 17 cards)"
+        "reason": "3a: fraud is strongly suspected due to customer denial and an undocumented pattern."
       },
       {
         "action": "ESCALATE_TO_ANALYST",
         "route": "auto",
-        "reason": "R9: undocumented coordinated pattern; hand to a human analyst with the evidence"
+        "reason": "R9: the case fits an undocumented, coordinated abuse pattern (micro-skimming ring)."
       }
     ],
     "what_changed": "nothing"
@@ -201,7 +222,7 @@
   "sar": {
     "file": true,
     "reason": "3a / R9: undocumented coordinated pattern (Coordinated low-and-slow micro-charge skimming ring across 17 cards)",
-    "narrative": "This report concerns suspected fraud following an undocumented coordinated pattern on card C00348-K1 held by customer C00348 (internal case AC-HHF-005, opened 2017-01-28). Between 2017-01-07 and 2017-01-28 the card was used for 6 transaction(s) totalling $23.17: on 2017-01-07 $4.30 online in billing region 325.0; on 2017-01-15 $5.08 online in billing region 264.0; on 2017-01-16 $2.70 online in billing region 264.0; on 2017-01-18 $4.94 online in billing region 264.0; on 2017-01-20 $2.10 online in billing region 264.0; on 2017-01-28 $4.05 online in billing region 264.0. The activity matches a coordinated undocumented wave across 17 cards sharing the signature (Multi-day sub-$6 online ProductCD='C' micro-charge skimming wave across 18 cards). The other connected cards in this wave are C00129-K1, C01326-K2, C03427-K2, C03488-K1, C03611-K2, C04274-K1, C04528-K1, C05083-K1, C05263-K2, C06198-K1, C09471-K2, C10035-K2, C10654-K1, C11332-K1, C12975-K2, C13290-K1. The cardholder reported that they did not make the purchase and still hold the card. The activity is inconsistent with the cardholder's history (prior median purchase $58.98). No prior report has been filed on this customer. OFAC SDN screening of the customer identifier: no match (anonymised identifiers; screening result recorded from the sdn.csv lookup in the live run). Recommended actions: a block and reissue of the card, not yet done and awaiting team-lead approval, internal case opened, 16 connected cards placed under monitoring, case escalated to an analyst.",
+    "narrative": "This Suspicious Activity Report (SAR) addresses an undocumented coordinated fraud pattern, case AC-HHF-005. The subjects are customer C00348 and debit card C00348-K1, which is connected to 16 other cards in a micro-skimming wave. On 2017-01-28, customer C00348 denied an online transaction 3660250 for $4.05, a Product C purchase in billing region 264.0. Investigation revealed this transaction is part of a series of six sub-$6 online Product C charges on card C00348-K1, starting on 2017-01-07 at 15:32:31 for $4.30 in region 325.0 (transaction 3660245), followed by $5.08 on 2017-01-15 at 22:51:07 (3660246), $2.70 on 2017-01-16 at 14:04:39 (3660247), $4.94 on 2017-01-18 at 19:30:07 (3660248), and $2.10 on 2017-01-20 at 11:03:40 (3660249), all in region 264.0, culminating in the denied transaction 3660250. This multi-day sub-$6 online Product C micro-charge skimming wave across 17 cards links card C00348-K1 to 16 other cards (C00129-K1, C01326-K2, C03427-K2, C03488-K1, C03611-K2, C04274-K1, C04528-K1, C05083-K1, C05263-K2, C06198-K1, C09471-K2, C10035-K2, C10654-K1, C11332-K1, C12975-K2, C13290-K1) targeted in the same January 2017 micro-skimming wave. The amounts of these online transactions, ranging from $2.10 to $5.08, are significantly below the card's prior median transaction amount of $58.98 and prior maximum of $774.08 over 149 transactions, which is unusual for the cardholder's historical spending. No prior suspicious activity report has been filed on this card. OFAC screening of the customer and card identifiers against the SDN list returned no match. A fraud case was opened and connected cards are being monitored, while a block of card C00348-K1 is recommended and awaits team-lead approval. This report is recommended and awaiting fraud-manager approval, covering a total suspicious amount of $23.17.",
     "subjects": [
       "C00348",
       "C00348-K1",
@@ -228,8 +249,8 @@
       "2017-01-28"
     ]
   },
-  "stop_reason": "Policy §6 test 1: fraud probability 0.92 is at or above 0.85 with 3 independent evidence families (customer, device, history); no request could change the action set, so the initial recommendation is final.",
-  "tool_calls": 17,
-  "tokens": 0,
-  "latency_s": 0.08
+  "stop_reason": "Policy \n\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t§6 test 1: fraud probability 0.92 is at or above 0.85 with 3 independent evidence families (customer, device, history); no request could change the action set, so the initial recommendation is final.",
+  "tool_calls": 22,
+  "tokens": 222975,
+  "latency_s": 93.9
 }

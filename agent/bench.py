@@ -67,10 +67,9 @@ def load_case_pack(path: Path) -> list[CaseContext]:
         from ui.common import _CASE_PACK_FALLBACK_CSV
 
         raw_rows = list(csv.DictReader(io.StringIO(_CASE_PACK_FALLBACK_CSV)))
-        r2_pack = SETTINGS.data_dir / "raw" / "round2" / "case_pack_final.csv"
-        if r2_pack.exists():
-            with r2_pack.open(encoding="utf-8", newline="") as fh:
-                raw_rows.extend(list(csv.DictReader(fh)))
+        from ui.common import round2_pack_rows
+
+        raw_rows.extend(round2_pack_rows())
     else:
         raise FileNotFoundError(p)
     for r in raw_rows:
@@ -380,10 +379,13 @@ async def run(args: argparse.Namespace) -> int:
     if args.mock:
         os.environ["RUN_MODE"] = "mock"
         settings = Settings(**{**settings.__dict__, "run_mode": "mock"})
-    if args.llm_backend:
-        os.environ["LLM_BACKEND"] = args.llm_backend
-        updates: dict[str, str] = {"llm_backend": args.llm_backend}
-        if args.llm_backend in ("gemini", "google") and not args.model and settings.model.lower().startswith("claude"):
+    backend = args.llm_backend or (os.environ.get("LLM_BACKEND") or "").strip().lower()
+    if backend:
+        if args.llm_backend:
+            os.environ["LLM_BACKEND"] = args.llm_backend
+        updates: dict[str, str] = {"llm_backend": backend}
+        # a Claude model name never reaches the Gemini backend, whether the backend came from the flag or the environment
+        if backend in ("gemini", "google") and not args.model and settings.model.lower().startswith("claude"):
             from agent.config import DEFAULT_GEMINI_MODEL
 
             updates["model"] = DEFAULT_GEMINI_MODEL
@@ -507,10 +509,11 @@ async def run(args: argparse.Namespace) -> int:
                         f"{time.time() - t0:.1f}", len(problems) or "-",
                         style=("red" if problems else ("yellow" if c["verdict"] == "uncertain" else None)),
                     )
-                    (warn if problems else ok)(
+                    unsaved = settings.run_mode == "live" and not c.get("written_to_graph")
+                    (warn if problems or unsaved else ok)(
                         f"{ctx.case_id} {c['verdict']} p={prob(c['fraud_probability'])} pattern={c['pattern'] or 'none'} "
                         f"sar={'yes' if sar else 'no'} tools={answer['tool_calls']} tokens={int(answer['tokens']):,} "
-                        f"{time.time() - t0:.1f}s problems={len(problems)}"
+                        f"{time.time() - t0:.1f}s problems={len(problems)}" + (" graph=NOT SAVED (see P10 failed_writes)" if unsaved else "")
                     )
                     detail(f"final actions: {joinlist(actions)}")
                     detail(f"answer -> {out}")

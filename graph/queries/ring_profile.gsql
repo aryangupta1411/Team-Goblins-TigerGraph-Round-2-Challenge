@@ -51,6 +51,7 @@ CREATE OR REPLACE QUERY ring_profile(VERTEX<Card> c, DATETIME as_of) FOR GRAPH F
         ACCUM @@wave_cards += k.id,
               IF u.ts <= as_of THEN @@pre_open_cards += k.id END;
     P = SELECT p FROM (d:D)-[:REV_FROM_DEVICE]->(u:Transaction)-[:REV_INVOLVES]->(p:ClosedCase)
+        WHERE p.closed_at <= as_of
         ACCUM @@closed_cases += ClosedRow(p.id, p.card_id, p.pattern, p.outcome, p.report_filed);
   END;
 

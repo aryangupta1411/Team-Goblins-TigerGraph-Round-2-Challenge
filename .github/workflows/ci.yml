@@ -4,7 +4,7 @@ name: ci
 
 on:
   push:
-    branches: [main]
+    branches: [main, round2-final]
   pull_request:
 
 concurrency:
@@ -20,7 +20,7 @@ jobs:
       VALIDATOR_DB: data/ids.duckdb
       HHGOA_DB: data/hhgoa.duckdb            # absent in CI -> test_card_rule / test_features skip (M10)
       ENGINE_DATA_DIR: data
-      ENGINE_FACTS_DB: data/hhgoa_engine.duckdb   # absent in CI -> test_engine skips; `make facts` builds it locally
+      ENGINE_FACTS_DB: data/hhgoa_engine.duckdb   # checked in (base + January): test_engine and the Final Round checks run
       RUNS_DIR: runs
       PYTHONUNBUFFERED: "1"
     steps:
@@ -46,11 +46,7 @@ jobs:
       - name: Validate answer files (cases/*.json) against README schema + dataset ids
         # data/ids.duckdb is checked in (ops/export_id_tables.py, ~15 MB); skips cleanly before day 10.
         run: |
-          if ls cases/HHG-*.json >/dev/null 2>&1; then
-            uv run python -m agent.validator --db "$VALIDATOR_DB" cases/HHG-*.json
-          else
-            echo "no cases/HHG-*.json yet — validator step skipped"
-          fi
+          uv run python -m agent.validator --db "$VALIDATOR_DB" cases/HHG-*.json cases/HHF-*.json
 
       - name: Mock end-to-end case (RUN_MODE=mock, HHG-014)
         # agent/bench.py --mock (RUN_MODE=mock: FakeAnthropic + FakeSession, no keys) runs the engine + policy gate +
@@ -70,12 +66,36 @@ jobs:
             echo "agent/bench.py not present yet — mock e2e step skipped"
           fi
 
+      - name: Final Round clean-clone drill (RUN_MODE=mock, HHF-004, no dataset download)
+        run: |
+          uv run python -m agent.bench --cases HHF-004 --run-id ci-r2 --mock
+          uv run python -m agent.validator --db "$VALIDATOR_DB" runs/ci-r2/HHF-004/answer.json
+
+      - name: Engine-made Final Round answers are what the frozen engine produces
+        run: |
+          uv run python -m engine.run_cases --cases HHF-001 HHF-002 HHF-003 HHF-004 HHF-005 HHF-006 HHF-007 HHF-008 HHF-009 HHF-010 HHF-011 HHF-012 HHF-013 HHF-014 HHF-015 HHF-016 HHF-017 HHF-018 --out runs/ci-engine --sheet runs/ci-engine/sheet.md
+          uv run python - <<'EOF'
+          import json, pathlib, sys
+          bad = []
+          for f in sorted(pathlib.Path("cases").glob("HHF-*.json")):
+              a, b = json.loads(f.read_text()), json.loads((pathlib.Path("runs/ci-engine") / f"{f.stem}.draft.json").read_text())
+              if a.get("tokens"):          # written by an agent run with a model: the engine check does not apply
+                  continue
+              for x in (a, b):
+                  for k in ("tool_calls", "latency_s", "tokens"):
+                      x.pop(k, None)
+              if a != b:
+                  bad.append(f.stem)
+          print("differ:", bad or "none")
+          sys.exit(1 if bad else 0)
+          EOF
+
       - name: UI smoke (streamlit AppTest over the mock run)
         run: |
           uv run python -m ops.make_mock_run --answers cases --run-id ui-smoke   # cases/ if present, else the HHG-014 sample
           uv run python - <<'EOF'
           from streamlit.testing.v1 import AppTest
-          for page in ["ui/app.py", "ui/pages/1_queue.py", "ui/pages/2_case.py", "ui/pages/3_approvals.py", "ui/pages/4_graph.py", "ui/pages/5_runs.py"]:
+          for page in ["ui/app.py", "ui/pages/0_overview.py", "ui/pages/1_queue.py", "ui/pages/2_case.py", "ui/pages/3_approvals.py", "ui/pages/4_graph.py", "ui/pages/5_runs.py", "ui/pages/6_schema.py", "ui/pages/7_architecture.py", "ui/pages/8_detectors.py", "ui/pages/9_security.py"]:
               at = AppTest.from_file(page, default_timeout=60)
               at.session_state["run_id"] = "ui-smoke"; at.session_state["case_id"] = "HHG-014"
               at.run()

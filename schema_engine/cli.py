@@ -26,10 +26,10 @@ def main(argv: list[str] | None = None) -> int:
 
     sub.add_parser("drift", help="Detect schema drift between Round 1 and Round 2 (Challenge 12)")
     ap_app = sub.add_parser("approve", help="Approve pending schema migration (Challenge 12)")
-    ap_app.add_argument("--by", default="fraud-manager@bank")
-    ap_app.add_argument("--role", default="fraud_manager")
+    ap_app.add_argument("--by", required=True, help="principal in the approver directory (ui/principals.json)")
 
-    sub.add_parser("ingest", help="Normalize & merge Jan 2017 Round 2 data into DuckDB + delta TSVs")
+    ap_ing = sub.add_parser("ingest", help="superseded by `make delta`; --legacy runs the old in-place merge")
+    ap_ing.add_argument("--legacy", action="store_true")
     sub.add_parser("dq", help="Run Data Quality Detective & Tainted Investigations scan (Challenge 11)")
 
     ap_var = sub.add_parser("variant", help="Infer column mapping on a variant schema directory (Challenge 13)")
@@ -58,13 +58,24 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.cmd == "approve":
-        rec = approve_schema_migration(approved_by=args.by, role=args.role)
+        import getpass
+        import os
+
+        from ui.approvals_db import authenticate
+
+        session = authenticate(args.by, os.getenv("APPROVER_PASSPHRASE") or getpass.getpass(f"passphrase for {args.by}: "))
+        rec = approve_schema_migration(session=session)
         ok(f"Schema migration {rec['migration_id']} approved by {rec['approved_by']} ({rec['role']}) at {rec['approved_at']}")
         return 0
 
     if args.cmd == "ingest":
+        if not args.legacy:
+            # the in-place merge left card_feat / device_profile at 2016-12-31; `make delta` re-derives every table behind
+            # build gates and is what the live graph was loaded from
+            print("schema_engine.cli ingest is superseded by `make delta` (etl/delta.py, docs/DELTA.md); pass --legacy to run the old merge")
+            return 2
         header("schema_engine.ingest", "Normalizing & merging January 2017 (Round 2) into DuckDB + TigerGraph delta TSVs", {})
-        res = normalize_and_merge_round2(auto_approve=True)
+        res = normalize_and_merge_round2(auto_approve=False)
         t = Table(Col("table / file", max_width=28), Col("rows", align="right", width=12), title="Round 2 unified counts")
         for k, v in res["counts"].items():
             t.add_row(k, f"{v:,}")

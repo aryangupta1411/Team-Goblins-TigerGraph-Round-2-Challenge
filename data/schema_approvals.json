@@ -1,10 +1,10 @@
 {
   "round2_2017q1_migration": {
-    "approved_at": "2026-10-30 06:33:04",
-    "approved_by": "fraud-manager@bank",
+    "approved_at": null,
+    "approved_by": null,
     "migration_id": "round2_2017q1_migration",
-    "notes": "Approved Round 2 schema drift recovery (60,196 Jan 2017 txns, 54 null card6 rows, CC-5566..5585 templates, HHF-001..018).",
-    "role": "fraud_manager",
-    "status": "approved"
+    "notes": "Pending: the earlier record named fraud-manager@bank without an authenticated approver. Approve with `python -m schema_engine.cli approve --by <principal>` or on the Schema page after signing in.",
+    "role": null,
+    "status": "pending"
   }
 }

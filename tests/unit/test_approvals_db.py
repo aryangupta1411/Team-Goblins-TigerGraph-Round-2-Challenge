@@ -17,6 +17,15 @@ def db(tmp_path):
     return tmp_path / "approvals.sqlite"
 
 
+@pytest.fixture
+def directory(tmp_path):
+    d = tmp_path / "principals.json"
+    adb.add_principal("lead@bank", "team_lead", "lead passphrase 1", d)
+    adb.add_principal("manager@bank", "fraud_manager", "manager passphrase 1", d)
+    adb.add_principal("analyst@bank", "analyst", "analyst passphrase 1", d)
+    return d
+
+
 def test_schema_columns(db):
     adb.init_db(db)
     cols = [r[1] for r in sqlite3.connect(db).execute("PRAGMA table_info(approvals)")]
@@ -40,15 +49,40 @@ def test_enqueue_from_sample_answer(db):
     assert {(r["action"], r["route"]) for r in rows} == {("BLOCK_CARD", "L1"), ("FILE_REPORT", "L2")}
 
 
-def test_decide_and_reopen(db):
+def test_decide_is_final(db, directory):
+    lead = adb.authenticate("lead@bank", "lead passphrase 1", directory)
     i = adb.enqueue("HHG-006", "BLOCK_CARD", "L1", "R2", db)
-    row = adb.decide(i, "approved", "lead@bank", db, now="2026-09-20 10:00:00")
+    row = adb.decide(i, "approved", lead, db, now="2026-09-20 10:00:00")
     assert row["status"] == "approved" and row["decided_by"] == "lead@bank" and row["decided_at"] == "2026-09-20 10:00:00"
     assert adb.rows("pending", db) == []
-    adb.reopen(i, db)
-    assert adb.rows("pending", db)[0]["id"] == i
+    with pytest.raises(PermissionError, match="immutable"):
+        adb.reopen(i, db)
+    # the database refuses an edit that bypasses this module
+    with pytest.raises(sqlite3.IntegrityError, match="immutable"), sqlite3.connect(db) as con:
+        con.execute("UPDATE approvals SET status = 'pending' WHERE id = ?", (i,))
+    with pytest.raises(sqlite3.IntegrityError, match="append-only"), sqlite3.connect(db) as con:
+        con.execute("DELETE FROM approval_audit_log")
     with pytest.raises(ValueError):
-        adb.decide(i, "maybe", "x", db)
+        adb.decide(i, "maybe", lead, db)
+
+
+def test_names_and_roles_from_the_client_are_not_identity(db, directory):
+    i = adb.enqueue("HHG-014", "FILE_REPORT", "L2", "3a", db)
+    for forged in ("manager@bank", "l2-manager@bank", adb.ApproverSession("manager@bank", "fraud_manager", "2026-01-01 00:00:00", "0" * 64)):
+        with pytest.raises(PermissionError, match="not authenticated"):
+            adb.decide(i, "approved", forged, db)
+    with pytest.raises(PermissionError, match="authentication failed"):
+        adb.authenticate("manager@bank", "wrong passphrase", directory)
+    with pytest.raises(PermissionError, match="authentication failed"):
+        adb.authenticate("mallory-manager@bank", "anything at all", directory)
+    assert adb.resolve_server_role("bal2-manager", directory) == "unauthorized"
+    assert [r["outcome"] for r in adb.audit_log_rows(db)] == ["denied_auth"] * 3
+
+
+def test_pending_route_upgrades_on_rerun(db):
+    i = adb.enqueue("HHG-003", "BLOCK_CARD", "L1", "R2: exposure under $2,500", db)
+    assert adb.enqueue("HHG-003", "BLOCK_CARD", "L2", "R2: exposure over $2,500", db) == i
+    assert adb.get(i, db)["route"] == "L2"
 
 
 def test_graph_ids():
@@ -57,9 +91,9 @@ def test_graph_ids():
     assert adb.approval_vertex_id("HHG-014", "FILE_REPORT") == "AP-AC-HHG-014-FILE_REPORT"
 
 
-def test_write_to_graph_calls_writers_with_contract_params(db, monkeypatch):
+def test_write_to_graph_calls_writers_with_contract_params(db, directory, monkeypatch):
     i = adb.enqueue("HHG-014", "FILE_REPORT", "L2", "3a and R9", db)
-    row = adb.decide(i, "approved", "manager@bank", db, now="2026-09-20 10:00:00")
+    row = adb.decide(i, "approved", adb.authenticate("manager@bank", "manager passphrase 1", directory), db, now="2026-09-20 10:00:00")
     calls = []
 
     def fake_run_query(conn, name, params, timeout_ms=None):

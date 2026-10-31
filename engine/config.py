@@ -42,6 +42,14 @@ FACTS_DB = _facts_db()
 RING_PROFILE = "SM-G935F Build/NRD90M | Android 7.0 | chrome 62.0 for android | 1920x1080"
 ANON_PROXY = "IP_PROXY:ANONYMOUS"
 DATASET_EPOCH = "2016-07-02 00:00:00"
+# First instant of the final-round extension (January 2017). The Round 1 base ends before it and the delta starts at it; rules
+# that only apply to the extension key on the case's time, never on a transaction-id range.
+FINAL_ROUND_START = "2017-01-01"
+
+
+def in_final_round(ts: object) -> bool:
+    """True when `ts` (a 'YYYY-MM-DD ...' string or datetime) falls in the final-round extension."""
+    return str(ts) >= FINAL_ROUND_START
 
 # Amount / time constants used by more than one module.
 EPISODE_GAP_H = 48

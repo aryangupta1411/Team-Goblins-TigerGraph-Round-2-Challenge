@@ -1,31 +1,27 @@
 {
   "case_id": "HHF-009",
   "case": {
-    "status": "closed_fraud",
-    "verdict": "fraud",
-    "fraud_probability": 0.9,
-    "pattern": "card_not_present_new_device",
+    "status": "closed_legitimate",
+    "verdict": "legitimate",
+    "fraud_probability": 0.0,
+    "pattern": "none",
     "pattern_description": "",
-    "affected_txn_ids": [
-      "3660354",
-      "3660355"
-    ],
-    "first_suspicious_txn_id": "3660354",
+    "affected_txn_ids": [],
+    "first_suspicious_txn_id": "",
     "connected_card_ids": [],
     "connected_device_profiles": [],
-    "exposure_usd": 489.62,
+    "exposure_usd": 0.0,
     "evidence": [
       {
-        "claim": "Billing region 337.0 on the online purchase is the card's modal region (149 prior purchases on 95 days)",
-        "source": "graph",
-        "ref": "query:region_history(card=C09177-K1, addr1=337.0)",
+        "claim": "The case was opened by a real-time model scoring transaction 3660355 ($228.01, online) at 0.8.",
+        "source": "external",
+        "ref": "trigger",
         "entity_ids": [
-          "3660355",
-          "C09177-K1"
+          "3660355"
         ]
       },
       {
-        "claim": "Purchaser email domain anonymous.com used 5 times before on this card",
+        "claim": "Transaction 3660355 received a calibrated probability of 0.0032 from the bank's memory-informed model, and the engine's probability is 0.0016.",
         "source": "graph",
         "ref": "query:case_context(txn=3660355)",
         "entity_ids": [
@@ -33,86 +29,130 @@
         ]
       },
       {
-        "claim": "Matched Round-2 detector (card_not_present_new_device) across 2 transactions (3660354, 3660355)",
+        "claim": "Transaction 3660355 is an online purchase in billing region 337.0, which is the card's modal region for 149 prior transactions over 95 days.",
         "source": "graph",
-        "ref": "query:card_window(card=C09177-K1, hours=72)",
+        "ref": "query:region_history(c=C09177-K1, addr1=337.0)",
         "entity_ids": [
-          "3660354",
           "3660355",
           "C09177-K1"
         ]
       },
       {
-        "claim": "Cross-card / telemetry signature (LG-H831 | NULL | NULL | NULL) links 3660354, 3660355 on C09177-K1",
+        "claim": "The flagged transaction 3660355 for $228.01 is within the card's historical activity, which had a prior median amount of $58.96 and a prior maximum amount of $422.57.",
         "source": "graph",
-        "ref": "query:shared_origin_scan(card=C09177-K1)",
+        "ref": "query:card_profile(c=C09177-K1, as_of=2017-01-27 18:08:36)",
         "entity_ids": [
-          "3660354",
           "3660355",
           "C09177-K1"
         ]
       },
       {
-        "claim": "Case-memory scorer (LightGBM over the bank's 5,565 closed cases; October holdout AUC 0.956) puts the flagged transaction at 0.00 (calibrated 0.00); the real-time risk score was 0.10",
+        "claim": "The device `LG-H831 | NULL | NULL | NULL` used for transaction 3660355 is marked as `New`, but a new device is not a standalone fraud signal in this data.",
         "source": "graph",
         "ref": "query:case_context(txn=3660355)",
         "entity_ids": [
-          "3660355"
+          "3660355",
+          "LG-H831 | NULL | NULL | NULL"
         ]
       },
       {
-        "claim": "Device profile `LG-H831 | NULL | NULL | NULL` is marked New for this account; a New device is not by itself a fraud signal in this history (cleared 'new phone' alerts are New-device ones)",
+        "claim": "Customer C09177 has no prior fraud cases or agent cases recorded.",
         "source": "graph",
-        "ref": "query:case_context(txn=3660355)",
+        "ref": "query:prior_cases_for_customer(cu=C09177, as_of=2017-01-27 18:08:36)",
         "entity_ids": [
-          "LG-H831 | NULL | NULL | NULL",
+          "C09177"
+        ]
+      },
+      {
+        "claim": "Two online transactions, 3660354 ($261.61) and 3660355 ($228.01), occurred from the `New` device `LG-H831 | NULL | NULL | NULL` within 19 hours.",
+        "source": "graph",
+        "ref": "query:episode_candidates(txn=3660355, gap_h=48)",
+        "entity_ids": [
+          "3660354",
+          "3660355",
+          "LG-H831 | NULL | NULL | NULL"
+        ]
+      },
+      {
+        "claim": "The candidate episode includes online transactions 3660354 and 3660355, separated by in-person transaction 3640665 ($113.59) on 2017-01-27 01:57:45, showing mixed-channel activity within a 24-hour window.",
+        "source": "graph",
+        "ref": "query:episode_candidates(txn=3660355, gap_h=48)",
+        "entity_ids": [
+          "3660354",
+          "3660355",
+          "3640665"
+        ]
+      },
+      {
+        "claim": "Assumed reply: customer confirmed the purchase from a new phone/device and recognises the $228.01 charge",
+        "source": "customer",
+        "ref": "evidence_request:1",
+        "entity_ids": [
           "3660355"
         ]
       }
     ],
-    "similar_prior_cases": [],
-    "summary": "Risk-score alert (0.80) on transaction 3660355 ($228.01, online) for card C09177-K1. Matched Round-2 detector (card_not_present_new_device) across 2 transactions (3660354, 3660355). Verdict fraud at probability 0.90, pattern card_not_present_new_device, 2 affected transaction(s) worth $489.62. Final actions: CREATE_CASE, BLOCK_CARD; no evidence request was needed; status closed_fraud.",
-    "written_to_graph": false,
+    "similar_prior_cases": [
+      "CC-4640",
+      "CC-4762",
+      "CC-5173",
+      "CC-4172",
+      "CC-4604",
+      "CC-4469"
+    ],
+    "summary": "The verdict is legitimate with a fraud probability of 0.002. The flagged online transaction for $228.01 was confirmed by the customer, despite an initial high risk score (0.8). The transaction was in the card's modal region from a new device, and the calibrated score was very low. We recommend CREATE_CASE, ALLOW_TRANSACTION, and CLOSE_NO_FRAUD, all auto-approved.",
+    "written_to_graph": true,
     "graph_case_id": "AC-HHF-009"
   },
-  "evidence_requests": [],
+  "evidence_requests": [
+    {
+      "type": "customer_validation",
+      "asked_after_step": 18,
+      "assumed_response": "ASSUMED (simulated): customer confirmed the purchase from a new phone/device and recognises the $228.01 charge"
+    }
+  ],
   "next_best_actions": {
     "initial": [
       {
         "action": "CREATE_CASE",
         "route": "auto",
-        "reason": "3a: probability 0.90 reaches 0.30; case opened and written to the graph"
+        "reason": "3a: a case is created to document the investigation even when the verdict is legitimate."
       },
       {
-        "action": "BLOCK_CARD",
-        "route": "L1",
-        "reason": "§3b: fraud verdict at probability 0.90 with 2 independent evidence families (device, history), so R1 does not apply (probability at or above 0.70); exposure $489.62 routes L1"
+        "action": "VERIFY_WITH_CUSTOMER",
+        "route": "auto",
+        "reason": "R1: the probability is 0.002, which is below 0.70, and the initial trigger was a single signal (risk score) contradicted by other evidence."
       }
     ],
     "final": [
       {
         "action": "CREATE_CASE",
         "route": "auto",
-        "reason": "3a: probability 0.90 reaches 0.30; case opened and written to the graph"
+        "reason": "3a: a case is created to document the investigation even when the verdict is legitimate."
       },
       {
-        "action": "BLOCK_CARD",
-        "route": "L1",
-        "reason": "§3b: fraud verdict at probability 0.90 with 2 independent evidence families (device, history), so R1 does not apply (probability at or above 0.70); exposure $489.62 routes L1"
+        "action": "ALLOW_TRANSACTION",
+        "route": "auto",
+        "reason": "R3: the customer confirmed the purchase."
+      },
+      {
+        "action": "CLOSE_NO_FRAUD",
+        "route": "auto",
+        "reason": "R3: the customer confirmed the purchase, leading to a legitimate verdict."
       }
     ],
-    "what_changed": "nothing"
+    "what_changed": "The assumed customer validation reply (confirm) left the probability at 0.00 and kept the verdict legitimate, adding ALLOW_TRANSACTION, CLOSE_NO_FRAUD, removing VERIFY_WITH_CUSTOMER. Counterfactual: had the customer denied the purchase, R2 would have applied: BLOCK_CARD (L1) and CREATE_CASE."
   },
   "sar": {
     "file": false,
-    "reason": "3a not met: exposure $489.62 <= $1,000; the New profile `LG-H831 | NULL | NULL | NULL` is a common, non-distinctive profile (not a strong device profile), so it is not a shared-origin signal; no shared region cluster; no other customer's fraud connected; documented pattern",
+    "reason": "3a not met: verdict legitimate (fraud not confirmed or strongly suspected), exposure $0.00; no report",
     "narrative": "",
     "subjects": [],
-    "total_amount_usd": 0.0,
+    "total_amount_usd": 0,
     "activity_dates": []
   },
-  "stop_reason": "Policy §6 test 1: fraud probability 0.90 is at or above 0.85 with 2 independent evidence families (device, history); no request could change the action set, so the initial recommendation is final.",
-  "tool_calls": 17,
-  "tokens": 0,
-  "latency_s": 0.08
+  "stop_reason": "Policy §6 test 2: the assumed customer confirmation settled the question. Probability 0.00 with 3 families also meets §6 test 1. Policy \n6 test 2: the assumed customer confirmation settled the question. Probability 0.002 with 3 evidence families also meets \n6 test 1.",
+  "tool_calls": 18,
+  "tokens": 138493,
+  "latency_s": 68.5
 }

@@ -2,15 +2,148 @@
 
 An agent that takes an alert from the HHGOA case pack, investigates it through **TigerGraph** (GSQL query library + graph algorithms, exposed as **TigerGraph MCP** tools), grounds itself with **GraphRAG** over closed cases and FinCEN/FFIEC/FATF guidance (TigerVector), decides under the written **Fraud Policy** with a deterministic policy gate, asks for evidence when the policy says so, explains itself, and **writes its case back into the graph** so later investigations retrieve it. Streamlit UI with an approval inbox.
 
+## Final Round (HHF-001 … HHF-018)
+
+| Deliverable | Where |
+|---|---|
+| 18 answer files | [`cases/HHF-001.json`](cases/) … `HHF-018.json`, per-case table in [`cases/MANIFEST.md`](cases/MANIFEST.md) |
+| The run they come from | `runs/r2-final/` (`answer.json`, `calls.jsonl`, `phases.jsonl`, `sar.md` per case; `run_manifest.json`) |
+| Innovation claim, with measurements | [`docs/INNOVATION.md`](docs/INNOVATION.md) |
+| One-page resilience statement | [`docs/RESILIENCE.md`](docs/RESILIENCE.md) |
+| 5-minute judged demo | [`docs/demo_script.md`](docs/demo_script.md) |
+| January delta: build, gates, load, undo | [`docs/DELTA.md`](docs/DELTA.md) (`make delta`, `make load-delta`) |
+
+### Clean-clone drill: one command, one case
+
+No keys, no graph, no dataset download. The 18 cases and the base + January facts are in the tracked
+`data/hhgoa_engine.duckdb`, and the ids the validator checks are in `data/ids.duckdb`:
+
+```bash
+git clone <REPO_URL> Tiger-graph && cd Tiger-graph && make install && RUN_MODE=mock uv run python -m agent.bench --cases HHF-004 --run-id drill-1 --mock && uv run python -m agent.validator --db data/ids.duckdb runs/drill-1/HHF-004/answer.json
+```
+
+The answer lands in `runs/drill-1/HHF-004/`. In mock mode the model replies are recorded fixtures and the facts come from
+DuckDB (including the DuckDB twin of the January typology scan). CI runs the same drill on Ubuntu (step "Final Round
+clean-clone drill" in `.github/workflows/ci.yml`).
+
+All 18 against the live graph (`.env`: `TG_HOST`, `TG_SECRET`; set `LLM_BACKEND` explicitly; `gemini` needs `GEMINI_API_KEY`):
+
+```bash
+RUN_MODE=live LLM_BACKEND=gemini uv run python -m agent.bench --cases round2 --run-id r2-live
+```
+
+On the current code, a live January case calls the `typology_scan` query on the workspace. `typology_scan` is installed there
+(2026-10-31). If it is ever missing, the case fails closed (see [the typology port](#the-january-typology-scan-runs-in-the-graph) below).
+
+### Results of the promoted run `runs/r2-final`
+
+The 18 files in `cases/HHF-*.json` are byte-identical to `runs/r2-final/HHF-*/answer.json`. They come from one live pass
+against FraudGraph through MCP, on 2026-10-31 from commit `7de7ddc` with local changes (`git_dirty: true` in
+`run_manifest.json`).
+
+| Measure | Value |
+|---|---|
+| Completed | 18 / 18, every case `written_to_graph: true` |
+| Verdicts | 7 fraud, 3 uncertain, 8 legitimate |
+| Fraud | HHF-001 … HHF-006 (pattern `undocumented`: the four January waves that share no device) and HHF-007 (`card_testing`, the customer denied it) |
+| Uncertain | HHF-010, HHF-013, HHF-014 (`out_of_region_use`, status `escalated`) |
+| Legitimate | HHF-008, 009, 011, 012, 015, 016, 017, 018, all `closed_legitimate` after a customer-validation request |
+| Status | 9 `escalated`, 1 `closed_fraud`, 8 `closed_legitimate` |
+| SAR filed | 6: HHF-001 … HHF-006, all `undocumented`. This includes the $23.99 (HHF-004) and $23.17 (HHF-005) micro-skimming cases. |
+| Evidence requested | 11 of 18 cases, all `customer_validation` (replies simulated and labelled `ASSUMED`) |
+| Final actions by route | 53 auto, 10 L1, 7 L2 |
+| Exposure (sum of `exposure_usd`) | $16,968.35 |
+| Blocks or reports on a non-fraud case | 0 (no `BLOCK_*`, `DECLINE_TRANSACTION` or `FILE_REPORT` on the 8 legitimate cases; the 3 uncertain cases carry `DECLINE_TRANSACTION` (L1) and no block or report) |
+
+Sources: `runs/r2-final/HHF-*/answer.json` (verdict, status, pattern, `sar.file`, `evidence_requests`, `next_best_actions.final`, `exposure_usd`, `written_to_graph`); byte comparison with `cases/HHF-*.json`.
+
+| Per case | Median | p95 | Min | Max | Total |
+|---|---:|---:|---:|---:|---:|
+| Tool calls | 18.5 | 22 | 15 | 22 | 339 |
+| Tokens | 225,538 | 324,743 | 126,658 | 324,743 | 3,859,170 |
+| Latency (s) | 104.8 | 306.0 | 62.9 | 306.0 | 2,028.8 |
+
+Sources: the `tool_calls`, `tokens` and `latency_s` fields of the 18 `runs/r2-final/HHF-*/answer.json`. p95 is nearest-rank: with 18 values it is the 18th, which is also the maximum. Linear interpolation gives 22 / 289,305 / 171.7 s.
+
+| Model and graph activity | Value |
+|---|---|
+| Model calls (`kind=llm`) | 145, all `gemini-2.5-flash` (`LLM_BACKEND=gemini`; `run_manifest.json` also names `gemini-2.5-flash` as `sar_model` for every case) |
+| Tool rows (`kind=tool`) | 615, 0 failed: 282 harness queries, 57 queries the model chose, 276 write-back calls |
+| Write-back calls (`caller=persist`, all `ok`) | 18 `AgentCase` upserts, 18 `open_case`, 125 `append_case_event`, 17 `record_approval` (one per L1/L2 final action), plus the `CASE_*` / `HAS_*` edges |
+
+Sources: `runs/r2-final/HHF-*/calls.jsonl` (fields `kind`, `model`, `caller`, `name`, `ok`); `runs/r2-final/run_manifest.json`. An answer's `tool_calls` counts the harness and model rows (282 + 57 = 339), not the write-backs.
+
+**Agreement with the deterministic engine.** `engine.run_cases` re-run offline on the current code agrees with
+`runs/r2-final` on all 18 cases: verdict, pattern, SAR decision and final action set with routes. Probability is
+within 0.10 on all 18. The one difference is in an initial set: on HHF-011 the model added the low-impact
+`MONITOR_CONNECTED_CARDS`, which the engine leaves out. This shows self-consistency, not accuracy: the organisers hold the
+answer key.
+
+Source: `uv run python -m engine.run_cases --cases HHF-001 … HHF-018 --out <dir> --sheet <dir>/sheet.md`, with each `<dir>/HHF-*.draft.json` compared to `runs/r2-final/HHF-*/answer.json`.
+
+**Live workspace.** FraudGraph holds July 2016 to January 2017. `uv run python -m ops.check_live_counts` compares the
+live vertex and edge counts with `expected_after` in `data/out_delta/delta_manifest.json`, which covers 18 types
+(Transaction 650,938; ClosedCase 5,585). The check is read-only, and you can run it again during the demo.
+
+### The January typology scan runs in the graph
+
+The January waves share no device, so a device traversal cannot find them. Detectors D1-D4 are filtered scans over
+`Transaction` with per-card accumulators. They live in `graph/queries/typology_scan.gsql`, a harness-only query (the
+model never sees it). The harness calls it from `agent/phase_machine.py` (`_ensure_facts`) for every case opened in
+2017 or later. If the scan cannot run, the case raises `CaseDataMissing` and no answer is written. The DuckDB twin
+(`DuckFacts.typology_scan` / `engine.detectors.scan_rows`) serves mock mode and the offline engine, and
+`graph/check_typology_parity.py` compares the two as an interpreted, read-only query.
+
+Two facts limit what this proves:
+
+- **`runs/r2-final` predates the port.** Its `calls.jsonl` holds no `typology_scan` call. In that run the detectors ran on
+  the local DuckDB snapshot.
+- **The query is installed, but the 18 answers have not been re-run against it.** `graph/check_typology_parity.py
+  --installed` recorded 30 cases and 0 differences against the DuckDB twin on 2026-10-31. If the query is ever missing
+  (it is installed alone, as `CREATE OR REPLACE` + `INSTALL QUERY`), a live run of any January case fails closed with
+  `CaseDataMissing`; every HHF case is a January case. Mock mode and the engine are not affected. A live re-run from the
+  frozen commit is the step that closes the gap between the code and the submitted answers.
+
+### The analyst dashboard
+
+Run `make ui` to open http://localhost:8501. With no workspace, use `RUN_MODE=mock make ui`. By default the dashboard
+reads the run that `cases/` was promoted from. Every page has a context bar showing:
+- the source and whether it is LIVE or MOCK;
+- the models seen in that run's `calls.jsonl`;
+- the git sha, and whether there are uncommitted changes;
+- how many of the 18 cases are decided;
+- who is signed in.
+
+The navigation is `PAGES` in `ui/common.py`, rendered with `st.navigation`. A page whose file is not on disk is left
+out (`nav_pages()`).
+
+| Where | Page | What it shows |
+|---|---|---|
+| Top bar | **Overview** (default, `/`) | Source provenance and measured tiles: decided n / 18; the verdict mix next to the brief's 9 legitimate; hard actions on non-fraud verdicts; agreement with the submitted files. Then proof cards and the 18-case decision board, where one click opens a case. |
+| Top bar | **Case file** (`/case?case=HHF-0xx`) | The decision card comes first: verdict, how p moved, actions with routes and their real approval state, the simulated evidence reply, the stop rule and the SAR decision. Below it: the untrusted trigger verbatim with the defences that fired, then "TigerGraph in this case" (reads, write-backs, vector-search precedents with distances). Then five tabs: Decision path P0–P10, Evidence ledger (what / evidence / how / when per claim), SAR & citations, Approvals & handover, Raw files. |
+| Top bar | **Graph** | The case subgraph. In mock mode it is rebuilt from the answer and labelled that way. |
+| Top bar | **Approvals** | A read-only inbox, with sign-in through a server-side approver directory. Sign-in fails closed when `ui/principals.json` is missing. Also the wrong-role drill in a sandbox and the immutable audit log. |
+| Proof | **Detectors & containment** | The backtest over 5,585 closed cases, with the cleared customers each detector would act against. Self-growing detector proposals awaiting approval, containment per wave, and a ring replay slider. |
+| Proof | **Security & drills** | The 23-attack ablation (`agent.security.run_attack_ablation()`), a hostile-input sandbox and the drills ledger |
+| Proof | **Data quality & schema** | Data quality (C11), schema drift (C12) and mapping another bank's schema (C13; mapping only, no investigation run on a variant), from `engine/out/proof_snapshot.json` and `data/schema_approvals.json` |
+| Proof | **Runs & consistency** | p50 / p95 per case, numbers to quote, same-case agreement across runs |
+| System | **Run console** | Starts agent runs only after a confirm dialog; live backends are disabled in mock mode; hidden when `DEPLOY_READONLY=1` |
+| System | **How it works** | The TigerGraph-use checklist, known limits and the system map |
+
+To add approvers, run `uv run python -m ui.approvals_db add-principal <name> --role team_lead` (or
+`--role fraud_manager`). Each run prompts for a passphrase.
+
+## Round 1 (HHG-001 … HHG-020)
+
 | Deliverable | Where |
 |---|---|
 | 20 answer files | [`cases/`](cases/) (`HHG-001.json` … `HHG-020.json`, [`cases/MANIFEST.md`](cases/MANIFEST.md)) |
-| Demo video (3–5 min) | `<DEMO_URL>` (script: [`docs/demo_script.md`](docs/demo_script.md)) |
+| Demo video (3–5 min) | `<DEMO_URL>` (its script is in git history; [`docs/demo_script.md`](docs/demo_script.md) now holds the Final Round demo) |
 | Technical blog | [`docs/blog.md`](docs/blog.md) (published copy: `<BLOG_URL>`) |
 | Social post (tags @TigerGraphDB and @247pmstudio) | [`docs/social.md`](docs/social.md) (posted copy: `<SOCIAL_URL>`) |
 | Architecture diagram | [`docs/architecture.svg`](docs/architecture.svg) |
 
-## Judge quick-start (mock mode: no TigerGraph workspace, no API keys)
+## Judge quick-start, Round 1 (mock mode: no TigerGraph workspace, no API keys)
 
 Everything below runs offline on a fresh clone. The dataset CSVs under `data/raw/` are not in the
 repository (they are gitignored), so the checked-in `data/ids.duckdb` (id tables for the validator) and
@@ -29,7 +162,8 @@ Install the dependencies and create `.env` from `.env.example` (`RUN_MODE=mock`,
 make install
 ```
 
-Check the 20 submitted answer files against the README answer schema and the dataset ids:
+Check every answer file in `cases/` (20 Round 1 + 18 Final Round = 38; all 38 clean, 0 problems) against the README
+answer schema and the dataset ids:
 
 ```bash
 make validate
@@ -48,7 +182,8 @@ Build a mock run from the 20 answer files so the dashboard has something to show
 make mock-run
 ```
 
-Open the analyst dashboard at http://localhost:8501 and pick run `mock` in the sidebar:
+Open the analyst dashboard at http://localhost:8501. The sidebar's run picker opens on the canonical Final Round run
+(`runs/r2-final`) when it is present; pick `mock` there to see the run you just built:
 
 ```bash
 RUN_MODE=mock make ui
@@ -60,32 +195,34 @@ The unit tests and the linter (data-backed tests skip without the full DuckDB):
 make test lint
 ```
 
-## Results
+## Round 1 results (HHG-001 … HHG-020)
 
-The files in `cases/` come from one clean live pass, run `live-final`, made with the ordered commands in
-[`docs/RERUN.md`](docs/RERUN.md). Each case ran once against TigerGraph through MCP, all from commit `49768d0` with no
-local changes, on claude-sonnet-5 (high effort, subscription backend). Before the pass, the earlier runs' graph
-write-backs were deleted and the fixed GSQL library was reinstalled. [`cases/MANIFEST.md`](cases/MANIFEST.md) has the
-per-case verdict, probability, pattern, SAR, tool calls, tokens and latency; the traces are in `runs/live-final/`.
+These are the Round 1 numbers, not the Final Round ones. The 20 files `cases/HHG-*.json` are byte-identical to
+`runs/live-final-2/HHG-*/answer.json`. That run is one live pass against TigerGraph through MCP, from commit
+`be03533` with no local changes (`git_dirty: false`), with all 100 model calls on `claude-sonnet-5` (subscription
+backend `cli`). [`cases/MANIFEST.md`](cases/MANIFEST.md) has the per-case rows. The ordered rerun commands are in
+[`docs/RERUN.md`](docs/RERUN.md).
 
-| Measure | Value |
+| Measure (Round 1) | Value |
 |---|---|
 | Verdicts | 8 fraud, 7 legitimate, 5 uncertain |
-| SAR required | 2, HHG-006 (under-$500 burst) and HHG-014 (anonymous-proxy device ring), both `undocumented`; drafted, filing awaits L2 approval |
+| SAR required | 2: HHG-006 (under-$500 burst) and HHG-014 (anonymous-proxy device ring), both `undocumented` |
 | Evidence requested | 14 of 20 cases (9 customer validation, 5 step-up; replies simulated and labelled `ASSUMED`) |
 | Final actions by route | 46 auto, 18 L1, 2 L2 |
-| Tool calls per case | median 19 (15-24); 0 failed |
-| Tokens per case | median 286k (~95% prompt-cache writes and reads) |
-| Time per case | median 151 s (121-264 s) |
-| `make validate` | 20 clean, 0 problems |
-| Written back to the graph | 20 `AgentCase`, 130 `CaseEvent`, 20 pending `Approval` |
+| Tool calls per case | median 19.5 (15-24) |
+| Tokens per case | median 294,301 (232,932-616,283) |
+| Time per case | median 162.6 s (112.8-252.6 s) |
+| Written back to the graph | 20 / 20 `written_to_graph`; 20 `AgentCase` upserts, 130 `append_case_event`, 20 `record_approval` calls, all `ok` |
+
+Sources: `cases/HHG-*.json`; `runs/live-final-2/run_manifest.json` (git SHA, dirty flag, model); `runs/live-final-2/HHG-*/calls.jsonl` (`kind=llm` model names, `caller=persist` rows).
 
 All 20 answers agree with the engine's own offline prediction (`engine/out/<case>.draft.json`) on verdict, pattern,
-episode transactions, exposure, SAR decision, status and both action sets with their routes, and on probability within
-0.10. That is a self-consistency check, not accuracy: the organisers hold the answer key. Against real outcomes, a
-replay of 310 labelled closed cases (`engine/out/replay_metrics.json`) scores, on the 180 confirmed-fraud ones,
-pattern accuracy 0.878, SAR decision accuracy 0.939 and episode Jaccard 0.792, all below the targets of 0.95, 1.00 and
-0.85. [`docs/blog.md`](docs/blog.md) walks through HHG-014 and the lessons.
+episode transactions, exposure, SAR decision, status and both action sets with their routes, and on probability
+within 0.10. That is a self-consistency check, not accuracy. Against real outcomes, a replay of 310 labelled closed
+cases scores, on the confirmed-fraud ones, pattern accuracy 0.878, SAR decision accuracy 0.939 and episode Jaccard
+0.792. All three are below the targets of 0.95, 1.00 and 0.85. [`docs/blog.md`](docs/blog.md) walks through HHG-014 and the lessons.
+
+Sources: `engine/out/HHG-*.draft.json` compared field by field with `cases/HHG-*.json`; `engine/out/replay_metrics.json` (`n`, `pattern_accuracy_fraud_all`, `sar_accuracy_fraud_all`, `episode_jaccard_fraud_all`).
 
 ## The two documents
 
@@ -104,7 +241,7 @@ List every file the document carries:
 python extract_code.py --dry-run
 ```
 
-Write them (existing files kept unless `--force`):
+Write them (existing files kept unless `--force`). `IMPLEMENTATION.md` is the Round 1 snapshot: it has none of the Final Round code, so `--force` would overwrite it with Round 1 versions. Do not use `--force` on this branch.
 
 ```bash
 python extract_code.py
@@ -117,6 +254,8 @@ python sync_spec.py
 ```
 
 ## Architecture
+
+The diagram and sketch below show the Round 1 build (`LLM_BACKEND=cli`). The Final Round run used `LLM_BACKEND=gemini`, and the current code adds the harness-only `typology_scan` query.
 
 ![architecture](docs/architecture.svg)
 
@@ -277,7 +416,8 @@ Validator (ids resolved against `data/ids.duckdb`) → `cases/`:
 make promote RUN_ID=v1
 ```
 
-The analyst dashboard at http://localhost:8501 — queue · case · approvals · graph · runs:
+The analyst dashboard at http://localhost:8501 (pages: [The analyst dashboard](#the-analyst-dashboard)). Its source
+defaults to the run `cases/` was promoted from, and every page reads that one source:
 
 ```bash
 make ui
@@ -341,14 +481,27 @@ make ids
 
 The analyst dashboard runs on [Railway](https://railway.com) as one small container. The root `Dockerfile`
 installs only what `ui/` imports: `requirements-ui.txt`, 70 packages pinned to `uv.lock`, about 127 MB of
-wheels. A plain `uv sync` would download 3.4 GB, mostly torch and CUDA wheels. The image also ships `cases/` and
-the canonical run `runs/live-final-2/`, so the public page shows all 20 cases with their full traces. It starts in
-mock mode and read-only, so it needs no TigerGraph connection, no agent and no keys.
+wheels. A plain `uv sync` would download 3.4 GB, mostly torch and CUDA wheels. The image ships:
+- `cases/` and `ui/`;
+- the Final Round run named by `ARG CANONICAL_RUN` (default `r2-final`; switched to the final run's id after
+  promotion), and `runs/live-final-2/` (Round 1), so the public page shows every case with its full trace;
+- two stdlib-only modules, `agent/security.py` and `schema_engine/attestation.py`;
+- `engine/out/detector_backtest.json`, `engine/out/containment_summary.json` and `engine/out/proof_snapshot.json`.
 
-1. Commit and push the deploy files (`Dockerfile`, `.dockerignore`, `.railwayignore`, `railway.json`,
-   `requirements-ui.txt`), the changes to `.gitignore` and `ui/`, and `runs/.gitkeep` with `runs/live-final-2/`.
-   `.gitignore` now lets that one run in, and every other run stays local. Before pushing, check that
-   `git ls-files runs/live-final-2 | wc -l` prints 82; without the run, the build fails at its `COPY`.
+`make proof-snapshot` regenerates `proof_snapshot.json`, which holds the measured sections that the image cannot
+compute because it has no duckdb and no `data/`. `tests/unit/test_ui_railway_smoke.py` renders every page from exactly
+the Dockerfile's file set, with duckdb blocked. The image starts in mock mode and read-only, so it needs no TigerGraph
+connection, no agent and no keys.
+
+1. Commit and push:
+   - the deploy files (`Dockerfile`, `.dockerignore`, `.railwayignore`, `railway.json`, `requirements-ui.txt`);
+   - the changes to `.gitignore` and `ui/`, and `engine/out/proof_snapshot.json`;
+   - `runs/.gitkeep` with the canonical run and `runs/live-final-2/`.
+
+   `.gitignore` lets those runs in, and every other run stays local. If you change `CANONICAL_RUN`, also change its
+   `!runs/<name>/` line in `.dockerignore` and its watch pattern in `railway.json`. Before pushing, check that
+   `git ls-files runs/<canonical run> | wc -l` prints 73 (18 cases × 4 files + `run_manifest.json`) and that
+   `git ls-files runs/live-final-2 | wc -l` prints 82. Without the runs, the build fails at its `COPY`.
 2. Sign in at railway.com with GitHub, then choose **New Project → Deploy from GitHub repo**, pick this repository
    and the branch `main`. If Railway asks, grant its GitHub app access to the repository. Railway finds the root
    `Dockerfile`, so leave **Custom Start Command** empty. If you do set one, wrap it so `$PORT` expands:

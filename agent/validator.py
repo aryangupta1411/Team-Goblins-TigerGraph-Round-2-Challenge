@@ -76,11 +76,13 @@ def _case_pack_rows(path: str | Path | None = None) -> dict[str, dict]:
                 rows[r["case_id"]] = r
         except Exception:
             pass
-    r2 = REPO_ROOT / "data" / "raw" / "round2" / "case_pack_final.csv"
-    if r2.exists():
-        with r2.open(encoding="utf-8", newline="") as fh:
-            for r in csv.DictReader(fh):
-                rows.setdefault(r["case_id"], r)
+    try:
+        from ui.common import round2_pack_rows
+
+        for r in round2_pack_rows():
+            rows.setdefault(r["case_id"], r)
+    except Exception:
+        pass
     return rows
 
 
@@ -116,6 +118,16 @@ def validate(answer: dict, db: Any, meta: dict | None = None) -> list[str]:
         `what_changed` never reports a move "from X to X".
     """
     meta = meta if meta is not None else meta_for(answer)
+    # the case investigates the card its flagged transaction is recorded on (engine.case_card), not a pack card that disagrees
+    cp = _case_pack_rows().get(str(answer.get("case_id", "")), {})
+    txn_id = str(cp.get("flagged_txn_id", ""))
+    if txn_id.isdigit() and meta.get("card_id"):
+        try:
+            got = db.q("SELECT card_id FROM txc WHERE TransactionID = ?", int(txn_id))
+            if len(got) and str(got.card_id[0]) != meta["card_id"]:
+                meta = {**meta, "card_id": str(got.card_id[0])}
+        except Exception:
+            pass
     problems = list(engine_validator.validate(answer, db, meta))
     have = set(problems)
     from rag.validate_sar import check_answer_sar_facts

@@ -137,7 +137,7 @@ CREATE OR REPLACE QUERY card_profile(VERTEX<Card> c, DATETIME as_of) FOR GRAPH F
       ACCUM @@other_cards += OtherCard(o.id, o.card_type, o.n_txns);
 
   P = SELECT p FROM (s:S)-[:REV_ON_CARD]->(p:ClosedCase)
-      WHERE p.opened_at <= as_of
+      WHERE p.opened_at <= as_of AND p.closed_at <= as_of
       POST-ACCUM @@prior_closed_cases += ClosedRow(p.id, datetime_format(p.opened_at), p.outcome, p.pattern,
                                                    p.exposure_usd, p.report_filed, p.template_id);
 

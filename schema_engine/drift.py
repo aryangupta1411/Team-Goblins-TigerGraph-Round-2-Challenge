@@ -205,16 +205,19 @@ def get_schema_approval(migration_id: str = "round2_2017q1_migration") -> dict[s
 
 def approve_schema_migration(
     migration_id: str = "round2_2017q1_migration",
-    approved_by: str = "fraud-manager@bank",
-    role: str = "fraud_manager",
+    session: object = None,
     notes: str = "Approved Round 2 schema drift recovery and canonical remapping.",
 ) -> dict[str, Any]:
-    """Human approval step for schema drift / variant mapping (Challenge 12 & 13).
+    """Human approval step for schema drift / variant mapping (Challenges 12 & 13).
 
-    Enforces role check: only team_lead or fraud_manager may approve schema migrations.
+    The approver is identified only by an authenticated session (ui.approvals_db.authenticate); the role comes from the
+    server-side directory, and only a team lead or fraud manager may approve. A decision is final.
     """
-    if role not in ("team_lead", "fraud_manager", "schema_admin"):
-        raise PermissionError(f"Role {role!r} is not authorized to approve schema migrations (requires team_lead or fraud_manager)")
+    from ui.approvals_db import verify_session
+
+    who = verify_session(session)
+    if who.role not in ("team_lead", "fraud_manager"):
+        raise PermissionError(f"{who.principal} ({who.role}) is not authorized to approve schema migrations (team_lead or fraud_manager)")
     data = _load_approvals()
     existing = data.get(migration_id, {})
     if existing.get("status") in ("approved", "rejected"):
@@ -222,21 +225,11 @@ def approve_schema_migration(
     record = {
         "migration_id": migration_id,
         "status": "approved",
-        "approved_by": approved_by,
-        "role": role,
+        "approved_by": who.principal,
+        "role": who.role,
         "approved_at": dt.datetime.now(dt.UTC).strftime("%Y-%m-%d %H:%M:%S"),
         "notes": notes,
     }
-    data[migration_id] = record
-    APPROVAL_FILE.parent.mkdir(parents=True, exist_ok=True)
-    APPROVAL_FILE.write_text(json.dumps(data, indent=2, sort_keys=True), encoding="utf-8")
-    return record
-
-
-def reset_schema_approval(migration_id: str = "round2_2017q1_migration") -> dict[str, Any]:
-    """Reset a schema migration back to `pending` so the approval gate can be demonstrated live."""
-    data = _load_approvals()
-    record = {"migration_id": migration_id, "status": "pending", "approved_by": None, "role": None, "approved_at": None, "notes": ""}
     data[migration_id] = record
     APPROVAL_FILE.parent.mkdir(parents=True, exist_ok=True)
     APPROVAL_FILE.write_text(json.dumps(data, indent=2, sort_keys=True), encoding="utf-8")

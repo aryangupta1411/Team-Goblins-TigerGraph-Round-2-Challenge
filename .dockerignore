@@ -1,15 +1,24 @@
 # Build context for the Dockerfile (the Streamlit UI image). Allowlist: start from nothing, then let
 # in only what the Dockerfile copies. Everything else stays out, including .env, .git, .venv, .claude,
 # data/ (raw CSVs and every *.duckdb; the UI opens none of them), graph/, docs/, IMPLEMENTATION.md,
-# PLAN.md and every run other than the canonical one.
+# PLAN.md, every run other than the two canonical ones, and all of agent/ and schema_engine/ except the two
+# stdlib-only modules the UI imports. runs/r2-final/ is the Dockerfile's default CANONICAL_RUN.
 *
 
 !requirements-ui.txt
 !.streamlit/config.toml
 !ops/
 !rag/
+!agent/__init__.py
+!agent/security.py
+!schema_engine/__init__.py
+!schema_engine/attestation.py
 !cases/
+!runs/r2-final/
 !runs/live-final-2/
+!engine/out/detector_backtest.json
+!engine/out/containment_summary.json
+!engine/out/proof_snapshot.json
 !ui/
 
 # Never, even inside the paths let in above.

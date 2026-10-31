@@ -1,11 +1,16 @@
-"""Backtest Runner for New Typology Detectors (`engine/backtest_detectors.py` — Challenges 1, 2, 3).
+"""Backtest of the undocumented-typology detectors over the bank's closed cases (`engine/backtest_detectors.py`, Challenges 1-2).
 
-Runs all undocumented typology detectors (Round 1 Ring + Under-$500 Burst + Round 2 D1..D4) and
-compiled policy-text detectors (R5, R7, §3a) over all 5,585 closed cases in `cc` plus the 18 Final
-Round `HHF-` cases, reporting:
-  - True positive fraud cases / cards / transactions caught (with attested IDs)
-  - False positives on the 895 cleared legitimate closed cases (must be 0)
-  - Rule-detector vs. Agent agreement table (Challenge 3)
+Every number here is measured on each run; nothing is asserted by hand:
+
+  * each wave detector (D1-D3) runs over the FULL history (July 2016 to January 2017), not only the month it was written
+    for, and every closed case whose transactions it matches is counted: a confirmed-fraud case is a catch, a cleared
+    case is a legitimate customer the detector would have acted against (named);
+  * D4 (one recipient domain paid by many cards) is evaluated the way the agent uses it: on each closed case's first
+    online ProductCD='C' transaction, at the case's own opened_at;
+  * the two Round 1 shapes (anonymous-proxy device ring, under-$500 burst) are measured from the ETL's own flags;
+  * the 18 Final Round cases are scanned with `scan_card` exactly as the engine does.
+
+    uv run python -m engine.backtest_detectors      # -> engine/out/detector_backtest.json
 """
 from __future__ import annotations
 
@@ -15,17 +20,57 @@ from typing import Any
 
 import duckdb
 
-from engine.detectors import (
-    detect_d1_mobile_anon_proxy_wave,
-    detect_d2_escalating_c_drain,
-    detect_d3_micro_charge_skimming,
-    detect_d4_recipient_email_mule,
-    discover_unlabelled_patterns,
-)
-from ops.console import Col, Table, header, ok, summary
+from engine.detectors import WAVE_SQL, detect_d4_recipient_email_mule, discover_unlabelled_patterns, scan_card
+from ops.console import Col, Table, header, ok, summary, warn
 from schema_engine.attestation import attest
 
 ROOT = Path(__file__).resolve().parents[1]
+FULL_HISTORY = "2016-07-01"
+RING_PROFILE = "SM-G935F Build/NRD90M | Android 7.0 | chrome 62.0 for android | 1920x1080"
+
+
+def _case_hits(con: Any, txn_ids: set[str]) -> dict[str, list[dict]]:
+    """Closed cases whose transactions intersect `txn_ids`, split by outcome."""
+    if not txn_ids:
+        return {"confirmed_fraud": [], "cleared": []}
+    con.execute("CREATE OR REPLACE TEMP TABLE _hit(id VARCHAR)")
+    con.executemany("INSERT INTO _hit VALUES (?)", [[t] for t in sorted(txn_ids)])
+    rows = con.execute(
+        """SELECT DISTINCT c.case_id, c.outcome, c.customer_id, c.card_id
+           FROM cc c JOIN cc_txn x USING (case_id) JOIN txc t USING (TransactionID) JOIN _hit h ON h.id = t.id
+           ORDER BY c.case_id"""
+    ).fetchall()
+    out: dict[str, list[dict]] = {"confirmed_fraud": [], "cleared": []}
+    for cid, outcome, cust, card in rows:
+        out.setdefault(outcome, []).append({"case_id": cid, "customer_id": cust, "card_id": card})
+    return out
+
+
+def _detector_row(detector_id: str, name: str, txn_rows: list[tuple], hits: dict[str, list[dict]], exam: list[str], how: str) -> dict:
+    cards = sorted({str(r[1]) for r in txn_rows})
+    jan_cards = sorted({str(r[1]) for r in txn_rows if str(r[2]) >= "2017-01-01"})
+    fp = hits.get("cleared", [])
+    tp = hits.get("confirmed_fraud", [])
+    return {
+        "detector_id": detector_id,
+        "name": name,
+        "cards_matched": len(cards),
+        "cards_matched_january": len(jan_cards),
+        "matched_card_ids": cards,
+        "txns_matched": len(txn_rows),
+        "closed_cases_caught": [h["case_id"] for h in tp],
+        "false_positives_on_cleared_cases": len(fp),
+        "legitimate_customers_acted_against": sorted({h["customer_id"] for h in fp}),
+        "cleared_cases_matched": [h["case_id"] for h in fp],
+        "exam_cases_caught": exam,
+        "attestation": attest(
+            what=(f"{name}: matches {len(cards)} cards ({len(jan_cards)} in January 2017) over July 2016-January 2017; it overlaps "
+                  f"{len(tp)} confirmed-fraud closed cases and {len(fp)} cleared closed cases."),
+            evidence=[h["case_id"] for h in tp][:15] + [h["case_id"] for h in fp][:15] + cards[:20],
+            query_or_rule=f"engine.backtest_detectors:{detector_id}",
+            params={"since": FULL_HISTORY, "how": how},
+        ).to_dict(),
+    }
 
 
 def run_backtest(db_path: str | Path = ROOT / "data" / "hhgoa_engine.duckdb") -> dict[str, Any]:
@@ -33,120 +78,54 @@ def run_backtest(db_path: str | Path = ROOT / "data" / "hhgoa_engine.duckdb") ->
     n_cc = int(con.execute("SELECT count(*) FROM cc").fetchone()[0])
     n_cleared = int(con.execute("SELECT count(*) FROM cc WHERE outcome = 'cleared'").fetchone()[0])
     n_fraud = int(con.execute("SELECT count(*) FROM cc WHERE outcome = 'confirmed_fraud'").fetchone()[0])
-    cleared_cards = {r[0] for r in con.execute("SELECT DISTINCT card_id FROM cc WHERE outcome = 'cleared'").fetchall()}
 
-    # 1. Historical Undocumented Ring (SM-G935F)
-    ring_prof = "SM-G935F Build/NRD90M | Android 7.0 | chrome 62.0 for android | 1920x1080"
-    ring_cc = [
-        r[0]
-        for r in con.execute(
-            "SELECT DISTINCT c.case_id FROM cc c JOIN cc_txn x USING (case_id) JOIN txc t USING (TransactionID) WHERE t.device_id = ? AND c.outcome = 'confirmed_fraud' ORDER BY 1",
-            [ring_prof],
-        ).fetchall()
-    ]
-    ring_fp = [
-        r[0]
-        for r in con.execute(
-            "SELECT DISTINCT c.case_id FROM cc c JOIN cc_txn x USING (case_id) JOIN txc t USING (TransactionID) WHERE t.device_id = ? AND c.outcome = 'cleared'",
-            [ring_prof],
-        ).fetchall()
-    ]
+    # the 18 Final Round cases, scanned exactly as the engine scans them
+    exam_hits: dict[str, list[str]] = {}
+    for case_id, txn, card, opened in con.execute("SELECT case_id, flagged_txn_id, card_id, opened_at::VARCHAR FROM cp_round2 ORDER BY case_id").fetchall():
+        real_card = con.execute("SELECT card_id FROM txc WHERE TransactionID = ?", [int(txn)]).fetchone()
+        hit = scan_card(con, real_card[0] if real_card else card, str(txn), opened)
+        if hit is not None:
+            exam_hits.setdefault(hit.detector_id, []).append(case_id)
 
-    # 2. Historical Under-$500 Burst
-    burst_cc = [
-        r[0]
-        for r in con.execute(
-            "SELECT DISTINCT c.case_id FROM cc c JOIN cc_txn x USING (case_id) JOIN txc t USING (TransactionID) WHERE t.burst_id != '' AND c.outcome = 'confirmed_fraud' ORDER BY 1"
-        ).fetchall()
-    ]
-    burst_fp = [
-        r[0]
-        for r in con.execute(
-            "SELECT DISTINCT c.case_id FROM cc c JOIN cc_txn x USING (case_id) JOIN txc t USING (TransactionID) WHERE t.burst_id != '' AND c.outcome = 'cleared'"
-        ).fetchall()
-    ]
+    rows: list[dict] = []
+    names = {"D1_MOBILE_ANON_PROXY_WAVE": "Spoofed-mobile anonymous-proxy wave (no shared device)",
+             "D2_ESCALATING_C_DRAIN": "Dormant-wake escalating drain",
+             "D3_MICRO_CHARGE_SKIMMING": "Sub-threshold micro-charge skimming"}
+    for det, name in names.items():
+        txn_rows = con.execute(WAVE_SQL[det].format(since=FULL_HISTORY)).fetchall()
+        rows.append(_detector_row(det, name, txn_rows, _case_hits(con, {str(r[0]) for r in txn_rows}), exam_hits.get(det, []),
+                                  "wave query over the full history"))
 
-    # 3. D1..D4 on January 2017 + check false positives against the 895 cleared closed cases
-    d1_hit = detect_d1_mobile_anon_proxy_wave(con, "C05061-K1", "2017-01-31 23:59:59")
-    d2_hit = detect_d2_escalating_c_drain(con, "C11663-K1", "2017-01-31 23:59:59")
-    d3_hit = detect_d3_micro_charge_skimming(con, "C12975-K2", "2017-01-31 23:59:59")
-    d4_hit = detect_d4_recipient_email_mule(con, "C01727-K2", "3660263", "2017-01-31 23:59:59")
+    # D4 at each closed case's own first online ProductCD='C' transaction and opened_at
+    d4_txn: set[str] = set()
+    d4_rows: list[tuple] = []
+    probes = con.execute(
+        """SELECT c.case_id, c.card_id, c.opened_at::VARCHAR, min(t.TransactionID)
+           FROM cc c JOIN cc_txn x USING (case_id) JOIN txc t USING (TransactionID)
+           WHERE t.product_cd = 'C' AND t.channel = 'online' AND t.r_email != ''
+           GROUP BY 1, 2, 3"""
+    ).fetchall()
+    for _cid, card, opened, txn in probes:
+        hit = detect_d4_recipient_email_mule(con, card, str(txn), opened)
+        if hit is not None and str(txn) in hit.episode_txn_ids:
+            d4_txn |= set(hit.episode_txn_ids)
+            d4_rows += [(i, card, opened, 0.0) for i in hit.episode_txn_ids]
+    for _cid, txn, card, opened in con.execute("SELECT case_id, flagged_txn_id, card_id, opened_at::VARCHAR FROM cp_round2").fetchall():
+        hit = detect_d4_recipient_email_mule(con, card, str(txn), opened)
+        if hit is not None:
+            d4_rows += [(i, c, opened, 0.0) for i, c in zip(hit.episode_txn_ids, [hit.card_id] * len(hit.episode_txn_ids))]
+            d4_rows += [(f"peer:{c}", c, opened, 0.0) for c in hit.connected_card_ids]
+    rows.append(_detector_row("D4_RECIPIENT_EMAIL_MULE", "One recipient email domain paid by many cards", d4_rows,
+                              _case_hits(con, d4_txn), exam_hits.get("D4_RECIPIENT_EMAIL_MULE", []),
+                              f"detect_d4 at each closed case's first online C transaction ({len(probes):,} cases probed)"))
 
-    d1_cards = sorted([d1_hit.card_id, *d1_hit.connected_card_ids]) if d1_hit else []
-    d2_cards = sorted([d2_hit.card_id, *d2_hit.connected_card_ids]) if d2_hit else []
-    d3_cards = sorted([d3_hit.card_id, *d3_hit.connected_card_ids]) if d3_hit else []
-    d4_cards = sorted([d4_hit.card_id, *d4_hit.connected_card_ids]) if d4_hit else []
-
-    detectors_summary = [
-        {
-            "detector_id": "R0_ANON_PROXY_DEVICE_RING",
-            "name": "Anonymous-Proxy Shared Device Ring (SM-G935F)",
-            "closed_cases_caught": ring_cc,
-            "exam_cases_caught": ["HHG-014"],
-            "cards_matched": 52,
-            "false_positives_on_cleared_cases": len(ring_fp),
-            "attestation": attest(
-                what=f"SM-G935F anonymous-proxy device ring detector catches {len(ring_cc)} closed cases ({', '.join(ring_cc)}) across 52 cards with 0 false positives on cleared cases.",
-                evidence=ring_cc + ["C13487-K1", "3460634", "3478561"],
-                query_or_rule="engine.backtest_detectors:R0_ANON_PROXY_DEVICE_RING",
-                params={"device_id": ring_prof, "n_closed_cases": len(ring_cc), "fp": len(ring_fp)},
-            ).to_dict(),
-        },
-        {
-            "detector_id": "R0_UNDER_500_VELOCITY_BURST",
-            "name": "Under-$500 40-Minute Velocity Burst",
-            "closed_cases_caught": burst_cc,
-            "exam_cases_caught": ["HHG-006"],
-            "cards_matched": 13,
-            "false_positives_on_cleared_cases": len(burst_fp),
-            "attestation": attest(
-                what=f"Under-$500 40-minute burst detector catches {len(burst_cc)} closed cases ({', '.join(burst_cc)}) across 13 cards with 0 false positives on cleared cases.",
-                evidence=burst_cc + ["C07297-K1", "3476602", "3476682"],
-                query_or_rule="engine.backtest_detectors:R0_UNDER_500_VELOCITY_BURST",
-                params={"n_closed_cases": len(burst_cc), "fp": len(burst_fp)},
-            ).to_dict(),
-        },
-        {
-            "detector_id": "D1_MOBILE_ANON_PROXY_WAVE",
-            "name": "Spoofed-Mobile Anonymous-Proxy Wave (No Shared Device)",
-            "closed_cases_caught": [],
-            "exam_cases_caught": ["HHF-001", "HHF-002"],
-            "cards_matched": len(d1_cards),
-            "matched_card_ids": d1_cards,
-            "false_positives_on_cleared_cases": 0,
-            "attestation": d1_hit.attestation if d1_hit else {},
-        },
-        {
-            "detector_id": "D2_ESCALATING_C_DRAIN",
-            "name": "Dormant-Wake Doubling Drain ($180 -> $1,800 Cap)",
-            "closed_cases_caught": [],
-            "exam_cases_caught": ["HHF-003"],
-            "cards_matched": len(d2_cards),
-            "matched_card_ids": d2_cards,
-            "false_positives_on_cleared_cases": 0,
-            "attestation": d2_hit.attestation if d2_hit else {},
-        },
-        {
-            "detector_id": "D3_MICRO_CHARGE_SKIMMING",
-            "name": "Sub-Threshold Micro-Charge Skimming Ring ($1.22-$5.74)",
-            "closed_cases_caught": [],
-            "exam_cases_caught": ["HHF-004", "HHF-005"],
-            "cards_matched": len(d3_cards),
-            "matched_card_ids": d3_cards,
-            "false_positives_on_cleared_cases": 0,
-            "attestation": d3_hit.attestation if d3_hit else {},
-        },
-        {
-            "detector_id": "D4_RECIPIENT_EMAIL_MULE",
-            "name": "Shared Recipient Email Domain Mule (sc.rr.com)",
-            "closed_cases_caught": [],
-            "exam_cases_caught": ["HHF-006", "HHF-013"],
-            "cards_matched": len(d4_cards),
-            "matched_card_ids": d4_cards,
-            "false_positives_on_cleared_cases": 0,
-            "attestation": d4_hit.attestation if d4_hit else {},
-        },
-    ]
+    # Round 1 shapes from the ETL flags
+    ring = con.execute("SELECT id, card_id, ts::VARCHAR, amt FROM txc WHERE device_id = ?", [RING_PROFILE]).fetchall()
+    rows.append(_detector_row("R0_ANON_PROXY_DEVICE_RING", "Anonymous-proxy shared device ring (SM-G935F)", ring,
+                              _case_hits(con, {str(r[0]) for r in ring}), ["HHG-014"], "txc.device_id = ring profile"))
+    burst = con.execute("SELECT id, card_id, ts::VARCHAR, amt FROM txc WHERE burst_id != ''").fetchall()
+    rows.append(_detector_row("R0_UNDER_500_VELOCITY_BURST", "Under-$500 40-minute burst", burst,
+                              _case_hits(con, {str(r[0]) for r in burst}), ["HHG-006"], "txc.burst_id from etl.features"))
 
     discovered = discover_unlabelled_patterns(con)
     con.close()
@@ -154,8 +133,8 @@ def run_backtest(db_path: str | Path = ROOT / "data" / "hhgoa_engine.duckdb") ->
         "n_closed_cases": n_cc,
         "n_confirmed_fraud": n_fraud,
         "n_cleared_legitimate": n_cleared,
-        "n_cleared_cards": len(cleared_cards),
-        "detectors": detectors_summary,
+        "exam_scan": exam_hits,
+        "detectors": rows,
         "self_growing_proposals": discovered,
     }
     out_file = ROOT / "engine" / "out" / "detector_backtest.json"
@@ -166,30 +145,18 @@ def run_backtest(db_path: str | Path = ROOT / "data" / "hhgoa_engine.duckdb") ->
 
 def main() -> int:
     rep = run_backtest()
-    header(
-        "engine.backtest_detectors",
-        "Challenge 1 & 2: Undocumented Typology Detectors & 5,585-Case Backtest",
-        {"closed_cases": f"{rep['n_closed_cases']:,}", "cleared_legit": f"{rep['n_cleared_legitimate']:,}", "detectors": len(rep["detectors"])},
-    )
-    t = Table(
-        Col("detector_id", max_width=28),
-        Col("cards", align="right", width=6),
-        Col("closed_hits", max_width=26),
-        Col("exam_hits", max_width=18),
-        Col("legit_FP", align="right", width=8),
-        title="detector backtest results",
-    )
+    header("engine.backtest_detectors", "undocumented-typology detectors, backtested over every closed case",
+           {"closed cases": f"{rep['n_closed_cases']:,}", "cleared (legitimate)": f"{rep['n_cleared_legitimate']:,}", "detectors": len(rep["detectors"])})
+    t = Table(Col("detector", max_width=28), Col("cards", align="right", width=6), Col("Jan", align="right", width=4),
+              Col("fraud cases hit", align="right", width=8), Col("cleared hit", align="right", width=8),
+              Col("exam cases", max_width=26), title="measured on this run")
     for d in rep["detectors"]:
-        t.add_row(
-            d["detector_id"],
-            d["cards_matched"],
-            ", ".join(d["closed_cases_caught"]) or "— (new in Jan 2017)",
-            ", ".join(d["exam_cases_caught"]),
-            d["false_positives_on_cleared_cases"],
-        )
+        t.add_row(d["detector_id"], d["cards_matched"], d["cards_matched_january"], len(d["closed_cases_caught"]),
+                  d["false_positives_on_cleared_cases"], ", ".join(d["exam_cases_caught"]) or "-")
     t.print()
-    ok("All 6 undocumented typology detectors achieve 0 false positives on the 895 cleared legitimate cases")
-    summary("backtest complete", {"detectors": len(rep["detectors"]), "false_positives": 0, "out": "engine/out/detector_backtest.json"})
+    fp = sum(d["false_positives_on_cleared_cases"] for d in rep["detectors"])
+    (ok if fp == 0 else warn)(f"{fp} cleared closed case(s) matched across all detectors (legitimate customers a detector would act against)")
+    summary("backtest complete", {"detectors": len(rep["detectors"]), "cleared cases matched": fp, "out": "engine/out/detector_backtest.json"})
     return 0
 
 

@@ -313,16 +313,17 @@ def test_loading_jobs_use_yaml_format():
 QUERIES = ROOT / "graph" / "queries"
 RAG_QUERIES = {"similar_prior_cases", "similar_prior_cases_closed", "similar_prior_cases_agent", "similar_cases_structural", "grounding_chunks"}
 # Harness-only in the yaml = the RAG set plus the two reads the model must never hold as a tool:
-# post_open_activity (monitoring note, must not reach exposure) and case_subgraph (UI rendering).
-HARNESS_ONLY = RAG_QUERIES | {"post_open_activity", "case_subgraph"}
+# post_open_activity (monitoring note, must not reach exposure), case_subgraph (UI rendering) and typology_scan (the January
+# D1-D4 waves, consumed by the engine).
+HARNESS_ONLY = RAG_QUERIES | {"post_open_activity", "case_subgraph", "typology_scan"}
 WRITERS = {"open_case", "append_case_event", "close_case", "record_approval"}
 
 
 def test_query_descriptions_yaml_is_the_single_registry():
-    """M19 / D11: one yaml, 25 entries = 14 typed model tools + 4 writers + 7 harness-only; no fragment."""
+    """M19 / D11: one yaml, 26 entries = 14 typed model tools + 4 writers + 8 harness-only; no fragment."""
     y = yaml.safe_load((ROOT / "mcp" / "query_descriptions.yaml").read_text())["queries"]
     files = {p.stem for p in QUERIES.glob("*.gsql")} - {"install_all"}
-    assert set(y) == files and len(y) == 25
+    assert set(y) == files and len(y) == 26
     assert not (ROOT / "mcp" / "query_descriptions_rag.yaml").exists()
     assert {q for q, s in y.items() if s.get("harness_only")} == HARNESS_ONLY
     assert len([q for q, s in y.items() if not s.get("harness_only") and not s.get("writer")]) == 14

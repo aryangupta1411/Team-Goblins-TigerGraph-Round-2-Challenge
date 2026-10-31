@@ -508,7 +508,7 @@ def compute(ctx: CaseContext, facts: Facts, evidence: list[Evidence]) -> Scoreca
     # step-up on HHG-015 "confirms the mixed-channel episode"), so its members are pattern members of the episode — like a
     # burst or an R5 run — instead of being dropped by the uncertain-band cms >= 0.5 filter. Switchable in the YAML.
     flags["conflict_chain_ids"] = (
-        ([str(txn["id"])] if (str(txn["id"]).isdigit() and int(txn["id"]) >= 3600000) else [str(m["id"]) for m in raw48])
+        ([str(txn["id"])] if config.in_final_round(as_of) else [str(m["id"]) for m in raw48])
         if (flags["conflict_chain"] and spree and P.get("conflict_chain_joins_episode", True))
         else []
     )
@@ -578,7 +578,7 @@ def compute(ctx: CaseContext, facts: Facts, evidence: list[Evidence]) -> Scoreca
     rem_mule = [
         e
         for e in sos.get("recipient_emails", []) or []
-        if 10 <= int(e.get("n_cards_30d", 0)) <= 30 and int(e.get("n_fraud_cases", 0)) == 0 and str(as_of) >= "2017-01-01"
+        if 10 <= int(e.get("n_cards_30d", 0)) <= 30 and int(e.get("n_fraud_cases", 0)) == 0 and config.in_final_round(as_of)
     ]
     flags["shared_recipient_email"] = [e["domain"] for e in rem_fraud]
     if rem_fraud:
@@ -820,7 +820,7 @@ def compute(ctx: CaseContext, facts: Facts, evidence: list[Evidence]) -> Scoreca
     elif flags["burst_hit"]:
         floor = P["burst_alone_floor"]
         adj.append(("under-$500 burst without a denial → floor", floor))
-    elif flags["r5_run"] and (denial or flags.get("r5_cleared_over_big")) and str(txn["id"]).isdigit() and int(txn["id"]) >= 3600000:
+    elif flags["r5_run"] and (denial or flags.get("r5_cleared_over_big")) and config.in_final_round(as_of):
         floor = 0.92
         adj.append(("R5 card-testing run with cleared purchase > $100 and customer denial → floor", floor))
     elif denial and not flags["recurring_match"]:
@@ -829,7 +829,7 @@ def compute(ctx: CaseContext, facts: Facts, evidence: list[Evidence]) -> Scoreca
     # Round 2 mixed-channel / recipient-email conflict check on high-exposure in-person risk alerts (HHF-010, HHF-013)
     # Mixed-channel / recipient-email conflict check on in-person risk alerts with concurrent un-identitied online ProductCD='C' activity
     if (
-        str(as_of) >= "2017-01-01"
+        config.in_final_round(as_of)
         and not flags.get("r2_detector_hit")
         and risk_alert
         and txn["channel"] == "in_person"

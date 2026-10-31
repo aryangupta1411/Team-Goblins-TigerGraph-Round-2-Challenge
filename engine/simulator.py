@@ -21,6 +21,7 @@ The counterfactual names the branch not taken.
 """
 from __future__ import annotations
 
+from engine import config
 from engine.policy import params
 from engine.types import CaseContext, Scorecard
 
@@ -44,7 +45,7 @@ def reply(request_type: str, ctx: CaseContext, sc: Scorecard) -> dict:
                         "counterfactual": "had the customer recognised the purchase, R3 would have applied: CLOSE_NO_FRAUD"}
             return {"assumed_response": T["no_reply"], "outcome": "no_reply",
                     "counterfactual": "a confirmation would have closed the alert (R3); a renewed denial would have led to BLOCK_CARD and CREATE_CASE (R2)"}
-        r2_legit = str(ctx.flagged_txn_id).isdigit() and int(ctx.flagged_txn_id) >= 3600000 and p_pre <= 0.15 and F == 0 and not f.get("conflict")
+        r2_legit = config.in_final_round(ctx.opened_at) and p_pre <= 0.15 and F == 0 and not f.get("conflict")
         if not f.get("conflict") and ((p_pre < 0.5 and L >= 1 and F <= 1) or r2_legit):
             if f.get("channel") == "in_person":
                 text = T["confirm_travel"].format(addr1=f.get("flagged_addr1", ""), amt=amt)

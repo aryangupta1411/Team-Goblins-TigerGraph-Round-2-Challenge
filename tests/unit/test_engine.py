@@ -32,7 +32,8 @@ def runs(fx):
 # ----------------------------------------------------------------------------- ring / burst facts
 def test_ring_profile_is_strong_and_wave_counts(fx):
     d = fx.device_row(config.RING_PROFILE)
-    assert d["is_strong"] and d["n_cards_alltime"] == 52 and d["n_fraud_cases"] == 4
+    # 4 confirmed-fraud closed cases to 2016-12-31; the January history adds HHG-014's own outcome as a fifth (all-time count)
+    assert d["is_strong"] and d["n_cards_alltime"] == 52 and d["n_fraud_cases"] == 5
     rp = fx.ring_profile({"id": "C13487-K1"}, "2016-11-22 20:11:00")
     assert rp["ring_id"] == config.RING_PROFILE
     assert len(rp["wave_cards"]) == 27 and len(rp["pre_open_cards"]) == 19 and rp["n_cards_alltime"] == 52   # D6

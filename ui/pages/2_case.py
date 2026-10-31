@@ -1,317 +1,703 @@
-"""Case view: evidence with source badges and refs, evidence families, probability
-pre/post, initial vs final actions with route badges and rule chips, the
-counterfactual branch, evidence requests, SAR with validator badges, similar
-cases, phase timeline and the tool trace (PLAN §5 items 2, 5, 6, 9).
+"""Case file: one case in one source. The decision card, why the agent decided it, what TigerGraph did, and five lazy
+tabs (decision path, evidence ledger, SAR and citations, approvals and handover, raw files).
+
+The Case picker is the router's; this page reads ctx.case_id. Every view comes from common.case_view() over ONE source,
+so a run's trace is never shown next to another source's answer. A case without a parsed answer renders its state card
+and stops. Nothing here writes: the approvals database is read-only and the live re-run starts only from a confirmed
+dialog.
 """
 from __future__ import annotations
 
 import json
+import re
+import sqlite3
 import sys
+import time
+from datetime import datetime
 from pathlib import Path
 
+import pandas as pd
 import streamlit as st
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from ui import common  # noqa: E402
+from ui import approvals_db, common  # noqa: E402
 
-st.set_page_config(page_title="Case", page_icon=common.PAGE_ICONS["case"], layout="wide")
-common.inject_css()
+md, badge = common.md, common.badge
+RUN_ID_RE = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
+SHORT_NAME = re.compile(r"^(query|mcp|pytg):")
+TABS = ["Decision path P0–P10", "Evidence ledger", "SAR & citations", "Approvals & handover", "Raw files"]
+ORANGE_NOTES = {"clamp", "policy_reprompt", "structured_retry", "sar_validation_failed", "sar_fallback", "dropped_ids", "security_alert", "card_mismatch"}
+RED_NOTES = {"case_failed", "failed_call"}
+FAILED_ROW = "background-color: rgba(220, 38, 38, 0.14)"
 
-runs = common.list_runs()
-run_id = st.session_state.get("run_id") or (runs[0] if runs else None)
-qp = st.query_params
-pack_ids = [m["case_id"] for m in common.load_case_pack("all")]
 
-top1, top2 = st.columns([1, 3])
-with top1:
-    run_id = st.selectbox("Run", runs, index=runs.index(run_id) if run_id in runs else 0) if runs else None
-    st.session_state["run_id"] = run_id
-    run_cases = common.list_cases_in_run(run_id) if run_id else []
-    selectable_ids = [c for c in pack_ids if c in run_cases] or pack_ids
-    case_id = common.case_select(st, selectable_ids, key="case_page_case", preferred=qp.get("case"))
+def _num(x) -> float | None:
+    try:
+        return None if x is None or x == "" else float(x)
+    except (TypeError, ValueError):
+        return None
 
-if not run_id:
-    st.warning("No run selected — `make mock-run` or `make bench` first.")
+
+def _count(x) -> int:
+    try:
+        return int(x or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _simulated(text: object) -> bool:
+    """An assumed evidence reply ('ASSUMED (simulated) ...', 'Assumed reply: ...'), which must carry a SIMULATED badge."""
+    return bool(re.search(r"\bassumed\b|\(simulated\)", str(text or ""), re.I))
+
+
+def _height(n: int, cap: int = 420) -> int:
+    return min(cap, 35 * max(n, 1) + 38)
+
+
+def _collapse(value):
+    """Embedding vectors replaced by '<N-d vector>' so payloads stay readable."""
+    if isinstance(value, dict):
+        return {k: _collapse(v) for k, v in value.items()}
+    if isinstance(value, list):
+        if len(value) >= 32 and all(isinstance(x, int | float) for x in value):
+            return f"<{len(value)}-d vector>"
+        return [_collapse(v) for v in value]
+    return value
+
+
+def _file(view: common.CaseView, name: str) -> tuple[str, str]:
+    """(display path, as-of time) of one file of this case in its source."""
+    # named as cases/... and runs/... even when those folders are links or RUNS_DIR / CASES_DIR point elsewhere
+    if view.source_id in common.SUBMITTED:
+        return f"cases/{view.case_id}.json", common.as_of(common.cases_dir() / f"{view.case_id}.json")
+    p = (view.dir or common.runs_root() / view.source_id / view.case_id) / name
+    return f"runs/{view.source_id}/{view.case_id}/{name}", common.as_of(p)
+
+
+def _holders(case_id: str, exclude: str | None) -> list[common.CaseView]:
+    """Views of this case in every other source that has it (any state but not_run)."""
+    out = []
+    for s in common.sources():
+        if s.id == exclude:
+            continue
+        v = common.case_view(s.id, case_id)
+        if v.state != "not_run":
+            out.append(v)
+    return out
+
+
+def _queue(ctx: common.Ctx) -> list[str]:
+    ids = [r["case_id"] for r in common.pack_for_source(ctx.source)]
+    return ids + [c for c in (ctx.source.cases if ctx.source else []) if c not in ids]
+
+
+def _live_blockers(ctx: common.Ctx, backend: str) -> list[str]:
+    reasons = []
+    if common.read_only():
+        reasons.append("read-only deployment (DEPLOY_READONLY=1)")
+    if ctx.mode != "live":
+        reasons.append(f"mock mode ({ctx.mode_reason})")
+    bs = common.backend_status(backend)
+    if not bs["ok"]:
+        reasons.append(f"backend {backend}: {bs['reason']}")
+    held = common.run_lock()
+    if held:
+        reasons.append(f"run {held.get('run_id')} is still running (pid {held.get('pid')})")
+    return reasons
+
+
+@st.dialog("Run this case live", width="medium")
+def _confirm_rerun(case_id: str, default_backend: str, last: common.CaseView | None) -> None:
+    backends = [b for b in common.LLM_BACKENDS if b != "mock"]
+    backend = st.selectbox("LLM backend", backends, index=backends.index(default_backend) if default_backend in backends else 0)
+    bs = common.backend_status(backend)
+    st.caption(md(bs["reason"]))
+    run_id = st.text_input("Target run id", value=f"live-{case_id}-{datetime.now():%Y%m%d-%H%M}", help="letters, digits, '.', '_' and '-', at most 64")
+    problem = "" if RUN_ID_RE.match(run_id or "") else "the run id must match ^[A-Za-z0-9._-]{1,64}$"
+    if not problem and (common.runs_root() / run_id).exists():
+        problem = f"runs/{run_id} already exists"
+    if problem:
+        st.error(md(problem))
+    st.markdown("**Side effects**")
+    st.markdown("\n".join(f"- {md(x)}" for x in (
+        f"writes AgentCase AC-{case_id}, its CaseEvents and an Approval per L1/L2 action to the shared FraudGraph",
+        "adds pending rows to the local approvals inbox for L1/L2 actions",
+        f"spends LLM tokens on {backend}" + (f" (last time {last.answer.get('tokens', 0):,} tokens)" if last and last.ok else ""),
+        f"writes runs/{run_id}/ (answer.json, phases.jsonl, calls.jsonl, sar.md, bench.log)",
+    )))
+    if last and last.ok:
+        st.caption(md(f"last time {common.secs(last.answer.get('latency_s'))} for this case in {last.source_id}"))
+    ack = st.checkbox("I understand this writes to the shared graph and spends LLM tokens")
+    if st.button("Start the run", type="primary", disabled=bool(problem) or not ack or not bs["ok"], icon=":material/play_arrow:"):
+        res = common.launch_run([case_id], backend, run_id)
+        if not res["ok"]:
+            st.error(md(res["error"]))
+            return
+        st.session_state["rerun_job"] = {"run": run_id, "case": case_id, "started": time.time(), "pid": res["pid"], "backend": backend}
+        st.rerun()
+
+
+def _note_lines(view: common.CaseView, limit: int = 1) -> list[str]:
+    notes = [r for r in view.phases if r.get("kind") == "note"]
+    return [str(r.get("text") or "") for r in notes[-limit:]]
+
+
+@st.fragment(run_every="3s")
+def _rerun_strip(job: dict, recorded: common.CaseView) -> None:
+    """Progress of a live re-run started from this page. It reads the new run only; the recorded view never changes."""
+    jv = common.case_view(job["run"], job["case"])
+    with st.container(border=True, key="rerun-strip"):
+        phases = [r.get("phase") for r in jv.phases if r.get("kind", "phase") == "phase" and r.get("phase")]
+        bits = [f"re-run {job['run']}", f"elapsed {common.secs(time.time() - float(job.get('started') or time.time()))}",
+                f"last phase {phases[-1] if phases else '—'}", f"{len(jv.calls)} calls so far"]
+        st.markdown(f"{common.state_badge(jv.state)} " + md(" · ".join(bits)))
+        last = _note_lines(jv)
+        if last:
+            st.caption(md(f"last note: {last[0]}"))
+        if jv.error:
+            st.code(jv.error, language=None, wrap_lines=True)
+        if jv.ok:
+            chips = []
+            if recorded.ok:
+                cls = common.agreement(jv.answer, recorded.answer)["cls"]
+                chips.append(badge(f"{cls} vs {recorded.source_id}", common.AGREEMENT_COLORS.get(cls, "gray")))
+            sub = common.load_promoted_answer(job["case"])
+            if sub is not None:
+                cls = common.agreement(jv.answer, sub)["cls"]
+                chips.append(badge(f"{cls} vs submitted", common.AGREEMENT_COLORS.get(cls, "gray")))
+            st.markdown(" ".join(chips))
+            if st.button("Switch to it", key="rerun-switch", icon=":material/arrow_forward:"):
+                common.goto("case", case=job["case"], run=job["run"])
+
+
+def _show_rerun(ctx: common.Ctx, view: common.CaseView) -> None:
+    job = st.session_state.get("rerun_job")
+    if isinstance(job, dict) and job.get("case") == ctx.case_id and job.get("run") != ctx.source_id:
+        _rerun_strip(job, view)
+
+
+@st.fragment(run_every="3s")
+def _running_card(source_id: str, case_id: str) -> None:
+    v = common.case_view(source_id, case_id)
+    if v.state != "running":
+        st.rerun()  # the answer (or a failure) landed: redraw the whole page
+    phases = [r.get("phase") for r in v.phases if r.get("kind", "phase") == "phase" and r.get("phase")]
+    ts = [_num(r.get("t")) for r in [*v.phases, *v.calls]]
+    t_max = max((t for t in ts if t is not None), default=None)
+    with st.container(border=True, key="state-running"):
+        st.markdown(f"{common.state_badge('running')} **{md(case_id)}** · " + md("no verdict yet; the decision appears when answer.json is written"))
+        st.markdown(md(f"phases reached: {', '.join(phases) or 'none'} · {len(v.calls)} calls so far · elapsed {common.secs(t_max)} in the trace"
+                       + (f" · newest write {common.secs(v.last_write_age_s)} ago" if v.last_write_age_s is not None else "")))
+        last = _note_lines(v)
+        if last:
+            st.caption(md(f"last note: {last[0]}"))
+
+
+def _state_gate(ctx: common.Ctx, view: common.CaseView) -> None:
+    """Exactly one card for a case without a parsed answer, then stop. Never another source's answer."""
+    if view.state == "running":
+        _running_card(view.source_id, view.case_id)
+    elif view.state == "failed":
+        with st.container(border=True, key="state-failed"):
+            st.error(md(f"Case failed in {view.last_phase or 'an unrecorded phase'}; no answer was written"), icon=":material/error:")
+            st.code(view.error, language=None, wrap_lines=True)
+            bad = [c for c in view.calls if c.get("ok") is False]
+            if bad:
+                st.dataframe(pd.DataFrame([{"t": c.get("t"), "phase": c.get("phase"), "caller": c.get("caller"), "name": c.get("name"),
+                                            "error": str(c.get("error") or "")} for c in bad]), hide_index=True, height=_height(len(bad)))
+            else:
+                st.caption("No failed calls in calls.jsonl")
+    elif view.state == "incomplete":
+        with st.container(border=True, key="state-incomplete"):
+            st.warning(md(f"Incomplete: the trace stopped at {view.last_phase or 'no phase'} and no answer was written"), icon=":material/hourglass_disabled:")
+            st.caption(md(f"newest write {common.secs(view.last_write_age_s)} ago · {len(view.calls)} calls recorded"))
+    elif view.state == "unreadable":
+        with st.container(border=True, key="state-unreadable"):
+            st.error(md(f"{_file(view, 'answer.json')[0]} is unreadable; no verdict is shown"), icon=":material/error:")
+            st.code(view.error, language=None, wrap_lines=True)
+    else:
+        with st.container(border=True, key="state-not-run"):
+            st.info(md(f"{view.case_id} is not in {ctx.source_id}"), icon=":material/search_off:")
+            holders = _holders(view.case_id, ctx.source_id)
+            if not holders:
+                st.caption("No other source holds this case")
+            with st.container(horizontal=True):
+                for h in holders:
+                    if st.button(md(f"Open in {h.source_id}"), key=f"open-in-{h.source_id}", help=md(f"state there: {h.state}")):
+                        common.goto("case", case=view.case_id, run=h.source_id)
+    _show_rerun(ctx, view)
     st.stop()
 
-run = common.load_case_run(run_id, case_id)
-meta = common.case_meta(case_id)
-ans = run.answer
-if ans is None:
-    promoted = common.load_promoted_answer(case_id)
-    if promoted:
-        st.info(f"No answer.json in run `{run_id}` for {case_id}; showing the promoted file cases/{case_id}.json")
-        ans = promoted
-    else:
-        st.error(f"{case_id} has no answer in run `{run_id}` (calls so far: {len(run.calls)}).")
-        st.stop()
 
-case = ans["case"]
-nba = ans["next_best_actions"]
-sar = ans["sar"]
-pre, post = common.probability_pre_post(run)
-fam_f, fam_l = common.families(run)
+def _case_bar(ctx: common.Ctx, view: common.CaseView) -> None:
+    case_id = view.case_id
+    queue = _queue(ctx)
+    i = queue.index(case_id) if case_id in queue else -1
+    backend = ctx.source.llm_backend if ctx.source and ctx.source.llm_backend in common.LLM_BACKENDS and ctx.source.llm_backend != "mock" else "gemini"
+    blockers = _live_blockers(ctx, backend)
+    with st.container(border=True, horizontal=True, vertical_alignment="center", key="casebar"):
+        st.markdown(f"**{md(case_id)}** {common.state_badge(view.state)}")
+        holders = _holders(case_id, ctx.source_id)
+        if holders:
+            st.caption("Also in")
+        for h in holders:
+            if view.ok and h.ok:
+                cls = common.agreement(view.answer, h.answer)["cls"]
+                common.chip(f"{h.source_id} · {cls}", common.AGREEMENT_COLORS.get(cls, "gray"), help=f"{case_id} in {h.source_id} compared with {ctx.source_id}")
+            else:
+                common.chip(f"{h.source_id} · {common.STATE_LABELS.get(h.state, h.state)}", common.STATE_COLORS.get(h.state, "gray"))
+        st.space("stretch")
+        if st.button("Prev", key="case-prev", icon=":material/chevron_left:", disabled=i <= 0):
+            common.goto("case", case=queue[i - 1])
+        if st.button("Next", key="case-next", icon=":material/chevron_right:", disabled=i < 0 or i >= len(queue) - 1):
+            common.goto("case", case=queue[i + 1])
+        common.page_link("graph", "Graph", icon=":material/hub:", case=case_id)
+        common.page_link("approvals", "Approvals", icon=":material/approval:", case=case_id)
+        clicked = st.button(md(f"Run {case_id} live"), key="run-live", type="primary", icon=":material/play_arrow:", disabled=bool(blockers),
+                            help=md("Needs: " + "; ".join(blockers)) if blockers else md(f"Re-run {case_id} with {backend} into a new run folder"))
+    if blockers:
+        st.caption(md(f"Run {case_id} live is unavailable: " + "; ".join(blockers)))
+    if clicked and not blockers:
+        last = view if view.ok else next((h for h in _holders(case_id, None) if h.ok), None)
+        _confirm_rerun(case_id, backend, last)
 
-with top2:
-    common.page_header(case_id, f"{meta.get('trigger_type','')} · card {meta.get('card_id','')} · opened {meta.get('opened_at','')}")
-    st.markdown(
-        " ".join(
-            [
-                common.badge(f"verdict {case['verdict']}", common.VERDICT_COLORS.get(case["verdict"], "gray")),
-                common.badge(f"status {case['status']}", common.STATUS_COLORS.get(case["status"], "gray")),
-                common.badge(f"pattern {case['pattern']}", "primary"),
-                common.badge(f"exposure {common.money(case['exposure_usd'])}", "blue"),
-                common.badge("SAR" if sar["file"] else "no SAR", "red" if sar["file"] else "gray"),
-                common.badge(f"graph {case.get('graph_case_id') or '—'}", "green" if case.get("written_to_graph") else "gray"),
-            ]
-        )
-    )
-    st.info(meta.get("trigger_text", ""))
 
-m1, m2, m3, m4 = st.columns(4)
-m1.metric("Probability (pre-evidence)", common.pct(pre))
-m2.metric("Probability (post-evidence)", common.pct(post), delta=None if pre is None or post is None else f"{100*(post-pre):+.0f} pts")
-m3.metric("Evidence families for fraud", len(fam_f), help=", ".join(common.FAMILY_LABELS.get(f, f) for f in fam_f) or "none")
-m4.metric("Families for legitimacy", len(fam_l), help=", ".join(common.FAMILY_LABELS.get(f, f) for f in fam_l) or "none")
-m5, m6, m7 = st.columns(3)
-m5.metric("Tool calls", ans.get("tool_calls", 0))
-m6.metric("Tokens", f"{ans.get('tokens', 0):,}")
-m7.metric("Latency", f"{ans.get('latency_s', 0):.0f}s")
-
-st.markdown(f"**Summary.** {case.get('summary','')}")
-if case["pattern"] == "undocumented":
-    st.warning(f"**Undocumented pattern (R9).** {case.get('pattern_description','')}")
-
-# Security & Data-Quality Banners (Challenges 10 & 11)
-try:
-    from agent.security import sanitize_trigger_text
-    from schema_engine.data_quality import case_taints
-
-    sec_check = sanitize_trigger_text(case_id, meta.get("trigger_text", ""))
-    if sec_check.attack_detected:
-        st.error(
-            f"**Security Defense Triggered (Challenge 10):** Detected and stripped {len(sec_check.findings)} hostile prompt-injection / spoofing marker(s) "
-            f"(`{', '.join(f.code for f in sec_check.findings)}`). Untrusted text was treated strictly as data, never instruction."
-        )
-    dq_list = case_taints(case_id)
-    if dq_list:
-        st.warning(
-            "**Data Quality Taint Alert (Challenge 11):** "
-            + " · ".join(f"`{t['code']}` {t['reason']} → *{t['impact']}*" for t in dq_list)
-        )
-except Exception:
-    pass
-
-tabs = st.tabs(
-    [
-        "Evidence & Attestations",
-        "Families & score",
-        "Actions & Resolution (Ch 14)",
-        "Evidence requests",
-        "SAR & Citations (Ch 4)",
-        "Similar cases",
-        "Regulator Audit View (Ch 6)",
-        "Tool trace",
-        "Raw JSON",
-    ]
-)
-
-# ---------------------------------------------------------------- Evidence
-with tabs[0]:
-    st.caption("Every claim carries a 4-part Attestation (`what`, `evidence` IDs, `how` query + params, `when` timestamp + dataset). Agent-written case ids never appear in `entity_ids`.")
-    for i, ev in enumerate(case.get("evidence", []), 1):
-        fam = common.family_of_evidence(ev)
-        with st.container(border=True):
-            c1, c2 = st.columns([5, 2])
-            c1.markdown(f"{common.source_badge(ev.get('source',''))} {common.badge(common.FAMILY_LABELS.get(fam, fam), 'gray')}  **{i}.** {ev.get('claim','')}")
-            c2.code(ev.get("ref", ""), language=None)
-            if ev.get("entity_ids"):
-                st.markdown(" ".join(f"`{e}`" for e in ev["entity_ids"][:40]) + (f" … +{len(ev['entity_ids'])-40}" if len(ev["entity_ids"]) > 40 else ""))
-            with st.expander("4-Part Claim Attestation (what · evidence · how · when)"):
-                st.json(
-                    {
-                        "what": ev.get("claim", ""),
-                        "evidence": ev.get("entity_ids", []),
-                        "how": {"query_ref": ev.get("ref", ""), "source": ev.get("source", ""), "family": fam},
-                        "when": {"as_of": meta.get("opened_at", ""), "dataset": "hhgoa_round2_201607_201701"},
-                    }
-                )
-    e1, e2, e3 = st.columns(3)
-    e1.markdown("**Affected transactions** (ts ≤ opened_at)")
-    e1.write(case.get("affected_txn_ids", []))
-    e1.caption(f"first suspicious: `{case.get('first_suspicious_txn_id') or '—'}`")
-    e2.markdown(f"**Connected cards** ({len(case.get('connected_card_ids', []))})")
-    e2.write(case.get("connected_card_ids", []))
-    e3.markdown("**Connected device profiles**")
-    for d in case.get("connected_device_profiles", []):
-        e3.code(d, language=None)
-
-# ---------------------------------------------------------------- Families & score
-with tabs[1]:
-    p3 = common.phase_payload(run, "P3")
-    c1, c2 = st.columns(2)
-    with c1:
-        st.markdown("**Independent evidence families** (policy §6 needs ≥ 2 to stop; R1 fires below 0.70 with < 2)")
-        for f in common.FAMILY_ORDER:
-            if f == "document":
-                continue
-            mark = common.badge("fraud", "red") if f in fam_f else (common.badge("legit", "green") if f in fam_l else common.badge("—", "gray"))
-            st.markdown(f"- {common.FAMILY_LABELS[f]}: {mark}")
-        st.markdown(f"**Stop reason:** {ans.get('stop_reason','')}")
-    with c2:
-        st.markdown("**Scorecard (engine/scorecard.py)**")
-        if p3:
-            st.markdown(f"- case-memory scorer `cms_p` = {p3.get('cms_p')} → calibrated `cal_p` = {p3.get('cal_p')}")
-            st.markdown(f"- engine probability `p_engine` = {p3.get('p_engine')}")
-            adj = p3.get("adjustments") or []
-            if adj:
-                st.table([{"adjustment": a[0], "log-odds": a[1]} if isinstance(a, (list, tuple)) else a for a in adj])
-            flags = {k: v for k, v in (p3.get("flags") or {}).items() if v}
-            if flags:
-                st.markdown("**Flags:** " + " ".join(common.badge(k, "orange") for k in flags))
+def _provenance(ctx: common.Ctx, view: common.CaseView, stats: dict) -> None:
+    ans = view.answer or {}
+    case = ans.get("case") or {}
+    src = ctx.source
+    if view.source_id in common.SUBMITTED:
+        path, when = _file(view, "")
+        if view.promoted_from:
+            run = view.promoted_from[0]
+            with st.container(horizontal=True, vertical_alignment="center"):
+                st.caption(md(f"Submitted answer {path} · identical to runs/{run}/{view.case_id}/answer.json"), help=md(f"compared as parsed JSON; file written {when}"))
+                if st.button("Open the trace there", key="open-trace", icon=":material/timeline:"):
+                    common.goto("case", case=view.case_id, run=run)
+        elif stats["tokens_total"] == 0:
+            st.caption(md(f"Submitted answer {path} · deterministic engine output · no LLM · no trace"
+                          + ("" if case.get("written_to_graph") else " · not written to graph")))
         else:
-            st.caption("No scorecard phase in this run (mock replay); the probability above comes from the answer file.")
-        p4 = common.phase_payload(run, "P4")
-        if p4.get("calibration_basis"):
-            st.markdown(f"**Calibration basis (LLM, clamped to p_engine ± 0.10):** {p4['calibration_basis']}")
+            st.caption(md(f"Submitted answer {path} · no identical run answer · {stats['reads']} reads and {stats['tokens_total']:,} tokens"
+                          " from the answer's own counters · no trace in this source"))
+        return
+    prov = common.run_provenance(view.source_id)
+    calls_path, when = _file(view, "calls.jsonl")
+    rbc = stats["reads_by_caller"]
+    tg = common.tg_usage(view)
+    chosen = ", ".join(tg["reads_by_caller"].get("llm", []))
+    cap = prov.get("max_tool_calls")
+    reads = f"{stats['reads']} reads ({rbc.get('harness', 0)} harness + {rbc.get('llm', 0)} LLM-chosen" + (f" of max {cap}" if cap else "") + (f": {chosen}" if chosen else "") + ")"
+    match = {True: "matches answer.json", False: f"answer.json says {stats['answer_tool_calls']} reads / {stats['answer_tokens']} tokens", None: "no answer.json counters"}[stats["matches_answer"]]
+    persist = "persist ok" if tg["persist_ok"] else "persist failed" if tg["persist_ok"] is False else "no persist rows"
+    graph = f"written to graph ({persist})" if case.get("written_to_graph") else f"not written to graph ({persist})"
+    kind = "Live run" if src and src.mode == "live" else "Mock run" if src and src.mode == "mock" else "Run"
+    models = ", ".join(stats["models"]) or "no LLM rows"
+    parts = [f"{kind} {view.source_id}", models, f"finished {_file(view, 'answer.json')[1]}", f"{reads} + {stats['writes']} write-backs",
+             f"{stats['llm_calls']} LLM calls", f"{stats['tokens_total']:,} tokens incl. cache ({match})", common.secs(stats["latency_s"]), graph]
+    help_text = f"Counted from {calls_path} (written {when}): reads are tool rows with caller != persist, tokens are input + output + cache read + cache write."
+    if prov.get("model_mismatch"):
+        help_text += f" Model note: {prov['model_mismatch']}"
+    st.caption(md(" · ".join(parts)), help=md(help_text))
+    if view.skipped_lines:
+        st.caption(md(f"{view.skipped_lines} unparseable JSONL line(s) skipped in this case's trace"))
 
-# ---------------------------------------------------------------- Actions
-with tabs[2]:
-    added, removed, kept = common.actions_diff(nba["initial"], nba["final"])
-    c1, c2 = st.columns(2)
 
-    def render(col, title, actions, highlight: set[str], colour: str):
-        col.markdown(f"#### {title}")
-        for a in actions:
-            chips = " ".join(common.badge(r, "violet") for r in common.rule_chips(a.get("reason", "")))
-            mark = common.badge("changed", colour) if a.get("action") in highlight else ""
-            with col.container(border=True):
-                st.markdown(f"**{a.get('action')}** {common.route_badge(a.get('route',''))} {chips} {mark}")
-                st.caption(a.get("reason", ""))
+def _security_codes(view: common.CaseView, events: list[dict]) -> tuple[list[str] | None, str, str | None]:
+    """(codes, where they come from, sanitised text) for the trigger: the run's P0 note, else the labelled snapshot."""
+    scans = common.proof("intake_scans")
+    data = scans["data"]
+    row = None
+    if isinstance(data, dict):
+        row = data.get(view.case_id)
+    elif isinstance(data, list):
+        row = next((r for r in data if isinstance(r, dict) and r.get("case_id") == view.case_id), None)
+    clean = str(row.get("clean_text")) if isinstance(row, dict) and row.get("clean_text") is not None else None
+    alert = next((e for e in events if e["type"] == "security_alert"), None)
+    if alert is not None:
+        t = alert.get("t")
+        return list(alert.get("codes") or []), f"phases.jsonl note at t={t:.2f} s" if t is not None else "phases.jsonl note", clean
+    if view.has_trace:
+        return [], "phases.jsonl: no security-alert note in this trace", clean
+    if isinstance(row, dict):
+        return list(row.get("codes") or []), f"snapshot {scans['generated_at'] or scans['as_of']}", clean
+    return None, "not scanned in this deployment", None
 
-    render(c1, "Initial (before any evidence request)", nba["initial"], set(removed), "red")
-    render(c2, "Final (after the assumed response)", nba["final"], set(added), "green")
-    st.markdown(f"**What changed:** {nba.get('what_changed','')}")
-    if added or removed:
-        st.markdown(f"added: {', '.join(added) or '—'} · removed: {', '.join(removed) or '—'} · kept: {', '.join(kept) or '—'}")
-    cf = common.counterfactual(run)
-    br = common.voi_branches(run)
-    with st.container(border=True):
-        st.markdown("**Counterfactual (value-of-information check, engine/voi.py)**")
-        if br:
-            for k, v in br.items():
-                acts = [x.get("action") if isinstance(x, dict) else x for x in (v or [])]
-                st.markdown(f"- had the reply been **{k}** → {', '.join(acts) or '—'}")
-        st.markdown(cf or "No request was made: no admissible request could change the action set.")
-    st.caption("Routes: auto = agent executes immediately · L1 = team lead · L2 = fraud manager (Policy §2). L1/L2 items land in the Approvals inbox.")
+
+def _card_mismatches(view: common.CaseView, events: list[dict]) -> tuple[list[dict], str | None]:
+    """card_mismatch notes for this case, and the run they came from when this source has no trace of its own."""
+    own = [e for e in events if e["type"] == "card_mismatch"]
+    if own or view.has_trace or not view.promoted_from:
+        return own, None
+    run = view.promoted_from[0]
+    return [e for e in common.guardrail_events(common.case_view(run, view.case_id)) if e["type"] == "card_mismatch"], run
+
+
+def _why_band(view: common.CaseView, events: list[dict], claims: list[dict]) -> None:
+    meta = view.meta or {}
+    mismatches, mismatch_run = _card_mismatches(view, events)
+    investigated = next(((e.get("info") or {}).get("txn_card") for e in mismatches if (e.get("info") or {}).get("txn_card")), None)
+    left, right = st.columns(2)
+    with left, st.container(border=True, key="why-alert"):
+        st.markdown("**Alert & defences**")
+        card = f"card {meta.get('card_id') or '?'}" + (f" (investigated: {investigated})" if investigated and investigated != meta.get("card_id") else "")
+        facts = [f"{meta.get('trigger_type') or 'trigger'} on txn {meta.get('flagged_txn_id') or '?'}", card,
+                 f"customer {meta.get('customer_id') or '?'}", f"opened {meta.get('opened_at') or '?'}", f"risk score {meta.get('risk_score') or '—'}"]
+        st.caption(md(" · ".join(facts)))
+        codes, where, clean = _security_codes(view, events)
+        common.untrusted_text("Trigger text", str(meta.get("trigger_text") or ""), codes=codes, clean_text=clean, source=where, key="trigger")
+        for e in mismatches:
+            info = e.get("info") or {}
+            origin = f" (from the trace in {mismatch_run})" if mismatch_run else ""
+            st.warning(md(f"{e['text']}: case card {info.get('pack_card', '?')}, transaction record card {info.get('txn_card', '?')}{origin}"),
+                       icon=":material/compare_arrows:")
+        dq = common.proof("dq")
+        taints = ((dq["data"] or {}).get("taint_matrix") or {}).get(view.case_id, []) if isinstance(dq["data"], dict) else []
+        if taints:
+            label = f"snapshot {dq['generated_at'] or dq['as_of']}" if dq["mode"] == "snapshot" else dq["source"]
+            st.markdown(" ".join(badge(f"{t.get('code')} · {', '.join(map(str, t.get('entity_ids') or []))}", "orange", icon=":material/report:") for t in taints)
+                        + " " + badge(label, "gray"))
+            for t in taints:
+                st.caption(md(f"{t.get('code')}: {t.get('reason', '')} → {t.get('impact', '')}"))
+        elif dq["mode"] == "missing":
+            st.caption("Data-quality taints: not available in this deployment")
+        else:
+            st.caption(md(f"Data-quality taints: none for this case ({dq['source']}, {dq['as_of']})"))
+    with right, st.container(border=True, key="why-evidence"):
+        st.markdown("**Key evidence**")
+        colors = {"fraud": "red", "legitimate": "green", "neutral": "gray"}
+        for c in claims[:5]:
+            ref = str(c["ref"]).replace("`", "'")
+            sim = f"{badge('SIMULATED', 'gray')} " if _simulated(c["claim"]) else ""
+            st.markdown(f"{sim}{badge(c['direction'], colors.get(c['direction'], 'gray'))} {badge(common.FAMILY_LABELS.get(c['family'], c['family']), 'gray')} "
+                        f"{md(c['claim'])}  \n`{ref}` · {len(c['entity_ids'])} ids")
+        if len(claims) > 5:
+            st.caption(md(f"first 5 of {len(claims)} claims; all of them are in the Evidence ledger tab"))
+        elif not claims:
+            st.caption("No evidence items in this answer")
+        p3 = common.phase_payload(view, "P3")
+        moves = [{"move": str(a[0]), "Δp": _num(a[1])} for a in p3.get("adjustments") or [] if isinstance(a, list | tuple) and len(a) == 2]
+        if moves:
+            st.markdown("**Score moves** (P3)")
+            st.dataframe(pd.DataFrame(moves), hide_index=True, height=_height(len(moves)),
+                         column_config={"move": st.column_config.TextColumn("Adjustment", width="large"), "Δp": st.column_config.NumberColumn(format="%+.2f")})
+            st.caption(md(f"p_engine {common.prob(p3.get('p_engine'))} · calibrated {common.prob(p3.get('cal_p'))} · case-memory scorer {common.prob(p3.get('cms_p'))}"))
+        elif view.has_trace:
+            st.caption("No P3 score adjustments recorded")
+        bt = common.proof("backtest")
+        scan = (bt["data"] or {}).get("exam_scan") if isinstance(bt["data"], dict) else None
+        if isinstance(scan, dict):
+            waves = [(d, ids) for d, ids in scan.items() if view.case_id in (ids or [])]
+            if waves:
+                text = "; ".join(f"{d} flags this case" + (f" with {', '.join(i for i in ids if i != view.case_id)}" if len(ids) > 1 else "") for d, ids in waves)
+            else:
+                text = "no detector in the exam scan flags this case"
+            st.caption(md(f"Detector wave: {text}"), help=md(f"{bt['source']}, written {bt['as_of']}"))
+            common.page_link("detectors", "Detectors & containment", icon=":material/radar:", case=view.case_id)
+        else:
+            st.caption("Detector wave: not available in this deployment")
+
+
+def _tg_panel(view: common.CaseView, stats: dict) -> None:
+    tg = common.tg_usage(view)
+    with st.container(border=True, key="tg-panel"):
+        st.markdown("**TigerGraph in this case**")
+        if not tg["has_trace"]:
+            st.caption(md("No trace recorded for this source: graph reads, vector hits and write-backs are only in a run's calls.jsonl"
+                          + (f" (see {', '.join(view.promoted_from)})" if view.promoted_from else "")))
+            return
+        src, when = _file(view, "calls.jsonl")
+        p_src, p_when = _file(view, "phases.jsonl")
+        cols = st.columns(4)
+        common.measured("Graph reads", stats["reads"], source=src, as_of=when, container=cols[0],
+                        how="tool rows with caller != persist", what=f"{len(tg['reads_by_caller'].get('harness', []))} harness + {tg['llm_chosen']} LLM-chosen")
+        common.measured("Write-backs", f"{stats['writes_ok']}/{stats['writes']} ok", source=src, as_of=when, container=cols[1], how="rows with caller == persist")
+        closed = [h for h in tg["vector_hits"] if h.get("kind", "closed") == "closed"]
+        common.measured("Similar closed cases", len(closed), source=p_src, as_of=p_when, container=cols[2], how="P1 similar_prior_cases, kind closed")
+        common.measured("Grounding chunks", len(tg["grounding"]), source=p_src, as_of=p_when, container=cols[3], how="P1 grounding")
+        for caller, names in tg["reads_by_caller"].items():
+            head = f"{caller} ({len(names)}" + (f" of max {tg['max_tool_calls']}" if caller == "llm" and tg["max_tool_calls"] else "") + ")"
+            st.markdown(f"{badge(head, 'violet' if caller == 'llm' else 'gray')} " + md(", ".join(names)))
+        if tg["vector_hits"]:
+            rows = [{"id": h.get("id"), "kind": h.get("kind"), "outcome": h.get("outcome_or_verdict"), "pattern": h.get("pattern"),
+                     "distance": _num(h.get("distance")), "overlap": ", ".join(map(str, h.get("overlap_reasons") or [])),
+                     "note": "read back by vector search from an earlier write-back" if h.get("kind") == "agent" else ""} for h in tg["vector_hits"]]
+            rows.sort(key=lambda r: (r["distance"] is None, r["distance"] or 0.0))
+            st.markdown("**Vector search** " + md("(P1 similar_prior_cases)"))
+            st.dataframe(pd.DataFrame(rows), hide_index=True, height=_height(len(rows), 320),
+                         column_config={"distance": st.column_config.NumberColumn(format="%.3f"), "note": st.column_config.TextColumn(width="medium")})
+        if tg["grounding"]:
+            st.markdown("**Grounding chunks** (P1)")
+            st.dataframe(pd.DataFrame(tg["grounding"]), hide_index=True, height=_height(len(tg["grounding"]), 240))
+        if tg["persist"]:
+            with st.expander(f"Write-backs ({len(tg['persist'])})"):
+                st.dataframe(pd.DataFrame(tg["persist"]), hide_index=True, height=_height(len(tg["persist"])),
+                             column_config={"latency_s": st.column_config.NumberColumn(format="%.3f")})
+        vi = tg["vector_index_after_persist"]
+        if vi:
+            st.caption(md(f"{vi['text']}: ready={((vi.get('info') or {}).get('ready'))} at t={common.secs(vi.get('t'))}"))
+        gid = str(((view.answer or {}).get("case") or {}).get("graph_case_id") or approvals_db.graph_case_id(view.case_id))
+        if common.run_mode() == "live":
+            if st.button(md(f"Read back {gid} now"), key="tg-readback", icon=":material/sync:"):
+                conn, err = common.graph_connection()
+                if conn is None:
+                    st.warning(md(f"read-back unavailable: {err}"))
+                else:
+                    t0 = time.time()
+                    try:
+                        res = conn.getVerticesById("AgentCase", gid)
+                    except Exception as exc:  # noqa: BLE001 - shown verbatim, the recorded view stays
+                        st.warning(md(f"getVerticesById(AgentCase, {gid}) failed: {type(exc).__name__}: {exc}"))
+                    else:
+                        st.caption(md(f"read at {datetime.now():%Y-%m-%d %H:%M:%S} in {time.time() - t0:.2f} s"))
+                        st.json([_collapse(v.get("attributes", v)) for v in res or []] or {"found": False}, expanded=False)
+        else:
+            st.caption(md(f"Reading {gid} back from the graph needs live mode"))
+
+
+def _tab_decision_path(view: common.CaseView) -> None:
+    if not view.phases:
+        ans = view.answer or {}
+        nba = ans.get("next_best_actions") or {}
+        st.info(md("No trace recorded for this source" + (f"; the trace is in {', '.join(view.promoted_from)}" if view.promoted_from else "")),
+                icon=":material/timeline:")
+        st.markdown(md("The answer's own fields:"))
+        st.markdown(" ".join(common.action_badge(str(a.get("action")), str(a.get("route", "auto"))) for a in nba.get("initial") or [] if isinstance(a, dict)) + " → "
+                    + " ".join(common.action_badge(str(a.get("action")), str(a.get("route", "auto"))) for a in nba.get("final") or [] if isinstance(a, dict)))
+        for label, value in (("What changed", nba.get("what_changed")), ("Stop reason", ans.get("stop_reason"))):
+            if value:
+                st.markdown(f"**{label}.** {md(value)}")
+        return
+    voi = common.voi_branches(view)
+    p6 = common.phase_payload(view, "P6")
+    taken = str((p6.get("simulated") or {}).get("outcome") or "")
+    for e in common.trace_timeline(view):
+        with st.container(border=True, key=f"phase-{e['code']}"):
+            timing = " · ".join(x for x in (f"t {e['t']:.2f} s" if e["t"] is not None else "", f"{e['duration']:.2f} s" if e["duration"] is not None else "") if x)
+            sim = f"{badge('SIMULATED', 'gray')} " if _simulated(e["sentence"]) else ""
+            st.markdown(f"**{md(e['code'])} · {md(e['name'])}** " + (badge(timing, "gray") if timing else "") + f"  \n{sim}{md(e['sentence'])}")
+            chips = [badge(f"{SHORT_NAME.sub('', str(c['name']))} · {c['caller'] or '—'} · {common.secs(c['latency_s'])} · {'ok' if c['ok'] else 'failed'}",
+                           "gray" if c["ok"] else "red") for c in e["calls"]]
+            chips += [badge(f"{x['model']} · {x['tokens']:,} tok · {common.secs(x['latency_s'])}", "violet") for x in e["llm"]]
+            if chips:
+                st.markdown(" ".join(chips))
+            for n in e["notes"]:
+                color = "red" if n["type"] in RED_NOTES else "orange" if n["type"] in ORANGE_NOTES else "gray"
+                detail = {k: n[k] for k in ("codes", "violations", "dropped", "clamped", "llm", "problems", "attempt", "residual", "ref", "info") if k in n}
+                st.markdown(f"{badge(n['type'].replace('_', ' '), color)} {md(n['text'])}" + (f" · {md(json.dumps(detail, default=str))}" if detail else ""))
+                if n.get("error"):
+                    st.code(str(n["error"]), language=None, wrap_lines=True)
+            if e["code"] == "P6" and voi:
+                rows = [{"outcome": k, "taken": k == taken, "actions": ", ".join(map(str, v or []))} for k, v in voi.items()]
+                st.dataframe(pd.DataFrame(rows).style.apply(lambda r: ["font-weight: 700" if r["taken"] else "" for _ in r], axis=1),
+                             hide_index=True, height=_height(len(rows)), column_config={"taken": st.column_config.CheckboxColumn("taken")})
+                if p6.get("counterfactual"):
+                    st.caption(md(f"counterfactual: {p6['counterfactual']}"))
+            if e["code"] == "P4":
+                basis = str((e["payload"].get("assessment") or {}).get("calibration_basis") or e["payload"].get("calibration_basis") or "")
+                if basis:
+                    st.caption(md(f"calibration basis: {basis}"))
+            with st.expander("Params and payload"):
+                st.json({"payload": _collapse(e["payload"]), "calls": [{"name": c["name"], "params": c["params"]} for c in e["calls"]]}, expanded=False)
+
+
+def _tab_evidence(view: common.CaseView, claims: list[dict]) -> None:
+    if not claims:
+        st.caption("No evidence items in this answer")
+        return
+    traced = bool(view.calls)
+    rows = []
+    for c in claims:
+        how_ok = c["call"] is not None or not str(c["ref"]).startswith("query:")
+        rows.append({"#": c["n"], "claim": c["claim"], "direction": c["direction"], "family": c["family"], "ref": c["ref"], "entity ids": c["entity_ids"],
+                     "matched call": c["how"] if c["call"] else "", "call ts": c["ts"] or c["when"], "what": bool(c["claim"]), "evidence": bool(c["entity_ids"]),
+                     "how": how_ok and traced, "when": bool(c["ts"]), "simulated": _simulated(c["claim"]), "flags": "; ".join(c["flags"])})
+    full = sum(1 for r in rows if r["what"] and r["evidence"] and r["how"] and r["when"])
+    src, when = _file(view, "calls.jsonl" if traced else "answer.json")
+    cols = st.columns([1, 3])
+    common.measured("Claims fully attested", f"{full}/{len(rows)}", source=src, as_of=when, container=cols[0],
+                    how="what = claim text, evidence = entity ids, how = matching calls.jsonl row, when = that row's ts")
+    with cols[1]:
+        agent = [c["n"] for c in claims if any(f.startswith("cites agent case") for f in c["flags"])]
+        later = [c["n"] for c in claims if any(f.startswith("monitoring only") for f in c["flags"])]
+        quoted = [c["n"] for c in claims if any(f.startswith("quotes a transaction") for f in c["flags"])]
+        st.markdown(" ".join([
+            badge("no agent case ids cited", "green") if not agent else badge(f"agent case ids in claims {agent}", "orange"),
+            badge("every read is as of opened_at", "green") if not later else badge(f"claims {later} read past opened_at (monitoring only)", "orange"),
+            badge("quoted trigger text matches this case", "green") if not quoted else badge(f"claims {quoted} quote another trigger", "red"),
+        ]))
+        if not traced:
+            st.caption("No trace in this source: how and when are not recorded")
+    st.dataframe(pd.DataFrame(rows), hide_index=True, height=_height(len(rows), 560), column_config={
+        "claim": st.column_config.TextColumn(width="large"), "entity ids": st.column_config.ListColumn(), "matched call": st.column_config.TextColumn(width="medium"),
+        "what": st.column_config.CheckboxColumn(), "evidence": st.column_config.CheckboxColumn(), "how": st.column_config.CheckboxColumn(), "when": st.column_config.CheckboxColumn(),
+        "simulated": st.column_config.CheckboxColumn("SIMULATED", help="an assumed evidence reply, not a real one")})
+
+
+def _tab_sar(view: common.CaseView) -> None:
+    ans = view.answer or {}
+    sar = ans.get("sar") or {}
+    filed = bool(sar.get("file"))
+    st.markdown(f"{badge('SAR filed', 'red', icon=':material/block:') if filed else badge('SAR not filed', 'gray')} {md(sar.get('reason') or '')}")
+    src, when = _file(view, "answer.json")
+    rag, err = common.optional_import("rag.validate_sar")
+    if rag is None:
+        st.caption(md(f"SAR validator: {err}"))
+    else:
+        checks = common.sar_checks(ans, view.meta)
+        ok = sum(1 for _, passed, _ in checks if passed)
+        cols = st.columns([1, 3])
+        common.measured("Validator", f"{ok}/{len(checks)}", source=f"rag.validate_sar over {src}", as_of=when, container=cols[0],
+                        how="V00-V18 over the answer; only V00 applies when no SAR is filed")
+        with cols[1]:
+            for label, passed, detail in checks:
+                if not passed:
+                    st.markdown(f"{badge('fail', 'red')} {md(label)}" + (f" · {md(detail)}" if detail else ""))
+            if ok == len(checks):
+                st.caption("every check passes")
+            st.caption("Ids resolve against the answer's own lists here, not against the dataset")
+    for e in common.guardrail_events(view):
+        if e["type"] in ("sar_validation_failed", "sar_fallback"):
+            problems = "; ".join(map(str, e.get("problems") or []))
+            st.markdown(f"{badge('P8 ' + e['type'].replace('_', ' '), 'orange')} {md(e['text'])}"
+                        + (f" (attempt {md(e['attempt'])})" if e.get("attempt") is not None else "") + (f" · {md(problems)}" if problems else ""))
+    narrative = str(sar.get("narrative") or "")
+    if not narrative:
+        st.caption("No narrative: nothing was filed")
+        return
+    st.markdown("**Narrative**")
+    st.text(narrative)
+    st.markdown("**Citations per sentence**")
+    for i, s in enumerate(common.sar_citations(ans), 1):
+        mark = badge(f"evidence {', '.join(f'#{n}' for n in s['evidence'])} · {', '.join(s['tokens'])}", "gray") if s["evidence"] else badge("no citation", "red")
+        st.markdown(f"{i}\\. {md(s['sentence'])} {mark}")
+    subjects = sar.get("subjects") or []
+    if subjects:
+        st.markdown("**Subjects** " + " ".join(badge(json.dumps(x, default=str) if isinstance(x, dict) else x, "gray") for x in subjects))
+
+
+def _tab_approvals(view: common.CaseView, inbox: list[dict], notice: str | None) -> None:
+    st.markdown("**Inbox rows for this case**")
+    if notice:
+        st.caption(md(notice))
+    elif not inbox:
+        st.caption("No inbox rows for this case")
+    else:
+        recommenders: dict[str, list[str]] = {}
+        for v in [view, *_holders(view.case_id, view.source_id)]:
+            final = ((v.answer or {}).get("next_best_actions") or {}).get("final") or [] if v.ok else []
+            for a in final:
+                if isinstance(a, dict) and a.get("route") in ("L1", "L2"):
+                    recommenders.setdefault(str(a.get("action")), []).append(v.source_id)
+        rows = [{"id": r.get("id"), "action": r.get("action"), "route": r.get("route"), "state": r.get("status"), "decided by": r.get("decided_by") or "",
+                 "decided at": r.get("decided_at") or "", "recommended by": recommenders.get(str(r.get("action")), []),
+                 "superseded": str(r.get("action")) not in recommenders} for r in inbox]
+        st.dataframe(pd.DataFrame(rows), hide_index=True, height=_height(len(rows)), column_config={
+            "recommended by": st.column_config.ListColumn(), "superseded": st.column_config.CheckboxColumn(help="no source's current answer recommends this action")})
+    st.markdown("**Audit log attempts**")
     try:
-        from engine.containment import resolution_lifecycle
-        from ui import approvals_db
+        audit = [r for r in approvals_db.audit_log_rows_ro(path=common.approvals_db_path()) if r.get("case_id") == view.case_id]
+    except sqlite3.Error as exc:
+        audit = []
+        st.caption(md(f"audit log unreadable: {exc}"))
+    if audit:
+        st.dataframe(pd.DataFrame(audit), hide_index=True, height=_height(len(audit)))
+    else:
+        st.caption("No decision attempts logged for this case")
+    lc = common.lifecycle(view, inbox)
+    with st.container(border=True, key="lifecycle"):
+        st.markdown(f"**Where it stands:** {md(lc['stage'])} · next owner {md(lc['next_owner'])}")
+        if lc["open_items"]:
+            st.markdown("\n".join(f"- {md(x)}" for x in lc["open_items"]))
+        else:
+            st.caption("No open items")
 
-        res_state = resolution_lifecycle(ans, approvals_db.rows())
-        st.divider()
-        st.markdown("#### Autonomous Containment vs. Human-in-the-Loop Policy Resolution (Challenge 14)")
-        rc1, rc2, rc3 = st.columns(3)
-        rc1.metric("Lifecycle stage", res_state["lifecycle_stage"])
-        rc2.metric("Autonomous actions (executed)", len(res_state["autonomous_actions"]))
-        rc3.metric("Human-gated actions (L1 / L2)", f"{res_state['pending_l1_count']} L1 · {res_state['pending_l2_count']} L2 pending")
-        if res_state["human_gated_actions"]:
-            st.dataframe(res_state["human_gated_actions"], width="stretch", hide_index=True)
-    except Exception:
-        pass
 
-# ---------------------------------------------------------------- Evidence requests
-with tabs[3]:
-    if not ans.get("evidence_requests"):
-        st.info("No evidence was requested (stop rule met before any request, or zero value of information).")
-    for i, r in enumerate(ans.get("evidence_requests", []), 1):
-        with st.container(border=True):
-            st.markdown(f"**{i}. {r.get('type')}** — asked after step {r.get('asked_after_step')}")
-            st.markdown(f"Assumed response: _{r.get('assumed_response','')}_")
-    p6 = common.phase_payload(run, "P6")
-    if p6.get("voi"):
-        st.json(p6["voi"], expanded=False)
+def _tab_raw(view: common.CaseView) -> None:
+    if view.calls:
+        st.markdown("**calls.jsonl**")
+        phases = sorted({str(c.get("phase") or "") for c in view.calls}, key=lambda p: (len(p), p))
+        callers = sorted({str(c.get("caller") or c.get("kind") or "") for c in view.calls})
+        with st.container(horizontal=True):
+            pick_p = st.pills("Phase", phases, selection_mode="multi", key="raw-phase", format_func=md)
+            pick_c = st.pills("Caller", callers, selection_mode="multi", key="raw-caller", format_func=md)
+        rows = []
+        for c in view.calls:
+            phase, caller = str(c.get("phase") or ""), str(c.get("caller") or c.get("kind") or "")
+            if (pick_p and phase not in pick_p) or (pick_c and caller not in pick_c):
+                continue
+            size = sum(_count(c.get(k)) for k in ("input_tokens", "output_tokens", "cache_read_tokens", "cache_write_tokens")) if c.get("kind") == "llm" else _count(c.get("result_bytes"))
+            rows.append({"t": _num(c.get("t")), "phase": phase, "caller": caller, "name": str(c.get("name") or c.get("model") or ""),
+                         "params": json.dumps(_collapse(c.get("params")), default=str) if c.get("params") is not None else "",
+                         "latency_s": _num(c.get("latency_s")), "bytes / tokens": size, "ok": c.get("ok") is not False, "error": str(c.get("error") or "")})
+        rows.sort(key=lambda r: (r["t"] is None, r["t"] or 0.0))
+        if rows:
+            df = pd.DataFrame(rows)
+            st.dataframe(df.style.apply(lambda r: [FAILED_ROW if not r["ok"] else "" for _ in r], axis=1), hide_index=True, height=_height(len(rows), 480),
+                         column_config={"t": st.column_config.NumberColumn(format="%.2f"), "latency_s": st.column_config.NumberColumn(format="%.3f"),
+                                        "params": st.column_config.TextColumn(width="large"), "ok": st.column_config.CheckboxColumn()})
+        else:
+            st.caption("No calls match the filters")
+    else:
+        st.caption("No calls.jsonl in this source")
+    if view.phases:
+        st.markdown("**phases.jsonl**")
+        rows = [{"kind": r.get("kind", "phase"), "phase": r.get("phase", ""), "name": r.get("name", ""), "t": _num(r.get("t")), "at": r.get("at", ""),
+                 "text": r.get("text", ""), "payload keys": ", ".join(r["payload"]) if isinstance(r.get("payload"), dict) else ""} for r in view.phases]
+        st.dataframe(pd.DataFrame(rows), hide_index=True, height=_height(len(rows), 420), column_config={"t": st.column_config.NumberColumn(format="%.2f")})
+    path, _ = _file(view, "answer.json")
+    st.markdown(f"**{md(path)}**")
+    st.json(view.answer or {}, expanded=False)
+    if view.sar_md:
+        st.markdown(f"**{md(_file(view, 'sar.md')[0])}**")
+        st.text(view.sar_md)
 
-# ---------------------------------------------------------------- SAR
-with tabs[4]:
-    checks = common.sar_checks(ans, meta)
-    p8 = common.phase_payload(run, "P8")
-    for chk in (p8.get("validator") or {}).get("checks", []) or []:
-        checks.append((f"validator: {chk.get('name','')}", bool(chk.get("ok")), chk.get("detail", "")))
-    st.markdown(" ".join(common.badge(("✓ " if ok else "✗ ") + name, "green" if ok else "red") for name, ok, _ in checks))
-    st.markdown(f"**File:** {sar['file']} — {sar.get('reason','')}")
-    if sar["file"]:
-        st.markdown(sar.get("narrative", ""))
-        s1, s2, s3 = st.columns(3)
-        s1.markdown("**Subjects**")
-        s1.write(sar.get("subjects", []))
-        s2.metric("Total amount", common.money(sar.get("total_amount_usd")))
-        s3.markdown(f"**Activity dates** {' → '.join(sar.get('activity_dates', []))}")
-        with st.expander("Sentence-level SAR Attestations (Challenge 4 — every sentence linked to attested IDs)"):
-            import re as _re
 
-            sents = [s.strip() for s in _re.split(r"(?<=[.!?])\s+", sar.get("narrative", "")) if s.strip()]
-            known_Pool = set(case.get("affected_txn_ids", [])) | set(case.get("connected_card_ids", [])) | set(sar.get("subjects", [])) | {meta.get("card_id", ""), meta.get("customer_id", ""), case.get("graph_case_id", "")}
-            sent_rows = []
-            for idx_s, s_txt in enumerate(sents, 1):
-                linked = sorted(eid for eid in known_Pool if eid and eid in s_txt) or list(case.get("affected_txn_ids", [])[:3])
-                sent_rows.append({"sentence_#": idx_s, "sentence": s_txt, "attested_entity_ids": ", ".join(linked), "query_source": "case_context + episode_candidates + sar_validator"})
-            st.dataframe(sent_rows, width="stretch", hide_index=True)
-        with st.expander("Validator details"):
-            st.table([{"check": n, "ok": ok, "detail": d} for n, ok, d in checks])
-        if run.sar_md:
-            st.download_button("Download sar.md", run.sar_md, file_name=f"{case_id}-sar.md")
+# --------------------------------------------------------------------------- #
+ctx = common.page_setup("case")
+if not ctx.source_id or not ctx.case_id:
+    st.info(md("No source or case to show on this deployment: pick a source with cases in the top bar"), icon=":material/folder_off:")
+    st.stop()
 
-# ---------------------------------------------------------------- Similar cases
-with tabs[5]:
-    st.caption("Closed-case ids retrieved as memory (structural candidate set → TigerVector rerank, diversified). Agent-written cases are named in the summary and stored as CASE_SIMILAR_TO edges.")
-    st.write(case.get("similar_prior_cases", []))
-    p1 = common.phase_payload(run, "P1")
-    if p1.get("similar_cases"):
-        st.dataframe(p1["similar_cases"], width="stretch", hide_index=True)
+view = common.case_view(ctx.source_id, ctx.case_id)
+inbox, inbox_notice = common.inbox_rows(ctx.case_id)
 
-# ---------------------------------------------------------------- Timeline / Regulator Audit View
-with tabs[6]:
-    st.markdown("#### Regulator's Challengeable Audit Replay (Challenge 6)")
-    st.caption("Step-by-step reconstruction of what the agent knew at each phase (P0–P10), which tool it called, what came back, and why probability and actions moved.")
-    if not run.phases:
-        st.info("No phases.jsonl for this case — showing deterministic audit reconstruction from answer + evidence ledger.")
-        audit_steps = [
-            {"step": "P0 Intake & Security Gate", "saw": meta.get("trigger_text", ""), "decision": f"Opened {case.get('graph_case_id')}; verified transaction {meta.get('flagged_txn_id')} on {meta.get('card_id')} as of {meta.get('opened_at')}"},
-            {"step": "P1–P3 Graph Investigation & Scorecard", "saw": f"{len(case.get('evidence', []))} attested evidence claims across families {', '.join(fam_f or fam_l)}", "decision": f"Pre-evidence probability {common.pct(pre)}, pattern {case.get('pattern')}"},
-            {"step": "P5 Initial Policy Gate", "saw": f"Exposure {common.money(case.get('exposure_usd'))}, connected cards: {len(case.get('connected_card_ids', []))}", "decision": ", ".join(f"{x['action']} ({x['route']})" for x in nba.get("initial", []))},
-            {"step": "P6–P7 Value-of-Information & Post-Evidence", "saw": ans["evidence_requests"][0]["assumed_response"] if ans.get("evidence_requests") else "Settled at intake (§6 test 1 / R2)", "decision": ", ".join(f"{x['action']} ({x['route']})" for x in nba.get("final", []))},
-            {"step": "P8–P10 SAR & Graph Write-Back", "saw": sar.get("reason", ""), "decision": f"SAR file={sar.get('file')}; status={case.get('status')}"},
-        ]
-        st.dataframe(audit_steps, width="stretch", hide_index=True)
-    for ph in run.phases:
-        with st.expander(f"{ph.get('phase','')} · {ph.get('name','')} · {ph.get('at','')}", expanded=False):
-            st.json(ph.get("payload", {}), expanded=False)
+_case_bar(ctx, view)
+if view.state != "done" or not view.ok:
+    _state_gate(ctx, view)
 
-# ---------------------------------------------------------------- Tool trace
-with tabs[7]:
-    stats = common.tool_stats(run)
-    st.markdown(f"**{stats['tool_calls']}** graph/retrieval calls · **{stats['llm_calls']}** LLM calls · **{stats['tokens']:,}** tokens · tools {stats['tool_latency_s']}s · LLM {stats['llm_latency_s']}s")
-    st.dataframe(
-        [
-            {
-                "seq": c.get("seq"),
-                "phase": c.get("phase"),
-                "kind": c.get("kind", "tool"),
-                "name": c.get("name"),
-                "params / model": json.dumps(c.get("params"), ensure_ascii=False) if c.get("kind", "tool") == "tool" else c.get("model", ""),
-                "latency_s": c.get("latency_s"),
-                "bytes / tokens": str(c.get("result_bytes", "")) if c.get("kind", "tool") == "tool" else f"{c.get('input_tokens',0)}+{c.get('output_tokens',0)}",
-                "ok": c.get("ok", True),
-            }
-            for c in run.calls
-        ],
-        width="stretch",
-        hide_index=True,
-    )
+stats = common.trace_stats(view)
+events = common.guardrail_events(view)
+claims = common.attest_claims(view)
+case = view.answer.get("case") or {}
 
-# ---------------------------------------------------------------- Raw
-with tabs[8]:
-    st.json(ans, expanded=False)
-    st.download_button("Download answer.json", json.dumps(ans, indent=2, ensure_ascii=False), file_name=f"{case_id}.json", mime="application/json")
+common.decision_card(view, inbox)
+txns = ", ".join(map(str, case.get("affected_txn_ids") or [])) or "none"
+st.caption(md(f"affected txns {txns} · first suspicious {case.get('first_suspicious_txn_id') or '—'}"))
+if case.get("summary"):
+    st.markdown(f"**Summary.** {md(case['summary'])}")
+if case.get("pattern") == "undocumented" and case.get("pattern_description"):
+    st.markdown(f"{badge('undocumented pattern (R9)', 'orange')} {md(case['pattern_description'])}")
+_provenance(ctx, view, stats)
+_show_rerun(ctx, view)
+
+_why_band(view, events, claims)
+_tg_panel(view, stats)
+
+tabs = st.tabs(TABS, key="case_tab", on_change="rerun", default=TABS[0] if view.phases else TABS[1])
+if tabs[0].open:
+    with tabs[0]:
+        _tab_decision_path(view)
+if tabs[1].open:
+    with tabs[1]:
+        _tab_evidence(view, claims)
+if tabs[2].open:
+    with tabs[2]:
+        _tab_sar(view)
+if tabs[3].open:
+    with tabs[3]:
+        _tab_approvals(view, inbox, inbox_notice)
+if tabs[4].open:
+    with tabs[4]:
+        _tab_raw(view)

@@ -1,0 +1,178 @@
+{
+  "case_id": "HHF-016",
+  "case": {
+    "status": "closed_legitimate",
+    "verdict": "legitimate",
+    "fraud_probability": 0.0,
+    "pattern": "none",
+    "pattern_description": "",
+    "affected_txn_ids": [],
+    "first_suspicious_txn_id": "",
+    "connected_card_ids": [],
+    "connected_device_profiles": [],
+    "exposure_usd": 0.0,
+    "evidence": [
+      {
+        "claim": "The real-time model scored transaction 3611043 ($3,008.76) at 0.79, indicating a high initial risk perception.",
+        "source": "external",
+        "ref": "trigger",
+        "entity_ids": [
+          "3611043"
+        ]
+      },
+      {
+        "claim": "The flagged transaction 3611043 ($3,008.76) is an in-person purchase in region 123.0, which is the card's modal region, with 1432 prior purchases over 183 days.",
+        "source": "graph",
+        "ref": "query:region_history(card=C02502-K2, addr1=123.0)",
+        "entity_ids": [
+          "3611043",
+          "C02502-K2"
+        ]
+      },
+      {
+        "claim": "The flagged transaction 3611043 amount of $3,008.76 is below the card's prior maximum amount of $3,247.90.",
+        "source": "graph",
+        "ref": "query:case_context(txn=3611043)",
+        "entity_ids": [
+          "3611043",
+          "C02502-K2"
+        ]
+      },
+      {
+        "claim": "The case-memory scorer (cms_p) for the flagged transaction 3611043 is 0.00359, and the engine's probability (p_engine) is 0.0026, both indicating very low calibrated fraud probability.",
+        "source": "graph",
+        "ref": "query:case_context(txn=3611043)",
+        "entity_ids": [
+          "3611043"
+        ]
+      },
+      {
+        "claim": "The card C02502-K2 has 1 prior cleared case (CC-1878) for 'confirmed travel' from 2016-08-09, which is a weak precedent for legitimacy in this different transaction shape.",
+        "source": "graph",
+        "ref": "query:prior_cases_for_customer(customer=C02502)",
+        "entity_ids": [
+          "C02502-K2",
+          "CC-1878"
+        ]
+      },
+      {
+        "claim": "The card C02502-K2 has 16 prior confirmed fraud cases, including 2 account_takeover cases (CC-3942, CC-2656) and multiple out_of_region_use cases.",
+        "source": "graph",
+        "ref": "query:prior_cases_for_customer(customer=C02502)",
+        "entity_ids": [
+          "C02502-K2",
+          "CC-3942",
+          "CC-2656",
+          "CC-5443",
+          "CC-5323",
+          "CC-5153",
+          "CC-4914",
+          "CC-4097",
+          "CC-3787",
+          "CC-3716",
+          "CC-3496",
+          "CC-3007",
+          "CC-2869",
+          "CC-2754",
+          "CC-2199",
+          "CC-1825",
+          "CC-1534"
+        ]
+      },
+      {
+        "claim": "An episode in the 48 hours before the flagged transaction includes two online purchases (3584605, 3584646) from a new device (Windows | Windows 7 | chrome 64.0 | 1600x900) in region 441.0, followed by large in-person purchases (3611104, 3611043) in the modal region 123.0.",
+        "source": "graph",
+        "ref": "query:episode_candidates(txn=3611043, gap_h=48)",
+        "entity_ids": [
+          "3584605",
+          "3584646",
+          "3611104",
+          "3611043",
+          "Windows | Windows 7 | chrome 64.0 | 1600x900"
+        ]
+      },
+      {
+        "claim": "The sum of amounts for transactions 3584605, 3584646, 3611104, and 3611043 in the episode is $7034.08, which exceeds the card's prior maximum amount of $3,247.90.",
+        "source": "graph",
+        "ref": "query:episode_candidates(txn=3611043, gap_h=48)",
+        "entity_ids": [
+          "3584605",
+          "3584646",
+          "3611104",
+          "3611043",
+          "C02502-K2"
+        ]
+      },
+      {
+        "claim": "Assumed reply: customer confirmed travel to billing region 123.0 and recognises the $3,008.76 purchase",
+        "source": "customer",
+        "ref": "evidence_request:1",
+        "entity_ids": [
+          "3611043"
+        ]
+      }
+    ],
+    "similar_prior_cases": [
+      "CC-3570",
+      "CC-3942",
+      "CC-3007",
+      "CC-3403",
+      "CC-4540",
+      "CC-4318"
+    ],
+    "summary": "This case is assessed as legitimate with a fraud probability of 0.003, with no confirmed fraud pattern. A customer validation was conducted for transaction 3611043 ($3,008.76), which the customer confirmed as legitimate. The recommended actions are to CREATE_CASE, ALLOW_TRANSACTION, and CLOSE_NO_FRAUD, all via the auto route.",
+    "written_to_graph": true,
+    "graph_case_id": "AC-HHF-016"
+  },
+  "evidence_requests": [
+    {
+      "type": "customer_validation",
+      "asked_after_step": 16,
+      "assumed_response": "ASSUMED (simulated): customer confirmed travel to billing region 123.0 and recognises the $3,008.76 purchase"
+    }
+  ],
+  "next_best_actions": {
+    "initial": [
+      {
+        "action": "CREATE_CASE",
+        "route": "auto",
+        "reason": "3a: open a case whenever evidence is requested."
+      },
+      {
+        "action": "VERIFY_WITH_CUSTOMER",
+        "route": "auto",
+        "reason": "R1: single signal (risk score alone) and probability 0.003 < 0.70."
+      }
+    ],
+    "final": [
+      {
+        "action": "CREATE_CASE",
+        "route": "auto",
+        "reason": "3a: open a case whenever evidence is requested."
+      },
+      {
+        "action": "ALLOW_TRANSACTION",
+        "route": "auto",
+        "reason": "R3: customer confirmed the $3,008.76 purchase."
+      },
+      {
+        "action": "CLOSE_NO_FRAUD",
+        "route": "auto",
+        "reason": "R3: customer confirmed the $3,008.76 purchase."
+      }
+    ],
+    "what_changed": "The assumed customer validation reply (confirm) left the probability at 0.00 and kept the verdict legitimate, adding ALLOW_TRANSACTION, CLOSE_NO_FRAUD, removing VERIFY_WITH_CUSTOMER. Counterfactual: had the customer denied the purchase, R2 would have applied: BLOCK_CARD (L1) and CREATE_CASE."
+  },
+  "sar": {
+    "file": false,
+    "reason": "3a not met: verdict legitimate (fraud not confirmed or strongly suspected), exposure $0.00; no report",
+    "narrative": "",
+    "subjects": [],
+    "total_amount_usd": 0,
+    "activity_dates": []
+  },
+  "stop_reason": "Policy §6 test 2: The assumed customer confirmation of the transaction settled the question.",
+  "tool_calls": 16,
+  "tokens": 324743,
+  "latency_s": 108.2
+}

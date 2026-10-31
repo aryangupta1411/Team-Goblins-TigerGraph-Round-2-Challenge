@@ -273,7 +273,7 @@ WITH g AS (
 )
 SELECT card_id, to_json(list_slice(list(struct_pack(amt := amt, product_cd := product_cd, place := place, n := n,
                                                     median_gap_days := median_gap_days, gap_cv := gap_cv)
-                                        ORDER BY n DESC, amt), 1, 50))::VARCHAR recurring_amounts
+                                        ORDER BY n DESC, amt, product_cd, place), 1, 50))::VARCHAR recurring_amounts
 FROM grp GROUP BY 1
 """
 
@@ -333,14 +333,17 @@ def _run(con, label, sql):
     ok(f"{label} in {dt:.1f}s")
 
 
-def build_all(con: duckdb.DuckDBPyConnection) -> None:
+def build_all(con: duckdb.DuckDBPyConnection, rebuild_txc: bool = True) -> None:
+    """Every derived table from `txc`. `rebuild_txc=False` keeps the `txc` already in `con`: etl/delta.py hands in
+    the base snapshot's rows plus one appended month and re-derives everything from that union (cardmap must exist)."""
     con.execute("PRAGMA threads=8")
     _STAGES.clear()
     t0 = time.time()
     if not con.execute("SELECT count(*) FROM information_schema.tables WHERE table_name='cardmap'").fetchone()[0]:
         step("cardmap absent: deriving it first (etl.card_rule)")
         build_cardmap(con)
-    _run(con, "txc", TXC_SQL)
+    if rebuild_txc:
+        _run(con, "txc", TXC_SQL)
     _run(con, "txn_base", TXN_BASE_SQL)
     _run(con, "burst_member", BURST_SQL)
     _run(con, "device_profile", DEVICE_SQL)

@@ -21,7 +21,6 @@ import os
 import time
 
 import duckdb
-import lightgbm as lgb
 import numpy as np
 import pandas as pd
 from sklearn.isotonic import IsotonicRegression
@@ -75,6 +74,8 @@ def load_frame(con: duckdb.DuckDBPyConnection) -> tuple[pd.DataFrame, list[str],
 
 
 def fit(df, feats, catcols, rounds, valid=None):
+    import lightgbm as lgb  # lazy: load_frame / load_calibrator must import on a machine where lightgbm cannot load (no libomp)
+
     dtr = lgb.Dataset(df[feats], df.y, categorical_feature=catcols, free_raw_data=False)
     if valid is not None:
         dva = lgb.Dataset(valid[feats], valid.y, reference=dtr)

@@ -22,6 +22,17 @@ VALIDATOR_DB ?= data/ids.duckdb
 ENGINE_FACTS_DB ?= data/hhgoa_engine.duckdb
 # dataset README (fraud policy + patterns) that rag.chunk reads; copy it to data/raw/ on day 1 (.env HHGOA_README)
 HHGOA_README ?= data/raw/README.md
+# delta mode: the base snapshot, the new month's files, and what `make delta` writes (all under data/, git-ignored)
+MONTH_DIR ?= data/raw/round2
+# The Round 1 snapshot the month is appended to. data/hhgoa_engine.duckdb now holds base + January, so the base is
+# extracted from the commit that shipped it (sha256 94d8093c..., the delta manifest's base_db).
+DELTA_BASE_COMMIT ?= f87d347
+DELTA_BASE ?= data/hhgoa_engine_base.duckdb
+DELTA_WORK ?= data/hhgoa_v2.duckdb
+DELTA_OUT ?= data/out_delta
+FACTS_R2 ?= data/hhgoa_engine_r2.duckdb
+# SCORE: frozen = score the month with the Round 1 model, unchanged; none = leave cms_p at -1
+SCORE ?= frozen
 
 # ---- module entry points (etl/ graph/ rag/ engine/ agent/ qa/ ui/ ops/) -------------
 # etl/ (module A, impl/10-etl-scorer.md): python -m etl.<name> <db> [flags]
@@ -35,6 +46,8 @@ ETL_CLOSED := etl.parse_closed_cases
 ETL_CMS := etl.cms_train
 # ETL_EXPORT: data/out/*.csv TSV chunks (headerless, per contracts/csv_columns.yaml) + manifest.json; owns fraud_pattern.csv
 ETL_EXPORT := etl.export_graph_csvs
+# ETL_DELTA: delta mode (docs/DELTA.md): append one month to the checked-in base snapshot, no Round 1 raw CSVs
+ETL_DELTA := etl.delta
 # engine/ (module D): facts DB from the ETL tables, deterministic drafts + expectation sheet, 310-case replay
 # ENGINE_FACTS: data/hhgoa.duckdb -> $(ENGINE_FACTS_DB) (the only facts-DB builder, decisions D7)
 ENGINE_FACTS := engine.facts_from_etl
@@ -105,9 +118,10 @@ SAY = C=; B=; D=; G=; Y=; RD=; R=; \
 	dim() { printf '     %s%s%s\n' "$$D" "$$1" "$$R"; };
 
 .PHONY: help status install env db features cms facts chunks ids load algos install-queries describe \
-        corpus embed vectors replay sheet engine-drafts bench bench-one bench-free promote validate ui mock-run \
+        corpus embed vectors replay sheet engine-drafts bench bench-r2 bench-one bench-free promote validate ui mock-run \
         test test-data test-live lint lint-gsql lint-contracts fmt keepalive awake rebuild demo-warm clean \
-        clear-writebacks rerun-live round2-ingest round2-backtest round2-grade load-round2
+        clear-writebacks rerun-live round2-ingest round2-backtest round2-grade load-round2 \
+        delta delta-build delta-export backup-txn-json load-delta proof-snapshot
 
 ##@ Start here
 help: ## this list, grouped by build stage (the default target)
@@ -225,6 +239,31 @@ chunks: ## headerless TSV chunks in data/out/ (txn_000..007 <= 45 MB each), veri
 ids: ## id-only DuckDB for the validator in CI (data/ids.duckdb, ~20 MB, checked in) + views txc/card_feat/customer_feat/cc
 	$(PY) -m ops.export_id_tables --src $(HHGOA_DB) --out $(VALIDATOR_DB)
 
+##@ Delta mode: a new month on top of the base snapshot, no Round 1 raw CSVs (docs/DELTA.md)
+$(DELTA_BASE):
+	git show $(DELTA_BASE_COMMIT):data/hhgoa_engine.duckdb > $@
+
+delta-build: $(DELTA_BASE) ## base snapshot + the month in MONTH_DIR -> data/hhgoa_v2.duckdb, then the build gates (SCORE=frozen|none); nothing touches the graph
+	$(PY) -m $(ETL_DELTA) build --base $(DELTA_BASE) --work $(DELTA_WORK) --month-dir $(MONTH_DIR) --score $(SCORE)
+
+delta-export: $(DELTA_BASE) ## only the rows the month changes -> data/out_delta/ in the loader's format, with undo pack, manifest and load plan (needs a passing delta-build)
+	$(PY) -m $(ETL_DELTA) export --base $(DELTA_BASE) --work $(DELTA_WORK) --out $(DELTA_OUT)
+
+delta: $(DELTA_BASE) ## delta-build + delta-export + the engine facts DB for base + month, then data/hhgoa_engine.duckdb assembled from it; offline
+	$(PY) -m $(ETL_DELTA) run --base $(DELTA_BASE) --work $(DELTA_WORK) --month-dir $(MONTH_DIR) --score $(SCORE) --out $(DELTA_OUT) --facts-out $(FACTS_R2)
+	$(PY) -m ops.assemble_engine_db --facts $(FACTS_R2) --extra-from $(ENGINE_FACTS_DB) --out $(ENGINE_FACTS_DB)
+
+load-delta: ## LIVE WRITE: load data/out_delta/ into FraudGraph (docs/DELTA.md steps 1-5): chunks, ring_hit patch, algorithms, 20 vectors, count check
+	$(PY) graph/load_all.py --data-out $(DELTA_OUT) --only customer card device_profile email_domain billing_region closed_case txn next involves on_card connected_to matches --skip-counts
+	$(PY) -m ops.apply_ring_hit_patch --patch $(DELTA_OUT)/patch_transaction_ring_hit.tsv
+	$(PY) $(GRAPH_ALGOS)
+	RUN_MODE=live $(PY) -m $(RAG_EMBED) --input $(DELTA_OUT)/closed_case_embed.jsonl --out $(DELTA_OUT)/vec_ClosedCase.psv
+	RUN_MODE=live $(PY) -m $(RAG_VECTORS) --vertex ClosedCase --attr note_emb --psv $(DELTA_OUT)/vec_ClosedCase.psv
+	$(PY) -m ops.check_live_counts --manifest $(DELTA_OUT)/delta_manifest.json
+
+backup-txn-json: ## READ-ONLY: copy Transaction c_counts / d_deltas / m_flags (the only data the checked-in snapshot cannot rebuild) out of the live graph to data/backup/; run before any delta load
+	$(PY) -m ops.backup_txn_json --base $(DELTA_BASE) --out data/backup
+
 ##@ Graph: schema, load, algorithms, queries (day 2-4)
 load: ## schema + loading jobs + all chunks in one run (counts asserted: 590,742 / 576,425 / 140,784 / 14,955); `graph/load_all.py --schema-only` for the DDL alone
 	$(PY) $(GRAPH_LOAD)
@@ -232,7 +271,7 @@ load: ## schema + loading jobs + all chunks in one run (counts asserted: 590,742
 algos: ## project_shares_device -> tg_wcc -> wcc_summary -> degree (timeout 600 s each), results into Card / DeviceProfile attrs
 	$(PY) $(GRAPH_ALGOS)
 
-install-queries: ## CREATE + INSTALL every graph/queries/*.gsql in one batch (16 reads + 4 writers + 4 RAG = 24; 1-3 min compile on TG-00)
+install-queries: ## CREATE + INSTALL every graph/queries/*.gsql in one batch (25 queries: 14 LLM reads + 7 harness reads + 4 writers; 1-3 min compile on TG-00)
 	$(PY) $(GRAPH_INSTALL)
 
 describe: ## register query descriptions + JSON parameter examples (pyTigerGraph updateQueryDescription)
@@ -269,6 +308,9 @@ replay: ## 310-case deterministic replay -> engine/out/replay_metrics.json (targ
 bench: ## run the agent on CASES (default all 20, opened_at order) -> runs/<RUN_ID>/
 	$(PY) -m $(AGENT_BENCH) --cases $(strip $(CASES)) --run-id $(RUN_ID) $(MODEL_FLAG)
 
+bench-r2: ## the 18 Final Round cases (HHF-001..018) in opened_at order -> runs/<RUN_ID>/ (set LLM_BACKEND explicitly)
+	$(PY) -m $(AGENT_BENCH) --cases round2 --run-id $(RUN_ID) $(MODEL_FLAG)
+
 bench-one: ## one case: make bench-one CASE=HHG-014
 	$(PY) -m $(AGENT_BENCH) --cases $(CASE) --run-id $(RUN_ID) $(MODEL_FLAG)
 
@@ -284,19 +326,20 @@ validate: ## validate cases/*.json against the README schema + id existence (VAL
 	$(PY) -m $(AGENT_VALIDATE) --db $(VALIDATOR_DB) cases/*.json
 
 ##@ Final Round (Round 2: HHF-001..018, Schema Engine, Detectors, Grader)
-round2-ingest: ## detect schema drift, normalize & merge Jan 2017 (60,196 rows + 5,585 closed cases) into DuckDB + delta TSVs
+round2-ingest: ## detect schema drift, then the January delta build (make delta) and the data-quality scan
 	$(PY) -m schema_engine.cli drift
-	$(PY) -m schema_engine.cli ingest
+	$(MAKE) --no-print-directory delta
 	$(PY) -m schema_engine.cli dq
 
 round2-backtest: ## backtest all undocumented typology detectors (D1..D4 + R0) over 5,585 closed cases
 	$(PY) -m engine.backtest_detectors
 
-round2-grade: ## run the official Round 2 grader (data/raw/round2/grade.py) over cases/HHF-*.json
-	$(PY) data/raw/round2/grade.py --teams-dir . --case-pack data/raw/round2/case_pack_final.csv --transactions data/raw/round2/transactions_2017q1.csv --out engine/out/round2_grade_report.json
+round2-grade: ## run the organisers' grader (data/raw/round2/grade.py, from the dataset folder) over cases/HHF-*.json as one team
+	@test -f data/raw/round2/grade.py || { echo "data/raw/round2/grade.py missing: copy grader/grade.py from the Round 2 dataset folder"; exit 2; }
+	rm -rf data/out/grade_teams && mkdir -p data/out/grade_teams/ours/cases && cp cases/HHF-*.json data/out/grade_teams/ours/cases/
+	$(PY) data/raw/round2/grade.py --teams-dir data/out/grade_teams --case-pack data/raw/round2/case_pack_final.csv --transactions data/raw/round2/transactions_2017q1.csv --out engine/out/round2_grade_report.json
 
-load-round2: ## upload the Jan 2017 delta TSVs (data/out/round2_delta/) to the live TigerGraph workspace
-	$(PY) graph/load_round2_delta.py
+load-round2: load-delta ## alias of load-delta (graph/load_round2_delta.py is retired: it skipped tables and reported success on missing files)
 
 ##@ Live re-run (docs/RERUN.md)
 clear-writebacks: ## list the agent's own AgentCase / CaseEvent / Approval write-backs for HHG-001..020 (dry run); APPLY=1 deletes exactly those
@@ -334,6 +377,9 @@ mock-run: ## runs/mock/ from cases/*.json (or the sample HHG-014) so the UI work
 	$(PY) -m ops.make_mock_run --answers cases --run-id mock
 
 demo-warm: awake keepalive ## wake the workspace and keep it awake for the recording
+
+proof-snapshot: ## measured proof sections for the read-only UI image -> engine/out/proof_snapshot.json
+	RUN_MODE=mock $(PY) -m ops.proof_snapshot --out engine/out/proof_snapshot.json
 
 ##@ Quality
 test: ## unit tests (no network; data-backed tests skip when data/hhgoa.duckdb / the facts DB are absent)

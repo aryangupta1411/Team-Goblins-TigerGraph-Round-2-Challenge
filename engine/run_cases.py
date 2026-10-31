@@ -22,7 +22,7 @@ import time
 from collections import Counter
 from pathlib import Path
 
-from engine import answer_writer, config, policy, scorecard, simulator, stop, validator, voi
+from engine import answer_writer, case_card, config, policy, scorecard, simulator, stop, validator, voi
 from engine import status as status_rule
 from engine.facts_duckdb import DuckFacts
 from engine.types import CaseContext
@@ -46,6 +46,7 @@ def contexts(fx: DuckFacts, only: list[str] | None = None, table: str = "cp") ->
 def run_one(ctx: CaseContext, fx: DuckFacts, facts: dict | None = None) -> dict:
     """Deterministic decision for one case. Returns the answer dict plus engine internals for the sheet."""
     t0 = time.time()
+    ctx, card_note = case_card.resolve_with_duckdb(ctx, fx)
     facts = facts or fx.collect(ctx)
     n_calls = len(facts)
     sc_pre = scorecard.compute(ctx, facts, [])
@@ -94,6 +95,8 @@ def run_one(ctx: CaseContext, fx: DuckFacts, facts: dict | None = None) -> dict:
     summary = answer_writer.draft_summary(ctx, sc_pre, sc_post, initial, final, request, st)
     # evidence for the file: the engine ledger minus neutral notes beyond the first few, plus the assumed reply
     evid = [e for e in sc_post.evidence if e.direction != "neutral"] + [e for e in sc_post.evidence if e.direction == "neutral"][:3]
+    if card_note is not None:
+        evid.append(card_note)
     closing = {"summary": summary, "stop_reason": reason, "status": st, "similar_prior_cases_used": sc_post.similar_prior_cases,
                "written_to_graph": False,
                "what_changed": answer_writer.what_changed_text(initial, final, request, sc_pre, sc_post)}

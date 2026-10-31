@@ -45,7 +45,7 @@ CREATE OR REPLACE QUERY case_subgraph(VERTEX<Card> c, DATETIME as_of, INT hours)
       ACCUM @@edges += EdgeRow(t.id, r.id, "BILLED_IN")
       POST-ACCUM @@nodes += NodeRow(r.id, "BillingRegion", r.id);
   P = SELECT p FROM (s:S)-[:REV_ON_CARD]->(p:ClosedCase)
-      WHERE p.opened_at <= as_of
+      WHERE p.opened_at <= as_of AND p.closed_at <= as_of
       POST-ACCUM @@nodes += NodeRow(p.id, "ClosedCase", p.pattern + " " + p.outcome),
                  @@edges += EdgeRow(p.id, @@cid, "ON_CARD");
 

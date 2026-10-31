@@ -8,8 +8,8 @@ Implements two tightly linked capabilities:
        - The **minimum card-block set** and **choke-point rule** (device / recipient email / proxy+UA signature)
          that stops 100% of active wave exposure.
        - Per-card exposure stopped (with exact attested `TransactionID`s and dollar amounts).
-       - **Legitimate-customer impact analysis:** compares targeted wave-member blocking (**0 innocent customers
-         touched**) against naive broad blocking (e.g. blocking the entire billing region or email provider, naming
+       - **Legitimate-customer impact analysis:** compares targeted wave-member blocking (customers previously
+         cleared as legitimate are named) against naive broad blocking (e.g. blocking the entire billing region or email provider, naming
          the exact legitimate customer IDs that would have been harmed).
        - Time-ordered frames for the **Ring Replay slider (Challenge 5)**.
 
@@ -27,6 +27,7 @@ from typing import Any
 
 import duckdb
 
+from engine.detectors import SCAN_SINCE, WAVE_SQL, scan_card
 from schema_engine.attestation import attest
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -71,108 +72,90 @@ class ContainmentPlan:
         return asdict(self)
 
 
+_WAVE_COLS = "SELECT t.TransactionID::VARCHAR AS id, t.card_id, t.customer_id, t.ts::VARCHAR AS ts, t.amt, t.addr1, t.p_email, t.r_email, t.device_id FROM txc t"
+
+
+def _wave_sql(detector_id: str) -> str:
+    # the wave is exactly what the detector matches (engine.detectors.WAVE_SQL), with the columns the plan needs
+    return f"{_WAVE_COLS} WHERE t.id IN (SELECT id FROM ({WAVE_SQL[detector_id].format(since=SCAN_SINCE[detector_id])})) ORDER BY t.ts, t.TransactionID"
+
+
 WAVE_DEFINITIONS: dict[str, dict[str, str]] = {
     "D1_MOBILE_ANON_PROXY_WAVE": {
-        "name": "Spoofed-Mobile Anonymous-Proxy Wave (HHF-001 / HHF-002)",
+        "name": "Spoofed-Mobile Anonymous-Proxy Wave",
         "chokepoint": "ProductCD='C' AND DeviceType='mobile' AND device_new='New' AND proxy='IP_PROXY:ANONYMOUS' AND amt >= 200",
-        "sql": """
-            SELECT TransactionID::VARCHAR AS id, card_id, customer_id, ts::VARCHAR AS ts, amt, addr1, p_email, r_email, device_id
-            FROM txc
-            WHERE product_cd = 'C' AND channel = 'online' AND device_type = 'mobile'
-              AND device_new = 'New' AND proxy = 'IP_PROXY:ANONYMOUS' AND amt >= 200.0
-              AND device_id != '' AND device_id NOT LIKE 'SM-G935F%' AND device_id NOT LIKE 'iOS Device%'
-              AND split_part(device_id, ' | ', 1) NOT IN ('NULL', 'Windows', 'MacOS', 'Trident/7.0', 'rv:11.0', 'rv:52.0', 'Blade V6 Plus Build/MRA58K')
-            ORDER BY ts, TransactionID
-        """,
-        "broad_sql": "SELECT DISTINCT customer_id FROM txc WHERE proxy = 'IP_PROXY:ANONYMOUS' AND TransactionID >= 3600000 ORDER BY 1",
-        "broad_desc": "Naive broad rule: blocking all cards using IP_PROXY:ANONYMOUS in Jan 2017 (would falsely block legitimate privacy-proxy users such as C08842 in HHF-017 and C02753 in HHF-018)",
+        "sql": _wave_sql("D1_MOBILE_ANON_PROXY_WAVE"),
+        "broad_sql": "SELECT DISTINCT customer_id FROM txc WHERE proxy = 'IP_PROXY:ANONYMOUS' AND ts >= '2017-01-01' ORDER BY 1",
+        "broad_desc": "Naive broad rule: block every card that used IP_PROXY:ANONYMOUS in January 2017",
     },
     "D2_ESCALATING_C_DRAIN": {
-        "name": "Dormant-Wake Doubling Drain $180->$1,800 (HHF-003)",
-        "chokepoint": "ProductCD='C' AND channel='online' AND NOT has_identity AND escalating_ramp_to_1800",
-        "sql": """
-            WITH cand AS (
-                SELECT TransactionID, id, card_id, customer_id, ts::VARCHAR AS ts, amt, addr1, p_email, r_email, device_id
-                FROM txc
-                WHERE product_cd = 'C' AND channel = 'online' AND NOT has_identity AND amt >= 70.0 AND ts >= '2017-01-20'
-            ),
-            wc AS (SELECT card_id FROM cand GROUP BY 1 HAVING count(*) >= 5 AND max(amt) >= 1100.0 AND min(amt) < 300.0)
-            SELECT c.id, c.card_id, c.customer_id, c.ts, c.amt, c.addr1, c.p_email, c.r_email, c.device_id
-            FROM cand c JOIN wc USING (card_id)
-            ORDER BY c.ts, c.TransactionID
-        """,
+        "name": "Dormant-Wake Escalating Drain",
+        "chokepoint": "ProductCD='C' AND channel='online' AND no identity record, after 21+ quiet days, climbing past $1,100",
+        "sql": _wave_sql("D2_ESCALATING_C_DRAIN"),
         "broad_sql": "SELECT DISTINCT customer_id FROM txc WHERE product_cd = 'C' AND NOT has_identity AND amt >= 500.0 AND ts >= '2017-01-01' ORDER BY 1",
-        "broad_desc": "Naive broad rule: blocking all un-identitied online ProductCD='C' purchases >= $500",
+        "broad_desc": "Naive broad rule: block every card with an online ProductCD='C' purchase of $500+ and no identity record in January",
     },
     "D3_MICRO_CHARGE_SKIMMING": {
-        "name": "Sub-Threshold Micro-Charge Skimming Ring (HHF-004 / HHF-005)",
-        "chokepoint": "ProductCD='C' AND channel='online' AND amt BETWEEN $1.00 AND $6.00 (>= 4 charges across >= 3 days)",
-        "sql": """
-            WITH micro AS (
-                SELECT TransactionID, id, card_id, customer_id, ts::VARCHAR AS ts, amt, addr1, p_email, r_email, device_id
-                FROM txc
-                WHERE product_cd = 'C' AND channel = 'online' AND amt BETWEEN 1.00 AND 6.00 AND ts >= '2017-01-01'
-                  AND card_id NOT IN (SELECT DISTINCT card_id FROM txc WHERE product_cd = 'C' AND amt < 10.0 AND ts < '2017-01-01')
-            ),
-            wc AS (
-                SELECT card_id FROM micro GROUP BY 1
-                HAVING count(*) BETWEEN 4 AND 6 AND count(DISTINCT ts::DATE) >= 4
-                   AND (count(*) FILTER (WHERE addr1 != '') >= 3 OR max(device_id) LIKE 'SM-A520F%' OR max(device_id) LIKE '%edge 15.0%')
-            )
-            SELECT m.id, m.card_id, m.customer_id, m.ts, m.amt, m.addr1, m.p_email, m.r_email, m.device_id
-            FROM micro m JOIN wc USING (card_id)
-            ORDER BY m.ts, m.TransactionID
-        """,
+        "name": "Sub-Threshold Micro-Charge Skimming Ring",
+        "chokepoint": "ProductCD='C' AND channel='online' AND amt BETWEEN $1.00 AND $6.00 (4-6 charges on 4+ days)",
+        "sql": _wave_sql("D3_MICRO_CHARGE_SKIMMING"),
         "broad_sql": "SELECT DISTINCT customer_id FROM txc WHERE product_cd = 'C' AND channel = 'online' AND amt < 10.0 AND ts >= '2017-01-01' ORDER BY 1",
-        "broad_desc": "Naive broad rule: blocking all cards with online charges under $10 (would falsely block legitimate weekly recurring subscribers such as C12223 in HHF-012, C12030, and C04105)",
+        "broad_desc": "Naive broad rule: block every card with an online charge under $10 in January",
     },
     "D4_RECIPIENT_EMAIL_MULE": {
-        "name": "Shared Recipient Email Mule sc.rr.com (HHF-006 / HHF-013)",
-        "chokepoint": "R_emaildomain = 'sc.rr.com' AND ProductCD = 'C' AND channel = 'online'",
-        "sql": """
-            SELECT TransactionID::VARCHAR AS id, card_id, customer_id, ts::VARCHAR AS ts, amt, addr1, p_email, r_email, device_id
-            FROM txc
-            WHERE product_cd = 'C' AND channel = 'online' AND r_email = 'sc.rr.com' AND ts >= '2017-01-01'
-            ORDER BY ts, TransactionID
-        """,
-        "broad_sql": "SELECT DISTINCT customer_id FROM txc WHERE (p_email = 'sc.rr.com' OR r_email = 'sc.rr.com') ORDER BY 1",
-        "broad_desc": "Naive broad rule: blocking every customer who ever used sc.rr.com as purchaser or recipient email across all products",
+        "name": "Shared Recipient Email Mule",
+        "chokepoint": "R_emaildomain = '{r_email}' AND ProductCD = 'C' AND channel = 'online'",
+        "sql": _WAVE_COLS + " WHERE t.product_cd = 'C' AND t.channel = 'online' AND t.r_email = '{r_email}' AND t.ts > TIMESTAMP '{as_of}' - INTERVAL 30 DAY ORDER BY t.ts, t.TransactionID",
+        "broad_sql": "SELECT DISTINCT customer_id FROM txc WHERE (p_email = '{r_email}' OR r_email = '{r_email}') ORDER BY 1",
+        "broad_desc": "Naive broad rule: block every customer who ever used {r_email} as purchaser or recipient email",
     },
     "R0_SM_G935F_DEVICE_RING": {
         "name": "Round-1 Anonymous-Proxy Device Ring (SM-G935F, HHG-014)",
         "chokepoint": "DeviceProfile = 'SM-G935F Build/NRD90M | Android 7.0 | chrome 62.0 for android | 1920x1080'",
-        "sql": """
-            SELECT TransactionID::VARCHAR AS id, card_id, customer_id, ts::VARCHAR AS ts, amt, addr1, p_email, r_email, device_id
-            FROM txc
-            WHERE device_id = 'SM-G935F Build/NRD90M | Android 7.0 | chrome 62.0 for android | 1920x1080'
-            ORDER BY ts, TransactionID
-        """,
-        "broad_sql": "SELECT DISTINCT customer_id FROM txc WHERE device_id LIKE '%Android 7.0%' LIMIT 80",
-        "broad_desc": "Naive broad rule: blocking all Android 7.0 mobile Chrome users",
+        "sql": _WAVE_COLS + " WHERE t.device_id = 'SM-G935F Build/NRD90M | Android 7.0 | chrome 62.0 for android | 1920x1080' ORDER BY t.ts, t.TransactionID",
+        "broad_sql": "SELECT DISTINCT customer_id FROM txc WHERE device_id LIKE '%Android 7.0%' ORDER BY 1",
+        "broad_desc": "Naive broad rule: block every Android 7.0 mobile Chrome user",
     },
 }
 
 
-def wave_for_case(case_id: str) -> str:
-    return {
-        "HHF-001": "D1_MOBILE_ANON_PROXY_WAVE",
-        "HHF-002": "D1_MOBILE_ANON_PROXY_WAVE",
-        "HHF-003": "D2_ESCALATING_C_DRAIN",
-        "HHF-004": "D3_MICRO_CHARGE_SKIMMING",
-        "HHF-005": "D3_MICRO_CHARGE_SKIMMING",
-        "HHF-006": "D4_RECIPIENT_EMAIL_MULE",
-        "HHF-013": "D4_RECIPIENT_EMAIL_MULE",
-        "HHG-014": "R0_SM_G935F_DEVICE_RING",
-    }.get(case_id, "D1_MOBILE_ANON_PROXY_WAVE")
+def wave_for_case(case_id: str, db_path: str | Path = ROOT / "data" / "hhgoa_engine.duckdb") -> tuple[str | None, dict[str, str]]:
+    """The wave a case belongs to, found by running the detectors on it (never a hand-written map): (detector_id, params)."""
+    con = duckdb.connect(str(db_path), read_only=True)
+    try:
+        row = con.execute("SELECT flagged_txn_id, opened_at::VARCHAR FROM cp_all WHERE case_id = ?", [case_id]).fetchone()
+        if not row:
+            return None, {}
+        txn, opened = str(row[0]), row[1]
+        card = con.execute("SELECT card_id, device_id FROM txc WHERE TransactionID = ?", [int(txn)]).fetchone()
+        if not card:
+            return None, {}
+        if card[1] == "SM-G935F Build/NRD90M | Android 7.0 | chrome 62.0 for android | 1920x1080":
+            return "R0_SM_G935F_DEVICE_RING", {"as_of": opened}
+        hit = scan_card(con, card[0], txn, opened)
+        if hit is None:
+            return None, {}
+        return hit.detector_id, {"as_of": opened, "r_email": str(hit.attestation.get("how", {}).get("params", {}).get("r_email", ""))}
+    finally:
+        con.close()
 
 
 def build_containment_plan(
-    wave_id: str = "D1_MOBILE_ANON_PROXY_WAVE",
-    as_of: str = "2017-01-19 23:18:58",
+    wave_id: str,
+    as_of: str,
     db_path: str | Path = ROOT / "data" / "hhgoa_engine.duckdb",
+    r_email: str = "",
 ) -> ContainmentPlan:
     """Compute the attested ContainmentPlan and Ring Replay frames for `wave_id` at `as_of`."""
-    spec = WAVE_DEFINITIONS.get(wave_id, WAVE_DEFINITIONS["D1_MOBILE_ANON_PROXY_WAVE"])
+    if wave_id not in WAVE_DEFINITIONS:
+        raise KeyError(f"unknown wave {wave_id!r}")
+    if wave_id == "D4_RECIPIENT_EMAIL_MULE" and not r_email:
+        raise ValueError("the recipient-email wave needs the domain the detector found (r_email)")
+    fmt = {"r_email": r_email.replace("'", ""), "as_of": as_of.replace("'", "")}
+    spec = {k: v.format(**fmt) if k in ("sql", "broad_sql", "broad_desc", "chokepoint") and wave_id == "D4_RECIPIENT_EMAIL_MULE" else v
+            for k, v in WAVE_DEFINITIONS[wave_id].items()}
+    if wave_id == "D4_RECIPIENT_EMAIL_MULE":
+        spec["name"] = f"{spec['name']} ({r_email})"
     con = duckdb.connect(str(db_path), read_only=True)
     rows = con.execute(spec["sql"]).fetchall()
 
@@ -190,6 +173,16 @@ def build_containment_plan(
     wave_custs = sorted({str(v[0][2]) for v in by_card.values()})
     broad_custs = [str(r[0]) for r in con.execute(spec["broad_sql"]).fetchall()]
     innocent_broad = sorted(set(broad_custs) - set(wave_custs))
+    # measured, not assumed: customers whose wave transactions sit in a case the bank itself cleared as legitimate
+    wave_txn_ids = sorted({str(r[0]) for v in by_card.values() for r in v})
+    cleared_custs: set[str] = set()
+    if wave_txn_ids:
+        con.execute("CREATE OR REPLACE TEMP TABLE _wave(id VARCHAR)")
+        con.executemany("INSERT INTO _wave VALUES (?)", [[i] for i in wave_txn_ids])
+        cleared_custs = {str(r[0]) for r in con.execute(
+            "SELECT DISTINCT c.customer_id FROM cc c JOIN cc_txn x USING (case_id) JOIN txc t USING (TransactionID) JOIN _wave w ON w.id = t.TransactionID::VARCHAR WHERE c.outcome = 'cleared'"
+        ).fetchall()}
+    touched_targeted = sorted(set(wave_custs) & cleared_custs)
 
     per_card: list[dict[str, Any]] = []
     tot_exp = 0.0
@@ -222,7 +215,7 @@ def build_containment_plan(
                     txn_ids=tids,
                     recommended_action=act,
                     approval_route=rt,
-                    is_legitimate_customer_harmed=False,
+                    is_legitimate_customer_harmed=str(c_rows[0][2]) in cleared_custs,
                 )
             )
         )
@@ -260,8 +253,8 @@ def build_containment_plan(
     claim = attest(
         what=(
             f"Containment plan for {spec['name']} targets {len(wave_cards)} cards ({len(all_tx_ids)} attested transactions "
-            f"totaling ${tot_exp:,.2f}; ${pre_exp:,.2f} pre-alert + ${post_exp:,.2f} post-alert exposure cut) with 0 legitimate "
-            f"customers harmed, whereas a broad rule would wrongly impact {len(innocent_broad)} innocent customers."
+            f"totaling ${tot_exp:,.2f}; ${pre_exp:,.2f} pre-alert + ${post_exp:,.2f} post-alert exposure cut); {len(touched_targeted)} of its "
+            f"customers have wave transactions the bank cleared as legitimate, while the broad rule would also act on {len(innocent_broad)} customers outside the wave."
         ),
         evidence=all_tx_ids[:25] + wave_cards,
         query_or_rule=f"engine.containment.build_containment_plan({wave_id})",
@@ -281,10 +274,10 @@ def build_containment_plan(
         exposure_stopped_by_plan_usd=tot_exp,
         exposure_already_settled_pre_asof_usd=pre_exp,
         exposure_prevented_post_asof_usd=post_exp,
-        legitimate_customers_touched_by_targeted_plan=[],
-        legitimate_customers_touched_if_broad_rule_used=innocent_broad[:30],
+        legitimate_customers_touched_by_targeted_plan=touched_targeted,
+        legitimate_customers_touched_if_broad_rule_used=innocent_broad,
         broad_rule_description=spec["broad_desc"],
-        net_utility_score_usd=tot_exp,
+        net_utility_score_usd=tot_exp,  # exposure stopped; the customers above are the penalty, named rather than priced
         per_card_plan=per_card,
         replay_frames=frames,
         attestation=claim.to_dict(),

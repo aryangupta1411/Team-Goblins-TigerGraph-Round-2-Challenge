@@ -27,7 +27,6 @@ thinking blocks) and every tool_result is appended and never edited.
 
 from __future__ import annotations
 
-import csv
 import json
 import re
 from dataclasses import asdict, is_dataclass
@@ -76,6 +75,18 @@ def _resolve_validator():
         except Exception:
             continue
     return None, ""
+
+
+def _rows_first(df) -> dict:
+    return df.iloc[0].to_dict() if df is not None and len(df) else {}
+
+
+class AnswerInvariantError(RuntimeError):
+    """The assembled answer contradicts itself (verdict vs actions vs SAR): stop, never write it."""
+
+
+class CaseDataMissing(RuntimeError):
+    """The data a case rests on is absent or disagrees between sources: stop, never answer from partial data."""
 
 
 def _facts_db():
@@ -204,10 +215,17 @@ class PhaseMachine:
     # ------------------------------------------------------------------ helpers
     async def _parse(self, phase: str, schema: type, user_text: str, model: str | None = None):
         """One structured phase, on whichever backend is configured (agent/llm.py)."""
-        return await self.llm.parse(
+        from agent.security import repair_model_text
+
+        parsed = await self.llm.parse(
             phase=phase, schema=schema, user_text=user_text, history=self.history,
             system=self.system, tool_defs=self.tool_defs, model=model or self.s.model, log=self.log,
         )
+        if not hasattr(parsed, "model_dump"):
+            return parsed
+        dumped = parsed.model_dump()
+        repaired = repair_model_text(dumped)
+        return parsed if repaired == dumped else schema.model_validate(repaired)
 
     def _known_ids(self) -> set[str]:
         ids: set[str] = set()
@@ -279,7 +297,21 @@ class PhaseMachine:
         F: dict[str, dict] = {}
         F["case_context"] = await harness_query(self.session, self.tctx, "case_context", {"t": {"id": ctx.flagged_txn_id}, "as_of": ctx.opened_at})
         txn = F["case_context"].get("txn", {}) or {}
+        if str(txn.get("id", "")) != str(ctx.flagged_txn_id):
+            # fail closed: no transaction, no investigation (an empty reply is never evidence of innocence)
+            raise CaseDataMissing(f"flagged transaction {ctx.flagged_txn_id} is not in the graph; no answer written")
         flagged_ts = str(txn.get("ts") or ctx.opened_at)
+        from engine.case_card import resolve as resolve_case_card
+
+        txn_card = str((F["case_context"].get("card", {}) or {}).get("id") or txn.get("card_id") or "")
+        ctx2, card_note = resolve_case_card(ctx, txn_card)
+        if card_note is not None:
+            # the pack names a different card than the transaction record: investigate the transaction's card (Challenge 11)
+            self.log.note("case card differs from the transaction record; investigating the transaction's card", pack_card=ctx.card_id, txn_card=ctx2.card_id)
+            self.events.append({"kind": "data_quality", "payload": {"claim": card_note.claim, "entity_ids": card_note.entity_ids}})
+            self.tctx.ledger.append(card_note)
+            ctx = ctx2
+            self.ctx = ctx2
         F["card_profile"] = await harness_query(self.session, self.tctx, "card_profile", {"c": {"id": ctx.card_id}, "as_of": ctx.opened_at})
         # M5: the same window DuckFacts.collect uses (flagged_ts − 72 h → opened_at), not opened_at − 72 h
         F["card_window"] = await harness_query(self.session, self.tctx, "card_window", {"c": {"id": ctx.card_id}, "from_ts": _ts_add(flagged_ts, hours=-72), "to_ts": ctx.opened_at, "max_rows": 60})
@@ -287,6 +319,7 @@ class PhaseMachine:
         from agent.security import sanitize_trigger_text
 
         san = sanitize_trigger_text(ctx.case_id, ctx.trigger_text, db_txn=txn)
+        self.trigger_clean = san.clean_text
         if san.attack_detected:
             self.events.append({"kind": "security_alert", "payload": san.to_dict()})
             self.log.note("security alert: prompt injection / spoofing stripped at intake", codes=[f.code for f in san.findings])
@@ -399,29 +432,22 @@ class PhaseMachine:
         except Exception as e:
             self.post_open = {}
             self.log.note("post_open_activity failed", error=str(e)[:300])
-        if str(ctx.flagged_txn_id).isdigit() and int(ctx.flagged_txn_id) >= 3600000:
-            try:
-                db = _facts_db()
-                if db is not None:
-                    from engine.detectors import scan_card
-                    from engine.facts_duckdb import _rows
+        if ctx.opened_at >= "2017-01-01":
+            # the January cross-card typologies (D1-D4) run in the graph: the waves share no device, so the scan is the
+            # installed typology_scan query, not a local snapshot. A scan that cannot run fails the case (fail closed):
+            # scoring a January case without it would silently drop the evidence that decides the verdict.
+            from engine.detectors import TYPOLOGY_DATA_START, episode_rows, hit_from_scan
 
-                    hit = scan_card(db.con, ctx.card_id, str(ctx.flagged_txn_id), as_of)
-                    if hit is not None:
-                        F["round2_detector"] = hit.to_dict()
-                        ep_ints = [int(i) for i in hit.episode_txn_ids if str(i).isdigit()]
-                        if ep_ints:
-                            df_ep = db.q(
-                                f"SELECT id, ts, amt, product_cd, channel, addr1, p_email, r_email, device_id, device_new, proxy, cms_p FROM txc WHERE TransactionID IN ({','.join('?' * len(ep_ints))}) ORDER BY ts, TransactionID",
-                                *ep_ints,
-                            )
-                            F["round2_detector_rows"] = [{**r, "sig_match": True} for r in _rows(df_ep)]
-                        for cid_conn in hit.connected_card_ids:
-                            self.tctx.facts_all.setdefault("round2_detector", []).append({"card_id": cid_conn})
-                        for tid_ep in hit.episode_txn_ids:
-                            self.tctx.facts_all.setdefault("round2_detector", []).append({"id": tid_ep})
+            try:
+                scan = await harness_query(self.session, self.tctx, "typology_scan", {"c": c, "t": t, "as_of": as_of, "data_start": TYPOLOGY_DATA_START})
+            except GraphUnavailable:
+                raise
             except Exception as e:
-                self.log.note("round2_detector scan failed", error=str(e)[:200])
+                raise CaseDataMissing(f"typology_scan failed for {ctx.case_id}: {str(e)[:200]}; no answer written") from e
+            hit = hit_from_scan(scan, ctx.card_id, str(ctx.flagged_txn_id), as_of)
+            if hit is not None:
+                F["round2_detector"] = hit.to_dict()
+                F["round2_detector_rows"] = episode_rows(scan, hit)
 
     # ------------------------------------------------------------------ P3
     async def p3_scorecard(self):
@@ -434,8 +460,9 @@ class PhaseMachine:
     async def p4_assess(self, sc: Any) -> tuple[Any, list[dict], list[str]]:
         text = _fill(self.prompts["assess"], scorecard_json=json.dumps(self._sc_json(sc), sort_keys=True, default=str))
         a: Assessment = await self._parse("P4", Assessment, text)
-        lo, hi = max(0.0, sc.p_engine - 0.10), min(1.0, sc.p_engine + 0.10)
-        p = min(max(float(a.fraud_probability), lo), hi)
+        from agent.security import clamp_to_engine
+
+        p = clamp_to_engine(a.fraud_probability, sc.p_engine)
         if p != a.fraud_probability:
             self.log.note("fraud_probability clamped to p_engine ± 0.10", llm=a.fraud_probability, clamped=p)
         if p != sc.p_engine:
@@ -464,7 +491,7 @@ class PhaseMachine:
             evidence.insert(
                 0,
                 {
-                    "claim": f"Customer denied transaction {self.ctx.flagged_txn_id} in the alert message: '{self.ctx.trigger_text[:120]}'.",
+                    "claim": f"Customer denied transaction {self.ctx.flagged_txn_id} in the alert message: '{getattr(self, 'trigger_clean', '')[:120]}'.",
                     "source": "customer",
                     "ref": "trigger",
                     "entity_ids": [self.ctx.flagged_txn_id],
@@ -934,13 +961,12 @@ class PhaseMachine:
         run) and the agent case of every exam case opened at or after this one (some query rows, e.g.
         device_neighbors.agent_cases, carry no opened_at to filter on)."""
         out = {f"AC-{ctx.case_id}"}
-        try:
-            with self.s.case_pack_csv.open(encoding="utf-8", newline="") as fh:
-                for r in csv.DictReader(fh):
-                    if r.get("case_id") and str(r.get("opened_at", "")) >= ctx.opened_at:
-                        out.add(f"AC-{r['case_id']}")
-        except OSError:
-            pass
+        from agent.bench import load_case_pack
+
+        for c in load_case_pack(self.s.case_pack_csv):
+            if str(c.opened_at) >= ctx.opened_at:
+                out.add(f"AC-{c.case_id}")
+        self.log.note("case memory excludes agent cases opened at or after this one", n=len(out))
         return out
 
     # ------------------------------------------------------------------ run
@@ -1055,14 +1081,27 @@ class PhaseMachine:
         try:
             answer = build_answer(ctx, sc, sc_post or sc, initial, final, ev_objs, requests, sar, closing_d, self.log.totals(), self.graph_case_id)
             builder = BUILDER_SOURCE
-        except Exception as e:  # the engine builder asserts invariants; keep the file, log the reason
+        except AssertionError as e:
+            # the builder's invariants (e.g. a fraud verdict closed as no-fraud) failed: fail closed, never write the contradiction
+            self.log.note(f"{BUILDER_SOURCE}.build rejected the answer; no answer written", error=str(e)[:400])
+            raise AnswerInvariantError(f"answer invariants failed for {ctx.case_id}: {str(e)[:300]}") from e
+        except Exception as e:  # the builder itself is unavailable or broke: fall back, the invariants are re-checked below
             self.log.note(f"{BUILDER_SOURCE}.build failed; using agent.answer_fallback", error=str(e)[:400])
             answer = build_answer_fallback(ctx, sc, sc_post, initial, final, ev_objs, requests, sar, closing_d, self.log.totals(), self.graph_case_id)
             builder = "agent.answer_fallback"
         answer["case"]["written_to_graph"] = written
         answer["case"]["graph_case_id"] = self.graph_case_id if written else ""
+        if not written and self.graph_case_id:
+            # the SAR was drafted (P8) before the write-back failed (P10): cite the case id, never a graph record that does not exist
+            for d in (answer.get("sar") or {}, sar):
+                if d.get("narrative"):
+                    d["narrative"] = d["narrative"].replace(self.graph_case_id, ctx.case_id)
+            self.log.note("SAR narrative cites the case id instead of the graph case id: the write-back did not complete")
         answer["next_best_actions"]["what_changed"] = what_changed
         problems = check_invariants(answer)
+        if problems and builder == "agent.answer_fallback":
+            self.log.note("fallback answer breaks the invariants; no answer written", problems=problems[:10])
+            raise AnswerInvariantError(f"answer invariants failed for {ctx.case_id}: {'; '.join(problems[:3])}")
         if validate_answer is not None:
             try:
                 db = _facts_db()

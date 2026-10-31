@@ -60,6 +60,29 @@ CLEARED_BODIES = {
     "Cardholder confirmed the purchase. Amount unusual for this customer but consistent with their stated intent.": ("cleared_amount", "customer_confirmed_amount"),
 }
 
+# The final-round history (closed_cases_history.csv, CC-5566..CC-5585) appends the 20 Round 1 exam cases with their real
+# outcomes, written in a NEW analyst-review voice. Two templates, both distinct from the six above on purpose: an analyst
+# review is not a customer confirmation, so these never feed the cleared-precedent adjustment that keys on template_id
+# (engine D9). The reason sentence of a cleared review is kept as note_evidence_type so retrieval can still use it.
+RE_REVIEW_FRAUD = re.compile(
+    r"^Case (HHG-\d{3}) from the November-December review\. Confirmed fraud\. (\d+) transaction\(s\) on card (C\d{5}-K\d) form one episode\.$"
+)
+RE_REVIEW_CLEARED = re.compile(
+    r"^Case (HHG-\d{3}) from the November-December review\. Reviewed and cleared; the activity matched the cardholder\. (?P<body>.+)$"
+)
+REVIEW_CLEARED_BODIES = (
+    (re.compile(r"^Several card-present purchases in the same billing region over consecutive days: travel, not a cloned card\.$"),
+     "analyst_review_travel"),
+    (re.compile(r"^Amount \$[\d,]+\.\d{2} is far above the cardholder's average \$[\d,]+\.\d{2}, but product and email match their history\.$"),
+     "analyst_review_amount_fits"),
+    (re.compile(r"^Customer had a closed fraud case earlier this year; this purchase fits their normal pattern\.$"),
+     "analyst_review_prior_case_fits"),
+    (re.compile(r"^Device marked New, but amount and product fit the cardholder\.$"), "analyst_review_new_device_fits"),
+    (re.compile(r"^Late-night purchase; the cardholder has prior late-night activity\.$"), "analyst_review_late_night_fits"),
+    (re.compile(r"^Anonymous proxy on the identity record; the cardholder's other purchases show the same proxy use\.$"),
+     "analyst_review_proxy_fits"),
+)
+
 
 def parse_note(note: str) -> dict:
     """Return template_id, note_device, note_evidence_type for one analyst note (raises on an unknown shape)."""
@@ -82,6 +105,13 @@ def parse_note(note: str) -> dict:
                 "note_evidence_type": "cardholder_report_shared_device"}
     if RE_BURST.match(note):
         return {"template_id": "undoc_burst", "note_device": "", "note_evidence_type": "cardholder_report_threshold_burst"}
+    if RE_REVIEW_FRAUD.match(note):
+        return {"template_id": "reviewed_fraud", "note_device": "", "note_evidence_type": "analyst_review_episode"}
+    m = RE_REVIEW_CLEARED.match(note)
+    if m:
+        for rx, evidence in REVIEW_CLEARED_BODIES:
+            if rx.match(m.group("body")):
+                return {"template_id": "reviewed_cleared", "note_device": "", "note_evidence_type": evidence}
     raise ValueError(f"unrecognised note template: {note[:120]}")
 
 
@@ -89,7 +119,7 @@ def mask(note: str) -> str:
     s = note.strip()
     s = re.sub(r"\$[\d,]+\.\d{2}", "<AMT>", s)
     s = re.sub(r"\bat 0\.\d{2}\b", "at <SCORE>", s)
-    s = re.sub(r"\bCC-\d{4}\b", "<CASE>", s)
+    s = re.sub(r"\b(?:CC-\d{4}|HHG-\d{3})\b", "<CASE>", s)
     s = re.sub(r"\bC\d{5}(-K\d)?\b", "<ID>", s)
     s = re.sub(r"\b\d{4}-\d{2}-\d{2}\b", "<DATE>", s)
     s = re.sub(r"\b\d+ (transaction\(s\)|online purchase\(s\))", r"<N> \1", s)
@@ -102,6 +132,15 @@ def embed_text(pattern: str, outcome: str, note_device: str, note_region: str, n
 
 
 def build(con: duckdb.DuckDBPyConnection) -> dict:
+    """parse() plus the printed report against the Round 1 template counts."""
+    rep = parse(con)
+    render_report(rep)
+    return rep
+
+
+def parse(con: duckdb.DuckDBPyConnection) -> dict:
+    """Create closed_case_parsed / closed_case_txn / closed_case_conn from `cc`, `pairs`, `txc` and `cardmap`; print nothing.
+    Raises ValueError on a note whose template is not one of the known ones (fail closed: no guessed attributes)."""
     con.execute("PRAGMA threads=8")
     rows = con.execute("SELECT case_id, outcome, pattern, analyst_notes FROM cc ORDER BY case_id").fetchall()
     # note_region: the most frequent addr1 among the case's in-person transactions ('' when none)
@@ -151,7 +190,6 @@ def build(con: duckdb.DuckDBPyConnection) -> dict:
         "with_region": con.execute("SELECT count(*) FROM closed_case_parsed WHERE note_region <> ''").fetchone()[0],
         "sample": con.execute("SELECT id, embed_text FROM closed_case_parsed WHERE id IN ('CC-0001','CC-0003','CC-2649','CC-3748','CC-4160') ORDER BY id").fetchall(),
     }
-    render_report(rep)
     return rep
 
 

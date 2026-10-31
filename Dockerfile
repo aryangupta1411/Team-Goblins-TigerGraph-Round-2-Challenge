@@ -1,7 +1,7 @@
 # The Streamlit analyst dashboard (ui/) as a container, for Railway or any other host. Railway builds
 # this file automatically; see "Deploy on Railway" in README.md.
 #
-# The image holds the UI, the answer files, the canonical runs' traces (runs/${CANONICAL_RUN}, default r2-final, for
+# The image holds the UI, the answer files, the canonical runs' traces (runs/${CANONICAL_RUN}, default hhf-final, for
 # the Final Round; runs/live-final-2 for Round 1), the engine's saved detector backtest and containment summary, and the
 # measured proof snapshot (engine/out/proof_snapshot.json, from `make proof-snapshot`) that stands in for the engine
 # sections the image cannot compute. Besides ui/ it ships two stdlib-only modules: agent/security.py (the intake
@@ -12,7 +12,7 @@ FROM python:3.12-slim
 
 # The Final Round run promoted into cases/. Changing it also needs its !runs/<name>/ line in .dockerignore and its
 # watch pattern in railway.json.
-ARG CANONICAL_RUN=r2-final
+ARG CANONICAL_RUN=hhf-final
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \

@@ -2173,13 +2173,17 @@ def inject_css() -> None:
         [data-testid="stMetricValue"],
         [data-testid="stMetricValue"] > div { font-size: 1.75rem !important; font-weight: 700; line-height: 1.2; }
         /* a long measured value wraps onto a second line instead of being cut off with an ellipsis */
-        [data-testid="stMetricValue"] > div { white-space: normal !important; overflow: visible !important; text-overflow: clip !important; overflow-wrap: anywhere; }
+        [data-testid="stMetricValue"] > div,
+        [data-testid="stMetricValue"] p { white-space: normal !important; overflow: visible !important; text-overflow: clip !important; overflow-wrap: anywhere; }
         .st-key-ctxbar { padding: 4px 10px !important; gap: 8px !important; }
         [class*="st-key-untrusted-"] { border-left: 3px dashed rgba(184, 134, 11, .9) !important; }
         [class*="st-key-decision-fraud"] { border-left: 4px solid rgba(192, 57, 43, .85) !important; }
         [class*="st-key-decision-legitimate"] { border-left: 4px solid rgba(30, 126, 52, .85) !important; }
         [class*="st-key-decision-uncertain"] { border-left: 4px solid rgba(37, 99, 235, .85) !important; }
         [class*="st-key-proof-"] { min-width: 180px; }
+        /* a horizontal strip of proof cards wraps whole cards: the minimum width goes on the flex item that holds each
+           card, otherwise the item shrinks below it and the card overflows into its neighbour */
+        .stHorizontalBlock > div:has([class*="st-key-proof-"]) { flex: 1 1 180px !important; min-width: 180px !important; }
         h1, h2, h3 { letter-spacing: -0.01em; }
         </style>
         """,

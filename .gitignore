@@ -8,8 +8,9 @@ ui/principals.json
 runs/*
 !runs/.gitkeep
 !runs/live-final-2/
-# the Final Round live run (source of cases/HHF-*.json)
+# the Final Round live run (source of cases/HHF-*.json); r2-final is the earlier canonical run
 !runs/r2-final/
+!runs/hhf-final/
 
 # raw data (708 MB) and the full DuckDB; the id-only data/ids.duckdb IS checked in for CI
 data/raw/

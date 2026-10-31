@@ -21,7 +21,7 @@
       "/engine/out/detector_backtest.json",
       "/engine/out/containment_summary.json",
       "/engine/out/proof_snapshot.json",
-      "/runs/r2-final/**"
+      "/runs/hhf-final/**"
     ]
   },
   "deploy": {

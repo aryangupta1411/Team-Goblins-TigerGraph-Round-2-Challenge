@@ -52,7 +52,7 @@ _LEET = str.maketrans({"0": "o", "1": "i", "3": "e", "4": "a", "5": "s", "7": "t
 _LEET_L = str.maketrans({"0": "o", "1": "l", "3": "e", "4": "a", "5": "s", "7": "t", "@": "a", "$": "s"})   # "1" also stands for "l"
 _HEX_ESC = re.compile(r"(?:\\x[0-9a-fA-F]{2}){3,}")
 _URL_ESC = re.compile(r"\w*(?:%[0-9A-Fa-f]{2}\w*){2,}")
-_SPACED = re.compile(r"\b(?:[A-Za-z] ){4,}[A-Za-z]\b")            # "i g n o r e t h e r u l e s"
+_SPACED = re.compile(r"\b(?:[A-Za-z] +){4,}[A-Za-z]\b")           # "i g n o r e t h e r u l e s", any spacing
 
 # Instructions aimed at the model. Each sentence that matches any pattern is removed from the clean text.
 INJECTION_PATTERNS: list[tuple[str, re.Pattern[str], str]] = [
@@ -182,9 +182,12 @@ def _hit_in(sent: str) -> tuple[int, list[tuple[str, str]]]:
         return m.start(), [("INJ_OBFUSCATED", "Obfuscated instruction (URL encoding)")]
     m = _SPACED.search(sent)
     if m:
-        squashed = m.group(0).replace(" ", "").lower()       # word boundaries are gone, so look for the verb + object pair
-        if any(v in squashed for v in ("ignore", "disregard", "override", "forget", "bypass")) and \
-                any(o in squashed for o in ("instruction", "rule", "polic", "guidance", "prompt")):
+        # letters one space apart join into a word, wider gaps separate words: read the result as text and as one string
+        rest = sent[m.end():]
+        words = " ".join(w.replace(" ", "") for w in re.split(r" {2,}", m.group(0)))
+        squashed = m.group(0).replace(" ", "").lower()
+        if _first_hit(words + rest)[1] or (any(v in squashed for v in ("ignore", "disregard", "override", "forget", "bypass"))
+                                            and any(o in squashed + rest.lower() for o in ("instruction", "rule", "polic", "guidance", "prompt"))):
             return m.start(), [("INJ_OBFUSCATED", "Obfuscated instruction (spaced-out letters)")]
     start = 0
     for piece in re.split(r"(?<=[.!?])\s+", sent):             # reversed text, piece by piece

@@ -3,8 +3,12 @@
 One form (backend, target run, cases) opens a confirm dialog that shows the exact command, the environment, the side
 effects and the measured per-case timing, re-checks the run lock and only then calls common.launch_run, which starts
 agent.bench detached, logs to runs/<run>/bench.log and writes runs/<run>/.bench.lock. Progress is read from the run
-folder in a fragment that refreshes every 2 s. Nothing starts at render, live backends are disabled outside live mode,
-and a read-only deployment shows only a disabled message.
+folder in a fragment that refreshes every 2 s: the case states, the live S0 + P0-P10 pipeline strip of the case in
+progress (what a running stage waits on, an LLM call or not, is inferred from the newest phases.jsonl / calls.jsonl row
+and labelled so; the model is the one calls.jsonl records) and the run's call console. Nothing starts at render, live
+backends are disabled outside live mode, and a read-only deployment shows only a disabled message and the replay.
+Below it, 'Replay a recorded case' (ui/replay.py) plays any recorded case's S0 + P0-P10 flow back in step with its calls
+and has a stage inspector: PR #1's live pipeline flow and clickable phase inspector, read from the run folder only.
 """
 from __future__ import annotations
 
@@ -20,9 +24,9 @@ import streamlit as st
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from ui import common  # noqa: E402
+from ui import common, replay  # noqa: E402
 
-md = common.md
+md, badge = common.md, common.badge
 RUN_ID_RE = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
 BACKENDS = ("gemini", "cli", "api", "mock")  # 'google' is an alias of gemini in common.LLM_BACKENDS
 DIALOG_KEY = "console_dialog"   # the pending launch; kept so the dialog survives its own widget reruns
@@ -30,12 +34,16 @@ JOB_KEY = "console_job"         # the run this session launched
 GOTO_KEY = "console_goto"       # (case, run) picked in the progress panel; switched to from the script body
 LOG_LINES = 60
 LOG_TAIL_BYTES = 64 * 1024
+CONSOLE_LINES = 24  # calls.jsonl lines in the pipeline panel's console (newest last)
 
 ctx = common.page_setup("console")
 
 if common.read_only():
-    st.info("Live runs are disabled on this deployment (DEPLOY_READONLY=1). Explain a case from its recorded trace instead.", icon=":material/lock:")
+    st.info("Live runs are disabled on this deployment (DEPLOY_READONLY=1). Replay a recorded case below, or explain it from its case file.",
+            icon=":material/lock:")
     common.page_link("case", "Open the case file", icon=common.PAGE_ICONS["case"], case=ctx.case_id)
+    st.markdown("#### Replay a recorded case")
+    replay.render(ctx.source_id, ctx.case_id)
     st.stop()
 
 _pending_goto = st.session_state.pop(GOTO_KEY, None)
@@ -416,6 +424,73 @@ def _case_row(run_id: str, view: common.CaseView, active: bool) -> dict:
     return row
 
 
+def _focus(views: list[common.CaseView]) -> common.CaseView | None:
+    """The case the pipeline panel follows: the running one written last, else the case written last."""
+    def age(v: common.CaseView) -> float:
+        return v.last_write_age_s if v.last_write_age_s is not None else float("inf")
+
+    running = [v for v in views if v.state == "running"]
+    traced = [v for v in views if v.has_trace]
+    return min(running or traced, key=age) if (running or traced) else None
+
+
+def _run_models(run_id: str, views: list[common.CaseView]) -> tuple[str, str]:
+    """(model, SAR model): the newest LLM row in the run's calls.jsonl files, for P8 SAR drafts and for every other call.
+    While the run's .bench.lock is live only this invocation's rows count (ts at or after the lock's start), so a continued
+    run does not borrow an earlier backend's model; with no live lock every row counts."""
+    since = str((common.run_lock(run_id) or {}).get("started") or "")
+    rows = sorted((c for x in views for c in x.calls if c.get("kind") == "llm" and c.get("model") and str(c.get("ts") or "") >= since),
+                  key=lambda c: str(c.get("ts") or ""))
+    sar = [c for c in rows if str(c.get("phase") or "").split("-")[0] == "P8"]
+    main = [c for c in rows if str(c.get("phase") or "").split("-")[0] != "P8"]
+    return (str(main[-1]["model"]) if main else ""), (str(sar[-1]["model"]) if sar else "")
+
+
+def _pipeline_panel(run_id: str, views: list[common.CaseView]) -> None:
+    """The live S0 + P0-P10 strip of the case in progress and the run's call console, from phases.jsonl and calls.jsonl
+    only. What a running stage waits on (an LLM call or not) is inferred from the newest row and the phase machine's
+    order, and labelled so; the model is the one calls.jsonl records for that kind of call, never assumed."""
+    v = _focus(views)
+    with st.container(border=True, key="console-pipeline"):
+        if v is None:
+            st.markdown("**Pipeline**")
+            st.caption("No case of this run has written a trace yet")
+            return
+        run_model, run_sar_model = _run_models(run_id, views)
+        since = str((common.run_lock(run_id) or {}).get("started") or "")
+        ps = common.pipeline_state(v, run_model=run_model, run_sar_model=run_sar_model, since=since)
+        pos = [x.case_id for x in views].index(v.case_id) + 1
+        st.markdown(f"**Pipeline · {md(v.case_id)}** · case {pos} of {len(views)} · {common.state_badge(v.state)}")
+        common.pipeline_strip(ps["stages"], key="console")
+        at = ps["active"] or ps["stopped_at"]
+        label = next((s["label"] for s in ps["stages"] if s["code"] == at), "")
+        newest = ps["newest"] or {}
+        inflight = ""
+        if ps["active"]:
+            what = f"{at} · {label}: waiting on {ps['waiting'] or 'the next step'}"
+            if ps["llm"]:
+                what += f" · model {ps['model']} (from {ps['model_source']})" if ps["model"] else f" · model {ps['model_source'] or 'not recorded yet'}"
+            tag = badge("LLM call in flight · inferred", "blue") if ps["llm"] else badge("inferred", "gray")
+            st.markdown(f"{tag} " + md(f"{what} · {common.secs(v.last_write_age_s)} since the newest write"))
+            inflight = f"{v.case_id}  …  [{at}] waiting on {ps['waiting'] or 'the next step'}" + (f" ({ps['model']})" if ps["llm"] and ps["model"] else "") + "  (inferred)"
+        elif ps["stopped_at"] and ps["stopped_basis"] == "error":
+            st.markdown(badge("stopped", "orange") + " " + md(f"in {at} · {label}: the case error names it; newest write {common.secs(v.last_write_age_s)} ago"))
+        elif ps["stopped_at"]:
+            st.markdown(badge("stopped", "orange") + " " + badge("inferred", "gray") + " " + md(
+                f"the trace's last row is {newest.get('kind') or '?'} [{newest.get('phase') or '?'}]; next in agent/phase_machine.py's order: "
+                f"{at} · {label}; newest write {common.secs(v.last_write_age_s)} ago"))
+        if newest:
+            st.caption(md(f"Newest row: {newest.get('kind')} {newest.get('name') or ''} [{newest.get('phase')}] at t+{common.secs(newest.get('t'))}. "
+                          "Rows are written when a step completes, so the running or stopped stage is inferred from that row and "
+                          "agent/phase_machine.py's order, unless the case error names the phase."))
+        if common.trace_attempts(v) > 1:
+            st.caption(md(f"{v.case_id}'s folder holds {common.trace_attempts(v)} attempts (a rerun appends to the same files); the strip follows "
+                          "the newest, or for a finished case the attempt that wrote answer.json"))
+        # newest last and never scrolled out of view: the block grows with its (bounded) line count
+        lines = common.run_console(views, limit=CONSOLE_LINES) + ([inflight] if inflight else [])
+        st.code("\n".join(lines) or "(no calls recorded yet)", language=None)
+
+
 def _progress(run_id: str, why: str, active: bool) -> None:
     job = st.session_state.get(JOB_KEY) or {}
     lock = common.run_lock(run_id)
@@ -438,6 +513,7 @@ def _progress(run_id: str, why: str, active: bool) -> None:
         common.measured("Running", counts["running"], container=cols[1], how="trace written within 120 s or the lock lists the case, no answer yet", **kw)
         common.measured("Queued", counts["queued"], container=cols[2], how="selected for the run, no folder yet, run active", **kw)
         common.measured("Failed or incomplete", bad, container=cols[3], how="'case failed' note, unreadable answer.json or a trace that stopped", **kw)
+        _pipeline_panel(run_id, views)
         for v, r in zip(views, rows):
             with st.container(horizontal=True, vertical_alignment="center", key=f"console-case-{_slug(v.case_id)}"):
                 st.markdown(f"**{md(v.case_id)}**", width="content")
@@ -446,7 +522,8 @@ def _progress(run_id: str, why: str, active: bool) -> None:
                     st.markdown(md(f"phase {r['last phase'] or 'none yet'} · elapsed {common.secs(_elapsed_in_trace(v))} in the trace · {len(v.calls)} calls"), width="content")
                 elif v.ok:
                     st.markdown(f"{common.verdict_badge(r['verdict'])} " + md(r["latency"]), width="content")
-                    if st.button("Open audit replay", key=f"console-open-{_slug(v.case_id)}", icon=":material/arrow_forward:", type="tertiary"):
+                    if st.button("Inspect phases", key=f"console-open-{_slug(v.case_id)}", icon=":material/arrow_forward:", type="tertiary",
+                                 help="Opens the Case file's Decision path: the S0–P10 strip, and each stage's calls, model calls and payload"):
                         st.session_state[GOTO_KEY] = (v.case_id, run_id)
                         st.rerun()
                 elif v.state == "incomplete":
@@ -491,9 +568,15 @@ if isinstance(job, dict):
 
 target, why = _target()
 if target is None:
-    st.caption("No run launched from this session and no live run in progress. Recorded runs are on Runs & consistency.")
+    st.caption("No run launched from this session and no live run in progress. Replay a recorded case below; run-level numbers are on Runs & consistency.")
     common.page_link("runs", "Open Runs & consistency", icon=common.PAGE_ICONS["runs"])
 elif _active(target):
     _progress_live(target, why)
 else:
     _progress(target, why, False)
+
+st.divider()
+st.markdown("#### Replay a recorded case")
+st.caption("Plays any recorded case back through the S0 + P0-P10 pipeline in step with its tool and model calls, then lets you "
+           "inspect what each stage recorded. It reads the run folder only; nothing runs.")
+replay.render(ctx.source_id, ctx.case_id)

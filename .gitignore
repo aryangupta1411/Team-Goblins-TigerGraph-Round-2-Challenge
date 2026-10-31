@@ -41,3 +41,6 @@ __pycache__/
 .DS_Store
 .idea/
 .vscode/
+
+# local graph snapshot log (ops/graph_snapshot.py)
+logs/

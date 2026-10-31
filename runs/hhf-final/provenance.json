@@ -1,0 +1,39 @@
+{
+ "run_id": "hhf-final",
+ "code": {
+  "commit": "b397c2c97b5bf1b4cded77e951cfd58e5be8c70b",
+  "guard": "every tracked file hashed (sha256) before and after the main run and before and after the resume; all four lists identical",
+  "tracked_files_sha256_list": "_failed_attempt/tracked_files_sha256.txt",
+  "list_sha256": {
+   "before_main_run": "5b118ad882e3e40ab90f5a5413226dd8c216a88f680e2e1d704d98e3ae10c143",
+   "after_main_run": "5b118ad882e3e40ab90f5a5413226dd8c216a88f680e2e1d704d98e3ae10c143",
+   "before_resume": "5b118ad882e3e40ab90f5a5413226dd8c216a88f680e2e1d704d98e3ae10c143",
+   "after_resume": "5b118ad882e3e40ab90f5a5413226dd8c216a88f680e2e1d704d98e3ae10c143"
+  }
+ },
+ "failed_attempt": {
+  "case": "HHF-005",
+  "phase": "P5",
+  "logs": "_failed_attempt/HHF-005/",
+  "error": [
+   "RuntimeError('P5: structured output failed after 3 attempts: structured output did not validate: 1 validation error for ActionChoice\\n  Invalid JSON: EOF while parsing a string at line 1 column 33525 [type=json_invalid, input_value=\\'{\"actions\": [{\"action\": ...\\\\\"\\\\\\\\n\\\\\\\\\" \\\\\\\\\"\\\\\\\\\": \\\\\\\\\"\\\\\\\\n\\',"
+  ],
+  "resolution": "no answer written (fail closed); its write-back removed; HHF-005 then HHF-003 re-run with --resume in opened_at order; the first HHF-003 attempt is kept in _failed_attempt/HHF-003-superseded/"
+ },
+ "graph_at_promotion": {
+  "read_at": "2026-10-31 11:45:32",
+  "vertex_counts": {
+   "Transaction": 650938,
+   "ClosedCase": 5585,
+   "AgentCase": 18,
+   "CaseEvent": 125,
+   "Approval": 17
+  },
+  "hhf_agentcase_run_ids": {
+   "hhf-final": 18
+  },
+  "hhf_case_events": 122,
+  "hhf_approvals": 17,
+  "how": "pyTigerGraph getVertexCount / getVertices on FraudGraph (read-only)"
+ }
+}

@@ -1,0 +1,427 @@
+[
+ {
+  "case": "HHF-001",
+  "card": "C05061-K1",
+  "txn": "3660108",
+  "hit": {
+   "detector": "D1_MOBILE_ANON_PROXY_WAVE",
+   "episode": [
+    "3660106",
+    "3660107",
+    "3660108"
+   ],
+   "exposure": 2189.02,
+   "connected": [
+    "C00450-K1",
+    "C02342-K1",
+    "C05704-K2",
+    "C05770-K1",
+    "C06220-K1",
+    "C06962-K2",
+    "C07212-K2",
+    "C07925-K1",
+    "C07997-K1",
+    "C09251-K1",
+    "C10553-K1",
+    "C11309-K1",
+    "C11543-K2"
+   ],
+   "p_floor": 0.92
+  },
+  "ok": true,
+  "diffs": [],
+  "seconds": 1.3
+ },
+ {
+  "case": "HHF-002",
+  "card": "C06220-K1",
+  "txn": "3660127",
+  "hit": {
+   "detector": "D1_MOBILE_ANON_PROXY_WAVE",
+   "episode": [
+    "3660125",
+    "3660126",
+    "3660127"
+   ],
+   "exposure": 2166.71,
+   "connected": [
+    "C00450-K1",
+    "C02342-K1",
+    "C05061-K1",
+    "C05704-K2",
+    "C05770-K1",
+    "C06962-K2",
+    "C07212-K2",
+    "C07925-K1",
+    "C07997-K1",
+    "C09251-K1",
+    "C10553-K1",
+    "C11309-K1",
+    "C11543-K2"
+   ],
+   "p_floor": 0.92
+  },
+  "ok": true,
+  "diffs": [],
+  "seconds": 0.9
+ },
+ {
+  "case": "HHF-003",
+  "card": "C11663-K1",
+  "txn": "3660153",
+  "hit": {
+   "detector": "D2_ESCALATING_C_DRAIN",
+   "episode": [
+    "3660147",
+    "3660148",
+    "3660149",
+    "3660150",
+    "3660151",
+    "3660152",
+    "3660153"
+   ],
+   "exposure": 8551.47,
+   "connected": [
+    "C04096-K1",
+    "C07847-K1",
+    "C08563-K1",
+    "C09026-K1",
+    "C09148-K1"
+   ],
+   "p_floor": 0.94
+  },
+  "ok": true,
+  "diffs": [],
+  "seconds": 1.0
+ },
+ {
+  "case": "HHF-004",
+  "card": "C12975-K2",
+  "txn": "3660260",
+  "hit": {
+   "detector": "D3_MICRO_CHARGE_SKIMMING",
+   "episode": [
+    "3660255",
+    "3660256",
+    "3660257",
+    "3660258",
+    "3660259",
+    "3660260"
+   ],
+   "exposure": 23.99,
+   "connected": [
+    "C00129-K1",
+    "C00348-K1",
+    "C01326-K2",
+    "C03427-K2",
+    "C03488-K1",
+    "C03611-K2",
+    "C04274-K1",
+    "C04528-K1",
+    "C05083-K1",
+    "C05263-K2",
+    "C06198-K1",
+    "C09471-K2",
+    "C10035-K2",
+    "C10654-K1",
+    "C11332-K1",
+    "C13290-K1"
+   ],
+   "p_floor": 0.92
+  },
+  "ok": true,
+  "diffs": [],
+  "seconds": 0.9
+ },
+ {
+  "case": "HHF-005",
+  "card": "C00348-K1",
+  "txn": "3660250",
+  "hit": {
+   "detector": "D3_MICRO_CHARGE_SKIMMING",
+   "episode": [
+    "3660245",
+    "3660246",
+    "3660247",
+    "3660248",
+    "3660249",
+    "3660250"
+   ],
+   "exposure": 23.17,
+   "connected": [
+    "C00129-K1",
+    "C01326-K2",
+    "C03427-K2",
+    "C03488-K1",
+    "C03611-K2",
+    "C04274-K1",
+    "C04528-K1",
+    "C05083-K1",
+    "C05263-K2",
+    "C06198-K1",
+    "C09471-K2",
+    "C10035-K2",
+    "C10654-K1",
+    "C11332-K1",
+    "C12975-K2",
+    "C13290-K1"
+   ],
+   "p_floor": 0.92
+  },
+  "ok": true,
+  "diffs": [],
+  "seconds": 0.7
+ },
+ {
+  "case": "HHF-006",
+  "card": "C01727-K2",
+  "txn": "3660263",
+  "hit": {
+   "detector": "D4_RECIPIENT_EMAIL_MULE",
+   "episode": [
+    "3660261",
+    "3660262",
+    "3660263"
+   ],
+   "exposure": 967.68,
+   "connected": [
+    "C00534-K2",
+    "C01357-K1",
+    "C01507-K1",
+    "C01594-K1",
+    "C02167-K2",
+    "C03060-K1",
+    "C04146-K1",
+    "C04668-K1",
+    "C05610-K1",
+    "C06115-K1",
+    "C06639-K1",
+    "C08384-K1",
+    "C10350-K1",
+    "C11617-K1",
+    "C11743-K2",
+    "C11940-K1"
+   ],
+   "p_floor": 0.92
+  },
+  "ok": true,
+  "diffs": [],
+  "seconds": 0.9
+ },
+ {
+  "case": "HHF-007",
+  "card": "C09582-K1",
+  "txn": "3660350",
+  "hit": null,
+  "ok": true,
+  "diffs": [],
+  "seconds": 0.8
+ },
+ {
+  "case": "HHF-008",
+  "card": "C07871-K1",
+  "txn": "3660353",
+  "hit": null,
+  "ok": true,
+  "diffs": [],
+  "seconds": 0.8
+ },
+ {
+  "case": "HHF-009",
+  "card": "C09177-K1",
+  "txn": "3660355",
+  "hit": null,
+  "ok": true,
+  "diffs": [],
+  "seconds": 0.8
+ },
+ {
+  "case": "HHF-010",
+  "card": "C07196-K2",
+  "txn": "3631383",
+  "hit": null,
+  "ok": true,
+  "diffs": [],
+  "seconds": 0.8
+ },
+ {
+  "case": "HHF-011",
+  "card": "C09241-K1",
+  "txn": "3640919",
+  "hit": null,
+  "ok": true,
+  "diffs": [],
+  "seconds": 0.7
+ },
+ {
+  "case": "HHF-012",
+  "card": "C12223-K1",
+  "txn": "3655457",
+  "hit": null,
+  "ok": true,
+  "diffs": [],
+  "seconds": 0.7
+ },
+ {
+  "case": "HHF-013",
+  "card": "C06115-K1",
+  "txn": "3626720",
+  "hit": null,
+  "ok": true,
+  "diffs": [],
+  "seconds": 0.7
+ },
+ {
+  "case": "HHF-014",
+  "card": "C00750-K2",
+  "txn": "3602445",
+  "hit": null,
+  "ok": true,
+  "diffs": [],
+  "seconds": 0.8
+ },
+ {
+  "case": "HHF-015",
+  "card": "C00543-K1",
+  "txn": "3601725",
+  "hit": null,
+  "ok": true,
+  "diffs": [],
+  "seconds": 0.8
+ },
+ {
+  "case": "HHF-016",
+  "card": "C02502-K2",
+  "txn": "3611043",
+  "hit": null,
+  "ok": true,
+  "diffs": [],
+  "seconds": 0.7
+ },
+ {
+  "case": "HHF-017",
+  "card": "C08842-K2",
+  "txn": "3638829",
+  "hit": null,
+  "ok": true,
+  "diffs": [],
+  "seconds": 0.7
+ },
+ {
+  "case": "HHF-018",
+  "card": "C02753-K1",
+  "txn": "3612011",
+  "hit": null,
+  "ok": true,
+  "diffs": [],
+  "seconds": 0.7
+ },
+ {
+  "case": "JAN-3632789",
+  "card": "C07562-K2",
+  "txn": "3632789",
+  "hit": null,
+  "ok": true,
+  "diffs": [],
+  "seconds": 0.8
+ },
+ {
+  "case": "JAN-3622858",
+  "card": "C05307-K2",
+  "txn": "3622858",
+  "hit": null,
+  "ok": true,
+  "diffs": [],
+  "seconds": 0.8
+ },
+ {
+  "case": "JAN-3653581",
+  "card": "C11923-K2",
+  "txn": "3653581",
+  "hit": null,
+  "ok": true,
+  "diffs": [],
+  "seconds": 0.8
+ },
+ {
+  "case": "JAN-3630200",
+  "card": "C06940-K1",
+  "txn": "3630200",
+  "hit": null,
+  "ok": true,
+  "diffs": [],
+  "seconds": 0.8
+ },
+ {
+  "case": "JAN-3629482",
+  "card": "C06744-K2",
+  "txn": "3629482",
+  "hit": null,
+  "ok": true,
+  "diffs": [],
+  "seconds": 0.8
+ },
+ {
+  "case": "JAN-3600946",
+  "card": "C00294-K2",
+  "txn": "3600946",
+  "hit": null,
+  "ok": true,
+  "diffs": [],
+  "seconds": 0.8
+ },
+ {
+  "case": "JAN-3654213",
+  "card": "C12028-K2",
+  "txn": "3654213",
+  "hit": null,
+  "ok": true,
+  "diffs": [],
+  "seconds": 0.8
+ },
+ {
+  "case": "JAN-3627937",
+  "card": "C06339-K1",
+  "txn": "3627937",
+  "hit": null,
+  "ok": true,
+  "diffs": [],
+  "seconds": 0.8
+ },
+ {
+  "case": "JAN-3638315",
+  "card": "C08723-K1",
+  "txn": "3638315",
+  "hit": null,
+  "ok": true,
+  "diffs": [],
+  "seconds": 0.8
+ },
+ {
+  "case": "JAN-3654658",
+  "card": "C12092-K2",
+  "txn": "3654658",
+  "hit": null,
+  "ok": true,
+  "diffs": [],
+  "seconds": 0.7
+ },
+ {
+  "case": "JAN-3620210",
+  "card": "C04597-K2",
+  "txn": "3620210",
+  "hit": null,
+  "ok": true,
+  "diffs": [],
+  "seconds": 0.8
+ },
+ {
+  "case": "JAN-3656927",
+  "card": "C12680-K1",
+  "txn": "3656927",
+  "hit": null,
+  "ok": true,
+  "diffs": [],
+  "seconds": 0.8
+ }
+]

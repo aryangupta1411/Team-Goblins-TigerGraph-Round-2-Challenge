@@ -1,123 +1,133 @@
-# HHGOA analyst dashboard theme — a single deliberate palette instead of
-# Streamlit's stock defaults, matched to the project's navy/brand colors used
-# across the demo deck and video script (#0b3d91). Light and dark variants are
-# both defined so judges get a working theme switcher (top-right menu ->
-# Settings -> Choose app theme) regardless of their OS setting.
+# HHGOA Fraud Investigator theme: a typology case study. The console reads like the
+# typology reports published by FATF, the Egmont Group and FinCEN (the agent's own
+# grounding corpus): an institutional petrol owns the shell, work surfaces stay
+# white, and colour on the page means something. Red marks red flags, fraud and
+# hard actions; ochre marks uncertain and anything waiting on a human; green marks
+# legitimate and executed; the L1/L2 human gates take the shell's petrol. Public
+# Sans and Roboto Mono are the US federal design system's faces (FinCEN is a
+# Treasury bureau). Light and dark are both defined so judges get a working theme
+# switcher (top-right menu -> Settings -> Choose app theme) regardless of their OS.
+# The tokens ui/design.py injects for custom components mirror these values.
 
 [theme]
-font = "'Inter':https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
-codeFont = "'JetBrains Mono':https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap"
+font = "'Public Sans':https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;700&display=swap"
+codeFont = "'Roboto Mono':https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;500&display=swap"
 baseFontSize = 15
-headingFontSizes = ["28px", "21px", "17px", "15px", "14px", "13px"]
-headingFontWeights = [700, 700, 600, 600, 600, 600]
+headingFontSizes = ["26px", "20px", "17px", "15px", "14px", "13px"]
+headingFontWeights = [650, 600, 600, 600, 600, 600]
 linkUnderline = false
 
-baseRadius = "8px"
-buttonRadius = "8px"
+baseRadius = "4px"
+buttonRadius = "4px"
 showWidgetBorder = true
 showSidebarBorder = true
 
 [theme.light]
-primaryColor = "#0b3d91"
+primaryColor = "#0f3b57"
 backgroundColor = "#ffffff"
-secondaryBackgroundColor = "#f4f6fb"
-textColor = "#1a1a1a"
-linkColor = "#0b3d91"
+secondaryBackgroundColor = "#eef3f6"
+textColor = "#14212b"
+linkColor = "#1f5a80"
 
-borderColor = "#e2e6ee"
-codeTextColor = "#a3195b"
-codeBackgroundColor = "#f1f2f6"
+borderColor = "#d5dee5"
+codeTextColor = "#14212b"
+codeBackgroundColor = "#f1f5f8"
 
-# Semantic palette — every common.badge()/route_badge()/verdict color in the
-# app maps to one of these names, so "red" always means the same red.
-redColor = "#c0392b"
-redBackgroundColor = "#fdecea"
-redTextColor = "#8e2a1f"
+# Semantic palette. The names are Streamlit's; the meanings are the console's:
+# red = red flag / fraud / hard action, yellow = ochre (uncertain, awaiting a
+# human), green = legitimate / executed, orange = a data or input warning,
+# blue and violet = the petrol of the human gates, gray = neutral.
+redColor = "#c8102e"
+redBackgroundColor = "#fbe9ec"
+redTextColor = "#9c0d24"
 
-orangeColor = "#b8860b"
-orangeBackgroundColor = "#fdf3e0"
-orangeTextColor = "#8a6508"
+orangeColor = "#c2410c"
+orangeBackgroundColor = "#fcede4"
+orangeTextColor = "#9a340a"
 
-yellowColor = "#a16207"
-yellowBackgroundColor = "#fef9c3"
-yellowTextColor = "#854d0e"
+yellowColor = "#b7791f"
+yellowBackgroundColor = "#fbf1e0"
+yellowTextColor = "#8a5a12"
 
-greenColor = "#1e7e34"
-greenBackgroundColor = "#eaf6ec"
-greenTextColor = "#155724"
+greenColor = "#1d7a4e"
+greenBackgroundColor = "#e6f3ec"
+greenTextColor = "#16603d"
 
-blueColor = "#2563eb"
-blueBackgroundColor = "#eaf1fd"
-blueTextColor = "#1d4ed8"
+blueColor = "#1f5a80"
+blueBackgroundColor = "#e3edf4"
+blueTextColor = "#174a6a"
 
-violetColor = "#7c3aed"
-violetBackgroundColor = "#f3ecfd"
-violetTextColor = "#5b21b6"
+violetColor = "#1f5a80"
+violetBackgroundColor = "#e3edf4"
+violetTextColor = "#174a6a"
 
-grayColor = "#5b6472"
-grayBackgroundColor = "#eef0f3"
-grayTextColor = "#3f4652"
+grayColor = "#55687a"
+grayBackgroundColor = "#eef2f5"
+grayTextColor = "#3d4f5e"
 
-chartCategoricalColors = ["#0b3d91", "#1e7e34", "#c0392b", "#b8860b", "#7c3aed", "#2563eb", "#5b6472"]
+# the first series is the petrol: the main data element carries the one hue
+chartCategoricalColors = ["#0f3b57", "#c8102e", "#b7791f", "#1d7a4e", "#5b7a90", "#9aaebd", "#2f6a8f"]
 
-dataframeBorderColor = "#e2e6ee"
-dataframeHeaderBackgroundColor = "#eef3fb"
+# no header band: the header row sits on the page ground, rules and alignment do the work
+dataframeBorderColor = "#d5dee5"
+dataframeHeaderBackgroundColor = "#ffffff"
 
 [theme.light.sidebar]
-backgroundColor = "#f8f9fc"
-secondaryBackgroundColor = "#eef1f7"
-borderColor = "#e2e6ee"
-primaryColor = "#0b3d91"
+backgroundColor = "#f4f7f9"
+secondaryBackgroundColor = "#e9f0f4"
+borderColor = "#d5dee5"
+primaryColor = "#0f3b57"
 
 [theme.dark]
-primaryColor = "#58a6ff"
-backgroundColor = "#0d1117"
-secondaryBackgroundColor = "#161b22"
-textColor = "#e6edf3"
-linkColor = "#58a6ff"
+# the primary carries white button text, so it stays dark enough for 4.5:1
+primaryColor = "#2a7aa5"
+backgroundColor = "#0c1a23"
+secondaryBackgroundColor = "#142733"
+textColor = "#e3eaef"
+linkColor = "#8cc3e0"
 
-borderColor = "#30363d"
-codeTextColor = "#ff9bc2"
-codeBackgroundColor = "#161b22"
+borderColor = "#23394a"
+codeTextColor = "#e3eaef"
+codeBackgroundColor = "#132634"
 
-redColor = "#f85149"
-redBackgroundColor = "#3d1418"
-redTextColor = "#ffb3ab"
+redColor = "#f2606f"
+redBackgroundColor = "#3a141b"
+redTextColor = "#ffb3bb"
 
-orangeColor = "#d29922"
-orangeBackgroundColor = "#3b2e0a"
-orangeTextColor = "#f0c674"
+orangeColor = "#f0874a"
+orangeBackgroundColor = "#3a1d0f"
+orangeTextColor = "#ffc29e"
 
-yellowColor = "#e3b341"
-yellowBackgroundColor = "#3a3000"
-yellowTextColor = "#f2cc60"
+yellowColor = "#e2a94f"
+yellowBackgroundColor = "#3a2a10"
+yellowTextColor = "#f3cf8c"
 
-greenColor = "#3fb950"
-greenBackgroundColor = "#0f2e17"
-greenTextColor = "#7ee2a8"
+greenColor = "#4fbf86"
+greenBackgroundColor = "#0f2c1f"
+greenTextColor = "#9be0bd"
 
-blueColor = "#58a6ff"
-blueBackgroundColor = "#0d2847"
-blueTextColor = "#9ecbff"
+blueColor = "#8cc3e0"
+blueBackgroundColor = "#15324a"
+blueTextColor = "#b9dcef"
 
-violetColor = "#bc8cff"
-violetBackgroundColor = "#2d1f47"
-violetTextColor = "#d2b8ff"
+violetColor = "#8cc3e0"
+violetBackgroundColor = "#15324a"
+violetTextColor = "#b9dcef"
 
-grayColor = "#8b949e"
-grayBackgroundColor = "#21262d"
-grayTextColor = "#c9d1d9"
+grayColor = "#93a7b6"
+grayBackgroundColor = "#1b2f3c"
+grayTextColor = "#c9d6df"
 
-chartCategoricalColors = ["#58a6ff", "#3fb950", "#f85149", "#d29922", "#bc8cff", "#79c0ff", "#8b949e"]
+chartCategoricalColors = ["#8cc3e0", "#f2606f", "#e2a94f", "#4fbf86", "#93a7b6", "#5b7a90", "#2a7aa5"]
 
-dataframeBorderColor = "#30363d"
-dataframeHeaderBackgroundColor = "#161b22"
+dataframeBorderColor = "#23394a"
+dataframeHeaderBackgroundColor = "#0c1a23"
 
 [theme.dark.sidebar]
-backgroundColor = "#010409"
-secondaryBackgroundColor = "#0d1117"
-borderColor = "#21262d"
-primaryColor = "#58a6ff"
+backgroundColor = "#0a161e"
+secondaryBackgroundColor = "#112330"
+borderColor = "#1d3142"
+primaryColor = "#2a7aa5"
 
 [client]
 # "viewer" keeps developer clutter (deploy, rerun, clear cache) out of the

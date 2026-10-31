@@ -1,0 +1,215 @@
+{
+  "case_id": "HHF-002",
+  "case": {
+    "status": "escalated",
+    "verdict": "fraud",
+    "fraud_probability": 0.92,
+    "pattern": "undocumented",
+    "pattern_description": "Coordinated anonymous-proxy mobile wave across 14 cards with no single shared DeviceProfile: card C06220-K1 has 3 online ProductCD='C' purchases (3660125, 3660126, 3660127) totaling $2,166.71 on New mobile handset SM-J700T1 behind IP_PROXY:ANONYMOUS with spoofed/rotated OS-browser telemetry, matching 13 other cards in the same January 2017 wave.",
+    "affected_txn_ids": [
+      "3660125",
+      "3660126",
+      "3660127"
+    ],
+    "first_suspicious_txn_id": "3660125",
+    "connected_card_ids": [
+      "C00450-K1",
+      "C02342-K1",
+      "C05061-K1",
+      "C05704-K2",
+      "C05770-K1",
+      "C06962-K2",
+      "C07212-K2",
+      "C07925-K1",
+      "C07997-K1",
+      "C09251-K1",
+      "C10553-K1",
+      "C11309-K1",
+      "C11543-K2"
+    ],
+    "connected_device_profiles": [],
+    "exposure_usd": 2166.71,
+    "evidence": [
+      {
+        "claim": "The analyst initiated this case with a request to review transaction 3660127 due to several cards showing losses with no shared device.",
+        "source": "external",
+        "ref": "trigger",
+        "entity_ids": [
+          "3660127",
+          "C06220-K1"
+        ]
+      },
+      {
+        "claim": "The flagged transaction 3660127 (amount $770.78) is an online purchase with product code C, initiated from a New mobile device 'SM-J700T1 | NULL | NULL | NULL' behind an anonymous proxy 'IP_PROXY:ANONYMOUS'.",
+        "source": "graph",
+        "ref": "query:case_context(t=3660127, as_of=2017-01-19 23:18:58)",
+        "entity_ids": [
+          "3660127",
+          "SM-J700T1 | NULL | NULL | NULL"
+        ]
+      },
+      {
+        "claim": "The card C06220-K1 has 5 prior confirmed fraud cases, including 'card_not_present_fraud' and 'out_of_region_use', with the most recent case CC-5379 opened on 2016-10-28.",
+        "source": "graph",
+        "ref": "query:prior_cases_for_customer(cu=C06220, as_of=2017-01-19 23:18:58)",
+        "entity_ids": [
+          "C06220-K1",
+          "CC-5379",
+          "CC-4224",
+          "CC-2807",
+          "CC-2539",
+          "CC-0626"
+        ]
+      },
+      {
+        "claim": "A coordinated anonymous-proxy mobile wave across 14 cards (including C06220-K1 and C00450-K1, C02342-K1, C05061-K1, C05704-K2, C05770-K1, C06962-K2, C07212-K2, C07925-K1, C07997-K1, C09251-K1, C10553-K1, C11309-K1, C11543-K2) shows ProductCD='C' purchases from New mobile handsets behind 'IP_PROXY:ANONYMOUS' with spoofed telemetry.",
+        "source": "graph",
+        "ref": "query:typology_scan(c=C06220-K1, t=3660127, as_of=2017-01-19 23:18:58, data_start=2016-07-01 00:00:00)",
+        "entity_ids": [
+          "C06220-K1",
+          "C00450-K1",
+          "C02342-K1",
+          "C05061-K1",
+          "C05704-K2",
+          "C05770-K1",
+          "C06962-K2",
+          "C07212-K2",
+          "C07925-K1",
+          "C07997-K1",
+          "C09251-K1",
+          "C10553-K1",
+          "C11309-K1",
+          "C11543-K2"
+        ]
+      },
+      {
+        "claim": "The episode includes three online ProductCD='C' purchases from C06220-K1: 3660125 ($637.13 on 2017-01-17), 3660126 ($758.80 on 2017-01-18), and 3660127 ($770.78 on 2017-01-19), all using New mobile devices behind anonymous proxies.",
+        "source": "graph",
+        "ref": "query:episode_candidates(as_of=2017-01-19 23:18:58, t=3660127, gap_h=48)",
+        "entity_ids": [
+          "3660125",
+          "3660126",
+          "3660127",
+          "C06220-K1"
+        ]
+      },
+      {
+        "claim": "The purchaser email domain 'verizon.net' for transaction 3660127 has been used 19 times previously on card C06220-K1.",
+        "source": "graph",
+        "ref": "query:case_context(txn=3660127)",
+        "entity_ids": [
+          "3660127"
+        ]
+      },
+      {
+        "claim": "The memory-informed calibration score (cms_p) for transaction 3660127 is 0.0115, and the real-time risk score was 0.07.",
+        "source": "graph",
+        "ref": "query:case_context(txn=3660127)",
+        "entity_ids": [
+          "3660127"
+        ]
+      }
+    ],
+    "similar_prior_cases": [
+      "CC-4895",
+      "CC-4170",
+      "CC-4224",
+      "CC-5430"
+    ],
+    "summary": "Verdict is fraud at 0.92 probability due to an undocumented coordinated anonymous-proxy mobile wave affecting three transactions (3660125, 3660126, 3660127) for an exposure of $2,166.71. This pattern, identified after an analyst request, and the card's history of five prior confirmed fraud cases were decisive. A block of card C06220-K1 is recommended (L1), and a suspicious activity report is recommended (L2).",
+    "written_to_graph": true,
+    "graph_case_id": "AC-HHF-002"
+  },
+  "evidence_requests": [],
+  "next_best_actions": {
+    "initial": [
+      {
+        "action": "CREATE_CASE",
+        "route": "auto",
+        "reason": "R9: fits no known pattern but shows coordinated abuse across customers; undocumented pattern 'Coordinated anonymous-proxy mobile wave'."
+      },
+      {
+        "action": "MONITOR_CONNECTED_CARDS",
+        "route": "auto",
+        "reason": "R6: shared origin confirmed through a coordinated anonymous-proxy mobile wave."
+      },
+      {
+        "action": "BLOCK_CARD",
+        "route": "L1",
+        "reason": "§3b: fraud probability 0.92 is high based on strong evidence; recommended block as exposure $2,166.71 <= $2,500."
+      },
+      {
+        "action": "FILE_REPORT",
+        "route": "L2",
+        "reason": "R9: undocumented coordinated pattern and exposure $2,166.71 > $1,000; report recommended."
+      },
+      {
+        "action": "ESCALATE_TO_ANALYST",
+        "route": "auto",
+        "reason": "R9: fits no known pattern but shows coordinated abuse across customers."
+      }
+    ],
+    "final": [
+      {
+        "action": "CREATE_CASE",
+        "route": "auto",
+        "reason": "R9: fits no known pattern but shows coordinated abuse across customers; undocumented pattern 'Coordinated anonymous-proxy mobile wave'."
+      },
+      {
+        "action": "MONITOR_CONNECTED_CARDS",
+        "route": "auto",
+        "reason": "R6: shared origin confirmed through a coordinated anonymous-proxy mobile wave."
+      },
+      {
+        "action": "BLOCK_CARD",
+        "route": "L1",
+        "reason": "§3b: fraud probability 0.92 is high based on strong evidence; recommended block as exposure $2,166.71 <= $2,500."
+      },
+      {
+        "action": "FILE_REPORT",
+        "route": "L2",
+        "reason": "R9: undocumented coordinated pattern and exposure $2,166.71 > $1,000; report recommended."
+      },
+      {
+        "action": "ESCALATE_TO_ANALYST",
+        "route": "auto",
+        "reason": "R9: fits no known pattern but shows coordinated abuse across customers."
+      }
+    ],
+    "what_changed": "nothing"
+  },
+  "sar": {
+    "file": true,
+    "reason": "3a / R9: undocumented coordinated pattern (Coordinated anonymous-proxy mobile wave across 14 cards with no single shared DeviceProfile)",
+    "narrative": "This suspicious activity report is filed for an undocumented coordinated fraud pattern, internal case ID AC-HHF-002, opened 2017-01-19. The activity involves customer C06220, associated with Visa credit card C06220-K1, and 13 connected cards: C00450-K1, C02342-K1, C05061-K1, C05704-K2, C05770-K1, C06962-K2, C07212-K2, C07925-K1, C07997-K1, C09251-K1, C10553-K1, C11309-K1, C11543-K2. Between 2017-01-17 and 2017-01-19, three suspicious online transactions occurred on card C06220-K1, totaling $2,166.71. On 2017-01-17 at 19:58, an online transaction for $637.13 (ID 3660125) was made from region 330.0 using device 'SM-J700T1 | iOS 11.1.2 | mobile safari 11.0 | 2048x1536'. On 2017-01-18 at 19:48, an online transaction for $758.80 (ID 3660126) was made from region 384.0 using device 'SM-J700T1 | iOS 11.1.1 | mobile safari 11.0 | 2048x1536'. On 2017-01-19 at 18:18, the flagged online transaction for $770.78 (ID 3660127) was made from region 126.0 using device 'SM-J700T1 | NULL | NULL | NULL'. All these transactions involved new mobile devices behind an anonymous proxy, product code C, and show spoofed or rotated OS-browser telemetry, consistent with a coordinated fraud wave affecting the connected cards. This activity is considered suspicious because it forms part of an undocumented coordinated anonymous-proxy mobile wave, a pattern inconsistent with the cardholder's historical transaction behavior, despite prior transactions on the card up to $2,794.03 and a median transaction amount of $107.92 across 366 prior transactions. No prior suspicious activity report has been filed on card C06220-K1, though six earlier closed cases were confirmed fraud but not reported; however, closed cases CC-3436 and CC-3419 on connected cards or related device profiles were confirmed fraud with reports filed. OFAC screening of the customer and card identifiers against the SDN list returned no match. Case AC-HHF-002 was opened, monitoring of connected cards was initiated, and the case was escalated to an analyst. A block of card C06220-K1 is recommended pending team-lead approval, and this report is recommended pending fraud-manager approval, for a total suspicious amount of $2,166.71.",
+    "subjects": [
+      "C06220",
+      "C06220-K1",
+      "C00450-K1",
+      "C02342-K1",
+      "C05061-K1",
+      "C05704-K2",
+      "C05770-K1",
+      "C06962-K2",
+      "C07212-K2",
+      "C07925-K1",
+      "C07997-K1",
+      "C09251-K1",
+      "C10553-K1",
+      "C11309-K1",
+      "C11543-K2",
+      "SM-J700T1 | iOS 11.1.2 | mobile safari 11.0 | 2048x1536",
+      "SM-J700T1 | iOS 11.1.1 | mobile safari 11.0 | 2048x1536",
+      "SM-J700T1 | NULL | NULL | NULL"
+    ],
+    "total_amount_usd": 2166.71,
+    "activity_dates": [
+      "2017-01-17",
+      "2017-01-19"
+    ]
+  },
+  "stop_reason": "Policy §6 test 1 was met as the fraud probability of 0.92 is at or above 0.85 with two independent evidence families (device, history), and no further evidence request could change the recommended actions.",
+  "tool_calls": 22,
+  "tokens": 246248,
+  "latency_s": 134.8
+}

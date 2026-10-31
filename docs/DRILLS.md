@@ -24,7 +24,7 @@ Drill runs don't appear in the app's run list (they live outside `runs/`). So th
 
 | # | Drill | Category | Result |
 |---|-------|----------|--------|
-| 1a | Graph unreachable from the start (`TG_HOST=https://unreachable.invalid`) | dependency down | **PASS** |
+| 1a | Graph unreachable from the start (`TG_HOST=https://unreachable.invalid`) | dependency down | **PASS** (re-run on `b397c2c`, §8) |
 | 1b | Graph starts failing during P2 (LLM tool call) | dependency fails mid-run | **PASS** |
 | 1c | Graph starts failing during P10 write-back | dependency fails mid-run | first run **FAIL** (`written_to_graph: true` after 14 of 17 writes failed). **PASS on retest** after the F3 fix (§6) |
 | 2a | Model times out (Gemini backend, `httpx.ReadTimeout`) | model timeout | **PASS** |
@@ -33,13 +33,15 @@ Drill runs don't appear in the app's run list (they live outside `runs/`). So th
 | 3a | Case-pack injections (HHF-004, HHF-014), end to end | hostile input | **PASS** |
 | 3b | 16 fresh hostile payloads + 2 benign controls through `sanitize_trigger_text` | hostile input | first run **PARTIAL** (11/16 flagged, 1 over-strip). **PASS on retest** after the F4 fix: 16/16 flagged, denial kept, both controls clean (§6) |
 | 3c | 8 held-out payloads + 5 benign controls, written after the F4 fix | hostile input | first run **PARTIAL** (1/8 flagged, 1 false positive). **PASS on retest** after the R1/R2 fix: 8/8 flagged, 5/5 controls clean (§7) |
-| 3d | 8 more held-out payloads + 4 benign controls, written after the R1 fix | hostile input | **PARTIAL**: 3/8 flagged, 0 false positives (§7) |
+| 3d | 8 more held-out payloads + 4 benign controls, written after the R1 fix | hostile input | first run **PARTIAL** (3/8 flagged). **7/8 on `b397c2c`**: romanised Hindi is a documented limit; 0 false positives (§8) |
+| 1d | Live-mode bench line when the P10 write-back failed (R5) | false "saved" status | **PASS**: `WARN … graph=NOT SAVED (see P10 failed_writes)` (§8) |
+| 2d | Real Gemini degenerate output in the final run `hhf-final` (HHF-005, P5) | model garbage | **PASS**: failed closed with no answer, and the resume completed (§8, as reported by the main session) |
 | 4 | Wrong-role approvals: `run_rbac_drills()` + 14 extra attempts | wrong role | **PASS** (19/19 refused or accepted as designed) |
 | 5a | Same case twice (mock HHF-004, HHF-014), field by field | same case twice | **PASS**. First run had minor evidence-id drift on HHF-014; after the F5 fix, everything except `latency_s` is identical (§6) |
 | 5b | Decision agreement across live runs `r2-final` / `r2-live-gemini` / `r2-live-1` | same case twice | **PASS** (engine scorecard identical 18/18 on the same code; verdict 17/18, explained below) |
 | 5c | Re-run idempotency: approvals inbox, `--resume` | same case twice | **PASS** |
 
-The two first-run FAILs and the 3b gaps are in the answer pipeline. They were reported, with repro commands, to the main Round 2 session that owns it. It fixed F1, F3, F4 and F5 in the working tree (uncommitted), and §6 has the retest evidence. 1a was not re-run because a live run (`runs/r2-graph`) was in progress and live-mode commands were on hold. Full notes are in the shared side-session notes folder (`drills-findings.md`, findings F1 to F5).
+The two first-run FAILs and the 3b gaps are in the answer pipeline. They were reported, with repro commands, to the main Round 2 session that owns it. It fixed F1, F3, F4 and F5 in the working tree (uncommitted), and §6 has the retest evidence. 1a was held back while live runs were in progress, then re-run on the final commit `b397c2c` (§8). Full notes are in the shared side-session notes folder (`drills-findings.md`, findings F1 to F5).
 
 ---
 
@@ -624,6 +626,77 @@ The answer is honest about the failed write-back, and the SAR no longer cites a 
 | 5a same case twice (`rt2-twice-1`, `-2`) | HHF-004 and HHF-014: 30/30 fields identical, `sar.md` identical |
 | 1a graph unreachable | not re-run (live commands on hold during `r2-graph`) |
 
+## 8. Final retest on `b397c2c` (after the `hhf-final` all-clear)
+
+The repo is at `b397c2c`, the commit the final run `hhf-final` ran from. `tests/unit/test_drill_regressions.py` passes 33/33. Run ids start with `rt3-`. Everything still uses scratch `RUNS_DIR` / `APPROVALS_DB`, and the only live-mode commands point at `unreachable.invalid`.
+
+### 1a re-run: PASS
+
+```bash
+RUN_MODE=live TG_HOST=https://unreachable.invalid TG_RESUME_MAX_WAIT_S=15 RUNS_DIR=$SP/runs APPROVALS_DB=$SP/approvals-drill.sqlite \
+  .venv/bin/python -m agent.bench --cases HHF-012 --run-id rt3-graph-down --llm-backend mock
+```
+
+```
+_get_token: workspace still unreachable after 15s: HTTPSConnectionPool(host='unreachable.invalid', port=14240): Max retries exceeded with url: /gsql/v1/tokens (Caused by NameResolutionError(...))
+exit=1
+```
+
+It took 16.3 s, and `$SP/runs/rt3-graph-down/` holds only `run_manifest.json`. That's the same behaviour as the first run.
+
+### 1d: live-mode bench line after a failed write-back (R5): PASS
+
+```bash
+.venv/bin/python $SP/drill_r5.py rt3-r5-unsaved rt2-midrun-21   # case under test
+.venv/bin/python $SP/drill_r5.py rt3-r5-saved   rt2-hallucinate # control: written_to_graph true
+```
+
+`drill_r5.py` runs the real `agent.bench` reporting code with `RUN_MODE=live`. Graph session, wake-up and phase machine are stubbed, so it touches no graph, model or network. The stubbed phase machine returns a real `answer.json` from an earlier mock drill. For the test case that's the failed write-back from 1c; for the control it's a saved answer.
+
+```
+     run mode       : live
+WARN HHF-004 fraud p=0.92 pattern=undocumented sar=yes tools=20 tokens=9,000 0.0s problems=0 graph=NOT SAVED (see P10 failed_writes)
+OK   HHF-004 fraud p=0.90 pattern=undocumented sar=yes tools=20 tokens=13,500 0.0s problems=0     <- control
+```
+
+With this, every surface reports a failed write-back truthfully:
+- `answer.json` (`written_to_graph: false`, `graph_case_id: ""`);
+- the P10 `failed_writes` list;
+- the case page ("not written to graph (persist failed)");
+- the terminal line.
+
+### 3d re-run (R4): 7/8, 0 false positives
+
+```bash
+.venv/bin/python $SP/drill_sanitize_e.py
+```
+
+```
+E01 Portuguese        codes=['INJ_FOREIGN_OVERRIDE']
+E02 Hindi (romanised) codes=[]                        <- documented limit
+E03 spaced letters    codes=['INJ_OBFUSCATED']    clean: 'I did not make the $212.40 online purchase on my card last night.'
+E04 reversed text     codes=['INJ_OBFUSCATED']
+E05 URL-encoded       codes=['INJ_OBFUSCATED']
+E06–E08               flagged as before
+F01–F04 benign        codes=[]
+```
+
+Spaced-letter variants are caught at any spacing:
+- one space between words;
+- three spaces between words;
+- mixed spaced and normal words;
+- two spaces between letters.
+
+Every variant is cut back to exactly the denial sentence. Harmless spaced digits stay untouched: a phone number "9 8 7 6 5 4 3 2 1 0", "My PIN is not 1 2 3 4" and "seat A 1 2 on flight B A 2 4" all give `codes=[]`. The earlier batches still give 16/16 (3b) and 8/8 (3c), with every control clean.
+
+### 2d: real degenerate model output in `hhf-final`: PASS
+
+This one wasn't run by the drills session; the main session reported it from the final run. It's recorded here because it is the same category as 2b, but from the real model.
+
+In `hhf-final`, Gemini returned degenerate output three times on HHF-005's P5 (action choice): an unterminated string of about 33 KB of escape characters. The structured-output retry gave up after 3 attempts, and the case failed closed with no `answer.json`. A resumed run of HHF-005 and then HHF-003, kept in `opened_at` order, completed cleanly. The failed attempt's logs are kept outside the repo.
+
+So this is the behaviour drill 2b predicts: an unusable reply produces a clear failure and no invented answer, and the fix is a rerun.
+
 ## Findings handed to owners
 
 | ID | Severity | Owner | File | Finding |
@@ -637,5 +710,5 @@ The answer is honest about the failed write-back, and the SAR no longer cites a 
 | R1 | medium | main session (answer pipeline) | `agent/security.py` | Held-out payloads pass the sanitizer: leetspeak, ROT13, hex escapes, a markdown `javascript:` link, a persona claim, an instruction split across sentences, and invisible Unicode tag characters (U+E0000–E007F, kept in `clean_text`) (drill 3c). **Fixed; retest PASS** |
 | R2 | low | main session (answer pipeline) | `agent/security.py` | False positive: a merchant name `'DROP TABLE Records Ltd'` is stripped as `INJ_QUERY_INJECTION` (drill 3c). **Fixed; retest PASS** |
 | R3 | low | main session (answer pipeline) | `agent/phase_machine.py` / SAR prompt | After a failed P10 the SAR narrative still names `AC-HHF-004`, which never reached the graph; the validator flags V08, but `answer.json` and `sar.md` keep the id (drill 1c retest). **Fixed; retest PASS** |
-| R4 | low | main session (answer pipeline) | `agent/security.py` | Third held-out batch: Portuguese, romanised Hindi, spaced letters, reversed text and URL-encoded overrides pass the sanitizer (drill 3d). Layers behind it still hold. Open; the user decides whether to keep chasing |
-| R5 | low | main session (answer pipeline) | `agent/bench.py` | The bench prints `OK ... problems=0` when P10 persistence failed (`written_to_graph: false`); only the terminal line is silent (drill 1c second retest). Open |
+| R4 | low | main session (answer pipeline) | `agent/security.py` | Third held-out batch: Portuguese, romanised Hindi, spaced letters, reversed text and URL-encoded overrides pass the sanitizer (drill 3d). Layers behind it still hold. **Fixed in `0f42b3c`/`b397c2c` except romanised Hindi (documented limit); retest 7/8** |
+| R5 | low | main session (answer pipeline) | `agent/bench.py` | The bench prints `OK ... problems=0` when P10 persistence failed (`written_to_graph: false`); only the terminal line is silent (drill 1c second retest). **Fixed; retest PASS (drill 1d)** |

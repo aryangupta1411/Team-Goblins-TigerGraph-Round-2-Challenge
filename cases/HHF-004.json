@@ -37,7 +37,7 @@
     "exposure_usd": 23.99,
     "evidence": [
       {
-        "claim": "Customer C12975 reports they did not make the $2.90 purchase 3660260.",
+        "claim": "Customer C12975 denies making the $2.90 online purchase 3660260.",
         "source": "customer",
         "ref": "trigger",
         "entity_ids": [
@@ -46,9 +46,18 @@
         ]
       },
       {
-        "claim": "Coordinated low-and-slow micro-charge skimming ring across 17 cards: card C12975-K2 has 6 sub-$6 online ProductCD='C' charges (3660255, 3660256, 3660257, 3660258, 3660259, 3660260) spaced across multiple days totaling $23.99, connected to 16 other cards targeted in the same January 2017 micro-skimming wave.",
+        "claim": "Card C12975-K2 has 1 prior confirmed fraud case (CC-4890) for card-not-present fraud, opened on 2016-10-16 with an exposure of $800.03.",
         "source": "graph",
-        "ref": "query:card_window(card=C12975-K2, hours=72)",
+        "ref": "query:prior_cases_for_customer(cu=C12975)",
+        "entity_ids": [
+          "C12975-K2",
+          "CC-4890"
+        ]
+      },
+      {
+        "claim": "A Round-2 detector identified a coordinated low-and-slow micro-charge skimming ring across 17 cards, including C12975-K2, involving 6 sub-$6 online ProductCD='C' charges (3660255, 3660256, 3660257, 3660258, 3660259, 3660260) totaling $23.99.",
+        "source": "graph",
+        "ref": "scorecard:r2_detector_pattern",
         "entity_ids": [
           "3660255",
           "3660256",
@@ -56,6 +65,14 @@
           "3660258",
           "3660259",
           "3660260",
+          "C12975-K2"
+        ]
+      },
+      {
+        "claim": "The cross-card telemetry signature of a multi-day sub-$6 online ProductCD='C' micro-charge skimming wave links transactions on C12975-K2 to 16 peer cards.",
+        "source": "graph",
+        "ref": "scorecard:r2_shared_element",
+        "entity_ids": [
           "C12975-K2",
           "C00129-K1",
           "C00348-K1",
@@ -76,33 +93,34 @@
         ]
       },
       {
-        "claim": "1 prior confirmed-fraud case(s) on this card (card_not_present_fraud), most recent 2016-10-16; 1 within 120 days on the same channel.",
-        "source": "graph",
-        "ref": "query:prior_cases_for_customer(customer=C12975)",
-        "entity_ids": [
-          "CC-4890",
-          "C12975-K2"
-        ]
-      },
-      {
-        "claim": "Case-memory scorer puts the flagged transaction at 0.00 (calibrated 0.00); the real-time risk score was 0.04.",
+        "claim": "The amount of the flagged transaction, $2.90, is below the card's prior median amount of $57.99 and maximum amount of $822.54 over 198 prior transactions.",
         "source": "graph",
         "ref": "query:case_context(txn=3660260)",
-        "entity_ids": [
-          "3660260"
-        ]
-      },
-      {
-        "claim": "Billing region 337.0 on the online purchase is the card's known region (28 prior purchases on 25 days).",
-        "source": "graph",
-        "ref": "query:region_history(card=C12975-K2, addr1=337.0)",
         "entity_ids": [
           "3660260",
           "C12975-K2"
         ]
       },
       {
-        "claim": "Purchaser email domain yahoo.com used 34 times before on this card.",
+        "claim": "The billing region 337.0 for transaction 3660260 is a known region for card C12975-K2, with 28 prior purchases over 25 days.",
+        "source": "graph",
+        "ref": "query:region_history(c=C12975-K2, addr1=337.0)",
+        "entity_ids": [
+          "3660260",
+          "C12975-K2"
+        ]
+      },
+      {
+        "claim": "The purchaser email domain 'yahoo.com' associated with transaction 3660260 was used 34 times previously on this card.",
+        "source": "graph",
+        "ref": "query:case_context(txn=3660260)",
+        "entity_ids": [
+          "3660260",
+          "C12975-K2"
+        ]
+      },
+      {
+        "claim": "The card's calibrated `cms_p` for transaction 3660260 was 0.000893, and the real-time risk score was 0.04.",
         "source": "graph",
         "ref": "query:case_context(txn=3660260)",
         "entity_ids": [
@@ -111,14 +129,14 @@
       }
     ],
     "similar_prior_cases": [
-      "CC-5173",
-      "CC-4172",
       "CC-4762",
-      "CC-5055",
+      "CC-4172",
       "CC-4604",
-      "CC-4469"
+      "CC-5173",
+      "CC-4469",
+      "CC-5055"
     ],
-    "summary": "The verdict is fraud with a probability of 0.92, driven by the customer's denial of transaction 3660260 and the identification of an undocumented coordinated micro-charge skimming ring across 17 cards. The episode, spanning six online transactions (3660255-3660260) with a total exposure of $23.99, is consistent with this pattern. A prior confirmed fraud case on this card further supports the finding. A BLOCK_CARD (L1) and FILE_REPORT (L2) are recommended.",
+    "summary": "The verdict is fraud with 0.92 probability for an undocumented coordinated low-and-slow micro-charge skimming ring across 17 cards, including card C12975-K2. The episode involves six online transactions totaling $23.99 (3660255-3660260), starting 2017-01-05. This was driven by the customer's denial, a prior fraud case, and the detection of the coordinated pattern. A block of C12975-K2 (L1) and filing of a SAR (L2) are recommended, awaiting approval.",
     "written_to_graph": true,
     "graph_case_id": "AC-HHF-004"
   },
@@ -128,54 +146,54 @@
       {
         "action": "CREATE_CASE",
         "route": "auto",
-        "reason": "CREATE_CASE is required by R2 because the customer denied the transaction, by R9 for an undocumented pattern, and by 3a for a customer dispute."
+        "reason": "3a: customer denied the transaction and an undocumented pattern was detected."
       },
       {
         "action": "MONITOR_CONNECTED_CARDS",
         "route": "auto",
-        "reason": "MONITOR_CONNECTED_CARDS is required by R6 as the case connects to a shared origin (the undocumented micro-skimming wave across 17 cards)."
+        "reason": "R6: shared origin identified through a coordinated low-and-slow micro-charge skimming ring impacting 17 cards."
       },
       {
         "action": "BLOCK_CARD",
         "route": "L1",
-        "reason": "BLOCK_CARD is required by R2 because the customer denied the transaction; exposure is $23.99 \n\n≤ $2,500."
+        "reason": "R2: customer denied transaction 3660260; exposure $23.99 \"less than or equal to\" $2,500."
       },
       {
         "action": "FILE_REPORT",
         "route": "L2",
-        "reason": "FILE_REPORT is required by 3a and R9 because fraud is strongly suspected on an undocumented pattern, and by R6 because it connects to other cards' fraud in a shared origin."
+        "reason": "3a: fraud is strongly suspected due to customer denial and an undocumented coordinated skimming pattern involving multiple cards."
       },
       {
         "action": "ESCALATE_TO_ANALYST",
         "route": "auto",
-        "reason": "ESCALATE_TO_ANALYST is required by R9 for an undocumented pattern that shows coordinated abuse across customers."
+        "reason": "R9: an undocumented coordinated low-and-slow micro-charge skimming pattern has been identified across multiple cards."
       }
     ],
     "final": [
       {
         "action": "CREATE_CASE",
         "route": "auto",
-        "reason": "CREATE_CASE is required by R2 because the customer denied the transaction, by R9 for an undocumented pattern, and by 3a for a customer dispute."
+        "reason": "3a: customer denied the transaction and an undocumented pattern was detected."
       },
       {
         "action": "MONITOR_CONNECTED_CARDS",
         "route": "auto",
-        "reason": "MONITOR_CONNECTED_CARDS is required by R6 as the case connects to a shared origin (the undocumented micro-skimming wave across 17 cards)."
+        "reason": "R6: shared origin identified through a coordinated low-and-slow micro-charge skimming ring impacting 17 cards."
       },
       {
         "action": "BLOCK_CARD",
         "route": "L1",
-        "reason": "BLOCK_CARD is required by R2 because the customer denied the transaction; exposure is $23.99 \n\n≤ $2,500."
+        "reason": "R2: customer denied transaction 3660260; exposure $23.99 \"less than or equal to\" $2,500."
       },
       {
         "action": "FILE_REPORT",
         "route": "L2",
-        "reason": "FILE_REPORT is required by 3a and R9 because fraud is strongly suspected on an undocumented pattern, and by R6 because it connects to other cards' fraud in a shared origin."
+        "reason": "3a: fraud is strongly suspected due to customer denial and an undocumented coordinated skimming pattern involving multiple cards."
       },
       {
         "action": "ESCALATE_TO_ANALYST",
         "route": "auto",
-        "reason": "ESCALATE_TO_ANALYST is required by R9 for an undocumented pattern that shows coordinated abuse across customers."
+        "reason": "R9: an undocumented coordinated low-and-slow micro-charge skimming pattern has been identified across multiple cards."
       }
     ],
     "what_changed": "nothing"
@@ -183,7 +201,7 @@
   "sar": {
     "file": true,
     "reason": "3a / R9: undocumented coordinated pattern (Coordinated low-and-slow micro-charge skimming ring across 17 cards)",
-    "narrative": "This report is being filed due to an undocumented coordinated fraud pattern, internal case ID AC-HHF-004, which was triggered by a customer report. Customer C12975 reported they did not make a $2.90 online purchase on their Visa debit card C12975-K2 on 2017-01-26 15:09 from billing region 337.0 (transaction 3660260). An investigation revealed C12975-K2 is part of a coordinated low-and-slow micro-charge skimming ring across 17 cards, including connected cards C00129-K1, C00348-K1, C01326-K2, C03427-K2, C03488-K1, C03611-K2, C04274-K1, C04528-K1, C05083-K1, C05263-K2, C06198-K1, C09471-K2, C10035-K2, C10654-K1, C11332-K1, C13290-K1. The episode on C12975-K2 consists of six online ProductCD='C' charges totaling $23.99, starting with transaction 3660255 for $3.51 on 2017-01-05 11:33 from region 191.0, followed by 3660256 for $5.18 on 2017-01-07 10:03, 3660257 for $2.66 on 2017-01-14 14:57, 3660258 for $4.75 on 2017-01-18 14:42, and 3660259 for $4.99 on 2017-01-22 13:22 from region 191.0 using device rv:11.0 | NULL | ie 11.0 for desktop | NULL, and concluding with the flagged transaction 3660260. This pattern of small online charges and ProductCD='C' activity is inconsistent with the card's baseline of 198 transactions, which had a median amount of $57.99 and a maximum amount of $822.54 prior to the flagged transaction. No prior suspicious activity report has been filed on this card (1 earlier closed case(s), none reported), and OFAC screening of the customer and card identifiers against the SDN list returned no match. Case AC-HHF-004 has been opened, connected cards are being monitored, a block of card C12975-K2 is recommended and awaits team-lead approval, escalation to an analyst has been done, and this SAR is recommended and awaiting fraud-manager approval for the total suspicious amount of $23.99.",
+    "narrative": "This report details an undocumented coordinated fraud pattern, internal case ID AC-HHF-004. The case involves customer C12975 and their Visa debit card C12975-K2, along with 16 other connected cards, including C00129-K1, C00348-K1, C01326-K2, C03427-K2, C03488-K1, C03611-K2, C04274-K1, C04528-K1, C05083-K1, C05263-K2, C06198-K1, C09471-K2, C10035-K2, C10654-K1, C11332-K1, and C13290-K1. The suspicious activity on card C12975-K2 began on 2017-01-05 with an online transaction for $3.51 in region 191.0 (transaction 3660255). This was followed by five other online micro-charges (Product Code 'C'): $5.18 on 2017-01-07 (transaction 3660256), $2.66 on 2017-01-14 (transaction 3660257), $4.75 on 2017-01-18 (transaction 3660258), $4.99 on 2017-01-22 using device rv:11.0 | NULL | ie 11.0 for desktop | NULL (transaction 3660259), and the flagged transaction of $2.90 on 2017-01-26 (transaction 3660260). This series of transactions, occurring in regions 191.0 and 337.0, is part of a coordinated low-and-slow micro-charge skimming ring across 17 cards, identified through a shared multi-day sub-$6 online Product Code 'C' micro-charge skimming wave. The individual transaction amounts, while small, are significantly below the card's prior median transaction amount of $57.99 over 198 prior transactions. The customer reported transaction 3660260 as unauthorized. No prior suspicious activity report has been filed on card C12975-K2 (1 earlier closed case, none reported). OFAC screening of the customer and card identifiers against the SDN list returned no match. An internal case was opened, monitoring of connected cards was initiated, and an escalation to an analyst was done. A block of card C12975-K2 is recommended and awaits team-lead approval, and this report is recommended for filing, awaiting fraud-manager approval. The total suspicious amount involved is $23.99.",
     "subjects": [
       "C12975",
       "C12975-K2",
@@ -211,8 +229,8 @@
       "2017-01-26"
     ]
   },
-  "stop_reason": "Policy \n§6 test 1: fraud probability 0.92 is at or above 0.85 with 3 independent evidence families (customer, device, history); no further request could change the action set, so the initial recommendation is final.",
+  "stop_reason": "Policy §6 test 1: fraud probability 0.92 is at or above 0.85 with 3 independent evidence families (customer, device, history); no evidence request could change the action set, so the initial recommendation is final.",
   "tool_calls": 22,
-  "tokens": 228101,
-  "latency_s": 148.0
+  "tokens": 217775,
+  "latency_s": 93.2
 }

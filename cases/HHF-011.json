@@ -13,7 +13,7 @@
     "exposure_usd": 0.0,
     "evidence": [
       {
-        "claim": "The real-time model scored transaction 3640919 ($881.55) at 0.71, triggering this review.",
+        "claim": "The alert was triggered by the real-time model scoring transaction 3640919 ($881.55) at 0.71.",
         "source": "external",
         "ref": "trigger",
         "entity_ids": [
@@ -21,10 +21,11 @@
         ]
       },
       {
-        "claim": "Card C09241-K2 has 20 prior confirmed fraud cases, including account_takeover, card_not_present_fraud, and out_of_region_use patterns, with the most recent case CC-5469 closed on 2016-10-30.",
+        "claim": "Card C09241-K2 has 20 prior confirmed fraud cases, including account_takeover, out_of_region_use, and card_not_present_fraud, with the most recent on 2016-10-30.",
         "source": "graph",
-        "ref": "query:prior_cases_for_customer(customer=C09241)",
+        "ref": "query:prior_cases_for_customer(cu=C09241)",
         "entity_ids": [
+          "C09241-K2",
           "CC-5469",
           "CC-5190",
           "CC-4933",
@@ -44,112 +45,63 @@
           "CC-1002",
           "CC-0771",
           "CC-0548",
-          "CC-0254",
-          "C09241-K2"
+          "CC-0254"
         ]
       },
       {
-        "claim": "Transaction 3640919 ($881.55, in-person) is part of a 43-transaction episode totaling $4440.09, which includes both in-person and online activity from 2017-01-13 to 2017-01-20.",
+        "claim": "The episode includes 43 transactions from 2017-01-13 12:04:50 to 2017-01-20 05:06:19, showing a mix of in-person and online channels, which is consistent with an account takeover pattern.",
         "source": "graph",
-        "ref": "query:episode_candidates(txn=3640919, gap_h=48)",
+        "ref": "query:episode_candidates(t=3640919)",
         "entity_ids": [
           "3640932",
           "3640939",
-          "3640922",
           "3640897",
-          "3640908",
-          "3640860",
-          "3640844",
-          "3640974",
-          "3640887",
-          "3640960",
-          "3640850",
-          "3640941",
-          "3640893",
-          "3640862",
-          "3640938",
-          "3640945",
-          "3640903",
-          "3640858",
-          "3640876",
-          "3640869",
-          "3640973",
-          "3640955",
-          "3640914",
-          "3640949",
-          "3640890",
-          "3640900",
-          "3640971",
-          "3640918",
-          "3640933",
-          "3640944",
-          "3640857",
-          "3640963",
-          "3640871",
-          "3640970",
-          "3640964",
-          "3640968",
-          "3640928",
-          "3640931",
-          "3640863",
-          "3640907",
-          "3640854",
-          "3640880",
           "3640919"
         ]
       },
       {
-        "claim": "Card C09241-K2 is associated with the strong device profile 'Windows | Windows 7 | firefox 57.0 | 1280x800', which has 10 prior fraud cases and was active on 11 cards (including C09241-K2) prior to the case opening.",
+        "claim": "The episode includes online transactions 3640939, 3640876, 3640944, 3640928, and 3640907 which were initiated from devices marked as 'New'.",
         "source": "graph",
-        "ref": "query:ring_profile(c=C09241-K2)",
+        "ref": "query:episode_candidates(t=3640919)",
+        "entity_ids": [
+          "3640939",
+          "3640876",
+          "3640944",
+          "3640928",
+          "3640907"
+        ]
+      },
+      {
+        "claim": "The flagged transaction 3640919 occurred in billing region 494.0, which has 492 prior transactions over 178 days for card C09241-K2, making it a known region for this card.",
+        "source": "graph",
+        "ref": "query:region_history(c=C09241-K2, addr1=494.0)",
+        "entity_ids": [
+          "3640919",
+          "C09241-K2"
+        ]
+      },
+      {
+        "claim": "Card C09241-K2 had one prior risk-score alert (CC-1257) on 2016-07-27 that was cleared as legitimate after customer confirmation, with a pattern of 'none'.",
+        "source": "graph",
+        "ref": "query:prior_cases_for_customer(cu=C09241)",
         "entity_ids": [
           "C09241-K2",
-          "Windows | Windows 7 | firefox 57.0 | 1280x800",
-          "CC-1015",
-          "CC-0927",
-          "CC-0548",
-          "CC-0627",
-          "CC-0499",
-          "CC-1289",
-          "CC-0257",
-          "CC-0278",
-          "CC-0985",
-          "CC-0760",
-          "C05977-K1",
-          "C06026-K2",
-          "C13253-K2",
-          "C05533-K1",
-          "C11855-K1",
-          "C02656-K1",
-          "C01155-K2",
-          "C07925-K1",
-          "C02716-K2"
+          "CC-1257"
         ]
       },
       {
-        "claim": "The flagged transaction 3640919 occurred in region 494.0, which is known to card C09241-K2 with 492 prior transactions over 178 days, while the card's modal region is 441.0.",
+        "claim": "The flagged transaction 3640919 has a low calibrated memory-informed probability (cms_p) of 0.015701.",
         "source": "graph",
-        "ref": "query:region_history(card=C09241-K2, addr1=494.0)",
+        "ref": "query:case_context(t=3640919)",
         "entity_ids": [
-          "3640919",
-          "C09241-K2"
+          "3640919"
         ]
       },
       {
-        "claim": "Card C09241-K2 has one prior risk-score alert (CC-1257) that was cleared with an outcome of 'none' after the customer confirmed the activity.",
+        "claim": "The scorecard indicates the risk scorer is unreliable for card C09241-K2 due to its high transaction volume of 6864 prior transactions.",
         "source": "graph",
-        "ref": "query:prior_cases_for_customer(customer=C09241)",
+        "ref": "scorecard",
         "entity_ids": [
-          "CC-1257",
-          "C09241-K2"
-        ]
-      },
-      {
-        "claim": "The calibrated cms_p for transaction 3640919 is low (0.0157), and the scorer is considered unreliable for card C09241-K2 due to its high transaction count (6864).",
-        "source": "graph",
-        "ref": "query:case_context(txn=3640919)",
-        "entity_ids": [
-          "3640919",
           "C09241-K2"
         ]
       },
@@ -163,21 +115,21 @@
       }
     ],
     "similar_prior_cases": [
-      "CC-4762",
       "CC-4469",
+      "CC-4762",
       "CC-5190",
+      "CC-4686",
       "CC-4544",
-      "CC-5402",
-      "CC-4686"
+      "CC-5402"
     ],
-    "summary": "The verdict is legitimate with a fraud probability of 0.1. The initial flagged $881.55 in-person transaction (ID 3640919) was part of a 43-transaction episode totaling $4440.09 and was initially considered account takeover given the card's 20 prior fraud cases and a shared strong device profile. However, a customer validation request confirmed travel to the region and recognized the purchase. The recommended actions are ALLOW_TRANSACTION and CLOSE_NO_FRAUD (auto routes).",
+    "summary": "The verdict is legitimate with probability 0.1, following customer confirmation of transaction 3640919 ($881.55). Despite a history of 20 fraud cases on card C09241-K2, the customer verified this purchase in a known region, resolving initial conflicting evidence. Recommended actions are CREATE_CASE, ALLOW_TRANSACTION, and CLOSE_NO_FRAUD (all auto route).",
     "written_to_graph": true,
     "graph_case_id": "AC-HHF-011"
   },
   "evidence_requests": [
     {
       "type": "customer_validation",
-      "asked_after_step": 16,
+      "asked_after_step": 17,
       "assumed_response": "ASSUMED (simulated): customer confirmed travel to billing region 494.0 and recognises the $881.55 purchase"
     }
   ],
@@ -186,47 +138,42 @@
       {
         "action": "CREATE_CASE",
         "route": "auto",
-        "reason": "3a: a case is created because evidence verification is requested."
+        "reason": "3a: a case is created because evidence is requested from the customer."
       },
       {
         "action": "VERIFY_WITH_CUSTOMER",
         "route": "auto",
-        "reason": "R1: verification is required as probability 0.25 is < 0.70 with a single evidence family."
+        "reason": "R1: probability 0.257 is below 0.70 with a single signal, requiring verification before any block."
       },
       {
         "action": "MONITOR_CARD",
         "route": "auto",
-        "reason": "§3b: monitoring the card is recommended while verification is pending."
-      },
-      {
-        "action": "MONITOR_CONNECTED_CARDS",
-        "route": "auto",
-        "reason": "R6: shared origin is detected with device profile 'Windows | Windows 7 | firefox 57.0 | 1280x1080' connected to 11 cards prior to case opening."
+        "reason": "§3b: monitoring card activity while customer verification is pending."
       },
       {
         "action": "ESCALATE_TO_ANALYST",
         "route": "auto",
-        "reason": "R8: escalation is required as the verdict is uncertain and episode exposure $4440.09 is > $500."
+        "reason": "R8: verdict uncertain (0.257) and exposure $881.55 > $500, with conflicting evidence of prior fraud on the card versus legitimacy signals for the flagged transaction."
       }
     ],
     "final": [
       {
         "action": "CREATE_CASE",
         "route": "auto",
-        "reason": "3a: a case is created because evidence was requested and the case is now being closed."
+        "reason": "3a: a case is created because evidence was requested and received."
       },
       {
         "action": "ALLOW_TRANSACTION",
         "route": "auto",
-        "reason": "R3: the customer confirmed the transaction."
+        "reason": "R3: the customer confirmed the purchase, so the transaction is allowed."
       },
       {
         "action": "CLOSE_NO_FRAUD",
         "route": "auto",
-        "reason": "R3: the customer confirmed the transaction, leading to a legitimate verdict."
+        "reason": "R3: the customer confirmed the transaction, so the case is closed with no fraud."
       }
     ],
-    "what_changed": "The assumed customer validation reply (confirm) moved the probability from 0.25 to 0.10 and changed the verdict from uncertain to legitimate, adding ALLOW_TRANSACTION, CLOSE_NO_FRAUD, removing VERIFY_WITH_CUSTOMER, MONITOR_CARD, MONITOR_CONNECTED_CARDS, ESCALATE_TO_ANALYST. Counterfactual: had the customer denied the purchase, R2 would have applied: BLOCK_CARD (L1) and CREATE_CASE."
+    "what_changed": "The assumed customer validation reply (confirm) moved the probability from 0.26 to 0.10 and changed the verdict from uncertain to legitimate, adding ALLOW_TRANSACTION, CLOSE_NO_FRAUD, removing VERIFY_WITH_CUSTOMER, MONITOR_CARD, ESCALATE_TO_ANALYST. Counterfactual: had the customer denied the purchase, R2 would have applied: BLOCK_CARD (L1) and CREATE_CASE."
   },
   "sar": {
     "file": false,
@@ -236,8 +183,8 @@
     "total_amount_usd": 0,
     "activity_dates": []
   },
-  "stop_reason": "Policy §6 test 2: the assumed customer confirmation settled the question of fraud, changing the probability to 0.10 and the verdict to legitimate. This also meets §6 test 1 as the probability is now ≤ 0.15 with three independent evidence families (customer, history, memory).",
-  "tool_calls": 16,
-  "tokens": 272135,
-  "latency_s": 111.2
+  "stop_reason": "Policy §6 test 2: the assumed customer confirmation settled the question. Probability 0.10 with 3 evidence families also meets §6 test 1.",
+  "tool_calls": 17,
+  "tokens": 269213,
+  "latency_s": 96.1
 }

@@ -121,7 +121,7 @@ SAY = C=; B=; D=; G=; Y=; RD=; R=; \
         corpus embed vectors replay sheet engine-drafts bench bench-r2 bench-one bench-free promote validate ui mock-run \
         test test-data test-live lint lint-gsql lint-contracts fmt keepalive awake rebuild demo-warm clean \
         clear-writebacks rerun-live round2-ingest round2-backtest round2-grade load-round2 \
-        delta delta-build delta-export backup-txn-json load-delta proof-snapshot
+        delta delta-build delta-export backup-txn-json load-delta snapshot proof-snapshot
 
 ##@ Start here
 help: ## this list, grouped by build stage (the default target)
@@ -215,6 +215,9 @@ env: ## print the effective config as KEY=value (secrets masked); `make status` 
 
 awake: ## wake the Savanna workspace (retries 502/503 up to 4 min) and print the version
 	$(PY) -m ops.keep_alive --once
+
+snapshot: ## record vertex/edge counts of the live graph with a timestamp in logs/graph_snapshots.jsonl and diff against the last one
+	$(PY) -m ops.graph_snapshot
 
 keepalive: ## ping an installed query every 3 min (benchmark / demo recording); Ctrl-C to stop
 	$(PY) -m ops.keep_alive

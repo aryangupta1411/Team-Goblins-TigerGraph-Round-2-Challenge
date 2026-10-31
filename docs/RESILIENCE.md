@@ -14,7 +14,7 @@ That writes `runs/drill-1/HHF-004/{answer.json,calls.jsonl,phases.jsonl,sar.md}`
 RUN_MODE=live LLM_BACKEND=gemini uv run python -m agent.bench --cases HHF-004 --run-id live-drill-1
 ```
 
-The live command calls `typology_scan` on the workspace for the January detectors. It is installed, and on 30 cases its results match the local detectors exactly (`graph/check_typology_parity.py --installed`: 6 hits, 0 differences). If it fails or is missing, a January case stops with `CaseDataMissing` and writes no answer (see the table below).
+The live command calls `typology_scan` on the workspace for the January detectors. The query is installed. In the submitted run, `runs/hhf-final`, the harness called it once per case through MCP: 18 calls, all `ok`. On 30 cases its results match the local detectors exactly (6 hits, 0 differences in `engine/out/typology_parity.json`, from `uv run python graph/check_typology_parity.py --installed --json engine/out/typology_parity.json`). If it fails or is missing, a January case stops with `CaseDataMissing` and writes no answer (see the table below).
 
 ## Dependencies and what leaves the bank's boundary
 
@@ -33,7 +33,30 @@ The live command calls `typology_scan` on the workspace for the January detector
 |---|---|---|
 | Graph or MCP unreachable (502/503/504, timeout, dropped connection) | Retries with backoff up to `TG_RESUME_MAX_WAIT_S` (240 s), then raises `GraphUnavailable`. No `answer.json` is written, the run stops, and `--resume` picks up the unfinished case. A missing reply is never treated as evidence. | `phases.jsonl` note, a `FAIL` line on stderr, the case marked failed in the run table |
 | The flagged transaction is not in the graph, or (on a January case) `typology_scan` fails or is missing | `CaseDataMissing`: the case stops and no answer is written. Scoring a January case without the scan would silently drop the evidence that decides the verdict. | `phases.jsonl` (`case failed`) |
-| Model timeout, refusal or unparseable output | Gemini HTTP errors (429/5xx) are retried up to 5 attempts. Structured phases validate against strict schemas in up to 3 attempts, then the case fails (`agent/llm.py`). A probability more than ±0.10 from the engine's is clamped (`agent.security.clamp_to_engine`). An action outside `engine.policy.admissible()` is replaced by the policy's own set. A SAR failing V00-V19 falls back to the deterministic attested narrative. | `calls.jsonl` (`kind=llm`, latency, tokens); `phases.jsonl` (`clamped`, `policy_override`) |
+| Model timeout, refusal or unparseable output (this happened in the submitted run, see below) | Gemini HTTP errors (429/5xx) are retried up to 5 attempts. Structured phases validate against strict schemas in up to 3 attempts, then the case fails (`agent/llm.py`). A probability more than ±0.10 from the engine's is clamped (`agent.security.clamp_to_engine`). An action outside `engine.policy.admissible()` is replaced by the policy's own set. A SAR failing V00-V19 falls back to the deterministic attested narrative. | `calls.jsonl` (`kind=llm`, latency, tokens); `phases.jsonl` (`clamped`, `policy_override`) |
 | Hostile or invalid input (trigger text, stored notes, tool rows) | Text is NFKC-normalised and zero-width characters are removed, and every sentence carrying an instruction is dropped before the model sees it. Channel and amount claims are checked against the transaction record. Customer-visible `evidence_requests` are checked for tip-off terms (report, SAR, regulator, AML, law enforcement). The engine's decision never reads free text. `run_attack_ablation()` blocks 23 / 23 attacks (6 planted in the pack, 17 synthetic), and `sanitize_trigger_text` raises 0 false alarms on the 12 HHF triggers that carry no injection. | `CaseEvent(kind=security_alert)`; `phases.jsonl` codes `INJ_*`, `SPOOF_*` |
 | Approval by the wrong role, or editing a decided approval | `decide()` accepts only a session minted by `authenticate()` (scrypt passphrase, server-side directory). The role comes from the directory, never from the request. A team lead decides L1 only; L2 needs a fraud manager. SQLite triggers refuse any update or delete of a decided approval or of the audit log, and there is no reopen. With no directory file, nobody can approve. | `approval_audit_log`: `ok` / `denied_auth` / `denied_rbac` / `denied_immutable`, actor, role, time |
-| The same case run twice | Engine output is deterministic: two consecutive `engine.run_cases` runs over HHF-001 … HHF-018 give identical drafts apart from `latency_s`. Graph writes are keyed upserts (`AC-<case>`, `AC-<case>-<seq>`, `AP-AC-<case>-<ACTION>`). Case memory excludes the case's own agent case and every case opened at or after it. `written_to_graph` is true only when the `AgentCase` upsert succeeded. | `run_manifest.json` (git SHA, dirty flag, prompt hashes, per-case invocations) |
+| The same case run twice, or resumed after a failure | Engine output is deterministic: two consecutive `engine.run_cases` runs over HHF-001 … HHF-018 on the frozen commit `b397c2c` give identical drafts apart from `latency_s`. Graph writes are keyed upserts (`AC-<case>`, `AC-<case>-<seq>`, `AP-AC-<case>-<ACTION>`). Case memory excludes the case's own agent case and every case opened at or after it. `written_to_graph` is true only when the `AgentCase` upsert succeeded. | `run_manifest.json` (git SHA, dirty flag, prompt hashes, per-case invocations) |
+
+## What happened in the submitted run
+
+`runs/hhf-final` ran from commit `b397c2c` with no local changes (`git_dirty: false`), in two invocations
+(`run_manifest.json`).
+
+1. **Main run, 11:02:41.** On HHF-005, Gemini's P5 structured output failed validation three times, each time JSON cut
+   off mid-string at about 33 KB. After the third attempt the case failed, and no answer was written for it. The run
+   went on to HHF-003, the next case in `opened_at` order, and finished it and the other 16 cases.
+2. **Clean-up.** HHF-005's partial write-back was removed from the graph.
+3. **Resume, 11:35:37.** `--resume` re-ran HHF-005 and then HHF-003, in `opened_at` order, so case memory saw the same
+   history it would have seen without the failure. The last case finished at 11:38:45. The first HHF-003 attempt is
+   kept in `_failed_attempt/HHF-003-superseded/`. It has the same verdict, probability, SAR decision and final actions
+   as the promoted one.
+
+Both invocations ran under a guard. Every tracked file was hashed into `_failed_attempt/tracked_files_sha256.txt`
+(534 files), and that list's sha256 is the same at all four checkpoints: before and after the main run, and before and
+after the resume (`code.list_sha256` in `provenance.json`). The final state is 18 / 18 answers with `written_to_graph: true`, and 276 write-back calls, all `ok`
+(`calls.jsonl`, `caller=persist`). The graph holds 18 `AgentCase` with `run_id` `hhf-final`, 122 HHF `CaseEvent`s and 17
+HHF `Approval`s (`graph_at_promotion`, read through pyTigerGraph at 11:45:32). Sources: `runs/hhf-final/provenance.json`
+(`failed_attempt` with the P5 error and resolution, `code.list_sha256`, `graph_at_promotion`) and
+`runs/hhf-final/_failed_attempt/`. An earlier attempt, `r2-submit`, was discarded because tracked files changed while it was
+starting.

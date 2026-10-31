@@ -592,3 +592,375 @@ def test_nav_sections_and_titles(mock_run, monkeypatch):
             assert made[meta["url_path"]]["title"].startswith(meta["title"]) and made[meta["url_path"]]["icon"].startswith(":material/")
     sections = common.nav_pages()
     assert list(sections)[0] == "" and set(sections) <= {"", "Proof", "System"}
+
+
+# --------------------------------------------------------------------------- #
+# PR #1 port: live pipeline strip, call console, phase inspector, scorecard   #
+# --------------------------------------------------------------------------- #
+def _tool(phase: str, name: str, t: float, **kw) -> dict:
+    return {"kind": "tool", "phase": phase, "name": name, "t": t, "ts": f"2026-10-31 11:20:{int(t):02d}", "latency_s": 0.2, "ok": True,
+            "caller": "harness", "params": kw.pop("params", {"as_of": "2017-01-05 10:00:00"}), **kw}
+
+
+def _llm(phase: str, t: float, model: str) -> dict:
+    return {"kind": "llm", "phase": phase, "name": phase.split("-")[0], "t": t, "ts": f"2026-10-31 11:20:{int(t):02d}", "model": model,
+            "input_tokens": 100, "output_tokens": 20, "cache_read_tokens": 0, "latency_s": 2.0, "ok": True}
+
+
+def _ph(phase: str, t: float, payload: dict | None = None) -> dict:
+    return {"kind": "phase", "phase": phase, "name": common.PHASE_NAMES.get(phase.split("-")[0], ""), "t": t, "payload": payload or {}}
+
+
+def test_pipeline_state_infers_the_running_stage_from_the_trace_files_only(tree):
+    """The stage after the newest row and whether it waits on the LLM follow the phase machine's order; the model is the
+    one a calls.jsonl row records (this case, else another case of the run), never assumed; a stopped trace is 'stopped'."""
+    phases = {"HHF-002": [_p0("HHF-002") | {"t": 0.0}, _ph("P1", 1.8)], "HHF-001": [_p0("HHF-001") | {"t": 0.0}, _ph("P9", 9.0)]}
+    calls = {"HHF-002": [_tool("P0", "query:case_context", 0.4), _tool("P1", "query:similar_prior_cases", 1.5)],
+             "HHF-001": [_llm("P2", 3.0, "claude-test-model")]}
+    _write_run(tree["runs"], "r-live", {"HHF-001": _answer("HHF-001"), "HHF-002": None}, phases=phases, calls=calls)
+    v = common.case_view("r-live", "HHF-002")
+    assert v.state == "running"
+    ps = common.pipeline_state(v)
+    states = {s["code"]: s["state"] for s in ps["stages"]}
+    assert ps["active"] == "P2" and ps["llm"] is True and ps["model"] == "" and ps["model_source"] == ""
+    assert states["S0"] == "offline" and states["P0"] == states["P1"] == "done" and states["P2"] == "active"
+    assert all(states[c] == "pending" for c in ("P3", "P4", "P5", "P6", "P7", "P8", "P9", "P10"))
+    run_model = common.llm_models(common.case_view("r-live", c) for c in ("HHF-001", "HHF-002")).most_common(1)[0][0]
+    ps = common.pipeline_state(v, run_model=run_model)
+    assert ps["model"] == "claude-test-model" and "another case" in ps["model_source"]
+
+    def state_after(rows: list[dict], cs: list[dict]) -> dict:
+        (tree["runs"] / "r-live" / "HHF-002" / "phases.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows), encoding="utf-8")
+        (tree["runs"] / "r-live" / "HHF-002" / "calls.jsonl").write_text("".join(json.dumps(r) + "\n" for r in cs), encoding="utf-8")
+        return common.pipeline_state(common.case_view("r-live", "HHF-002"), run_model=run_model)
+
+    base = [_p0("HHF-002") | {"t": 0.0}, _ph("P1", 1.8)]
+    ps = state_after(base, [_llm("P2", 4.0, "m-own"), _tool("P2", "query:region_history", 4.3)])
+    assert (ps["active"], ps["llm"], ps["model"], ps["model_source"]) == ("P2", True, "m-own", "this case's calls.jsonl")
+    p4 = [*base, _ph("P2", 6.0), _ph("P3", 8.0), _ph("P4", 12.0)]
+    assert state_after([*p4, _ph("P5-voi", 12.1, {"ask": False}), _ph("P5", 15.0)], [])["active"] == "P8"
+    ps = state_after([*p4, _ph("P5-voi", 12.1, {"ask": True}), _ph("P5", 15.0)], [])
+    assert (ps["active"], ps["llm"]) == ("P6", False)
+    voi = [*p4, _ph("P5-voi", 12.1, {"ask": False})]
+    assert state_after(voi, [_llm("P5", 14.0, "m-own")])["llm"] is False  # the policy check follows the model's choice
+    retry = {"kind": "note", "t": 14.001, "text": "P5: retrying structured output", "error": "bad JSON"}
+    ps = state_after([*voi, retry], [_llm("P5", 14.0, "m-own")])
+    assert (ps["active"], ps["llm"], ps["model"]) == ("P5", True, "m-own") and "structured-output retry" in ps["waiting"]
+    ps = state_after([*p4, _ph("P5-voi", 12.1, {"ask": False}), _ph("P5", 15.0), _ph("P10", 30.0)], [_llm("P9", 25.0, "m-own")])
+    assert ps["active"] == "P9" and {s["code"]: s["state"] for s in ps["stages"]}["P10"] == "done"
+    _age(tree["runs"] / "r-live" / "HHF-002", 3600)
+    ps = common.pipeline_state(common.case_view("r-live", "HHF-002"))
+    assert ps["active"] is None and ps["stopped_at"] == "P9" and {s["code"]: s["state"] for s in ps["stages"]}["P9"] == "stopped"
+
+
+def test_pipeline_state_done_case_and_the_p8_timeline_entry(tree):
+    """A finished case: stages with rows are done, the others 'skipped' (no row). P8 writes no phase row, so its SAR-draft
+    LLM call still gets a timeline entry, between P7 and P10, and P10 then starts where P8 ended."""
+    rows = [_p0("HHF-003") | {"t": 0.0}, _ph("P1", 1.0), _ph("P2", 2.0), _ph("P3", 3.0), _ph("P4", 4.0), _ph("P5-voi", 4.1, {"ask": False}),
+            _ph("P5", 5.0, {"actions": []}), _ph("P10", 20.0, {"written_to_graph": True}), _ph("P9", 21.0, {"validation": []})]
+    cs = [_llm("P8", 12.0, "m-x"), _llm("P9", 15.0, "m-x"), _tool("P10", "pytg:upsertVertex(AgentCase)", 17.0, caller="persist")]
+    _write_run(tree["runs"], "r-done", {"HHF-003": _answer("HHF-003", sar=True)}, phases={"HHF-003": rows}, calls={"HHF-003": cs})
+    v = common.case_view("r-done", "HHF-003")
+    states = {s["code"]: s["state"] for s in common.pipeline_state(v)["stages"]}
+    assert states["P6"] == states["P7"] == "skipped" and states["P8"] == states["P9"] == states["P10"] == "done"
+    tl = common.trace_timeline(v)
+    codes = [e["code"] for e in tl]
+    assert codes.index("P5") < codes.index("P8") < codes.index("P10")
+    p8 = next(e for e in tl if e["code"] == "P8")
+    assert len(p8["llm"]) == 1 and p8["llm"][0]["model"] == "m-x" and p8["sentence"].startswith("SAR filed")
+    assert next(e for e in tl if e["code"] == "P10")["start"] == 12.0
+
+
+def test_call_lines_never_rewrite_the_model_and_compact_vectors():
+    line = common.call_line(_llm("P4", 7.5, "claude-sonnet-4-5"), "HHF-009")
+    assert "claude-sonnet-4-5" in line and "gemini" not in line and "[P4]" in line and line.startswith("HHF-009")
+    assert "model not recorded" in common.call_line({"kind": "llm", "phase": "P2", "t": 1.0})
+    vec = common.call_line(_tool("P1", "query:grounding_chunks", 1.8, params={"q": [0.01] * 1024, "k": 5}))
+    assert "<1024-d vector>" in vec and "0.01, 0.01" not in vec and len(vec) < 260
+    bad = common.call_line(_tool("P3", "query:ring_profile", 3.0, ok=False, error="timeout after 15 s"))
+    assert "FAILED: timeout after 15 s" in bad
+    assert len(common.compact_params({"s": "x" * 500}, limit=50)) == 50
+
+
+def test_scorecard_rules_are_read_from_the_code_or_the_snapshot(monkeypatch):
+    yaml = pytest.importorskip("yaml", reason="the policy file is YAML; the Railway image reads the snapshot instead")
+    r = common.scorecard_rules()
+    assert r["mode"] == "code", r["error"]
+    eng = yaml.safe_load((common.ROOT / "policy" / "fraud_policy.yaml").read_text(encoding="utf-8"))["engine"]
+    assert r["data"]["engine"]["fraud_band"] == eng["fraud_band"] and r["data"]["engine"]["max_abs_adjustment"] == eng["max_abs_adjustment"]
+    floors = r["data"]["detector_floors"]
+    assert floors and all(isinstance(d["p_floor"], float) and d["detector_id"] for d in floors)
+    from agent.security import clamp_to_engine
+
+    assert clamp_to_engine(1.0, 0.5) == pytest.approx(0.5 + r["data"]["llm_max_move"])
+    monkeypatch.setattr(common, "optional_import", lambda name: (None, f"{name} not shipped"))
+    fallback = common.scorecard_rules()
+    assert fallback["mode"] in ("snapshot", "missing") and (fallback["data"] is not None or "not shipped" in fallback["error"])
+
+
+def test_case_inspector_and_console_pipeline_render(tree, monkeypatch):
+    """The Case file's S0-P10 strip renders every stage (recorded, skipped, S0) without an exception or a write; the Run
+    console follows the running case, says the in-flight LLM call is inferred and prints the model calls.jsonl records."""
+    pytest.importorskip("streamlit", reason="AppTest needs streamlit")
+    from streamlit.testing.v1 import AppTest
+
+    monkeypatch.setattr(subprocess, "Popen", lambda *a, **k: (_ for _ in ()).throw(AssertionError("Popen at render")))
+    rows = [_p0("HHF-003") | {"t": 0.0}, _ph("P1", 1.0), _ph("P2", 2.0), _ph("P3", 3.0, {"p_engine": 0.9, "adjustments": [["ring", 1.0]]}),
+            _ph("P4", 4.0, {"fraud_probability": 0.9}), _ph("P5-voi", 4.1, {"ask": False}), _ph("P5", 5.0), _ph("P10", 20.0), _ph("P9", 21.0)]
+    cs = [_tool("P0", "query:case_context", 0.3), _llm("P2", 1.5, "model-from-trace"), _llm("P8", 12.0, "model-from-trace")]
+    _write_run(tree["runs"], "r-ui", {"HHF-003": _answer("HHF-003", sar=True), "HHF-004": None},
+               phases={"HHF-003": rows, "HHF-004": [_p0("HHF-004") | {"t": 0.0}, _ph("P1", 1.0), _ph("P2", 2.0), _ph("P3", 3.0)]},
+               calls={"HHF-003": cs, "HHF-004": [_tool("P3", "query:ring_profile", 2.9, ts="2026-10-31 11:21:30")]})
+    at = AppTest.from_file(str(common.ROOT / "ui" / "pages" / "2_case.py"), default_timeout=60)
+    at.query_params["run"], at.query_params["case"] = "r-ui", "HHF-003"
+    at.session_state["run_id"], at.session_state["case_id"] = "r-ui", "HHF-003"
+    at.run()
+    assert not at.exception, [e.value for e in at.exception]
+    strip = next(p for p in at.pills if p.key == "case_stage")
+    for code in ("S0", "P3", "P6", "P8", "all"):
+        strip.set_value(code).run()
+        assert not at.exception, (code, [e.value for e in at.exception])
+    strip.set_value("P0").run()
+    assert any("query:case_context" in df.value.to_string() for df in at.dataframe), "the P0 stage must list its calls"
+    assert not tree["db"].exists()
+
+    at = AppTest.from_file(str(common.ROOT / "ui" / "pages" / "1_queue.py"), default_timeout=60)
+    at.session_state["console_job"] = {"run": "r-ui", "cases": ["HHF-003", "HHF-004"], "pid": 0, "backend": "mock", "cmd": [], "log": "", "lock": ""}
+    at.run()
+    assert not at.exception, [e.value for e in at.exception]
+    text = _page_text(at)
+    assert "Pipeline · HHF\\-004" in text or "Pipeline · HHF-004" in text, text[:2000]
+    console = next(str(c.value) for c in at.code if "(inferred)" in str(c.value))
+    assert "HHF-004" in console and "[P4]" in console and "model-from-trace" in console and "gemini" not in console.lower()
+    assert "LLM call in flight" in text and not tree["db"].exists()
+    lines = console.splitlines()
+    assert any(ln.startswith("HHF-003 t+   1.5s [P2]  LLM   model-from-trace") for ln in lines), lines  # a run_console line
+    done_at = lines.index("HHF-003 answer.json · verdict fraud · p 0.90")
+    assert done_at < next(i for i, ln in enumerate(lines) if ln.startswith("HHF-004 t+")) and lines[-1].endswith("(inferred)")
+    status = next(str(m.value) for m in at.markdown if "LLM call in flight" in str(m.value))
+    assert "model model-from-trace (from another case's calls.jsonl in this run)" in status and "gemini" not in status.lower(), status
+    labels = {s["label"] for s in common.PIPELINE}
+    assert len([c for c in at.caption if str(c.value).split(" · ")[0] in labels]) == 24  # the live S0-P10 strip and the replay's
+    arch = AppTest.from_file(str(common.ROOT / "ui" / "pages" / "7_architecture.py"), default_timeout=60)
+    arch.session_state["run_id"] = "r-ui"
+    arch.run()
+    assert not arch.exception, [e.value for e in arch.exception]
+    spec = arch.get("graphviz_chart")[0].proto.spec
+    assert 'llm [label="LLM · model-from-trace"' in spec and "gemini" not in spec.lower()
+    # TigerGraph is credited as the platform ("Built on" and its official logo), never as this app's brand
+    assert any(str(c.value) == "Built on" for c in arch.caption)
+    assert arch.get("image") and common.TIGERGRAPH_LOGO.is_file()
+    assert "TigerGraph</text>" not in (common.UI_DIR / "assets" / "mark.svg").read_text(encoding="utf-8")
+
+
+def test_resumed_case_reads_only_its_newest_attempt(tree):
+    """agent.bench --resume appends a rerun to the same files with t restarting at 0: the strip and the timeline follow
+    the newest attempt, and the console orders cases by their newest call and marks where the rerun starts."""
+    a1 = [_p0("HHF-005") | {"t": 0.0, "at": "2026-10-31 11:28:37"}, _ph("P1", 1.8), _ph("P2", 40.0), _ph("P3", 60.0), _ph("P4", 120.0),
+          _ph("P5-voi", 120.1, {"ask": False}), {"kind": "note", "t": 268.5, "text": "case failed", "error": "provider 503"}]
+    a2 = [{"kind": "note", "t": 0.0, "text": "case memory excludes agent cases opened at or after this one", "n": 8},
+          _p0("HHF-005") | {"t": 0.002, "at": "2026-10-31 11:35:40"}, _ph("P1", 1.8)]
+    c1 = [_tool("P0", "query:case_context", 0.4, ts="2026-10-31 11:28:38"), _llm("P5", 268.4, "m-old") | {"ts": "2026-10-31 11:33:05"}]
+    c2 = [_tool("P0", "query:case_context", 0.4, ts="2026-10-31 11:35:41"), _tool("P1", "query:similar_prior_cases", 1.5, ts="2026-10-31 11:35:42")]
+    done = [_tool("P0", "query:case_context", 0.3, ts="2026-10-31 11:34:10")]
+    _write_run(tree["runs"], "r-resume", {"HHF-003": _answer("HHF-003"), "HHF-005": None},
+               phases={"HHF-003": [_p0("HHF-003") | {"t": 0.0}, _ph("P9", 9.0)], "HHF-005": a1 + a2}, calls={"HHF-003": done, "HHF-005": c1 + c2})
+    v = common.case_view("r-resume", "HHF-005")
+    assert v.state == "running" and common.trace_attempts(v) == 2
+    ps = common.pipeline_state(v)
+    states = {s["code"]: s["state"] for s in ps["stages"]}
+    assert (ps["active"], ps["llm"], ps["newest"]["phase"]) == ("P2", True, "P1"), ps  # attempt 2 just finished P1
+    assert states["P3"] == states["P4"] == states["P5"] == "pending" and ps["model"] == ""  # attempt 1's P5 row and m-old are ignored
+    assert [e["code"] for e in common.trace_timeline(v)] == ["P0", "P1"]
+    lines = common.run_console([common.case_view("r-resume", c) for c in ("HHF-005", "HHF-003")], limit=40)
+    assert lines[0].startswith("HHF-003") and lines[-1].startswith("HHF-005") and "similar_prior_cases" in lines[-1], lines
+    assert any("new attempt" in ln for ln in lines)
+
+
+def test_after_the_last_decision_the_final_actions_decide_p8_or_p9(tree):
+    """p8_sar drafts only when FILE_REPORT is in the final actions: without it the next call is the P9 closing and P8 has
+    no row; with it P8 waits on the SAR model; actions not recorded keep the hedge."""
+    base = [_p0("HHF-008") | {"t": 0.0}, _ph("P1", 1.0), _ph("P2", 2.0), _ph("P3", 3.0), _ph("P4", 4.0), _ph("P5-voi", 4.1, {"ask": True}),
+            _ph("P5", 5.0, {"actions": [{"action": "STEP_UP_AUTH"}]}), _ph("P6", 6.0)]
+    cases = {"HHF-008": None, "HHF-001": None, "HHF-002": None}
+    phases = {"HHF-008": [*base, _ph("P7", 9.0, {"actions": [{"action": "CLOSE_NO_FRAUD", "route": "auto"}]})],
+              "HHF-001": [*base, _ph("P7", 9.0, {"actions": [{"action": "BLOCK_CARD"}, {"action": "FILE_REPORT"}]})],
+              "HHF-002": [*base, _ph("P7", 9.0)]}
+    calls = {c: [_llm("P2", 1.5, "m-main")] for c in cases}
+    calls["HHF-001"].append(_llm("P8", 0.5, "m-sar") | {"phase": "P8"})  # an earlier SAR row of this case names the SAR model
+    _write_run(tree["runs"], "r-p7", cases, phases=phases, calls=calls)
+    no_sar = common.pipeline_state(common.case_view("r-p7", "HHF-008"))
+    assert (no_sar["active"], no_sar["llm"], no_sar["model"]) == ("P9", True, "m-main")
+    assert {s["code"]: s["state"] for s in no_sar["stages"]}["P8"] == "skipped"
+    sar = common.pipeline_state(common.case_view("r-p7", "HHF-001"))
+    assert (sar["active"], sar["model"]) == ("P8", "m-sar") and "P8 rows" in sar["model_source"]
+    unknown = common.pipeline_state(common.case_view("r-p7", "HHF-002"), run_sar_model="m-other")
+    assert unknown["active"] == "P8" and unknown["model"] == "" and "different models" in unknown["model_source"]
+
+
+def test_failed_case_stops_in_the_phase_its_error_names(tree):
+    """GraphUnavailable is raised after P2's row is written: the strip stops in P2 (from the error), not the inferred P3."""
+    rows = [_p0("HHF-001") | {"t": 0.0}, _ph("P1", 1.0), _ph("P2", 25.0),
+            {"kind": "note", "t": 25.1, "text": "case failed", "error": "GraphUnavailable('graph unavailable during P2 (query:shared_origin_scan)')"}]
+    _write_run(tree["runs"], "r-fail", {"HHF-001": None}, phases={"HHF-001": rows}, calls={"HHF-001": [_tool("P2", "query:shared_origin_scan", 24.0, ok=False)]})
+    ps = common.pipeline_state(common.case_view("r-fail", "HHF-001"))
+    states = {s["code"]: s["state"] for s in ps["stages"]}
+    assert (ps["stopped_at"], ps["stopped_basis"]) == ("P2", "error") and states["P2"] == "stopped" and states["P3"] == "pending"
+    rows[-1]["error"] = "RuntimeError('provider 503')"  # an LLM failure names no phase: the next stage is inferred
+    (tree["runs"] / "r-fail" / "HHF-001" / "phases.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows), encoding="utf-8")
+    ps = common.pipeline_state(common.case_view("r-fail", "HHF-001"))
+    assert (ps["stopped_at"], ps["stopped_basis"]) == ("P3", "inferred")
+
+
+def test_retry_note_older_than_the_newest_row_is_ignored(tree):
+    rows = [_p0("HHF-002") | {"t": 0.0}, _ph("P1", 1.0), _ph("P2", 2.0), _ph("P3", 3.0), _ph("P4", 9.0), _ph("P5-voi", 9.1, {"ask": False}),
+            {"kind": "note", "t": 10.0, "text": "P5: retrying structured output"}, _ph("P5", 20.0, {"actions": [{"action": "CLOSE_NO_FRAUD"}]})]
+    _write_run(tree["runs"], "r-retry", {"HHF-002": None}, phases={"HHF-002": rows}, calls={"HHF-002": [_llm("P5", 19.9, "m")]})
+    ps = common.pipeline_state(common.case_view("r-retry", "HHF-002"))
+    assert ps["active"] == "P9" and "retry" not in ps["waiting"]
+
+
+def test_detector_floors_follow_the_scan_and_policy_reads_are_fresh(tmp_path, monkeypatch):
+    """Only the detectors hit_from_scan tries reach the scorecard, in its order; the policy file is read afresh on every
+    call and named with its own time; the snapshot section is the fallback where the code is absent."""
+    yaml = pytest.importorskip("yaml", reason="the policy file is YAML")
+    from engine import config
+    from ops import proof_snapshot
+
+    data, errs = proof_snapshot.sec_scorecard()
+    floors = data["detector_floors"]
+    assert not errs and [d["detector_id"] for d in floors if d["in_scan"]] == ["D4_RECIPIENT_EMAIL_MULE", "D1_MOBILE_ANON_PROXY_WAVE",
+                                                                             "D2_ESCALATING_C_DRAIN", "D3_MICRO_CHARGE_SKIMMING"]
+    assert {d["detector_id"] for d in floors if not d["in_scan"]} == {"D5_INPERSON_IDENTITY_CLONE", "D6_NEW_MOBILE_CNP_BURST"}
+    copy = tmp_path / "policy.yaml"
+    copy.write_text((common.ROOT / "policy" / "fraud_policy.yaml").read_text(encoding="utf-8"), encoding="utf-8")
+    monkeypatch.setattr(config, "POLICY_YAML", copy)
+    first = common.scorecard_rules()
+    doc = yaml.safe_load(copy.read_text(encoding="utf-8"))
+    doc["engine"]["fraud_band"] = 0.75
+    copy.write_text(yaml.safe_dump(doc), encoding="utf-8")
+    os.utime(copy, (time.time() + 5, time.time() + 5))
+    second = common.scorecard_rules()
+    assert first["data"]["engine"]["fraud_band"] != 0.75 and second["data"]["engine"]["fraud_band"] == 0.75
+    assert second["as_of"] == common.as_of(copy) and str(copy) in second["source"]
+    snap = tmp_path / "proof_snapshot.json"
+    snap.write_text(json.dumps({"generated_at": "2026-10-31T00:00:00Z", "git_sha": "abc12345", "sections": {"scorecard": data}, "errors": {}}), encoding="utf-8")
+    monkeypatch.setattr(common, "SNAPSHOT_PATH", snap)
+    monkeypatch.setattr(common, "optional_import", lambda name: (None, f"{name} not shipped"))
+    fallback = common.scorecard_rules()
+    assert fallback["mode"] == "snapshot" and fallback["data"]["detector_floors"] == floors and fallback["git_sha"] == "abc12345"
+
+
+def test_s0_says_not_covered_for_cases_outside_the_scan(tree):
+    """The data-quality scan covers the Final Round cases only: an HHG case gets 'not covered', never 'no taint flag'."""
+    pytest.importorskip("streamlit", reason="AppTest needs streamlit")
+    from streamlit.testing.v1 import AppTest
+
+    rows = [_p0("HHG-014") | {"t": 0.0}, _ph("P1", 1.0), _ph("P9", 2.0)]
+    _write_run(tree["runs"], "r-hhg", {"HHG-014": _answer("HHG-014")}, phases={"HHG-014": rows}, calls={"HHG-014": [_tool("P0", "query:case_context", 0.3)]})
+    at = AppTest.from_file(str(common.ROOT / "ui" / "pages" / "2_case.py"), default_timeout=60)
+    at.session_state["run_id"], at.session_state["case_id"] = "r-hhg", "HHG-014"
+    at.run()
+    assert not at.exception, [e.value for e in at.exception]
+    text = _page_text(at)
+    if common.proof("dq")["data"] is not None:
+        assert "not covered by the data" in text and "no data\\-quality taint flag on this case" not in text and "no data-quality taint flag on this case" not in text
+
+
+def test_after_a_sar_draft_the_closing_follows_unless_a_retry_is_noted(tree):
+    """p8_sar notes 'SAR validation failed' before every retry: a draft with no newer note is followed by the P9 closing
+    on the main model; with the note, a P8 retry on the SAR model."""
+    rows = [_p0("HHF-001") | {"t": 0.0}, _ph("P1", 1.0), _ph("P2", 2.0), _ph("P3", 3.0), _ph("P4", 4.0), _ph("P5-voi", 4.1, {"ask": False}),
+            _ph("P5", 5.0, {"actions": [{"action": "FILE_REPORT"}]})]
+    cs = [_llm("P2", 1.5, "m-main"), _tool("P8", "ofac_screen", 5.1), _llm("P8", 15.0, "m-sar")]
+    _write_run(tree["runs"], "r-sar", {"HHF-001": None}, phases={"HHF-001": rows}, calls={"HHF-001": cs})
+    ps = common.pipeline_state(common.case_view("r-sar", "HHF-001"))
+    assert (ps["active"], ps["model"]) == ("P9", "m-main") and {s["code"]: s["state"] for s in ps["stages"]}["P8"] == "done"
+    rows.append({"kind": "note", "t": 15.01, "text": "SAR validation failed", "attempt": 1, "problems": ["amount mismatch"]})
+    (tree["runs"] / "r-sar" / "HHF-001" / "phases.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows), encoding="utf-8")
+    ps = common.pipeline_state(common.case_view("r-sar", "HHF-001"))
+    assert (ps["active"], ps["llm"], ps["model"]) == ("P8", True, "m-sar") and "SAR validator" in ps["waiting"]
+
+
+def test_sar_checks_resolve_ids_against_the_dataset(monkeypatch, tmp_path):
+    """The SAR tab and Approvals check ids with engine.validator.FactsResolver over data/ids.duckdb (what P8 falls back
+    to), so the submitted SARs' device-profile subjects and CC-xxxx ids resolve; with no dataset the checks fall back to
+    the answer's own lists and the page says so."""
+    pytest.importorskip("duckdb", reason="the id checks open data/ids.duckdb read-only")
+    if not common.SAR_IDS_DB.exists():
+        pytest.skip("data/ids.duckdb is not in this checkout")
+    common._SAR_RESOLVERS.clear()
+    resolver, where = common.sar_resolver()
+    assert resolver is not None and "data/ids.duckdb" in where, where
+    unresolved = ("does not resolve", "does not exist in the dataset")
+    answers = {c: json.loads((common.ROOT / "cases" / f"{c}.json").read_text(encoding="utf-8")) for c in ("HHF-002", "HHF-004", "HHF-006")}
+    for cid, ans in answers.items():
+        subj = ans["sar"]["subjects"]
+        meta = {"customer_id": subj[0], "card_id": subj[1]}
+        fails = [(label, detail) for label, ok, detail in common.sar_checks(ans, meta) if not ok]
+        assert not [f for f in fails if any(u in f[1] for u in unresolved)], (cid, fails)
+    monkeypatch.setattr(common, "SAR_IDS_DB", tmp_path / "missing_ids.duckdb")
+    monkeypatch.setenv("ENGINE_FACTS_DB", str(tmp_path / "missing_engine.duckdb"))
+    resolver, where = common.sar_resolver()
+    assert resolver is None and "answer's own lists only" in where and "not here" in where
+    ans = answers["HHF-004"]
+    meta = {"customer_id": ans["sar"]["subjects"][0], "card_id": ans["sar"]["subjects"][1]}
+    assert any("does not resolve" in detail for _, ok, detail in common.sar_checks(ans, meta) if not ok)  # the old false FAIL
+    common._SAR_RESOLVERS.clear()
+
+
+def test_follow_ups_attempts_failures_retries_and_model_window(tree):
+    """A finished case whose rerun failed shows the attempt that wrote answer.json; a failed SAR draft stops in P8; model
+    text echoed in an error never names the stage; the fallback narrative is named; a P8-retry note is a SAR-model call;
+    an earlier invocation's rows never name the model when `since` is given."""
+    ok = [_p0("HHF-012") | {"t": 0.0, "at": "2026-10-31 10:00:00"}, _ph("P1", 1.0), _ph("P9", 9.0, {"validation": []})]
+    rerun = [_p0("HHF-012") | {"t": 0.0, "at": "2026-10-31 12:00:00"}, _ph("P1", 1.0), {"kind": "note", "t": 20.5, "text": "case failed", "error": "x"}]
+    _write_run(tree["runs"], "r-f1", {"HHF-012": _answer("HHF-012")}, phases={"HHF-012": ok + rerun},
+               calls={"HHF-012": [_tool("P0", "query:case_context", 0.3, ts="2026-10-31 10:00:01"), _tool("P0", "query:card_profile", 0.4, ts="2026-10-31 12:00:01")]})
+    v = common.case_view("r-f1", "HHF-012")
+    tl = common.trace_timeline(v)
+    assert v.state == "done" and [e["code"] for e in tl] == ["P0", "P1", "P9"] and [c["name"] for c in tl[0]["calls"]] == ["query:case_context"]
+
+    sar = [_p0("HHF-001") | {"t": 0.0}, _ph("P1", 1.0), _ph("P2", 2.0), _ph("P3", 3.0), _ph("P4", 4.0), _ph("P5-voi", 4.1, {"ask": False}),
+           _ph("P5", 5.0, {"actions": [{"action": "FILE_REPORT"}]}),
+           {"kind": "note", "t": 15.01, "text": "P8: retrying structured output"},
+           {"kind": "note", "t": 30.0, "text": "case failed", "error": "RuntimeError('P8: structured output failed after 3 attempts')"}]
+    _write_run(tree["runs"], "r-f2", {"HHF-001": None}, phases={"HHF-001": sar}, calls={"HHF-001": [_llm("P8", 15.0, "m-sar")]})
+    ps = common.pipeline_state(common.case_view("r-f2", "HHF-001"))
+    assert (ps["stopped_at"], ps["stopped_basis"]) == ("P8", "error"), ps
+
+    echo = [*sar[:-2], {"kind": "note", "t": 30.0, "text": "case failed",
+                        "error": "ValidationError(\"1 validation error for ActionChoice: input_value='{\\\"note\\\": \\\"during P6 we\\\"}'\")"}]
+    _write_run(tree["runs"], "r-f3", {"HHF-001": None}, phases={"HHF-001": echo}, calls={"HHF-001": []})
+    ps = common.pipeline_state(common.case_view("r-f3", "HHF-001"))
+    assert ps["stopped_basis"] == "inferred" and ps["stopped_at"] != "P6"
+
+    fb = [*sar[:-2], {"kind": "note", "t": 40.0, "text": "SAR validation failed", "attempt": 3},
+          {"kind": "note", "t": 40.001, "text": "SAR: rag.sar.fallback_narrative used after three failed drafts"}]
+    _write_run(tree["runs"], "r-f4", {"HHF-001": None}, phases={"HHF-001": fb}, calls={"HHF-001": [_llm("P8", 15.0, "m-sar") | {"phase": "P8-retry2"} | {"t": 39.9}]})
+    ps = common.pipeline_state(common.case_view("r-f4", "HHF-001"))
+    assert ps["active"] == "P9" and "fallback narrative" in ps["waiting"] and "passed" not in ps["waiting"]
+
+    rt = [*sar[:-2], {"kind": "note", "t": 25.01, "text": "P8-retry1: retrying structured output"}]
+    _write_run(tree["runs"], "r-f5", {"HHF-001": None}, phases={"HHF-001": rt},
+               calls={"HHF-001": [_llm("P2", 1.5, "m-main"), _llm("P8", 25.0, "m-sar") | {"phase": "P8-retry1"}]})
+    v = common.case_view("r-f5", "HHF-001")
+    assert (common.pipeline_state(v)["active"], common.pipeline_state(v)["model"]) == ("P8", "m-sar")
+    late = common.pipeline_state(v, since="2026-10-31 23:59:59")  # every own row predates this invocation
+    assert late["model"] == "" and late["active"] == "P8"
+
+
+def test_floors_table_lists_only_scanned_detectors():
+    """How it works shows the detectors hit_from_scan tries (D4, D1, D2, D3), not D5/D6, and says why."""
+    pytest.importorskip("yaml", reason="the scorecard is read from the policy file")
+    pytest.importorskip("streamlit", reason="AppTest needs streamlit")
+    from streamlit.testing.v1 import AppTest
+
+    at = AppTest.from_file(str(common.ROOT / "ui" / "pages" / "7_architecture.py"), default_timeout=60)
+    at.run()
+    assert not at.exception, [e.value for e in at.exception]
+    floors = next(df.value for df in at.dataframe if "floor" in df.value.columns)
+    names = list(floors["floor"])
+    assert names.index("D4_RECIPIENT_EMAIL_MULE") < names.index("D1_MOBILE_ANON_PROXY_WAVE") and not any("D5_" in n or "D6_" in n for n in names)
+    plain = [str(c.value).replace("\\", "") for c in at.caption]  # md() escapes the underscores
+    assert any("not tried by hit_from_scan" in c and "D5_" in c and "D6_" in c for c in plain), plain

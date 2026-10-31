@@ -1,0 +1,175 @@
+{
+  "case_id": "HHF-013",
+  "case": {
+    "status": "escalated",
+    "verdict": "uncertain",
+    "fraud_probability": 0.3,
+    "pattern": "out_of_region_use",
+    "pattern_description": "",
+    "affected_txn_ids": [
+      "3626720"
+    ],
+    "first_suspicious_txn_id": "3626720",
+    "connected_card_ids": [],
+    "connected_device_profiles": [],
+    "exposure_usd": 409.3,
+    "evidence": [
+      {
+        "claim": "The flagged transaction 3626720 for $409.30 is an in-person purchase on card C06115-K1, which has 83 prior transactions and a modal region of 123.0.",
+        "source": "graph",
+        "ref": "query:case_context(txn=3626720)",
+        "entity_ids": [
+          "3626720",
+          "C06115-K1",
+          "C06115"
+        ]
+      },
+      {
+        "claim": "The amount of $409.30 for transaction 3626720 is within the card's historical range, with a prior median of $140.59 and a prior maximum of $2,945.01.",
+        "source": "graph",
+        "ref": "query:case_context(txn=3626720)",
+        "entity_ids": [
+          "3626720",
+          "C06115-K1"
+        ]
+      },
+      {
+        "claim": "The transaction 3626720 occurred in billing region 203.0, a region known to card C06115-K1 with 5 prior purchases over 4 days, not the modal region 123.0.",
+        "source": "graph",
+        "ref": "query:region_history(card=C06115-K1, addr1=203.0)",
+        "entity_ids": [
+          "3626720",
+          "C06115-K1"
+        ]
+      },
+      {
+        "claim": "The flagged transaction 3626720 has a low calibrated score (cms_p) of 0.06 and a real-time risk score of 0.11.",
+        "source": "graph",
+        "ref": "query:case_context(txn=3626720)",
+        "entity_ids": [
+          "3626720"
+        ]
+      },
+      {
+        "claim": "Recent online activity on card C06115-K1 involved the recipient email domain sc.rr.com, which is also associated with 16 other cards within the last 30 days, indicating a shared origin pattern.",
+        "source": "graph",
+        "ref": "query:shared_origin_scan(card=C06115-K1)",
+        "entity_ids": [
+          "C06115-K1"
+        ]
+      },
+      {
+        "claim": "There are no prior fraud cases or agent cases associated with customer C06115 or card C06115-K1.",
+        "source": "graph",
+        "ref": "query:prior_cases_for_customer(cu=C06115)",
+        "entity_ids": [
+          "C06115",
+          "C06115-K1"
+        ]
+      },
+      {
+        "claim": "The engine identifies conflicting evidence between the low risk signals for the flagged in-person transaction and a strong shared online origin signal for other activity on the card.",
+        "source": "graph",
+        "ref": "scorecard",
+        "entity_ids": [
+          "3626720",
+          "C06115-K1"
+        ]
+      },
+      {
+        "claim": "Assumed reply: no reply from the customer within 24 hours",
+        "source": "customer",
+        "ref": "evidence_request:1",
+        "entity_ids": [
+          "3626720"
+        ]
+      }
+    ],
+    "similar_prior_cases": [
+      "CC-4965",
+      "CC-5323",
+      "CC-5195",
+      "CC-5443",
+      "CC-4574"
+    ],
+    "summary": "The verdict is uncertain with a fraud probability of 0.3. The case involves an undocumented pattern where card C06115-K1 engaged in online activity paying a recipient email domain (sc.rr.com) shared by 16 other cards, contrasting with the flagged in-person transaction 3626720 for $409.30 being in a known region with low risk signals. A customer verification received no reply, leading to a recommended DECLINE_TRANSACTION (L1) and ESCALATE_TO_ANALYST (auto).",
+    "written_to_graph": true,
+    "graph_case_id": "AC-HHF-013"
+  },
+  "evidence_requests": [
+    {
+      "type": "customer_validation",
+      "asked_after_step": 15,
+      "assumed_response": "ASSUMED (simulated): no reply from the customer within 24 hours"
+    }
+  ],
+  "next_best_actions": {
+    "initial": [
+      {
+        "action": "CREATE_CASE",
+        "route": "auto",
+        "reason": "3a: fraud probability is 0.30, triggering a case creation."
+      },
+      {
+        "action": "VERIFY_WITH_CUSTOMER",
+        "route": "auto",
+        "reason": "R1: the probability is 0.30, below 0.70, with conflicting evidence, requiring customer verification."
+      },
+      {
+        "action": "MONITOR_CARD",
+        "route": "auto",
+        "reason": "§3b: the card is being monitored while awaiting customer verification due to conflicting evidence."
+      },
+      {
+        "action": "MONITOR_CONNECTED_CARDS",
+        "route": "auto",
+        "reason": "R6: the card shares a recipient email domain (sc.rr.com) with 16 other cards, requiring monitoring of connected cards."
+      },
+      {
+        "action": "ESCALATE_TO_ANALYST",
+        "route": "auto",
+        "reason": "R8: the verdict is uncertain due to conflicting evidence between low risk for the flagged transaction and a strong shared online origin signal for other card activity."
+      }
+    ],
+    "final": [
+      {
+        "action": "CREATE_CASE",
+        "route": "auto",
+        "reason": "R4: a case is created due to no reply from the customer within 24 hours after a verification request."
+      },
+      {
+        "action": "MONITOR_CARD",
+        "route": "auto",
+        "reason": "R4: the card will be monitored due to no reply from the customer within 24 hours."
+      },
+      {
+        "action": "MONITOR_CONNECTED_CARDS",
+        "route": "auto",
+        "reason": "R6: connected cards will be monitored due to the shared recipient email domain (sc.rr.com) identified across multiple cards."
+      },
+      {
+        "action": "DECLINE_TRANSACTION",
+        "route": "L1",
+        "reason": "R4: pending authorizations will be declined due to no reply from the customer within 24 hours."
+      },
+      {
+        "action": "ESCALATE_TO_ANALYST",
+        "route": "auto",
+        "reason": "R8: the case is escalated to an analyst due to an uncertain verdict and conflicting evidence following a no-reply outcome."
+      }
+    ],
+    "what_changed": "The assumed customer validation reply (no_reply) left the probability at 0.30 and kept the verdict uncertain, adding DECLINE_TRANSACTION, removing VERIFY_WITH_CUSTOMER. Counterfactual: a confirmation would have closed the alert (R3); a denial would have led to BLOCK_CARD and CREATE_CASE (R2)."
+  },
+  "sar": {
+    "file": false,
+    "reason": "3a not met: verdict uncertain (fraud not confirmed or strongly suspected), exposure $409.30; no report",
+    "narrative": "",
+    "subjects": [],
+    "total_amount_usd": 0,
+    "activity_dates": []
+  },
+  "stop_reason": "Policy §6 test 3: the verification was not answered within the window; R4 applies (monitor + decline pending authorisations) and the case stays open for the reply, so no further automated step would change the recommendation until a reply arrives. Policy \n6 test 3: The verification request for the flagged transaction C06115-K1 was not answered within the 24-hour window, leading to the application of R4 (monitor + decline pending authorizations). No further automated step would change the recommendation until a reply is received.",
+  "tool_calls": 15,
+  "tokens": 115149,
+  "latency_s": 77.4
+}

@@ -4,26 +4,101 @@
     {
       "name": "ui",
       "runtimeExecutable": "uv",
-      "runtimeArgs": ["run", "streamlit", "run", "ui/app.py", "--server.headless", "true", "--server.port", "8501"],
+      "runtimeArgs": [
+        "run",
+        "streamlit",
+        "run",
+        "ui/app.py",
+        "--server.headless",
+        "true",
+        "--server.port",
+        "8501"
+      ],
       "port": 8501
     },
     {
       "name": "ui-graph",
       "runtimeExecutable": "uv",
-      "runtimeArgs": ["run", "streamlit", "run", "ui/app.py", "--server.headless", "true", "--server.port", "8502"],
+      "runtimeArgs": [
+        "run",
+        "streamlit",
+        "run",
+        "ui/app.py",
+        "--server.headless",
+        "true",
+        "--server.port",
+        "8502"
+      ],
       "port": 8502
+    },
+    {
+      "name": "ui-nav",
+      "runtimeExecutable": "uv",
+      "runtimeArgs": [
+        "run",
+        "streamlit",
+        "run",
+        "ui/app.py",
+        "--server.headless",
+        "true",
+        "--server.port",
+        "8503"
+      ],
+      "port": 8503
     },
     {
       "name": "ui-9009",
       "runtimeExecutable": "uv",
-      "runtimeArgs": ["run", "streamlit", "run", "ui/app.py", "--server.headless", "true", "--server.port", "9009"],
+      "runtimeArgs": [
+        "run",
+        "streamlit",
+        "run",
+        "ui/app.py",
+        "--server.headless",
+        "true",
+        "--server.port",
+        "9009"
+      ],
       "port": 9009
     },
     {
       "name": "ui-stage",
       "runtimeExecutable": "sh",
-      "runtimeArgs": ["-c", "cd /private/tmp/claude-501/-Users-aryangupta1411-GIT-PERSONAL-Tiger-graph-dev/9034e3fd-332d-4b1b-846c-cc0b05356954/scratchpad/stage && exec '/Users/aryangupta1411/GIT PERSONAL/Tiger-graph-dev/.venv/bin/streamlit' run ui/app.py --server.headless true --server.port 8503"],
+      "runtimeArgs": [
+        "-c",
+        "cd /private/tmp/claude-501/-Users-aryangupta1411-GIT-PERSONAL-Tiger-graph-dev/9034e3fd-332d-4b1b-846c-cc0b05356954/scratchpad/stage && exec '/Users/aryangupta1411/GIT PERSONAL/Tiger-graph-dev/.venv/bin/streamlit' run ui/app.py --server.headless true --server.port 8503"
+      ],
       "port": 8503
+    },
+    {
+      "name": "ui-8080",
+      "runtimeExecutable": "uv",
+      "runtimeArgs": [
+        "run",
+        "streamlit",
+        "run",
+        "ui/app.py",
+        "--server.headless",
+        "true",
+        "--server.port",
+        "8080"
+      ],
+      "port": 8080
+    },
+    {
+      "name": "ui-refresh",
+      "runtimeExecutable": "uv",
+      "runtimeArgs": [
+        "run",
+        "streamlit",
+        "run",
+        "ui/app.py",
+        "--server.headless",
+        "true",
+        "--server.port",
+        "8547"
+      ],
+      "port": 8547
     }
   ]
 }

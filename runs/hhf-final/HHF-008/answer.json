@@ -1,0 +1,147 @@
+{
+  "case_id": "HHF-008",
+  "case": {
+    "status": "closed_legitimate",
+    "verdict": "legitimate",
+    "fraud_probability": 0.01,
+    "pattern": "none",
+    "pattern_description": "",
+    "affected_txn_ids": [],
+    "first_suspicious_txn_id": "",
+    "connected_card_ids": [],
+    "connected_device_profiles": [],
+    "exposure_usd": 0.0,
+    "evidence": [
+      {
+        "claim": "The alert was triggered by transaction 3660353 ($165.65, in_person) having a model risk score of 0.81.",
+        "source": "external",
+        "ref": "trigger",
+        "entity_ids": [
+          "3660353"
+        ]
+      },
+      {
+        "claim": "The case-memory scorer puts the flagged transaction 3660353 at a calibrated probability of 0.01, and the engine's probability is 0.0034.",
+        "source": "graph",
+        "ref": "query:case_context(txn=3660353)",
+        "entity_ids": [
+          "3660353"
+        ]
+      },
+      {
+        "claim": "The transaction amount of $165.65 for transaction 3660353 is within the card C07871-K1's baseline (prior median $100.03, prior maximum $2948.12 over 281 transactions).",
+        "source": "graph",
+        "ref": "query:case_context(txn=3660353)",
+        "entity_ids": [
+          "3660353",
+          "C07871-K1"
+        ]
+      },
+      {
+        "claim": "The device profile 'Trident/7.0 | Windows 7 | ie 11.0 for desktop | 1280x1024' used for transaction 3660353 is known to card C07871-K1 with 6 prior uses since 2016-07-05.",
+        "source": "graph",
+        "ref": "query:device_history(card=C07871-K1, device=Trident/7.0 | Windows 7 | ie 11.0 for desktop | 1280x1024)",
+        "entity_ids": [
+          "Trident/7.0 | Windows 7 | ie 11.0 for desktop | 1280x1024",
+          "C07871-K1"
+        ]
+      },
+      {
+        "claim": "Billing region 087.0 for transaction 3660353 is known to card C07871-K1 with 3 prior uses over 3 days, and the card roams across 40 regions, which diminishes region novelty as a fraud signal.",
+        "source": "graph",
+        "ref": "query:region_history(c=C07871-K1, addr1=087.0)",
+        "entity_ids": [
+          "C07871-K1",
+          "3660353"
+        ]
+      },
+      {
+        "claim": "Card C07871-K1 had a prior risk-score alert (CC-0270) cleared on 2016-07-09 after the customer confirmed the activity, which was a 'cleared travel' case.",
+        "source": "graph",
+        "ref": "query:prior_cases_for_customer(cu=C07871)",
+        "entity_ids": [
+          "CC-0270",
+          "C07871-K1"
+        ]
+      },
+      {
+        "claim": "Card C07871-K1 has 1 prior confirmed fraud case (CC-1638) for out_of_region_use with an exposure of $225.99, opened on 2016-08-04.",
+        "source": "graph",
+        "ref": "query:prior_cases_for_customer(cu=C07871)",
+        "entity_ids": [
+          "CC-1638",
+          "C07871-K1"
+        ]
+      },
+      {
+        "claim": "Assumed reply: customer confirmed travel to billing region 087.0 and recognises the $165.65 purchase",
+        "source": "customer",
+        "ref": "evidence_request:1",
+        "entity_ids": [
+          "3660353"
+        ]
+      }
+    ],
+    "similar_prior_cases": [
+      "CC-5111",
+      "CC-4943",
+      "CC-5285",
+      "CC-4788",
+      "CC-5527"
+    ],
+    "summary": "The case for transaction 3660353 is legitimate with a fraud probability of 0.007 and no fraud pattern, as the customer confirmed the $165.65 purchase and travel to billing region 087.0. The device used was known and the amount was within the card's baseline. We requested customer validation, and the assumed reply confirmed the activity. Recommended actions are CREATE_CASE, ALLOW_TRANSACTION, and CLOSE_NO_FRAUD, all via auto route.",
+    "written_to_graph": true,
+    "graph_case_id": "AC-HHF-008"
+  },
+  "evidence_requests": [
+    {
+      "type": "customer_validation",
+      "asked_after_step": 19,
+      "assumed_response": "ASSUMED (simulated): customer confirmed travel to billing region 087.0 and recognises the $165.65 purchase"
+    }
+  ],
+  "next_best_actions": {
+    "initial": [
+      {
+        "action": "CREATE_CASE",
+        "route": "auto",
+        "reason": "3a: an alert was triggered, requiring a case for documentation."
+      },
+      {
+        "action": "VERIFY_WITH_CUSTOMER",
+        "route": "auto",
+        "reason": "R1: the probability is 0.007, which is below 0.70, with a single evidence family."
+      }
+    ],
+    "final": [
+      {
+        "action": "CREATE_CASE",
+        "route": "auto",
+        "reason": "3a: an alert was triggered, requiring a case for documentation."
+      },
+      {
+        "action": "ALLOW_TRANSACTION",
+        "route": "auto",
+        "reason": "R3: the customer confirmed the activity."
+      },
+      {
+        "action": "CLOSE_NO_FRAUD",
+        "route": "auto",
+        "reason": "R3: the customer confirmed the activity."
+      }
+    ],
+    "what_changed": "The assumed customer validation reply (confirm) left the probability at 0.01 and kept the verdict legitimate, adding ALLOW_TRANSACTION, CLOSE_NO_FRAUD, removing VERIFY_WITH_CUSTOMER. Counterfactual: had the customer denied the purchase, R2 would have applied: BLOCK_CARD (L1) and CREATE_CASE."
+  },
+  "sar": {
+    "file": false,
+    "reason": "3a not met: verdict legitimate (fraud not confirmed or strongly suspected), exposure $0.00; no report",
+    "narrative": "",
+    "subjects": [],
+    "total_amount_usd": 0,
+    "activity_dates": []
+  },
+  "stop_reason": "Policy §6 test 2: The assumed customer confirmation settled the question. The probability of 0.007 with four independent evidence families also meets §6 test 1.",
+  "tool_calls": 19,
+  "tokens": 180370,
+  "latency_s": 69.8
+}

@@ -234,8 +234,9 @@ def _decide_dialog(row: dict, status: str, attempt: bool = False) -> None:
             if why:
                 st.caption(md(f"SAR validator: {why}"))
             else:
-                checks = common.sar_checks(ans, v.meta)
-                st.caption(md(f"SAR validator: {sum(ok for _, ok, _ in checks)}/{len(checks)} checks pass (V00-V18)"))
+                resolver, where = common.sar_resolver()
+                checks = common.sar_checks(ans, v.meta, resolver=resolver)
+                st.caption(md(f"SAR validator: {sum(ok for _, ok, _ in checks)}/{len(checks)} checks pass (V00-V18); {where}"))
     else:
         st.caption(md(f"No answer for {row['case_id']} in {src_id} or the submitted answers"))
     st.caption(md(f"Reason: {row.get('reason') or '—'}"))

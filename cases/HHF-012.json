@@ -3,7 +3,7 @@
   "case": {
     "status": "closed_legitimate",
     "verdict": "legitimate",
-    "fraud_probability": 0.01,
+    "fraud_probability": 0.0,
     "pattern": "none",
     "pattern_description": "",
     "affected_txn_ids": [],
@@ -13,59 +13,55 @@
     "exposure_usd": 0.0,
     "evidence": [
       {
-        "claim": "The flagged transaction 3655457 for $261.51 was an in-person purchase on card C12223-K1 in billing region 476.0.",
+        "claim": "The flagged transaction 3655457 for $261.51 is an in-person purchase on card C12223-K1 in region 476.0, which is the card's modal region.",
         "source": "graph",
-        "ref": "query:case_context(t=3655457)",
+        "ref": "query:case_context(t=3655457, as_of=2017-01-09 04:34:19)",
         "entity_ids": [
           "3655457",
           "C12223-K1"
         ]
       },
       {
-        "claim": "Billing region 476.0 is the card C12223-K1's modal in-person region, with 139 prior purchases over 95 days, indicating established normal use.",
+        "claim": "The transaction 3655457 has a low calibrated probability (cms_p) of 0.0031 and a risk score of 0.05, indicating low fraud likelihood.",
         "source": "graph",
-        "ref": "query:region_history(card=C12223-K1, addr1=476.0)",
+        "ref": "query:case_context(txn=3655457)",
+        "entity_ids": [
+          "3655457"
+        ]
+      },
+      {
+        "claim": "Card C12223-K1 has 139 prior in-person transactions in region 476.0 over 95 days, confirming it as a regular spending location.",
+        "source": "graph",
+        "ref": "query:region_history(c=C12223-K1, as_of=2017-01-09 04:34:19, addr1=476.0)",
         "entity_ids": [
           "C12223-K1"
         ]
       },
       {
-        "claim": "The flagged transaction 3655457 received a low real-time risk score of 0.05 and a calibrated case-memory cms_p of 0.0031, indicating low suspicion.",
+        "claim": "The transaction amount of $261.51 is below the card's prior maximum amount of $884.02 and above its prior median amount of $59.",
         "source": "graph",
-        "ref": "query:case_context(t=3655457)",
+        "ref": "query:case_context(t=3655457, as_of=2017-01-09 04:34:19)",
         "entity_ids": [
-          "3655457"
+          "3655457",
+          "C12223-K1"
         ]
       },
       {
-        "claim": "The card C12223-K1 has one prior confirmed fraud case, CC-0179, with an outcome of \"confirmed_fraud\" and pattern \"account_takeover\", opened on 2016-07-07, with an exposure of $91.97.",
+        "claim": "There were 2 other in-person transactions in the home region 476.0 within 48 hours of the flagged transaction, indicating continued legitimate home activity.",
         "source": "graph",
-        "ref": "query:prior_cases_for_customer(cu=C12223)",
+        "ref": "query:region_history(c=C12223-K1, as_of=2017-01-09 04:34:19, addr1=476.0)",
         "entity_ids": [
-          "CC-0179",
-          "C12223-K1",
-          "C12223"
+          "C12223-K1"
         ]
       },
       {
-        "claim": "All 4 transactions in the 72-hour window before opening for card C12223-K1 were in-person purchases within the modal region 476.0, including 3655454 ($76.36), 3655463 ($23.06), 3655445 ($23.69), and the flagged 3655457 ($261.51).",
+        "claim": "Customer C12223 has 1 prior confirmed fraud case (CC-0179) on card C12223-K1 with an 'account_takeover' pattern from 2016-07-07, with an exposure of $91.97.",
         "source": "graph",
-        "ref": "query:card_window(c=C12223-K1)",
+        "ref": "query:prior_cases_for_customer(cu=C12223, as_of=2017-01-09 04:34:19)",
         "entity_ids": [
+          "C12223",
           "C12223-K1",
-          "3655454",
-          "3655463",
-          "3655445",
-          "3655457"
-        ]
-      },
-      {
-        "claim": "Automated checks for card_testing, under_threshold_burst, and recurring_charge patterns found no matching activity for card C12223-K1 or transaction 3655457.",
-        "source": "graph",
-        "ref": "query:card_testing_check(c=C12223-K1), query:under_threshold_burst(c=C12223-K1), query:recurring_charge_check(t=3655457)",
-        "entity_ids": [
-          "C12223-K1",
-          "3655457"
+          "CC-0179"
         ]
       },
       {
@@ -80,19 +76,19 @@
     "similar_prior_cases": [
       "CC-4158",
       "CC-4708",
-      "CC-4265",
-      "CC-3757",
+      "CC-4357",
       "CC-5305",
+      "CC-4052",
       "CC-5547"
     ],
-    "summary": "The case is legitimate with a fraud probability of 0.01. The flagged in-person transaction occurred in the card's modal region and had low risk scores. A customer validation request was sent, and the customer confirmed the $261.51 purchase. The recommended actions are to CREATE_CASE, ALLOW_TRANSACTION, and CLOSE_NO_FRAUD.",
+    "summary": "The case for C12223-K1 is legitimate (p=0.0016) with no identified fraud pattern or exposure. The flagged in-person transaction 3655457 ($261.51) occurred in the card's modal region 476.0, showing very low risk indicators. A customer validation was requested and confirmed the purchase, settling the case as legitimate despite a prior account takeover on the card in the same region. ALLOW_TRANSACTION (auto) and CLOSE_NO_FRAUD (auto) are recommended.",
     "written_to_graph": true,
     "graph_case_id": "AC-HHF-012"
   },
   "evidence_requests": [
     {
       "type": "customer_validation",
-      "asked_after_step": 15,
+      "asked_after_step": 16,
       "assumed_response": "ASSUMED (simulated): customer confirmed travel to billing region 476.0 and recognises the $261.51 purchase"
     }
   ],
@@ -101,32 +97,32 @@
       {
         "action": "CREATE_CASE",
         "route": "auto",
-        "reason": "3a: a case is created to record the investigation process for the risk alert."
+        "reason": "3a: a case is created when evidence is requested."
       },
       {
         "action": "VERIFY_WITH_CUSTOMER",
         "route": "auto",
-        "reason": "R1: the probability 0.01 is below 0.70 and the alert is based on a single signal."
+        "reason": "R1: the flagged transaction is a single signal with probability 0.0016 < 0.70, requiring verification."
       }
     ],
     "final": [
       {
         "action": "CREATE_CASE",
         "route": "auto",
-        "reason": "3a: a case is created to record the investigation process for the risk alert."
+        "reason": "3a: a case is created when evidence is requested."
       },
       {
         "action": "ALLOW_TRANSACTION",
         "route": "auto",
-        "reason": "R3: the customer confirmed the $261.51 purchase."
+        "reason": "R3: the customer confirmed the transaction."
       },
       {
         "action": "CLOSE_NO_FRAUD",
         "route": "auto",
-        "reason": "R3: the customer confirmed the transaction, settling the case."
+        "reason": "R3: the customer confirmed the transaction."
       }
     ],
-    "what_changed": "The assumed customer validation reply (confirm) left the probability at 0.01 and kept the verdict legitimate, adding ALLOW_TRANSACTION, CLOSE_NO_FRAUD, removing VERIFY_WITH_CUSTOMER. Counterfactual: had the customer denied the purchase, R2 would have applied: BLOCK_CARD (L1) and CREATE_CASE."
+    "what_changed": "The assumed customer validation reply (confirm) left the probability at 0.00 and kept the verdict legitimate, adding ALLOW_TRANSACTION, CLOSE_NO_FRAUD, removing VERIFY_WITH_CUSTOMER. Counterfactual: had the customer denied the purchase, R2 would have applied: BLOCK_CARD (L1) and CREATE_CASE."
   },
   "sar": {
     "file": false,
@@ -137,7 +133,7 @@
     "activity_dates": []
   },
   "stop_reason": "Policy §6 test 2: the assumed customer confirmation settled the question.",
-  "tool_calls": 15,
-  "tokens": 126658,
-  "latency_s": 91.4
+  "tool_calls": 16,
+  "tokens": 133625,
+  "latency_s": 62.4
 }

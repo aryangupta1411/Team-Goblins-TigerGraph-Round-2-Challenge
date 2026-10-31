@@ -3,7 +3,7 @@
   "case": {
     "status": "closed_legitimate",
     "verdict": "legitimate",
-    "fraud_probability": 0.0,
+    "fraud_probability": 0.01,
     "pattern": "none",
     "pattern_description": "",
     "affected_txn_ids": [],
@@ -13,7 +13,7 @@
     "exposure_usd": 0.0,
     "evidence": [
       {
-        "claim": "The case was opened by a real-time model scoring transaction 3660355 ($228.01, online) at 0.8.",
+        "claim": "The alert for transaction 3660355 ($228.01, online) was triggered by a real-time model score of 0.8.",
         "source": "external",
         "ref": "trigger",
         "entity_ids": [
@@ -21,7 +21,7 @@
         ]
       },
       {
-        "claim": "Transaction 3660355 received a calibrated probability of 0.0032 from the bank's memory-informed model, and the engine's probability is 0.0016.",
+        "claim": "The flagged transaction 3660355 (online) recorded a `risk_score` of 0.1 and a `cms_p` of 0.00324, suggesting a low probability of fraud.",
         "source": "graph",
         "ref": "query:case_context(txn=3660355)",
         "entity_ids": [
@@ -29,44 +29,36 @@
         ]
       },
       {
-        "claim": "Transaction 3660355 is an online purchase in billing region 337.0, which is the card's modal region for 149 prior transactions over 95 days.",
+        "claim": "Card C09177-K1 had no prior closed fraud cases or agent cases recorded for customer C09177.",
         "source": "graph",
-        "ref": "query:region_history(c=C09177-K1, addr1=337.0)",
+        "ref": "query:prior_cases_for_customer(cu=C09177)",
         "entity_ids": [
-          "3660355",
-          "C09177-K1"
-        ]
-      },
-      {
-        "claim": "The flagged transaction 3660355 for $228.01 is within the card's historical activity, which had a prior median amount of $58.96 and a prior maximum amount of $422.57.",
-        "source": "graph",
-        "ref": "query:card_profile(c=C09177-K1, as_of=2017-01-27 18:08:36)",
-        "entity_ids": [
-          "3660355",
-          "C09177-K1"
-        ]
-      },
-      {
-        "claim": "The device `LG-H831 | NULL | NULL | NULL` used for transaction 3660355 is marked as `New`, but a new device is not a standalone fraud signal in this data.",
-        "source": "graph",
-        "ref": "query:case_context(txn=3660355)",
-        "entity_ids": [
-          "3660355",
-          "LG-H831 | NULL | NULL | NULL"
-        ]
-      },
-      {
-        "claim": "Customer C09177 has no prior fraud cases or agent cases recorded.",
-        "source": "graph",
-        "ref": "query:prior_cases_for_customer(cu=C09177, as_of=2017-01-27 18:08:36)",
-        "entity_ids": [
+          "C09177-K1",
           "C09177"
         ]
       },
       {
-        "claim": "Two online transactions, 3660354 ($261.61) and 3660355 ($228.01), occurred from the `New` device `LG-H831 | NULL | NULL | NULL` within 19 hours.",
+        "claim": "The flagged transaction 3660355 occurred in billing region 337.0, which is the card C09177-K1's modal region with 149 prior purchases over 95 days.",
         "source": "graph",
-        "ref": "query:episode_candidates(txn=3660355, gap_h=48)",
+        "ref": "query:region_history(card=C09177-K1, addr1=337.0)",
+        "entity_ids": [
+          "3660355",
+          "C09177-K1"
+        ]
+      },
+      {
+        "claim": "The purchaser email domain `anonymous.com` for transaction 3660355 was used 5 times before by card C09177-K1.",
+        "source": "graph",
+        "ref": "query:case_context(txn=3660355)",
+        "entity_ids": [
+          "3660355",
+          "C09177-K1"
+        ]
+      },
+      {
+        "claim": "Two online transactions, 3660354 ($261.61) and 3660355 ($228.01), occurred on the `New` device \"LG-H831 | NULL | NULL | NULL\" within 20 hours, while in-person activity continued on the card.",
+        "source": "graph",
+        "ref": "query:episode_candidates(t=3660355)",
         "entity_ids": [
           "3660354",
           "3660355",
@@ -74,13 +66,13 @@
         ]
       },
       {
-        "claim": "The candidate episode includes online transactions 3660354 and 3660355, separated by in-person transaction 3640665 ($113.59) on 2017-01-27 01:57:45, showing mixed-channel activity within a 24-hour window.",
+        "claim": "The device profile \"LG-H831 | NULL | NULL | NULL\" associated with transactions 3660354 and 3660355 is not a strong profile and has no connected cards or fraud cases in the last 30 days.",
         "source": "graph",
-        "ref": "query:episode_candidates(txn=3660355, gap_h=48)",
+        "ref": "query:device_neighbors(d=LG-H831 | NULL | NULL | NULL)",
         "entity_ids": [
+          "LG-H831 | NULL | NULL | NULL",
           "3660354",
-          "3660355",
-          "3640665"
+          "3660355"
         ]
       },
       {
@@ -94,20 +86,20 @@
     ],
     "similar_prior_cases": [
       "CC-4640",
-      "CC-4762",
-      "CC-5173",
-      "CC-4172",
+      "CC-5355",
       "CC-4604",
+      "CC-4172",
+      "CC-5173",
       "CC-4469"
     ],
-    "summary": "The verdict is legitimate with a fraud probability of 0.002. The flagged online transaction for $228.01 was confirmed by the customer, despite an initial high risk score (0.8). The transaction was in the card's modal region from a new device, and the calibrated score was very low. We recommend CREATE_CASE, ALLOW_TRANSACTION, and CLOSE_NO_FRAUD, all auto-approved.",
+    "summary": "The case for C09177-K1 is closed as legitimate with a fraud probability of 0.005. The flagged online transaction of $228.01 from a new device was confirmed by the customer, aligning with the card's low CMS probability and established history. No fraud pattern was detected, and exposure is $0.00. The recommended actions are ALLOW_TRANSACTION and CLOSE_NO_FRAUD (auto).",
     "written_to_graph": true,
     "graph_case_id": "AC-HHF-009"
   },
   "evidence_requests": [
     {
       "type": "customer_validation",
-      "asked_after_step": 18,
+      "asked_after_step": 22,
       "assumed_response": "ASSUMED (simulated): customer confirmed the purchase from a new phone/device and recognises the $228.01 charge"
     }
   ],
@@ -116,32 +108,32 @@
       {
         "action": "CREATE_CASE",
         "route": "auto",
-        "reason": "3a: a case is created to document the investigation even when the verdict is legitimate."
+        "reason": "3a: a case is opened to investigate the risk alert."
       },
       {
         "action": "VERIFY_WITH_CUSTOMER",
         "route": "auto",
-        "reason": "R1: the probability is 0.002, which is below 0.70, and the initial trigger was a single signal (risk score) contradicted by other evidence."
+        "reason": "R1: verify on a weak signal as probability 0.005 is below 0.70 and the trigger was a single risk score."
       }
     ],
     "final": [
       {
         "action": "CREATE_CASE",
         "route": "auto",
-        "reason": "3a: a case is created to document the investigation even when the verdict is legitimate."
+        "reason": "3a: a case is opened to investigate the risk alert."
       },
       {
         "action": "ALLOW_TRANSACTION",
         "route": "auto",
-        "reason": "R3: the customer confirmed the purchase."
+        "reason": "R3: the customer confirmed the purchase for transaction 3660355."
       },
       {
         "action": "CLOSE_NO_FRAUD",
         "route": "auto",
-        "reason": "R3: the customer confirmed the purchase, leading to a legitimate verdict."
+        "reason": "R3: the customer confirmed the purchase for transaction 3660355."
       }
     ],
-    "what_changed": "The assumed customer validation reply (confirm) left the probability at 0.00 and kept the verdict legitimate, adding ALLOW_TRANSACTION, CLOSE_NO_FRAUD, removing VERIFY_WITH_CUSTOMER. Counterfactual: had the customer denied the purchase, R2 would have applied: BLOCK_CARD (L1) and CREATE_CASE."
+    "what_changed": "The assumed customer validation reply (confirm) left the probability at 0.01 and kept the verdict legitimate, adding ALLOW_TRANSACTION, CLOSE_NO_FRAUD, removing VERIFY_WITH_CUSTOMER. Counterfactual: had the customer denied the purchase, R2 would have applied: BLOCK_CARD (L1) and CREATE_CASE."
   },
   "sar": {
     "file": false,
@@ -151,8 +143,8 @@
     "total_amount_usd": 0,
     "activity_dates": []
   },
-  "stop_reason": "Policy §6 test 2: the assumed customer confirmation settled the question. Probability 0.00 with 3 families also meets §6 test 1. Policy \n6 test 2: the assumed customer confirmation settled the question. Probability 0.002 with 3 evidence families also meets \n6 test 1.",
-  "tool_calls": 18,
-  "tokens": 138493,
-  "latency_s": 68.5
+  "stop_reason": "Policy §6 test 2: the assumed customer confirmation settled the question. Probability 0.005 with 3 evidence families (customer, history, memory) also meets §6 test 1.",
+  "tool_calls": 22,
+  "tokens": 216185,
+  "latency_s": 114.9
 }

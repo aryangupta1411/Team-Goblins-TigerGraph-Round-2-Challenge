@@ -21,6 +21,7 @@ from ui import common  # noqa: E402
 # no page_title: each st.Page title names the browser tab
 st.set_page_config(page_icon=":material/verified_user:", layout="wide", initial_sidebar_state="collapsed")
 common.inject_css()
-pg = st.navigation(common.nav_pages(), position="top")
+st.logo(str(Path(__file__).parent / "assets" / "mark.svg"), size="large")
+pg =st.navigation(common.nav_pages(), position="top")
 common.context_bar(common.page_key_for(pg))
 pg.run()

@@ -10,12 +10,12 @@ The "Before" column describes earlier code that is no longer on disk as output, 
 
 | Change | Before | After | Source |
 |---|---|---|---|
-| **Single-card shapes no longer push p into the block band.** D5 (in-person clone) and D6 (new-mobile burst) were removed from `scan_card`. | HHF-008 and HHF-009 were fraud with `BLOCK_CARD` | Both legitimate (p 0.01 and 0.0): `CREATE_CASE, ALLOW_TRANSACTION, CLOSE_NO_FRAUD`, all auto. HHF-008's evidence is the cardholder's own known IE 11 desktop (6 prior uses), a card seen in 40 regions, and a cleared travel alert of the same shape (CC-0270). | `cases/HHF-008.json`, `cases/HHF-009.json` |
+| **Single-card shapes no longer push p into the block band.** D5 (in-person clone) and D6 (new-mobile burst) were removed from `scan_card`. | HHF-008 and HHF-009 were fraud with `BLOCK_CARD` | Both legitimate (p 0.01 and 0.01): `CREATE_CASE, ALLOW_TRANSACTION, CLOSE_NO_FRAUD`, all auto. HHF-008's evidence is the cardholder's own known IE 11 desktop (6 prior uses), a card seen in 40 regions, and a cleared travel alert of the same shape (CC-0270). | `cases/HHF-008.json`, `cases/HHF-009.json` |
 | **Investigate the card the transaction is on** (`engine/case_card.py`) | HHF-011 judged on the pack's card C09241-K1, the thin one, because an empty `card6` shifts the `-K` number | Judged on C09241-K2 (6,864 transactions): legitimate (p 0.1), every evidence item on -K2 | `cases/HHF-011.json` |
 | **D4 rarity needs history** (data must start ≥ 60 days before `as_of`; ≤ 40 cards all-time) | D4 matched cleared closed cases from the data's first weeks | D4: 1 cleared closed case (CC-3407, customer C03470). It still catches HHF-006 and 5 confirmed-fraud closed cases. | `engine/out/detector_backtest.json` |
 | **Injection defence generalised** (NFKC + zero-width folding, sentence-level removal, chat-template and role markup, reworded suppression, amount spoofing; stored notes and tool rows scrubbed too) | Exact-phrase patterns that matched the six planted phrasings | 23 / 23 attacks blocked (6 planted in the pack, 17 synthetic). 0 false alarms on the 12 HHF triggers that carry no injection. | `agent.security.run_attack_ablation()`; `sanitize_trigger_text` over the 18 `cp_round2` triggers in `data/hhgoa_engine.duckdb` |
 | **Approvals need an authenticated session** | The approver was a dropdown | scrypt passphrase directory. Only a server-minted session can decide, and SQLite triggers refuse edits to decided approvals. 4 of the 23 attacks are approval drills, all refused by the server: L2 by a team lead, a role claimed by the client, a session re-labelled outside `authenticate()`, and an overwrite of a decided row. | `run_attack_ablation()` (ATK-08, ATK-22, ATK-23, ATK-09) |
-| **The policy gate admits impact actions only when a rule requires them** (`engine/policy.py`, `IMPACT_ACTIONS` = `BLOCK_CARD`, `BLOCK_ALL_CARDS`, `DECLINE_TRANSACTION`, `FILE_REPORT`) | The model could add any action that was not forbidden | The model can add only low-impact optional actions. In `runs/r2-final` the only model-added action is `MONITOR_CONNECTED_CARDS` (auto) in HHF-011's initial set. | `engine/policy.py`; `runs/r2-final/HHF-011/answer.json` vs `engine.run_cases` |
+| **The policy gate admits impact actions only when a rule requires them** (`engine/policy.py`, `IMPACT_ACTIONS` = `BLOCK_CARD`, `BLOCK_ALL_CARDS`, `DECLINE_TRANSACTION`, `FILE_REPORT`) | The model could add any action that was not forbidden | The model can add only low-impact optional actions. In `runs/hhf-final` it added two, both auto: `MONITOR_CONNECTED_CARDS` on HHF-013 (initial and final sets) and `ALLOW_TRANSACTION` on HHF-015 (initial set). No block, decline or report appears beyond what the engine requires. | `engine/policy.py`; `runs/hhf-final/HHF-*/answer.json` vs `engine.run_cases` |
 
 ## Detector backtest (all 5,585 closed cases, July 2016 to January 2017)
 
@@ -50,25 +50,27 @@ The waves share no device, so no vertex exists to traverse from. `graph/queries/
 
 Where it stands:
 
-- **Installed on the workspace (2026-10-31).** `graph/check_typology_parity.py --installed` recorded 30 cases and 0 differences against the DuckDB twin. If the query is missing, a live run of a January case fails closed. All 18 HHF cases are January cases.
-- **The submitted answers predate the port.** `runs/r2-final/*/calls.jsonl` holds no `typology_scan` call. In that run D1-D4 ran on the local DuckDB snapshot. The backtest above also runs on DuckDB.
-- Mock mode and `engine.run_cases` use the DuckDB twin, so neither is affected.
+- **Installed on the workspace, and used by the submitted run.** In `runs/hhf-final`, the harness called `typology_scan` through MCP once per case: 18 calls, all `ok` (`runs/hhf-final/HHF-*/calls.jsonl`). The six wave cases took their D1-D4 evidence from the graph.
+- **Parity with the DuckDB twin.** `graph/check_typology_parity.py --installed` covers 30 cases (the 18 HHF cases plus 12 other January cards): 0 differences and 6 hits (D1 HHF-001 and 002, D2 HHF-003, D3 HHF-004 and 005, D4 HHF-006). Source: `engine/out/typology_parity.json`, written by `uv run python graph/check_typology_parity.py --installed --json engine/out/typology_parity.json`.
+- **The backtest above runs on DuckDB** (`engine.backtest_detectors` over the twin), and so do mock mode and `engine.run_cases`.
 
 ## The 18 answers
 
 7 fraud: the four waves (HHF-001 … HHF-006, `undocumented`) plus HHF-007's denied card-testing run. 3 uncertain with escalation (HHF-010, HHF-013, HHF-014). 8 legitimate after customer validation. SARs are filed on the six multi-card undocumented waves, as §3a requires. This includes the $23.99 (HHF-004) and $23.17 (HHF-005) micro-skimming cases.
 
-They come from one live run against FraudGraph, `runs/r2-final/`. All 145 model calls went to `gemini-2.5-flash`. 18 of 18 cases completed, every case was written back to the graph, and `make validate` reports 0 problems on all 38 answer files. Per case:
+They come from one live run against FraudGraph, `runs/hhf-final/`, at frozen commit `b397c2c` with no local changes. All 141 model calls went to `gemini-2.5-flash`, and every case was written back to the graph. `make validate` reports 0 problems on all 38 answer files.
+
+The run took two invocations. HHF-005 failed closed in the main run, after Gemini returned degenerate P5 output three times, and no answer was written for it. Its write-back was removed, and a `--resume` re-ran HHF-005 and then HHF-003 in `opened_at` order. The first HHF-003 attempt is superseded and kept. Sources: `runs/hhf-final/provenance.json` (`failed_attempt`), `runs/hhf-final/_failed_attempt/`, `run_manifest.json` (both invocations). Per case:
 
 | Per case | Median | p95 |
 |---|---:|---:|
-| Tool calls | 18.5 | 22 |
-| Tokens | 225,538 | 324,743 |
-| Latency | 104.8 s | 306.0 s |
+| Tool calls | 19.5 | 24 |
+| Tokens | 211,265 | 331,456 |
+| Latency | 92.1 s | 186.4 s |
 
-Sources: `runs/r2-final/HHF-*/answer.json` (`tool_calls`, `tokens`, `latency_s`; p95 is nearest-rank, which is the maximum of 18 values); `runs/r2-final/HHF-*/calls.jsonl` (`kind=llm`, `model`).
+Sources: `runs/hhf-final/HHF-*/answer.json` (`tool_calls`, `tokens`, `latency_s`; p95 is nearest-rank, which is the maximum of 18 values); `runs/hhf-final/HHF-*/calls.jsonl` (`kind=llm`, `model`); `runs/hhf-final/run_manifest.json`.
 
-The deterministic engine (`engine.run_cases`, re-run offline) agrees with the live run on every verdict, pattern, SAR decision and final action set with routes, and on probability within 0.10. The one difference is the extra `MONITOR_CONNECTED_CARDS` in HHF-011's initial set.
+The deterministic engine (`engine.run_cases`, re-run offline on the frozen code) gives the same verdict, pattern and SAR decision on all 18 cases, with probability within 0.10. The final action set with routes matches on 17. HHF-013 has the extra auto `MONITOR_CONNECTED_CARDS`, and HHF-015's initial set has the extra auto `ALLOW_TRANSACTION`.
 
 ## Reproduce
 
@@ -81,12 +83,11 @@ uv run python -c "from agent.security import run_attack_ablation as r; x=r(); pr
 ```
 
 ```bash
-uv run python -m engine.run_cases --cases HHF-001 HHF-002 HHF-003 HHF-004 HHF-005 HHF-006 HHF-007 HHF-008 HHF-009 HHF-010 HHF-011 HHF-012 HHF-013 HHF-014 HHF-015 HHF-016 HHF-017 HHF-018 --out runs/engine-r2 --sheet runs/engine-r2/sheet.md
+uv run python -m engine.run_cases --cases HHF-001 HHF-002 HHF-003 HHF-004 HHF-005 HHF-006 HHF-007 HHF-008 HHF-009 HHF-010 HHF-011 HHF-012 HHF-013 HHF-014 HHF-015 HHF-016 HHF-017 HHF-018 --out runs/engine-check --sheet runs/engine-check/sheet.md
 ```
 
 ## What is not claimed
 
 - **Challenge 2 is partial.** The three candidate detectors in `self_growing_proposals` (AUTO-DET-02, -03, -04 in `engine/out/detector_backtest.json`) are scans we wrote. What is real is the measured backtest and the approval gate (`approve_detector`, fraud manager only). The agent did not invent the shapes.
 - **No accuracy against the answer key.** The organisers hold it.
-- **The submitted answers have not been produced through the in-graph typology scan.** The scan is installed and matches the DuckDB twin, but the 18 answers come from the earlier DuckDB path (see the section above).
 - **The Round 1 scorer was not retrained.** It scores each of the 18 flagged January transactions at 0.093 or below (max `cms_p` over `cp_round2` joined to `txc` in `data/hhgoa_engine.duckdb`), so the engine treats it as one weak family.

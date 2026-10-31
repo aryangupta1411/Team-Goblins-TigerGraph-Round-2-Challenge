@@ -237,7 +237,7 @@ def _case_bar(ctx: common.Ctx, view: common.CaseView) -> None:
     backend = ctx.source.llm_backend if ctx.source and ctx.source.llm_backend in common.LLM_BACKENDS and ctx.source.llm_backend != "mock" else "gemini"
     blockers = _live_blockers(ctx, backend)
     with st.container(border=True, horizontal=True, vertical_alignment="center", key="casebar"):
-        st.markdown(f"**{md(case_id)}** {common.state_badge(view.state)}")
+        st.markdown(f"# {md(case_id)} {common.state_badge(view.state)}")  # the screen's one h1: the case it is about
         holders = _holders(case_id, ctx.source_id)
         if holders:
             st.caption("Also in")
@@ -362,8 +362,10 @@ def _why_band(view: common.CaseView, events: list[dict], claims: list[dict]) -> 
                 st.caption(md(f"{t.get('code')}: {t.get('reason', '')} → {t.get('impact', '')}"))
         elif dq["mode"] == "missing":
             st.caption("Data-quality taints: not available in this deployment")
-        else:
+        elif common.dq_covered(view.case_id):
             st.caption(md(f"Data-quality taints: none for this case ({dq['source']}, {dq['as_of']})"))
+        else:
+            st.caption(md(f"Data-quality taints: this case is not covered by the scan, which builds its taint matrix for the Final Round cases only ({dq['source']})"))
     with right, st.container(border=True, key="why-evidence"):
         st.markdown("**Key evidence**")
         colors = {"fraud": "red", "legitimate": "green", "neutral": "gray"}
@@ -472,34 +474,152 @@ def _tab_decision_path(view: common.CaseView) -> None:
     voi = common.voi_branches(view)
     p6 = common.phase_payload(view, "P6")
     taken = str((p6.get("simulated") or {}).get("outcome") or "")
-    for e in common.trace_timeline(view):
-        with st.container(border=True, key=f"phase-{e['code']}"):
-            timing = " · ".join(x for x in (f"t {e['t']:.2f} s" if e["t"] is not None else "", f"{e['duration']:.2f} s" if e["duration"] is not None else "") if x)
-            sim = f"{badge('SIMULATED', 'gray')} " if _simulated(e["sentence"]) else ""
-            st.markdown(f"**{md(e['code'])} · {md(e['name'])}** " + (badge(timing, "gray") if timing else "") + f"  \n{sim}{md(e['sentence'])}")
-            chips = [badge(f"{SHORT_NAME.sub('', str(c['name']))} · {c['caller'] or '—'} · {common.secs(c['latency_s'])} · {'ok' if c['ok'] else 'failed'}",
-                           "gray" if c["ok"] else "red") for c in e["calls"]]
-            chips += [badge(f"{x['model']} · {x['tokens']:,} tok · {common.secs(x['latency_s'])}", "violet") for x in e["llm"]]
-            if chips:
-                st.markdown(" ".join(chips))
-            for n in e["notes"]:
-                color = "red" if n["type"] in RED_NOTES else "orange" if n["type"] in ORANGE_NOTES else "gray"
-                detail = {k: n[k] for k in ("codes", "violations", "dropped", "clamped", "llm", "problems", "attempt", "residual", "ref", "info") if k in n}
-                st.markdown(f"{badge(n['type'].replace('_', ' '), color)} {md(n['text'])}" + (f" · {md(json.dumps(detail, default=str))}" if detail else ""))
-                if n.get("error"):
-                    st.code(str(n["error"]), language=None, wrap_lines=True)
-            if e["code"] == "P6" and voi:
-                rows = [{"outcome": k, "taken": k == taken, "actions": ", ".join(map(str, v or []))} for k, v in voi.items()]
-                st.dataframe(pd.DataFrame(rows).style.apply(lambda r: ["font-weight: 700" if r["taken"] else "" for _ in r], axis=1),
-                             hide_index=True, height=_height(len(rows)), column_config={"taken": st.column_config.CheckboxColumn("taken")})
-                if p6.get("counterfactual"):
-                    st.caption(md(f"counterfactual: {p6['counterfactual']}"))
-            if e["code"] == "P4":
-                basis = str((e["payload"].get("assessment") or {}).get("calibration_basis") or e["payload"].get("calibration_basis") or "")
-                if basis:
-                    st.caption(md(f"calibration basis: {basis}"))
+    timeline = common.trace_timeline(view)
+    by_code = {e["code"]: e for e in timeline}
+    stages = {s["code"]: s for s in common.pipeline_state(view)["stages"]}
+    pick = st.pills("Pipeline stage", ["all", *common.PIPELINE_CODES], default="all", required=True, key=STAGE_KEY, width="stretch",
+                    format_func=lambda c: _stage_option(c, stages),
+                    help="Pick a stage to see what it recorded: its calls with their params, its model calls, its notes and its payload. "
+                         "S0 is the offline schema and data-quality gate.")
+    st.caption(md("Stage states come from this case's phases.jsonl and calls.jsonl; 'no row' means the stage wrote nothing "
+                  "(P6 and P7 without an evidence request, P8 without a SAR to draft)."))
+    n_att = common.trace_attempts(view)
+    if n_att > 1:
+        shown = ("the attempt that wrote answer.json (it has the P9 row)" if "P9" in by_code
+                 else "the newest attempt, which has no P9 row, so any answer.json is from an earlier attempt")
+        st.caption(md(f"This folder holds {n_att} attempts (a rerun of the case appends to the same files); the decision path shows {shown}."))
+    if pick in (None, "all"):
+        _stage_s0(view, detail=False)
+        for e in timeline:
+            _phase_block(e, voi, p6, taken)
+    elif pick == "S0":
+        _stage_s0(view, detail=True)
+    elif pick in by_code:
+        _phase_block(by_code[pick], voi, p6, taken, stage=stages[pick])
+    else:
+        _stage_missing(view, stages[pick])
+
+
+STAGE_KEY = "case_stage"  # the stage picked in the Decision path inspector
+
+
+def _stage_option(code: str, stages: dict[str, dict]) -> str:
+    if code == "all":
+        return ":material/view_list: All stages"
+    s = stages[code]
+    color, icon = common.STAGE_STYLE.get(s["state"], ("gray", ":material/remove:"))
+    return f":{color}[{icon}] {code} · {s['label']}"
+
+
+def _phase_block(e: dict, voi: dict, p6: dict, taken: str, *, stage: dict | None = None) -> None:
+    """One recorded phase: name, timing, sentence, call and model chips, notes. With `stage` (the inspector) also the code
+    that ran it, every call with its params, the model calls and the payload, open."""
+    with st.container(border=True, key=f"phase-{e['code']}"):
+        timing = " · ".join(x for x in (f"t {e['t']:.2f} s" if e["t"] is not None else "", f"{e['duration']:.2f} s" if e["duration"] is not None else "") if x)
+        sim = f"{badge('SIMULATED', 'gray')} " if _simulated(e["sentence"]) else ""
+        state = badge(common.STAGE_LABELS.get(stage["state"], stage["state"]), common.STAGE_STYLE.get(stage["state"], ("gray", ""))[0]) + " " if stage else ""
+        st.markdown(f"**{md(e['code'])} · {md(e['name'])}** {state}" + (badge(timing, "gray") if timing else "") + f"  \n{sim}{md(e['sentence'])}")
+        if stage is not None:
+            st.caption(md(f"Code: {stage['module']}"))
+        chips = [badge(f"{SHORT_NAME.sub('', str(c['name']))} · {c['caller'] or '—'} · {common.secs(c['latency_s'])} · {'ok' if c['ok'] else 'failed'}",
+                       "gray" if c["ok"] else "red") for c in e["calls"]]
+        chips += [badge(f"{x['model'] or 'model not recorded'} · {x['tokens']:,} tok · {common.secs(x['latency_s'])}", "violet") for x in e["llm"]]
+        if chips and stage is None:
+            st.markdown(" ".join(chips))
+        for n in e["notes"]:
+            color = "red" if n["type"] in RED_NOTES else "orange" if n["type"] in ORANGE_NOTES else "gray"
+            detail = {k: n[k] for k in ("codes", "violations", "dropped", "clamped", "llm", "problems", "attempt", "residual", "ref", "info") if k in n}
+            st.markdown(f"{badge(n['type'].replace('_', ' '), color)} {md(n['text'])}" + (f" · {md(json.dumps(detail, default=str))}" if detail else ""))
+            if n.get("error"):
+                st.code(str(n["error"]), language=None, wrap_lines=True)
+        if e["code"] == "P6" and voi:
+            rows = [{"outcome": k, "taken": k == taken, "actions": ", ".join(map(str, v or []))} for k, v in voi.items()]
+            st.dataframe(pd.DataFrame(rows).style.apply(lambda r: ["font-weight: 700" if r["taken"] else "" for _ in r], axis=1),
+                         hide_index=True, height=_height(len(rows)), column_config={"taken": st.column_config.CheckboxColumn("taken")})
+            if p6.get("counterfactual"):
+                st.caption(md(f"counterfactual: {p6['counterfactual']}"))
+        if e["code"] == "P4":
+            basis = str((e["payload"].get("assessment") or {}).get("calibration_basis") or e["payload"].get("calibration_basis") or "")
+            if basis:
+                st.caption(md(f"calibration basis: {basis}"))
+        if stage is None:
             with st.expander("Params and payload"):
                 st.json({"payload": _collapse(e["payload"]), "calls": [{"name": c["name"], "params": c["params"]} for c in e["calls"]]}, expanded=False)
+            return
+        if e["calls"]:
+            st.markdown("**Calls** " + md(f"({len(e['calls'])} in calls.jsonl)"))
+            st.dataframe(pd.DataFrame([{"seq": c["seq"], "name": c["name"], "caller": c["caller"] or "—", "params": common.compact_params(c["params"], 400),
+                                        "latency_s": c["latency_s"], "ok": c["ok"], "error": c["error"]} for c in e["calls"]]),
+                         hide_index=True, width="stretch", height=_height(len(e["calls"])), column_config={"params": st.column_config.TextColumn(width="large")})
+        if e["llm"]:
+            st.markdown("**Model calls** " + md(f"({len(e['llm'])}; the model as calls.jsonl records it)"))
+            st.dataframe(pd.DataFrame([{"phase": x["phase"], "model": x["model"] or "not recorded", "tokens": x["tokens"], "latency_s": x["latency_s"]} for x in e["llm"]]),
+                         hide_index=True, width="stretch", height=_height(len(e["llm"])))
+        if not e["calls"] and not e["llm"]:
+            st.caption("No call recorded in this stage: it ran in-process (engine or policy code)")
+        st.markdown("**Payload** " + md("(phases.jsonl)"))
+        if e["payload"]:
+            st.json(_collapse(e["payload"]), expanded=2)
+        else:
+            st.caption(md("No payload: this stage wrote no phase row" + ("; its result is the answer's sar block (SAR & citations tab)" if e["code"] == "P8" else "")))
+
+
+def _stage_s0(view: common.CaseView, *, detail: bool) -> None:
+    """S0 from the proof snapshot: this case's data-quality taint flags and the schema migration, whose gate status comes
+    from data/schema_approvals.json (as on the Schema page) or the drift snapshot's copy. It runs offline in schema_engine/
+    before the Final Round cases, so nothing here comes from the case's trace, and nothing is recomputed."""
+    dq, drift = common.proof("dq"), common.proof("drift")
+    dd = dq["data"] if isinstance(dq["data"], dict) else None
+    matrix = (dd or {}).get("taint_matrix")
+    taints = [t for t in (matrix.get(view.case_id) or []) if isinstance(t, dict)] if isinstance(matrix, dict) else None
+    rd = drift["data"] if isinstance(drift["data"], dict) else None
+    covered = common.dq_covered(view.case_id)
+    parts = []
+    if taints:
+        parts.append(f"{len(taints)} data-quality taint flag(s) on this case: {', '.join(str(t.get('code')) for t in taints)}")
+    elif taints is not None:
+        parts.append("no data-quality taint flag on this case" if covered
+                     else "not covered by the data-quality scan, which builds its taint matrix for the Final Round cases over January 2017 rows")
+    else:
+        parts.append(f"data-quality scan not readable here ({dq['error'] or 'missing'})")
+    if rd is not None:
+        mid = str(rd.get("migration_id") or "")
+        live = common.proof("schema_approval")
+        rec = live["data"].get(mid) if mid and isinstance(live["data"], dict) else None
+        where = live["source"]
+        if not isinstance(rec, dict):  # Railway ships no data/: the drift snapshot holds a copy of the record
+            rec, where = (rd.get("approval") if isinstance(rd.get("approval"), dict) else None), "the drift snapshot's copy"
+        gate = f"gate {(rec or {}).get('status') or 'not recorded'}" + (f" by {rec['approved_by']} at {rec.get('approved_at')}" if rec and rec.get("approved_by") else "")
+        label = f"schema migration {mid or '?'}" if covered else f"the Final Round migration {mid or '?'} (not this case's gate)"
+        parts.append(f"{label}: {len(rd.get('drifts') or [])} drift(s), {gate} (from {where})")
+    with st.container(border=True, key="phase-S0"):
+        st.markdown(f"**S0 · Schema & DQ gate** {badge('offline gate', 'violet')}  \n{md(' · '.join(parts))}")
+        src = dq if dq["data"] is not None else drift
+        st.caption(md(f"Runs offline in schema_engine/ before the Final Round cases; read from {src['source'] or 'the proof snapshot'}"
+                      + (f" (generated {src['generated_at']}, git {src['git_sha'] or 'unknown'})" if src["generated_at"] else "") + ", not from this case's trace"))
+        if not detail:
+            return
+        if taints:
+            st.dataframe(pd.DataFrame([{"code": t.get("code"), "reason": t.get("reason"), "impact": t.get("impact")} for t in taints]), hide_index=True, width="stretch",
+                         column_config={"reason": st.column_config.TextColumn(width="large"), "impact": st.column_config.TextColumn(width="large")})
+        if rd is not None and rd.get("drifts"):
+            st.dataframe(pd.DataFrame([{"drift": d.get("drift_id"), "title": d.get("title"), "severity": d.get("severity")} for d in rd["drifts"] if isinstance(d, dict)]),
+                         hide_index=True, width="stretch")
+        common.page_link("data", "Open Data quality & schema", icon=common.PAGE_ICONS["data"])
+
+
+def _stage_missing(view: common.CaseView, s: dict) -> None:
+    """A stage with no row in the case's trace files: say so, with the reason the trace itself gives when it gives one."""
+    hint = ""
+    voi = common.phase_payload(view, "P5-voi")
+    if s["code"] in ("P6", "P7") and voi and not voi.get("ask"):
+        hint = "; P5-voi recorded ask = false, so no evidence request was made"
+    sar = (view.answer or {}).get("sar") or {}
+    if s["code"] == "P8" and sar.get("file") is False:
+        hint = "; the answer's sar.file is false, so there was no SAR to draft"
+    what = "not reached yet" if s["state"] == "pending" else "no row"
+    st.info(md(f"{s['code']} · {s['label']}: {what} in this case's phases.jsonl or calls.jsonl{hint}"), icon=":material/info:")
+    st.caption(md(f"Code: {s['module']}"))
 
 
 def _tab_evidence(view: common.CaseView, claims: list[dict]) -> None:
@@ -545,18 +665,19 @@ def _tab_sar(view: common.CaseView) -> None:
     if rag is None:
         st.caption(md(f"SAR validator: {err}"))
     else:
-        checks = common.sar_checks(ans, view.meta)
+        resolver, where = common.sar_resolver()
+        checks = common.sar_checks(ans, view.meta, resolver=resolver)
         ok = sum(1 for _, passed, _ in checks if passed)
         cols = st.columns([1, 3])
         common.measured("Validator", f"{ok}/{len(checks)}", source=f"rag.validate_sar over {src}", as_of=when, container=cols[0],
-                        how="V00-V18 over the answer; only V00 applies when no SAR is filed")
+                        how=f"V00-V18 over the answer; only V00 applies when no SAR is filed; {where}")
         with cols[1]:
             for label, passed, detail in checks:
                 if not passed:
                     st.markdown(f"{badge('fail', 'red')} {md(label)}" + (f" · {md(detail)}" if detail else ""))
             if ok == len(checks):
                 st.caption("every check passes")
-            st.caption("Ids resolve against the answer's own lists here, not against the dataset")
+            st.caption(md(where[:1].upper() + where[1:]))
     for e in common.guardrail_events(view):
         if e["type"] in ("sar_validation_failed", "sar_fallback"):
             problems = "; ".join(map(str, e.get("problems") or []))

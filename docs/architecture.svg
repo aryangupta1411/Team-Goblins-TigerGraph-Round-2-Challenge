@@ -1,251 +1,321 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 830" width="1200" height="830" role="img" aria-labelledby="t d">
-  <title id="t">HHGOA agentic fraud investigation: architecture</title>
-  <desc id="d">One alert from case_pack.csv is run by agent/bench.py through the phase machine P0 to P10. The LLM (claude-agent-sdk) investigates through typed tools that reach TigerGraph Savanna FraudGraph via the tigergraph-mcp server: GSQL queries, graph algorithms and TigerVector GraphRAG. The deterministic engine scores, applies the fraud policy gate and simulates evidence replies. The case is written back to the graph, the answer lands in cases/, and a Streamlit UI shows runs and approvals. An offline pipeline builds the data, graph, embeddings and queries once.</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1240 820" width="1240" height="820" role="img" aria-labelledby="archTitle archDesc">
+  <title id="archTitle">Agentic Fraud Investigation on TigerGraph &amp; Google Gemini — Animated Architecture</title>
+  <desc id="archDesc">End-to-end animated architecture of the TigerGraph + Google Gemini fraud investigation agent across Stage 0 (Schema Engine, Drift Gate, AI+AST GSQL Mapper, DQ-01..06), Adversarial Prompt-Injection Shield, Phase Machine P0–P10, Deterministic Scorecard &amp; D1–D4 Wave Detectors, TigerGraph MCP, and TigerVector 1024-d GraphRAG.</desc>
   <defs>
-    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-      <path d="M0,0 L10,5 L0,10 z" fill="#57606a"/>
-    </marker>
-    <marker id="ap" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-      <path d="M0,0 L10,5 L0,10 z" fill="#8250df"/>
-    </marker>
-    <marker id="ao" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-      <path d="M0,0 L10,5 L0,10 z" fill="#bc4c00"/>
-    </marker>
-    <marker id="ag" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-      <path d="M0,0 L10,5 L0,10 z" fill="#1a7f37"/>
-    </marker>
+    <pattern id="bgGrid" width="28" height="28" patternUnits="userSpaceOnUse">
+      <path d="M 28 0 L 0 0 0 28" fill="none" stroke="#1e293b" stroke-width="0.9"/>
+    </pattern>
+    <linearGradient id="bgGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#070d19"/>
+      <stop offset="55%" stop-color="#0b1528"/>
+      <stop offset="100%" stop-color="#0f172a"/>
+    </linearGradient>
+    <linearGradient id="cardCyan" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0c2d48"/>
+      <stop offset="100%" stop-color="#081b2e"/>
+    </linearGradient>
+    <linearGradient id="cardCrimson" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#3b1219"/>
+      <stop offset="100%" stop-color="#1e090e"/>
+    </linearGradient>
+    <linearGradient id="cardEmerald" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0d3321"/>
+      <stop offset="100%" stop-color="#071d13"/>
+    </linearGradient>
+    <linearGradient id="cardBlue" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0f2547"/>
+      <stop offset="100%" stop-color="#09152b"/>
+    </linearGradient>
+    <linearGradient id="cardViolet" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#2b1649"/>
+      <stop offset="100%" stop-color="#150b26"/>
+    </linearGradient>
+    <linearGradient id="cardOrange" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#3b1d0b"/>
+      <stop offset="100%" stop-color="#1f0f05"/>
+    </linearGradient>
+    <filter id="neonGlow" x="-25%" y="-25%" width="150%" height="150%">
+      <feGaussianBlur stdDeviation="3.5" result="blur"/>
+      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+    </filter>
     <style>
-      text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; fill: #1f2328; }
-      .h  { font-size: 14px; font-weight: 700; }
-      .hs { font-size: 12.5px; font-weight: 700; }
-      .b  { font-size: 11.5px; fill: #424a53; }
-      .s  { font-size: 10.5px; fill: #57606a; }
-      .m  { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
-      .tag { font-size: 10px; font-weight: 700; }
-      .lbl { font-size: 10.5px; fill: #57606a; }
+      text { font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; fill: #f8fafc; }
+      .h1 { font-size: 19px; font-weight: 800; letter-spacing: -0.02em; fill: #ffffff; }
+      .h2 { font-size: 14px; font-weight: 700; fill: #f8fafc; }
+      .sub { font-size: 11.2px; font-weight: 500; fill: #cbd5e1; }
+      .muted { font-size: 10.2px; fill: #94a3b8; }
+      .mono { font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 10.8px; font-weight: 600; fill: #7dd3fc; }
+      .tag { font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 9.5px; font-weight: 700; letter-spacing: 0.05em; }
+      .conduit-bg { fill: none; stroke: rgba(148, 163, 184, 0.20); stroke-width: 2.2; }
+      .conduit-flow {
+        fill: none;
+        stroke-width: 2.6;
+        stroke-linecap: round;
+        stroke-dasharray: 8 10;
+        animation: dashFlow 1.3s linear infinite;
+      }
+      .pulse-ring {
+        animation: ringPulse 2.2s ease-in-out infinite;
+        transform-origin: center;
+      }
+      .phase-scan {
+        animation: phaseGlow 6s ease-in-out infinite;
+      }
+      @keyframes dashFlow {
+        to { stroke-dashoffset: -36; }
+      }
+      @keyframes ringPulse {
+        0%, 100% { opacity: 0.45; }
+        50% { opacity: 1; }
+      }
+      @keyframes phaseGlow {
+        0%, 100% { stroke-opacity: 0.45; }
+        50% { stroke-opacity: 1; }
+      }
     </style>
   </defs>
 
-  <!-- explicit background so the diagram reads the same on light and dark GitHub themes -->
-  <rect x="0" y="0" width="1200" height="830" rx="10" fill="#ffffff"/>
-  <rect x="0.5" y="0.5" width="1199" height="829" rx="10" fill="none" stroke="#d0d7de"/>
+  <!-- Canvas Background -->
+  <rect x="0" y="0" width="1240" height="820" rx="16" fill="url(#bgGrad)"/>
+  <rect x="0" y="0" width="1240" height="820" rx="16" fill="url(#bgGrid)"/>
+  <rect x="1" y="1" width="1238" height="818" rx="15" fill="none" stroke="#1e3a5f" stroke-width="1.5"/>
 
-  <!-- title -->
-  <text x="24" y="36" class="h" style="font-size:18px">Agentic fraud investigation on TigerGraph: one alert, end to end</text>
-  <text x="24" y="58" class="b">The deterministic engine decides and the policy gate routes; the LLM investigates, explains and writes the SAR draft.</text>
-  <rect x="820" y="20" width="356" height="44" rx="6" fill="#f6f8fa" stroke="#d0d7de"/>
-  <text x="832" y="38" class="tag" style="fill:#1a7f37">FREE STACK, NO PAID API KEYS</text>
-  <text x="832" y="55" class="s">claude-agent-sdk on a Claude subscription + local BGE embeddings</text>
+  <!-- Header Banner -->
+  <rect x="20" y="16" width="1200" height="62" rx="10" fill="#0d1b30" stroke="#2563eb" stroke-width="1.2"/>
+  <circle cx="42" cy="36" r="5" fill="#3fb950" class="pulse-ring"/>
+  <text x="56" y="41" class="h1">Agentic Fraud Investigation on TigerGraph &amp; Google Gemini — End-to-End Architecture</text>
+  <text x="56" y="62" class="sub">Deterministic Engine + Scorecard + Policy Gate R1–R10 decides; Google Gemini (LLM_BACKEND=gemini) investigates via MCP &amp; drafts FinCEN SARs.</text>
+  <rect x="920" y="26" width="284" height="42" rx="7" fill="#132644" stroke="#38bdf8" stroke-width="1"/>
+  <text x="934" y="43" class="tag" fill="#38bdf8">GEMINI + LOCAL BGE STACK</text>
+  <text x="934" y="59" class="muted">gemini-2.5-flash/pro + BAAI/bge-large-en-v1.5</text>
 
-  <!-- ================= column A: input, driver, engine ================= -->
-  <rect x="24" y="84" width="280" height="54" rx="6" fill="#f6f8fa" stroke="#57606a"/>
-  <text x="36" y="104" class="hs m">data/raw/case_pack.csv</text>
-  <text x="36" y="124" class="s">20 alerts: risk_score · customer_report · analyst_request</text>
+  <!-- ==================== ANIMATED CONDUIT PATHS ==================== -->
+  <!-- S0 -> Shield -->
+  <path id="c_s0_sec" d="M 165 212 L 165 244" class="conduit-bg"/>
+  <path d="M 165 212 L 165 244" class="conduit-flow" stroke="#38bdf8"/>
 
-  <line x1="164" y1="138" x2="164" y2="154" stroke="#57606a" stroke-width="1.5" marker-end="url(#a)"/>
+  <!-- Shield -> P0 -->
+  <path id="c_sec_p0" d="M 310 292 C 345 292, 345 162, 380 162" class="conduit-bg"/>
+  <path d="M 310 292 C 345 292, 345 162, 380 162" class="conduit-flow" stroke="#f85149"/>
 
-  <rect x="24" y="156" width="280" height="64" rx="6" fill="#ddf4ff" stroke="#0969da"/>
-  <text x="36" y="176" class="hs m">agent/bench.py</text>
-  <text x="36" y="194" class="s">one case at a time, in opened_at order</text>
-  <text x="36" y="209" class="s">every read is bounded by as_of = opened_at</text>
-  <path d="M304,188 H332 V100 H358" fill="none" stroke="#57606a" stroke-width="1.5" marker-end="url(#a)"/>
+  <!-- Engine <-> Phase Machine (P3, P5, P6, P7) -->
+  <path id="c_eng_p3" d="M 310 420 L 380 296" class="conduit-bg"/>
+  <path d="M 310 420 L 380 296" class="conduit-flow" stroke="#3fb950"/>
 
-  <!-- engine -->
-  <rect x="24" y="240" width="280" height="212" rx="6" fill="#dafbe1" stroke="#1a7f37"/>
-  <text x="36" y="262" class="hs">engine/: deterministic decision gate</text>
-  <text x="36" y="282" class="b">scorecard · pattern_rule · episode</text>
-  <text x="36" y="299" class="b">policy.py over policy/fraud_policy.yaml</text>
-  <text x="36" y="316" class="b">rules R1–R10 · routes auto / L1 / L2</text>
-  <text x="36" y="333" class="b">voi · stop rule · LLM may move p by ≤ 0.10</text>
-  <rect x="36" y="350" width="256" height="58" rx="5" fill="#ffffff" stroke="#1a7f37"/>
-  <text x="46" y="368" class="hs m" style="font-size:11.5px">engine/simulator.py</text>
-  <text x="46" y="384" class="s">evidence simulator: the assumed reply to</text>
-  <text x="46" y="398" class="s">a customer / step-up request (never sent)</text>
-  <text x="36" y="432" class="b">answer_writer · validator (strict README JSON)</text>
+  <path id="c_eng_p6" d="M 310 495 L 380 432" class="conduit-bg"/>
+  <path d="M 310 495 L 380 432" class="conduit-flow" stroke="#3fb950"/>
 
-  <!-- engine <-> phases: P3, P5, P7 ; simulator <-> P6 -->
-  <line x1="304" y1="264" x2="358" y2="264" stroke="#1a7f37" stroke-width="1.5" marker-start="url(#ag)" marker-end="url(#ag)"/>
-  <line x1="304" y1="344" x2="358" y2="344" stroke="#1a7f37" stroke-width="1.5" marker-start="url(#ag)" marker-end="url(#ag)"/>
-  <line x1="292" y1="384" x2="358" y2="384" stroke="#1a7f37" stroke-width="1.5" marker-start="url(#ag)" marker-end="url(#ag)"/>
-  <line x1="304" y1="424" x2="358" y2="424" stroke="#1a7f37" stroke-width="1.5" marker-start="url(#ag)" marker-end="url(#ag)"/>
+  <!-- Phase Machine <-> Google Gemini API (P2, P4, P8, P9) -->
+  <path id="c_pm_gem" d="M 790 250 C 825 250, 820 160, 855 160" class="conduit-bg"/>
+  <path d="M 790 250 C 825 250, 820 160, 855 160" class="conduit-flow" stroke="#bc8cff"/>
 
-  <!-- ================= column B: phase machine ================= -->
-  <rect x="360" y="84" width="380" height="484" rx="8" fill="#ffffff" stroke="#0969da" stroke-width="1.5"/>
-  <rect x="360" y="84" width="380" height="32" rx="8" fill="#ddf4ff" stroke="#0969da" stroke-width="1.5"/>
-  <text x="372" y="105" class="hs"><tspan class="m">agent/phase_machine.py</tspan>: phases P0–P10</text>
+  <!-- Gemini & P0-P2 -> TigerGraph MCP -->
+  <path id="c_gem_mcp" d="M 1035 230 L 1035 264" class="conduit-bg"/>
+  <path d="M 1035 230 L 1035 264" class="conduit-flow" stroke="#bc8cff"/>
 
+  <path id="c_pm_mcp" d="M 790 205 C 825 205, 825 310, 855 310" class="conduit-bg"/>
+  <path d="M 790 205 C 825 205, 825 310, 855 310" class="conduit-flow" stroke="#38bdf8"/>
+
+  <!-- TigerGraph MCP <-> TigerGraph Savanna + TigerVector -->
+  <path id="c_mcp_tg" d="M 1035 356 L 1035 390" class="conduit-bg"/>
+  <path d="M 1035 356 L 1035 390" class="conduit-flow" stroke="#fb923c"/>
+
+  <!-- P10 Write-Back -> TigerGraph Case Memory -->
+  <path id="c_p10_tg" d="M 790 618 C 825 618, 825 595, 869 595" class="conduit-bg"/>
+  <path d="M 790 618 C 825 618, 825 595, 869 595" class="conduit-flow" stroke="#fb923c"/>
+
+  <!-- Phase Machine -> Outputs Bar -->
+  <path id="c_pm_out" d="M 585 648 L 585 680" class="conduit-bg"/>
+  <path d="M 585 648 L 585 680" class="conduit-flow" stroke="#58a6ff"/>
+
+  <!-- SMIL Animated Glowing Data Packets -->
+  <circle r="4.5" fill="#38bdf8" filter="url(#neonGlow)">
+    <animateMotion dur="1.7s" repeatCount="indefinite"><mpath href="#c_s0_sec"/></animateMotion>
+  </circle>
+  <circle r="4.5" fill="#f85149" filter="url(#neonGlow)">
+    <animateMotion dur="2.1s" repeatCount="indefinite"><mpath href="#c_sec_p0"/></animateMotion>
+  </circle>
+  <circle r="4.5" fill="#3fb950" filter="url(#neonGlow)">
+    <animateMotion dur="1.9s" repeatCount="indefinite"><mpath href="#c_eng_p3"/></animateMotion>
+  </circle>
+  <circle r="4.5" fill="#3fb950" filter="url(#neonGlow)">
+    <animateMotion dur="2.2s" repeatCount="indefinite"><mpath href="#c_eng_p6"/></animateMotion>
+  </circle>
+  <circle r="5" fill="#bc8cff" filter="url(#neonGlow)">
+    <animateMotion dur="1.8s" repeatCount="indefinite"><mpath href="#c_pm_gem"/></animateMotion>
+  </circle>
+  <circle r="4.5" fill="#38bdf8" filter="url(#neonGlow)">
+    <animateMotion dur="2.0s" repeatCount="indefinite"><mpath href="#c_pm_mcp"/></animateMotion>
+  </circle>
+  <circle r="5" fill="#fb923c" filter="url(#neonGlow)">
+    <animateMotion dur="1.5s" repeatCount="indefinite"><mpath href="#c_mcp_tg"/></animateMotion>
+  </circle>
+  <circle r="5" fill="#fb923c" filter="url(#neonGlow)">
+    <animateMotion dur="2.3s" repeatCount="indefinite"><mpath href="#c_p10_tg"/></animateMotion>
+  </circle>
+
+  <!-- ==================== COLUMN 1: DATA, SHIELD & DETERMINISTIC ENGINE ==================== -->
+  <!-- Stage 0: Schema Engine & ETL -->
+  <rect x="20" y="96" width="290" height="116" rx="10" fill="url(#cardCyan)" stroke="#38bdf8" stroke-width="1.8"/>
+  <rect x="32" y="108" width="64" height="18" rx="4" fill="rgba(56,189,248,0.2)" stroke="#38bdf8"/>
+  <text x="64" y="121" class="tag" fill="#38bdf8" text-anchor="middle">STAGE 0</text>
+  <text x="106" y="122" class="h2">Schema Engine &amp; ETL</text>
+  <text x="32" y="142" class="mono">schema_engine/ · etl/</text>
+  <text x="32" y="160" class="sub">650,938 txns (Jul–Dec + Jan 2017) · 5,585 CCs</text>
+  <text x="32" y="177" class="muted">• 4 Drift Gate · AI+AST .gsql Ontology Mapper</text>
+  <text x="32" y="193" class="muted">• DQ-01..06 Taint Matrix · LightGBM cms_p</text>
+
+  <!-- Shield P0: Adversarial Guard -->
+  <rect x="20" y="244" width="290" height="96" rx="10" fill="url(#cardCrimson)" stroke="#f85149" stroke-width="1.8"/>
+  <rect x="32" y="256" width="76" height="18" rx="4" fill="rgba(248,81,73,0.22)" stroke="#f85149"/>
+  <text x="70" y="269" class="tag" fill="#ffb3ab" text-anchor="middle">SHIELD P0</text>
+  <text x="118" y="270" class="h2">Adversarial Guard</text>
+  <text x="32" y="289" class="mono" style="fill:#ffb3ab">agent/security.py</text>
+  <text x="32" y="307" class="sub">Strips 6 planted prompt injections in HHF</text>
+  <text x="32" y="324" class="muted">• Trigger-vs-DB channel check (HHF-008)</text>
+
+  <!-- Deterministic Engine & Scorecard -->
+  <rect x="20" y="368" width="290" height="280" rx="10" fill="url(#cardEmerald)" stroke="#3fb950" stroke-width="1.8"/>
+  <rect x="32" y="382" width="90" height="18" rx="4" fill="rgba(63,185,80,0.2)" stroke="#3fb950"/>
+  <text x="77" y="395" class="tag" fill="#7ee2a8" text-anchor="middle">AUTHORITY</text>
+  <text x="132" y="396" class="h2">Deterministic Engine</text>
+  <text x="32" y="416" class="mono" style="fill:#7ee2a8">engine/ · policy/fraud_policy.yaml</text>
+  <text x="32" y="436" class="sub">• Scorecard: 4 evidence families + isotonic cal</text>
+  <text x="32" y="454" class="sub">• New Wave Detectors (backtested):</text>
+  <text x="42" y="471" class="muted">D1 Spoofed-Mobile Proxy (14) · D2 Doubling (8)</text>
+  <text x="42" y="487" class="muted">D3 Micro-Skim (18) · D4 sc.rr.com Mule (17)</text>
+  <text x="32" y="506" class="sub">• Containment Planner (min card-block set)</text>
+  <text x="32" y="524" class="sub">• Policy Gate R1–R10, §3a SAR, §3b routes</text>
+  <rect x="32" y="538" width="266" height="54" rx="7" fill="#07121e" stroke="#3fb950"/>
+  <text x="44" y="557" class="mono" style="fill:#7ee2a8">engine/voi.py + simulator.py</text>
+  <text x="44" y="575" class="muted">Ask only when reply flips actions; simulate reply</text>
+  <text x="32" y="616" class="sub">• Validator: IDs in DuckDB + TIPOFF guard</text>
+
+  <!-- ==================== COLUMN 2: PHASE MACHINE P0–P10 ==================== -->
+  <rect x="380" y="96" width="410" height="552" rx="12" fill="url(#cardBlue)" stroke="#58a6ff" stroke-width="2"/>
+  <rect x="380" y="96" width="410" height="36" rx="12" fill="rgba(88,166,255,0.16)"/>
+  <text x="396" y="119" class="h2">agent/phase_machine.py — Phases P0 to P10</text>
+  <text x="774" y="119" class="tag" fill="#79c0ff" text-anchor="end">AS_OF BOUNDED</text>
+
+  <!-- P0..P10 Rows -->
   <g>
-    <!-- row template: y = 124 + 40*i -->
-    <rect x="368" y="126" width="36" height="20" rx="4" fill="#0969da"/><text x="386" y="140" class="tag" style="fill:#ffffff" text-anchor="middle">P0</text>
-    <text x="414" y="139" class="hs">Intake</text><text x="414" y="155" class="s">CaseContext; open_case creates AC-HHG-0nn</text>
-    <rect x="666" y="128" width="66" height="16" rx="8" fill="#f6f8fa" stroke="#57606a"/><text x="699" y="140" class="tag" style="fill:#57606a" text-anchor="middle">code</text>
+    <rect x="392" y="140" width="386" height="39" rx="7" fill="rgba(255,255,255,0.03)" stroke="#38bdf8" class="phase-scan"/>
+    <rect x="400" y="148" width="36" height="22" rx="5" fill="#2563eb"/><text x="418" y="163" class="tag" fill="#fff" text-anchor="middle">P0</text>
+    <text x="446" y="157" class="sub" style="font-weight:700;fill:#fff">Intake &amp; Security Sanitization</text>
+    <text x="446" y="172" class="muted">Strip prompt injections · open_case(AC-...) · 4 mandatory reads</text>
+    <text x="766" y="163" class="tag" fill="#f85149" text-anchor="end">SHIELD+MCP</text>
 
-    <rect x="368" y="166" width="36" height="20" rx="4" fill="#0969da"/><text x="386" y="180" class="tag" style="fill:#ffffff" text-anchor="middle">P1</text>
-    <text x="414" y="179" class="hs">Memory</text><text x="414" y="195" class="s">similar prior cases + policy chunks (vector)</text>
-    <rect x="666" y="168" width="66" height="16" rx="8" fill="#f6f8fa" stroke="#57606a"/><text x="699" y="180" class="tag" style="fill:#57606a" text-anchor="middle">code</text>
+    <rect x="392" y="185" width="386" height="39" rx="7" fill="rgba(255,255,255,0.03)" stroke="rgba(255,255,255,0.12)"/>
+    <rect x="400" y="193" width="36" height="22" rx="5" fill="#2563eb"/><text x="418" y="208" class="tag" fill="#fff" text-anchor="middle">P1</text>
+    <text x="446" y="202" class="sub" style="font-weight:700;fill:#fff">GraphRAG Case &amp; Policy Memory</text>
+    <text x="446" y="217" class="muted">find_similar_cases (5,585 CCs incl. HHG-001..020) + FinCEN chunks</text>
+    <text x="766" y="208" class="tag" fill="#fb923c" text-anchor="end">VECTOR</text>
 
-    <rect x="368" y="206" width="36" height="20" rx="4" fill="#0969da"/><text x="386" y="220" class="tag" style="fill:#ffffff" text-anchor="middle">P2</text>
-    <text x="414" y="219" class="hs">Investigate</text><text x="414" y="235" class="s">≤ 12 typed read tools, per-trigger playbook</text>
-    <rect x="666" y="208" width="66" height="16" rx="8" fill="#fbefff" stroke="#8250df"/><text x="699" y="220" class="tag" style="fill:#8250df" text-anchor="middle">LLM</text>
+    <rect x="392" y="230" width="386" height="39" rx="7" fill="rgba(255,255,255,0.03)" stroke="rgba(255,255,255,0.12)"/>
+    <rect x="400" y="238" width="36" height="22" rx="5" fill="#7c3aed"/><text x="418" y="253" class="tag" fill="#fff" text-anchor="middle">P2</text>
+    <text x="446" y="247" class="sub" style="font-weight:700;fill:#fff">Agentic Graph Investigation</text>
+    <text x="446" y="262" class="muted">Playbook A/B/C/D · ≤12 typed read-only GSQL tool calls (as_of)</text>
+    <text x="766" y="253" class="tag" fill="#bc8cff" text-anchor="end">GEMINI+MCP</text>
 
-    <rect x="368" y="246" width="36" height="20" rx="4" fill="#0969da"/><text x="386" y="260" class="tag" style="fill:#ffffff" text-anchor="middle">P3</text>
-    <text x="414" y="259" class="hs">Scorecard</text><text x="414" y="275" class="s">p_engine, evidence families, pattern, episode</text>
-    <rect x="666" y="248" width="66" height="16" rx="8" fill="#dafbe1" stroke="#1a7f37"/><text x="699" y="260" class="tag" style="fill:#1a7f37" text-anchor="middle">engine</text>
+    <rect x="392" y="275" width="386" height="39" rx="7" fill="rgba(255,255,255,0.03)" stroke="rgba(255,255,255,0.12)"/>
+    <rect x="400" y="283" width="36" height="22" rx="5" fill="#1e7e34"/><text x="418" y="298" class="tag" fill="#fff" text-anchor="middle">P3</text>
+    <text x="446" y="292" class="sub" style="font-weight:700;fill:#fff">Deterministic Scorecard &amp; D1–D4 Waves</text>
+    <text x="446" y="307" class="muted">p_engine · D1/D2/D3/D4 wave match · episode &amp; exposure_usd</text>
+    <text x="766" y="298" class="tag" fill="#3fb950" text-anchor="end">ENGINE</text>
 
-    <rect x="368" y="286" width="36" height="20" rx="4" fill="#0969da"/><text x="386" y="300" class="tag" style="fill:#ffffff" text-anchor="middle">P4</text>
-    <text x="414" y="299" class="hs">Assess</text><text x="414" y="315" class="s">verdict, p within p_engine ± 0.10, cited claims</text>
-    <rect x="666" y="288" width="66" height="16" rx="8" fill="#fbefff" stroke="#8250df"/><text x="699" y="300" class="tag" style="fill:#8250df" text-anchor="middle">LLM</text>
+    <rect x="392" y="320" width="386" height="39" rx="7" fill="rgba(255,255,255,0.03)" stroke="rgba(255,255,255,0.12)"/>
+    <rect x="400" y="328" width="36" height="22" rx="5" fill="#7c3aed"/><text x="418" y="343" class="tag" fill="#fff" text-anchor="middle">P4</text>
+    <text x="446" y="337" class="sub" style="font-weight:700;fill:#fff">Bounded Assessment &amp; Attested Claims</text>
+    <text x="446" y="352" class="muted">Clamped to p_engine ± 0.10 · 4-part attested evidence ledger</text>
+    <text x="766" y="343" class="tag" fill="#bc8cff" text-anchor="end">GEMINI±0.10</text>
 
-    <rect x="368" y="326" width="36" height="20" rx="4" fill="#0969da"/><text x="386" y="340" class="tag" style="fill:#ffffff" text-anchor="middle">P5</text>
-    <text x="414" y="339" class="hs">Decide (initial)</text><text x="414" y="355" class="s">admissible actions under R1–R10, with routes</text>
-    <rect x="666" y="328" width="66" height="16" rx="8" fill="#dafbe1" stroke="#1a7f37"/><text x="699" y="340" class="tag" style="fill:#1a7f37" text-anchor="middle">engine+LLM</text>
+    <rect x="392" y="365" width="386" height="39" rx="7" fill="rgba(255,255,255,0.03)" stroke="rgba(255,255,255,0.12)"/>
+    <rect x="400" y="373" width="36" height="22" rx="5" fill="#1e7e34"/><text x="418" y="388" class="tag" fill="#fff" text-anchor="middle">P5</text>
+    <text x="446" y="382" class="sub" style="font-weight:700;fill:#fff">Initial Next-Best-Actions Gate</text>
+    <text x="446" y="397" class="muted">Admissible actions under R1–R10 · auto / L1 / L2 routing</text>
+    <text x="766" y="388" class="tag" fill="#3fb950" text-anchor="end">POLICY</text>
 
-    <rect x="368" y="366" width="36" height="20" rx="4" fill="#0969da"/><text x="386" y="380" class="tag" style="fill:#ffffff" text-anchor="middle">P6</text>
-    <text x="414" y="379" class="hs">Evidence</text><text x="414" y="395" class="s">ask only if a reply can change the actions</text>
-    <rect x="666" y="368" width="66" height="16" rx="8" fill="#dafbe1" stroke="#1a7f37"/><text x="699" y="380" class="tag" style="fill:#1a7f37" text-anchor="middle">engine</text>
+    <rect x="392" y="410" width="386" height="39" rx="7" fill="rgba(255,255,255,0.03)" stroke="rgba(255,255,255,0.12)"/>
+    <rect x="400" y="418" width="36" height="22" rx="5" fill="#1e7e34"/><text x="418" y="433" class="tag" fill="#fff" text-anchor="middle">P6</text>
+    <text x="446" y="427" class="sub" style="font-weight:700;fill:#fff">Value-of-Information &amp; Evidence Request</text>
+    <text x="446" y="442" class="muted">customer_validation / step_up_auth / analyst_info + counterfactual</text>
+    <text x="766" y="433" class="tag" fill="#3fb950" text-anchor="end">VOI+SIM</text>
 
-    <rect x="368" y="406" width="36" height="20" rx="4" fill="#0969da"/><text x="386" y="420" class="tag" style="fill:#ffffff" text-anchor="middle">P7</text>
-    <text x="414" y="419" class="hs">Reassess + decide</text><text x="414" y="435" class="s">final actions, what_changed, stop_reason</text>
-    <rect x="666" y="408" width="66" height="16" rx="8" fill="#dafbe1" stroke="#1a7f37"/><text x="699" y="420" class="tag" style="fill:#1a7f37" text-anchor="middle">engine+LLM</text>
+    <rect x="392" y="455" width="386" height="39" rx="7" fill="rgba(255,255,255,0.03)" stroke="rgba(255,255,255,0.12)"/>
+    <rect x="400" y="463" width="36" height="22" rx="5" fill="#1e7e34"/><text x="418" y="478" class="tag" fill="#fff" text-anchor="middle">P7</text>
+    <text x="446" y="472" class="sub" style="font-weight:700;fill:#fff">Post-Evidence Reassessment &amp; Final Actions</text>
+    <text x="446" y="487" class="muted">Updates p_engine &amp; verdict · records what_changed under §3b</text>
+    <text x="766" y="478" class="tag" fill="#3fb950" text-anchor="end">POLICY</text>
 
-    <rect x="368" y="446" width="36" height="20" rx="4" fill="#0969da"/><text x="386" y="460" class="tag" style="fill:#ffffff" text-anchor="middle">P8</text>
-    <text x="414" y="459" class="hs">SAR</text><text x="414" y="475" class="s">draft on FinCEN chunks; rag/validate_sar.py</text>
-    <rect x="666" y="448" width="66" height="16" rx="8" fill="#fbefff" stroke="#8250df"/><text x="699" y="460" class="tag" style="fill:#8250df" text-anchor="middle">LLM</text>
+    <rect x="392" y="500" width="386" height="39" rx="7" fill="rgba(255,255,255,0.03)" stroke="rgba(255,255,255,0.12)"/>
+    <rect x="400" y="508" width="36" height="22" rx="5" fill="#7c3aed"/><text x="418" y="523" class="tag" fill="#fff" text-anchor="middle">P8</text>
+    <text x="446" y="517" class="sub" style="font-weight:700;fill:#fff">Regulatory SAR Drafting &amp; Provenance</text>
+    <text x="446" y="532" class="muted">FinCEN 5-W narrative · OFAC check · V00–V19 + sentence citations</text>
+    <text x="766" y="523" class="tag" fill="#bc8cff" text-anchor="end">SAR+RAG</text>
 
-    <rect x="368" y="486" width="36" height="20" rx="4" fill="#0969da"/><text x="386" y="500" class="tag" style="fill:#ffffff" text-anchor="middle">P9</text>
-    <text x="414" y="499" class="hs">Explain + write</text><text x="414" y="515" class="s">summary; answer_writer; validator</text>
-    <rect x="666" y="488" width="66" height="16" rx="8" fill="#fbefff" stroke="#8250df"/><text x="699" y="500" class="tag" style="fill:#8250df" text-anchor="middle">LLM</text>
+    <rect x="392" y="545" width="386" height="39" rx="7" fill="rgba(255,255,255,0.03)" stroke="rgba(255,255,255,0.12)"/>
+    <rect x="400" y="553" width="36" height="22" rx="5" fill="#2563eb"/><text x="418" y="568" class="tag" fill="#fff" text-anchor="middle">P9</text>
+    <text x="446" y="562" class="sub" style="font-weight:700;fill:#fff">Answer Assembly, ID &amp; No-Tip-Off Gate</text>
+    <text x="446" y="577" class="muted">Every ID verified in DuckDB · tip-off guard · fail-closed</text>
+    <text x="766" y="568" class="tag" fill="#38bdf8" text-anchor="end">VALIDATOR</text>
 
-    <rect x="368" y="526" width="36" height="20" rx="4" fill="#0969da"/><text x="386" y="540" class="tag" style="fill:#ffffff" text-anchor="middle">P10</text>
-    <text x="414" y="539" class="hs">Persist (write-back)</text><text x="414" y="555" class="s">AgentCase + note_emb, events, approvals, edges</text>
-    <rect x="666" y="528" width="66" height="16" rx="8" fill="#f6f8fa" stroke="#57606a"/><text x="699" y="540" class="tag" style="fill:#57606a" text-anchor="middle">code</text>
+    <rect x="392" y="590" width="386" height="44" rx="7" fill="rgba(255,255,255,0.03)" stroke="rgba(255,255,255,0.12)"/>
+    <rect x="400" y="600" width="36" height="22" rx="5" fill="#ea580c"/><text x="418" y="615" class="tag" fill="#fff" text-anchor="middle">P10</text>
+    <text x="446" y="609" class="sub" style="font-weight:700;fill:#fff">Graph Write-Back &amp; RBAC Approval Queue</text>
+    <text x="446" y="624" class="muted">AgentCase + 1024-d note_emb · CaseEvent · immutable L1/L2 inbox</text>
+    <text x="766" y="615" class="tag" fill="#fb923c" text-anchor="end">PERSIST</text>
   </g>
 
-  <!-- ================= column C: LLM, MCP, TigerGraph ================= -->
-  <rect x="800" y="84" width="376" height="84" rx="6" fill="#fbefff" stroke="#8250df"/>
-  <text x="812" y="104" class="hs">LLM: claude-agent-sdk (LLM_BACKEND=cli)</text>
-  <text x="812" y="122" class="b">claude-sonnet-5 via the bundled Claude Code CLI</text>
-  <text x="812" y="139" class="s">subscription auth, no API key; built-in tools off, setting_sources=[]</text>
-  <text x="812" y="155" class="s">sees only our typed query tools (in-process SDK MCP server)</text>
-  <!-- phase machine <-> LLM for the purple phases -->
-  <line x1="740" y1="126" x2="798" y2="126" stroke="#8250df" stroke-width="1.5" marker-start="url(#ap)" marker-end="url(#ap)"/>
-  <text x="769" y="119" class="lbl" text-anchor="middle">LLM</text>
-  <text x="769" y="142" class="lbl" text-anchor="middle">phases</text>
+  <!-- ==================== COLUMN 3: GEMINI, MCP & TIGERGRAPH ==================== -->
+  <!-- Google Gemini Backend -->
+  <rect x="855" y="96" width="365" height="134" rx="10" fill="url(#cardViolet)" stroke="#bc8cff" stroke-width="1.8"/>
+  <rect x="867" y="108" width="88" height="18" rx="4" fill="rgba(188,140,255,0.22)" stroke="#bc8cff"/>
+  <text x="911" y="121" class="tag" fill="#d2b8ff" text-anchor="middle">GEMINI API</text>
+  <text x="965" y="122" class="h2">Google Gemini (v1beta)</text>
+  <text x="867" y="142" class="mono" style="fill:#d2b8ff">agent/llm.py (LLM_BACKEND=gemini)</text>
+  <text x="867" y="161" class="sub">• gemini-2.5-flash / gemini-2.5-pro</text>
+  <text x="867" y="179" class="sub">• responseSchema JSON on P4, P5, P7, P8, P9</text>
+  <text x="867" y="197" class="muted">• functionDeclarations tool loop on P2</text>
+  <text x="867" y="213" class="muted">• Bounded authority: cannot override policy gate</text>
 
-  <!-- LLM tool calls -> MCP -->
-  <line x1="900" y1="168" x2="900" y2="194" stroke="#8250df" stroke-width="1.5" marker-end="url(#ap)"/>
-  <text x="908" y="186" class="lbl">P2 tool calls</text>
+  <!-- TigerGraph MCP Server -->
+  <rect x="855" y="264" width="365" height="92" rx="10" fill="url(#cardCyan)" stroke="#38bdf8" stroke-width="1.8"/>
+  <rect x="867" y="276" width="82" height="18" rx="4" fill="rgba(56,189,248,0.2)" stroke="#38bdf8"/>
+  <text x="908" y="289" class="tag" fill="#38bdf8" text-anchor="middle">STDIO MCP</text>
+  <text x="958" y="290" class="h2">tigergraph-mcp 1.0.3</text>
+  <text x="867" y="310" class="mono">mcp/tg_mcp_launcher.py · strict allowlist</text>
+  <text x="867" y="328" class="sub">14 GSQL read wrappers + 2 vector retrieval tools</text>
+  <text x="867" y="344" class="muted">Blocks raw gsql / schema drop / ad-hoc mutations</text>
 
-  <rect x="800" y="196" width="376" height="80" rx="6" fill="#fff8c5" stroke="#9a6700"/>
-  <text x="812" y="216" class="hs">tigergraph-mcp 1.0.3 (stdio)</text>
-  <text x="812" y="234" class="b"><tspan class="m">mcp/tg_mcp_launcher.py</tspan> · allowlist</text>
-  <text x="812" y="251" class="s">run_installed_query, get_*, add_node(s), add_edge(s)</text>
-  <text x="812" y="266" class="s">blocked: gsql, run_query, install/drop/delete, schema changes</text>
-  <!-- phases P0-P1 mandatory reads -> MCP -->
-  <path d="M740,184 H770 V236 H798" fill="none" stroke="#57606a" stroke-width="1.5" marker-end="url(#a)"/>
-  <text x="746" y="178" class="lbl">P0–P1</text>
+  <!-- TigerGraph Savanna + TigerVector -->
+  <rect x="855" y="390" width="365" height="258" rx="10" fill="url(#cardOrange)" stroke="#fb923c" stroke-width="2"/>
+  <rect x="867" y="402" width="96" height="18" rx="4" fill="rgba(251,146,60,0.22)" stroke="#fb923c"/>
+  <text x="915" y="415" class="tag" fill="#fdba74" text-anchor="middle">FRAUDGRAPH</text>
+  <text x="972" y="416" class="h2">TigerGraph Savanna 4.2</text>
 
-  <!-- MCP -> TigerGraph -->
-  <line x1="988" y1="276" x2="988" y2="302" stroke="#bc4c00" stroke-width="1.5" marker-start="url(#ao)" marker-end="url(#ao)"/>
-  <text x="996" y="294" class="lbl">HTTPS, Database Secret</text>
+  <rect x="869" y="430" width="337" height="58" rx="6" fill="#09111f" stroke="rgba(251,146,60,0.5)"/>
+  <text x="880" y="448" class="mono" style="fill:#fdba74">25 Installed GSQL Queries (as_of bounded)</text>
+  <text x="880" y="465" class="muted">case_context · card_profile · card_window · ring_profile</text>
+  <text x="880" y="479" class="muted">shared_origin_scan · episode_candidates · 4 writers</text>
 
-  <rect x="800" y="304" width="376" height="264" rx="8" fill="#fff1e5" stroke="#bc4c00" stroke-width="1.5"/>
-  <text x="812" y="325" class="hs">TigerGraph Savanna · FraudGraph (4.2.x)</text>
+  <rect x="869" y="496" width="337" height="62" rx="6" fill="#09111f" stroke="rgba(251,146,60,0.5)"/>
+  <text x="880" y="514" class="mono" style="fill:#fdba74">TigerVector GraphRAG (1024-d COSINE)</text>
+  <text x="880" y="531" class="muted">• 5,585 ClosedCase.note_emb (incl. CC-5566..5585)</text>
+  <text x="880" y="546" class="muted">• PolicyChunk.emb (FinCEN, FFIEC, FATF, Policy v1.0)</text>
 
-  <rect x="812" y="336" width="352" height="50" rx="5" fill="#ffffff" stroke="#bc4c00"/>
-  <text x="822" y="353" class="hs" style="font-size:11.5px">GSQL query library (installed queries)</text>
-  <text x="822" y="368" class="s">case_context · card_window · device_neighbors · episode_candidates</text>
-  <text x="822" y="381" class="s">shared_origin_scan · region_history … and 4 writer queries</text>
+  <rect x="869" y="566" width="337" height="68" rx="6" fill="#09111f" stroke="rgba(251,146,60,0.5)"/>
+  <text x="880" y="584" class="mono" style="fill:#fdba74">Compounding Case Memory &amp; Graph Algos</text>
+  <text x="880" y="601" class="muted">• SHARES_DEVICE WCC + Degree + PageRank</text>
+  <text x="880" y="617" class="muted">• AgentCase + CaseEvent + Approval + round2_delta</text>
 
-  <rect x="812" y="392" width="352" height="50" rx="5" fill="#ffffff" stroke="#bc4c00"/>
-  <text x="822" y="409" class="hs" style="font-size:11.5px">Graph algorithms (graph/run_algos.py)</text>
-  <text x="822" y="424" class="s">SHARES_DEVICE projection · tg_wcc · tg_degree_cent</text>
-  <text x="822" y="437" class="s">into Card.wcc_id and Card.device_degree</text>
+  <!-- ==================== OUTPUTS & OFFLINE PIPELINE BAR ==================== -->
+  <rect x="20" y="674" width="1200" height="52" rx="10" fill="#0f2547" stroke="#58a6ff" stroke-width="1.6"/>
+  <text x="36" y="704" class="h2">Outputs &amp; Banking Controls:</text>
+  <text x="242" y="704" class="mono">cases/HHF-001..018.json (run hhf-final)</text>
+  <text x="605" y="704" class="sub">·  4-Part Attested Evidence &amp; SAR Citations</text>
+  <text x="885" y="704" class="sub" style="fill:#7ee2a8">·  Server-Side RBAC &amp; Immutable Approvals Inbox</text>
 
-  <rect x="812" y="448" width="352" height="50" rx="5" fill="#ffffff" stroke="#bc4c00"/>
-  <text x="822" y="465" class="hs" style="font-size:11.5px">TigerVector GraphRAG (vectorSearch)</text>
-  <text x="822" y="480" class="s">ClosedCase + AgentCase note_emb · PolicyChunk (README policy,</text>
-  <text x="822" y="493" class="s">FinCEN · FFIEC · FATF) · BAAI/bge-large-en-v1.5, 1024-d</text>
-
-  <rect x="812" y="504" width="352" height="54" rx="5" fill="#ffffff" stroke="#bc4c00"/>
-  <text x="822" y="521" class="hs" style="font-size:11.5px">Case memory (agent write-back)</text>
-  <text x="822" y="536" class="s">AgentCase · CaseEvent · Approval</text>
-  <text x="822" y="549" class="s">CASE_SIMILAR_TO · CASE_CONNECTED_TO · CASE_DEVICE …</text>
-  <!-- memory compounds: later cases retrieve earlier ones -->
-  <path d="M1165,526 C1175,520 1175,488 1166,482" fill="none" stroke="#bc4c00" stroke-width="1.3" stroke-dasharray="4 3" marker-end="url(#ao)"/>
-
-  <!-- P10 write-back -> case memory -->
-  <line x1="740" y1="536" x2="810" y2="536" stroke="#bc4c00" stroke-width="1.5" marker-end="url(#ao)"/>
-  <text x="746" y="530" class="lbl">P10 write</text>
-
-  <!-- ================= outputs ================= -->
-  <rect x="24" y="604" width="280" height="62" rx="6" fill="#f6f8fa" stroke="#57606a"/>
-  <text x="36" y="624" class="hs m">cases/HHG-0nn.json</text>
-  <text x="36" y="642" class="s">strict README answer format; every id</text>
-  <text x="36" y="656" class="s">resolved against data/ids.duckdb</text>
-
-  <rect x="360" y="604" width="380" height="62" rx="6" fill="#f6f8fa" stroke="#57606a"/>
-  <text x="372" y="624" class="hs m">runs/&lt;run_id&gt;/&lt;case&gt;/</text>
-  <text x="372" y="642" class="s">answer.json · calls.jsonl · phases.jsonl · sar.md</text>
-  <text x="372" y="656" class="s">tool_calls, tokens, latency_s come from this run log</text>
-
-  <rect x="800" y="604" width="376" height="62" rx="6" fill="#ddf4ff" stroke="#0969da"/>
-  <text x="812" y="624" class="hs">Streamlit UI <tspan class="m" style="font-weight:400;font-size:11px">ui/ (make ui)</tspan></text>
-  <text x="812" y="642" class="s">queue · case · approvals · graph · runs</text>
-  <text x="812" y="656" class="s">approving an L1/L2 action writes an Approval</text>
-
-  <line x1="550" y1="568" x2="550" y2="602" stroke="#57606a" stroke-width="1.5" marker-end="url(#a)"/>
-  <text x="558" y="590" class="lbl">P9 answer + run log</text>
-  <line x1="360" y1="635" x2="306" y2="635" stroke="#57606a" stroke-width="1.5" marker-end="url(#a)"/>
-  <text x="332" y="628" class="lbl" text-anchor="middle">promote</text>
-  <line x1="740" y1="635" x2="798" y2="635" stroke="#57606a" stroke-width="1.5" marker-end="url(#a)"/>
-  <text x="769" y="628" class="lbl" text-anchor="middle">read</text>
-  <line x1="1120" y1="604" x2="1120" y2="570" stroke="#bc4c00" stroke-width="1.5" marker-end="url(#ao)"/>
-  <text x="1112" y="590" class="lbl" text-anchor="end">record_approval</text>
-
-  <!-- ================= offline build ================= -->
-  <rect x="24" y="690" width="1152" height="120" rx="8" fill="#f6f8fa" stroke="#d0d7de"/>
-  <text x="36" y="710" class="hs">Offline, once (make db features cms facts chunks · load algos · corpus embed vectors · install-queries)</text>
-
-  <rect x="36" y="724" width="170" height="72" rx="5" fill="#ffffff" stroke="#57606a"/>
-  <text x="46" y="743" class="hs m" style="font-size:11px">data/raw/*.csv</text>
-  <text x="46" y="760" class="s">4 dataset CSVs + README</text>
-  <text x="46" y="774" class="s">(gitignored, never</text>
-  <text x="46" y="788" class="s">committed)</text>
-
-  <rect x="228" y="724" width="170" height="72" rx="5" fill="#ffffff" stroke="#57606a"/>
-  <text x="238" y="743" class="hs m" style="font-size:11px">etl/</text>
-  <text x="238" y="760" class="s">DuckDB · card_id rule</text>
-  <text x="238" y="774" class="s">features · LightGBM</text>
-  <text x="238" y="788" class="s">case-memory scorer</text>
-
-  <rect x="420" y="724" width="170" height="72" rx="5" fill="#dafbe1" stroke="#1a7f37"/>
-  <text x="430" y="743" class="hs m" style="font-size:11px">engine/facts_from_etl</text>
-  <text x="430" y="760" class="s">facts DuckDB for the</text>
-  <text x="430" y="774" class="s">engine, the replay and</text>
-  <text x="430" y="788" class="s">RUN_MODE=mock</text>
-
-  <rect x="612" y="724" width="170" height="72" rx="5" fill="#fff1e5" stroke="#bc4c00"/>
-  <text x="622" y="743" class="hs m" style="font-size:11px">graph/load_all.py</text>
-  <text x="622" y="760" class="s">schema + loading jobs,</text>
-  <text x="622" y="774" class="s">590,742 transactions;</text>
-  <text x="622" y="788" class="s">then run_algos.py</text>
-
-  <rect x="804" y="724" width="170" height="72" rx="5" fill="#fff1e5" stroke="#bc4c00"/>
-  <text x="814" y="743" class="hs m" style="font-size:11px">rag/</text>
-  <text x="814" y="760" class="s">chunk policy + guidance,</text>
-  <text x="814" y="774" class="s">embed locally (BGE),</text>
-  <text x="814" y="788" class="s">load into TigerVector</text>
-
-  <rect x="996" y="724" width="170" height="72" rx="5" fill="#fff1e5" stroke="#bc4c00"/>
-  <text x="1006" y="743" class="hs m" style="font-size:11px">graph/install_all.py</text>
-  <text x="1006" y="760" class="s">CREATE + INSTALL the</text>
-  <text x="1006" y="774" class="s">GSQL queries; MCP</text>
-  <text x="1006" y="788" class="s">descriptions registered</text>
-
-  <line x1="206" y1="760" x2="226" y2="760" stroke="#57606a" stroke-width="1.5" marker-end="url(#a)"/>
-  <line x1="398" y1="760" x2="418" y2="760" stroke="#57606a" stroke-width="1.5" marker-end="url(#a)"/>
-  <line x1="590" y1="760" x2="610" y2="760" stroke="#57606a" stroke-width="1.5" marker-end="url(#a)"/>
-  <line x1="782" y1="760" x2="802" y2="760" stroke="#57606a" stroke-width="1.5" marker-end="url(#a)"/>
-  <line x1="974" y1="760" x2="994" y2="760" stroke="#57606a" stroke-width="1.5" marker-end="url(#a)"/>
+  <rect x="20" y="740" width="1200" height="62" rx="10" fill="#091324" stroke="#334155" stroke-width="1.2"/>
+  <text x="36" y="763" class="mono" style="fill:#38bdf8">Offline &amp; Incremental Pipeline (make round2-ingest · make load-round2 · make round2-backtest · make round2-grade)</text>
+  <text x="36" y="785" class="muted">data/raw/round2/*.csv  ──►  schema_engine/ (drift + AST/AI .gsql mapper + DQ-01..06)  ──►  data/hhgoa_engine.duckdb (650,938 txns)  ──►  TigerGraph Savanna + TigerVector</text>
 </svg>

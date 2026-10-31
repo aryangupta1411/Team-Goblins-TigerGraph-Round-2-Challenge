@@ -6,7 +6,8 @@ tool runs the real checks once, on a machine that has the data, and writes what 
     uv run python -m ops.proof_snapshot                                   # -> engine/out/proof_snapshot.json
     uv run python -m ops.proof_snapshot --out /tmp/proof_snapshot.json
 
-Sections (ui.common.SNAPSHOT_SECTIONS): attacks, intake_scans, drift, dq, gsql, variant, containment_plans, c3_built, facts.
+Sections (ui.common.SNAPSHOT_SECTIONS): attacks, intake_scans, drift, dq, gsql, variant, containment_plans, c3_built, facts,
+scorecard.
 Each runs in its own try/except. A failed section is left out and its error is recorded as errors[section] = 'Type:
 message'; nothing is ever filled in by hand. A section that partly fails (one case of 18) keeps the measured part and
 lists the failures in errors[section].
@@ -37,7 +38,7 @@ DEFAULT_OUT = ROOT / "engine" / "out" / "proof_snapshot.json"
 BACKTEST = ROOT / "engine" / "out" / "detector_backtest.json"
 SCHEMAS_DIR = ROOT / "data" / "schemas"
 VARIANT_DIR = ROOT / "data" / "variant_bank_b"
-SECTIONS = ("attacks", "intake_scans", "drift", "dq", "gsql", "variant", "containment_plans", "c3_built", "facts")
+SECTIONS = ("attacks", "intake_scans", "drift", "dq", "gsql", "variant", "containment_plans", "c3_built", "facts", "scorecard")
 FACT_TABLES = ("txc", "cc", "cp_round2")
 MAX_BYTES = 5 * 1024 * 1024
 
@@ -269,6 +270,65 @@ def sec_facts() -> tuple[Any, list[str]]:
     return out, errs
 
 
+def sec_scorecard() -> tuple[Any, list[str]]:
+    """The scorecard's numbers as the code holds them: the policy file's 'engine' block, read afresh (bands, log-odds bumps
+    and their clip, floors, the conflict clamp, the post-evidence moves), every module-level DetectorHit(detector_id=,
+    name=, p_floor=) in engine/detectors.py (read with ast, never run; a missing p_floor is the dataclass default) marked
+    in_scan and ordered as hit_from_scan tries them (only those reach the scorecard, the first match wins), and the LLM
+    bound, agent.security.clamp_to_engine's max_move default. The UI reads the same function where the code exists."""
+    import ast
+    import inspect
+
+    import yaml
+
+    from agent.security import clamp_to_engine
+    from engine import config
+
+    errs: list[str] = []
+    det_file = ROOT / "engine" / "detectors.py"
+    tree = ast.parse(det_file.read_text(encoding="utf-8"))
+    default = next((n.value.value for c in tree.body if isinstance(c, ast.ClassDef) and c.name == "DetectorHit" for n in c.body
+                    if isinstance(n, ast.AnnAssign) and getattr(n.target, "id", "") == "p_floor" and isinstance(n.value, ast.Constant)), None)
+    floors: list[dict[str, Any]] = []
+    for fn in (n for n in tree.body if isinstance(n, ast.FunctionDef)):
+        for node in ast.walk(fn):
+            if not (isinstance(node, ast.Call) and getattr(node.func, "id", "") == "DetectorHit"):
+                continue
+            kw = {k.arg: k.value for k in node.keywords if k.arg}
+            row: dict[str, Any] = {"function": fn.name, "line": node.lineno}
+            row.update({k: kw[k].value for k in ("detector_id", "name", "p_floor") if isinstance(kw.get(k), ast.Constant)})
+            if "p_floor" not in kw:
+                row.update(p_floor=default, p_floor_default=True)
+            elif "p_floor" not in row:
+                errs.append(f"{fn.name} (engine/detectors.py:{node.lineno}): p_floor is not a literal")
+            floors.append(row)
+    # the detectors the scorecard can apply are the ones hit_from_scan tries, in its order: the loop over a tuple whose
+    # elements call detect_*; an order is claimed only when every element names a detector found above
+    def _called(el: ast.AST) -> str:
+        return next((c.func.id for c in ast.walk(el) if isinstance(c, ast.Call) and getattr(c.func, "id", "").startswith("detect_")), "")
+
+    scan = next((n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "hit_from_scan"), None)
+    loops = [n for n in ast.walk(scan) if isinstance(n, ast.For) and isinstance(n.iter, ast.Tuple)] if scan else []
+    loop = next((n for n in loops if any(_called(el) for el in n.iter.elts)), None)
+    order = [_called(el) for el in (loop.iter.elts if loop else [])]
+    if order and all(order) and set(order) <= {r["function"] for r in floors}:
+        for r in floors:
+            r["in_scan"] = r["function"] in order
+        floors.sort(key=lambda r: order.index(r["function"]) if r["in_scan"] else len(order))
+    else:
+        errs.append("engine/detectors.py: hit_from_scan's detector order not found; no order is claimed")
+    policy = Path(config.POLICY_YAML).absolute()  # a relative ENGINE_POLICY_YAML means the process cwd, as the engine reads it
+    out = {
+        "policy_file": _rel(policy),
+        "engine": yaml.safe_load(policy.read_text(encoding="utf-8"))["engine"],
+        "detectors_file": _rel(det_file),
+        "detector_floors": floors,
+        "llm_max_move": inspect.signature(clamp_to_engine).parameters["max_move"].default,
+        "calibration_file": _rel(Path(config.CALIBRATION_JSON)),
+    }
+    return out, errs
+
+
 SECTION_FUNCS = {
     "attacks": sec_attacks,
     "intake_scans": sec_intake_scans,
@@ -279,6 +339,7 @@ SECTION_FUNCS = {
     "containment_plans": sec_containment_plans,
     "c3_built": sec_c3_built,
     "facts": sec_facts,
+    "scorecard": sec_scorecard,
 }
 
 

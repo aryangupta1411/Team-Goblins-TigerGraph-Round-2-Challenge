@@ -1,10 +1,12 @@
 """How it works: the TigerGraph-use checklist measured from the selected source, every known limit with its source file,
-a measured-facts strip and a map of the pipeline with the page that proves each stage.
+a measured-facts strip, a map of the pipeline with the page that proves each stage and the LLM models the source's
+calls.jsonl records, and how the scorecard decides with every number read from the code.
 
-Files only: the selected source's traces (common.tg_usage, trace_stats, guardrail_events, attest_claims),
-engine/out/detector_backtest.json, engine/out/containment_summary.json, engine/out/proof_snapshot.json and the
-graph/queries/*.gsql listing. agent.mcp_client is imported only when present, to read the tool allowlist. No case data
-reaches HTML, and this page writes nothing.
+Files only: the selected source's traces (common.tg_usage, trace_stats, guardrail_events, attest_claims, llm_models),
+engine/out/detector_backtest.json, engine/out/containment_summary.json, engine/out/proof_snapshot.json, the
+graph/queries/*.gsql listing and common.scorecard_rules (policy/fraud_policy.yaml, engine/detectors.py read with ast and
+agent/security.py where they exist, else the snapshot's scorecard section). agent.mcp_client is imported only when
+present, to read the tool allowlist. No case data reaches HTML, and this page writes nothing.
 """
 from __future__ import annotations
 
@@ -67,7 +69,9 @@ usage = {c: common.tg_usage(v) for c, v in traced.items()}
 n = len(traced)
 TRACE_SRC = f"runs/{sid}/<case>/calls.jsonl and phases.jsonl"
 
-st.markdown("#### TigerGraph use in this source")
+with st.container(horizontal=True, vertical_alignment="center", gap="medium", key="system-tg-head"):
+    st.markdown("#### TigerGraph use in this source", width="content")
+    common.tigergraph_credit("system")
 if src is None:
     st.info("No sources on this deployment: no agent run under runs/ and no answer files under cases/.")
 rows: list[dict] = []
@@ -205,17 +209,109 @@ STAGES = [
     ("P10 persist + approvals", "the AgentCase write-back, its read-back and the approval queue", "graph"),
 ]
 st.markdown("#### System map")
+# the LLM node names the models this source's calls.jsonl records (P2, P4, P5-P7, P8 and P9 call it), never an assumed one
+models = common.llm_models(traced.values())
+llm_phases = Counter(str(c.get("phase") or "?").split("-")[0] for v in traced.values() for c in v.calls if c.get("kind") == "llm")
+
+
+def _dot(text: str) -> str:
+    return str(text).replace("\\", "\\\\").replace('"', '\\"')
+
+
 chain = [s for s, _, _ in STAGES]
 dot = ["digraph pipeline {", 'rankdir=LR; node [shape=box, style="rounded", fontname="Helvetica", fontsize=11]; edge [color="#888888"];']
 dot += [f'n{i} [label="{name}"];' for i, name in enumerate(chain)]
 dot += [f"n{i} -> n{i + 1};" for i in range(len(chain) - 1)]
-dot += ['tg [label="TigerGraph FraudGraph", shape=cylinder];', 'n2 -> tg [dir=both, style=dashed];', 'n3 -> tg [dir=both, style=dashed];', 'n9 -> tg [style=dashed];', "}"]
+dot += ['tg [label="TigerGraph FraudGraph", shape=cylinder];', 'n2 -> tg [dir=both, style=dashed];', 'n3 -> tg [dir=both, style=dashed];', 'n9 -> tg [style=dashed];']
+dot += [f'llm [label="{_dot("LLM · " + ", ".join(models) if models else "LLM (model not recorded in this source)")}", shape=component];',
+        "n3 -> llm [dir=both, style=dashed];", "n5 -> llm [style=dashed];", "n6 -> llm [style=dashed];", "n7 -> llm [style=dashed];", "n8 -> llm [style=dashed];", "}"]
 st.graphviz_chart("\n".join(dot), width="stretch")
+if models:
+    st.caption(md(f"LLM calls in runs/{sid}/<case>/calls.jsonl: " + " · ".join(f"{m} {k}" for m, k in models.most_common()) + " · by phase "
+                  + ", ".join(f"{p} {k}" for p, k in sorted(llm_phases.items(), key=lambda x: common.PIPELINE_CODES.index(x[0]) if x[0] in common.PIPELINE_CODES else 99))
+                  + f" · computed now from {n} traced case(s); agent/llm.py picks the backend from LLM_BACKEND"))
+else:
+    st.caption(md(f"No LLM row in {sid or 'this source'}: the model is recorded only in a run's calls.jsonl"))
 with st.container(border=True, key="system-stages"):
     for name, proves, page in STAGES:
         with st.container(horizontal=True, vertical_alignment="center", gap="small"):
             st.markdown(f"**{md(name)}** · {md(proves)}")
             common.page_link(page, common.PAGES[page]["title"], icon=":material/arrow_forward:")
+
+# --------------------------------------------------------------------------- #
+# How the scorecard decides: every number read from the code                  #
+# --------------------------------------------------------------------------- #
+st.markdown("#### How the scorecard decides")
+rules = common.scorecard_rules()
+rd = rules["data"] if isinstance(rules["data"], dict) else None
+if rd is None:
+    st.info(md(f"The scorecard's parameters are not readable on this deployment: {rules['error'] or 'no source'}"), icon=":material/info:")
+else:
+    E = rd.get("engine") if isinstance(rd.get("engine"), dict) else {}
+    PE = E.get("post_evidence") if isinstance(E.get("post_evidence"), dict) else {}
+
+    def _v(d: dict, key: str) -> str:
+        x = d.get(key)
+        if x is None:
+            return "not set"
+        return f"[{x[0]}, {x[1]}]" if isinstance(x, list | tuple) and len(x) == 2 else str(x)
+
+    left, right = st.columns([1, 1], gap="medium")
+    with left, st.container(border=True, key="system-scorecard-steps"):
+        st.markdown("**From the scorer to a verdict** (P3, then P4 and P7)")
+        for title, body in (
+            ("Scorer.", f"cms_p from the ETL scorer (etl/cms_train.py) becomes cal_p through the isotonic calibration in {rd.get('calibration_file') or 'the calibration file'}."),
+            ("Evidence.", f"Graph signals add log-odds adjustments; their sum is clipped to ±{_v(E, 'max_abs_adjustment')}: p1 = expit(logit(cal_p) + clip(sum)). "
+                          f"A scorer flagged unreliable is shrunk toward 0.5 by {_v(E, 'scorer_unreliable_shrink')}."),
+            ("Conflict.", f"When the scorer (cms_p below {_v(E, 'conflict_cms')}) and a rulebook chain over ${_v(E, 'conflict_min_exposure')} disagree, p is clamped "
+                          f"into {_v(E, 'conflict_clamp')}, inside the uncertain band. Final Round only, a second override clamps into the same band with no "
+                          "scorer or exposure test: an in-person risk-score alert with no detector hit whose card shares a recipient-email domain with other "
+                          "cards that no fraud case touches, or has an online ProductCD 'C' purchase with no device in its 48-hour chain."),
+            ("Floors.", "A matched pattern lifts p to at least its floor; one floor applies, the first that matches (table)."),
+            ("Bands.", f"fraud at p ≥ {_v(E, 'fraud_band')}, legitimate at p ≤ {_v(E, 'legit_band')}, uncertain between. An evidence family counts for fraud or "
+                       f"legitimacy when its net weight reaches ±{_v(E, 'family_strength')}."),
+            ("LLM bound (P4).", f"The model may move p by at most ±{rd.get('llm_max_move', 'not set')} (agent/security.py clamp_to_engine)."),
+            ("After an evidence request (P6 → P7).", f"confirm: p capped at {_v(PE, 'confirm_ceiling')}, unless a ring, burst or detector floor holds; deny: "
+             f"{_v(PE, 'deny_bump')} log-odds, floor {_v(PE, 'deny_floor_with_second_family')} with another fraud family; step-up passed: {_v(PE, 'pass_bump')} "
+             f"log-odds, then capped at {_v(PE, 'pass_ceiling')} unless a ring, burst or detector floor holds (that floor is kept); "
+             f"failed: {_v(PE, 'fail_bump')} log-odds."),
+        ):
+            st.markdown(f"**{md(title)}** {md(body)}")
+    with right:
+        bumps = [("card_testing_bump", "R5 card-testing run feeding the flagged purchase"),
+                 ("recurring_bump", "R7 recurring-charge match (never with a Final Round detector hit, which clears the match)"),
+                 ("cleared_precedent_bump", "a prior cleared alert of the same template on the card (risk alerts)"),
+                 ("recent_case_bump", f"a recent confirmed-fraud card-testing / CNP case on the card (within {_v(E, 'recent_case_days')} days)"),
+                 ("shared_profile_bump", "a strong shared profile with ≥ 2 other fraud cards, seen from 30 days before the flagged transaction up "
+                                         "to the alert, and no ring hit"),
+                 ("denial_bump_when_scorer_agrees", "a customer denial with cal_p ≥ 0.5 and no R7 recurring-charge match")]
+        st.markdown("**Log-odds adjustments** " + md(f"({rd.get('policy_file')}, engine)"))
+        st.dataframe(pd.DataFrame([{"parameter": k, "value": _v(E, k), "applied when": w} for k, w in bumps]), hide_index=True, width="stretch",
+                     column_config={"applied when": st.column_config.TextColumn(width="large")})
+        floors = [("ring_floor", "anonymous-proxy device ring", rd.get("policy_file")), ("burst_with_denial_floor", "under-$500 burst with a customer denial", rd.get("policy_file")),
+                  ("burst_alone_floor", "under-$500 burst without a denial", rd.get("policy_file")), ("denial_floor", "customer denial not explained by R7", rd.get("policy_file"))]
+        dets = [d for d in (rd.get("detector_floors") if isinstance(rd.get("detector_floors"), list) else []) if isinstance(d, dict)]
+        ordered = bool(dets) and all("in_scan" in d for d in dets)  # older snapshots carry no hit_from_scan order
+        unused = [str(d.get("detector_id") or d.get("function")) for d in dets if ordered and not d.get("in_scan")]
+        rows_f = [{"floor": k, "value": _v(E, k), "when": w, "source": s} for k, w, s in floors[:1]]
+        rows_f += [{"floor": d.get("detector_id") or d.get("function"), "value": str(d.get("p_floor", "not a literal")) + (" (default)" if d.get("p_floor_default") else ""),
+                    "when": f"detector hit{(': ' + str(d['name'])) if d.get('name') else ''}", "source": f"{rd.get('detectors_file')}:{d.get('line')}"}
+                   for d in dets if not ordered or d.get("in_scan")]
+        rows_f += [{"floor": k, "value": _v(E, k), "when": w, "source": s} for k, w, s in floors[1:]]
+        st.markdown("**Floors** " + md("(checked in this order; the first that matches applies)" if ordered
+                                       else "(the detector rows' order is not recorded in this source; the first floor that matches applies)" if dets
+                                       else "(the first floor that matches applies)"))
+        st.dataframe(pd.DataFrame(rows_f), hide_index=True, width="stretch", column_config={"when": st.column_config.TextColumn(width="large")})
+        if unused:
+            st.caption(md(f"Defined in {rd.get('detectors_file')} but not tried by hit_from_scan, so they never floor p: {', '.join(unused)}"))
+        if not dets:
+            st.caption("The detector floors are not readable in this source (detector_floors missing or not a list), so they are not in the table")
+    how = (f"read now from {rules['source']} (policy file as of {rules['as_of']})" if rules["mode"] == "code"
+           else f"from {rules['source']} (snapshot generated {rules['generated_at'] or rules['as_of']}, git {rules['git_sha'] or 'unknown'})")
+    st.caption(md(f"Every number is {how}. The 'applied when' and 'when' texts summarise the conditions in engine/scorecard.py. Two rules are inline "
+                  "in engine/scorecard.py, not parameters, and their thresholds are not listed: the R5 card-testing floor (between the bursts and the "
+                  "customer denial) and the Final Round mixed-channel / recipient-email conflict override."
+                  + (f" Notes: {rules['error']}" if rules["error"] else "")))
 
 with st.expander("Design notes", expanded=False):
     for text, page in (

@@ -43,21 +43,52 @@
         ]
       },
       {
-        "claim": "A coordinated recipient-email mule ring across 17 cards is identified, where card C01727-K2 made 3 online Product Code 'C' payments (3660261, 3660262, 3660263) totaling $967.68 to the recipient email 'sc.rr.com'.",
+        "claim": "Card C01727-K2 has 5 prior confirmed fraud cases (CC-4908, CC-1975, CC-1833, CC-1501, CC-0723) for patterns such as 'card_not_present_new_device' and 'account_takeover', with the most recent one on 2016-10-16.",
         "source": "graph",
-        "ref": "query:shared_origin_scan(card=C01727-K2)",
+        "ref": "query:prior_cases_for_customer(cu=C01727)",
+        "entity_ids": [
+          "C01727-K2",
+          "CC-4908",
+          "CC-1975",
+          "CC-1833",
+          "CC-1501",
+          "CC-0723"
+        ]
+      },
+      {
+        "claim": "A Round-2 detector identified a coordinated recipient-email mule ring across 17 cards, including C01727-K2, paying R_emaildomain='sc.rr.com' with no shared device. Card C01727-K2 has 3 online ProductCD='C' payments (3660261, 3660262, 3660263) totaling $967.68 to 'sc.rr.com'.",
+        "source": "graph",
+        "ref": "query:typology_scan(c=C01727-K2)",
         "entity_ids": [
           "3660261",
           "3660262",
           "3660263",
-          "C01727-K2"
+          "C01727-K2",
+          "C00534-K2",
+          "C01357-K1",
+          "C01507-K1",
+          "C01594-K1",
+          "C02167-K2",
+          "C03060-K1",
+          "C04146-K1",
+          "C04668-K1",
+          "C05610-K1",
+          "C06115-K1",
+          "C06639-K1",
+          "C08384-K1",
+          "C10350-K1",
+          "C11617-K1",
+          "C11743-K2",
+          "C11940-K1"
         ]
       },
       {
-        "claim": "The recipient email domain 'sc.rr.com' is shared across 16 other cards (C01594-K1, C03060-K1, C05610-K1, C10350-K1, C00534-K2, C01357-K1, C01507-K1, C02167-K2, C04146-K1, C04668-K1, C06115-K1, C06639-K1, C08384-K1, C11617-K1, C11940-K1, C11743-K2) in the 30 days before the case opened.",
+        "claim": "The recipient email domain 'sc.rr.com', used by transaction 3660263, is shared with 16 other cards, including C03060-K1 and C11743-K2, which are associated with confirmed fraud cases CC-3907 and CC-5117 respectively.",
         "source": "graph",
         "ref": "query:email_neighbors(e=sc.rr.com)",
         "entity_ids": [
+          "3660263",
+          "C01727-K2",
           "C01594-K1",
           "C03060-K1",
           "C05610-K1",
@@ -72,35 +103,14 @@
           "C06639-K1",
           "C08384-K1",
           "C11617-K1",
+          "C11743-K2",
           "C11940-K1",
-          "C11743-K2"
+          "CC-3907",
+          "CC-5117"
         ]
       },
       {
-        "claim": "Card C01727-K2 has 5 prior confirmed fraud cases, including account_takeover and card_not_present_new_device, with the most recent (CC-4908) on 2016-10-16.",
-        "source": "graph",
-        "ref": "query:prior_cases_for_customer(cu=C01727)",
-        "entity_ids": [
-          "C01727-K2",
-          "CC-4908",
-          "CC-1975",
-          "CC-1833",
-          "CC-1501",
-          "CC-0723"
-        ]
-      },
-      {
-        "claim": "The episode comprises three online transactions: 3660261 ($305.41), 3660262 ($366.35), and the flagged transaction 3660263 ($295.92), all to the recipient email 'sc.rr.com' and product code 'C'.",
-        "source": "graph",
-        "ref": "query:episode_candidates(t=3660263)",
-        "entity_ids": [
-          "3660261",
-          "3660262",
-          "3660263"
-        ]
-      },
-      {
-        "claim": "The flagged transaction amount of $295.92 is within the card's historical baseline, which has a prior median of $107.86 and a prior maximum of $1,419.28 over 121 transactions.",
+        "claim": "The transaction amount of $295.92 for transaction 3660263 is within the card's historical range (prior median $107.86, prior maximum $1,419.28 over 121 transactions).",
         "source": "graph",
         "ref": "query:case_context(txn=3660263)",
         "entity_ids": [
@@ -109,16 +119,25 @@
         ]
       },
       {
-        "claim": "The billing region 231.0 for the flagged online transaction is the card's modal region, with 119 prior purchases recorded over 90 days.",
+        "claim": "The billing region 231.0 for online transaction 3660263 is the card's modal region, with 119 prior purchases over 90 days.",
         "source": "graph",
-        "ref": "query:region_history(c=C01727-K2, addr1=231.0)",
+        "ref": "query:region_history(card=C01727-K2, addr1=231.0)",
         "entity_ids": [
           "3660263",
           "C01727-K2"
         ]
       },
       {
-        "claim": "The flagged transaction 3660263 has a low CMS calibrated probability of 0.09 and a real-time risk score of 0.15.",
+        "claim": "The purchaser email domain 'gmail.com' for transaction 3660263 has been used 58 times previously on card C01727-K2.",
+        "source": "graph",
+        "ref": "query:case_context(txn=3660263)",
+        "entity_ids": [
+          "3660263",
+          "C01727-K2"
+        ]
+      },
+      {
+        "claim": "Transaction 3660263 has no identity record, indicating an unknown device rather than a new device.",
         "source": "graph",
         "ref": "query:case_context(txn=3660263)",
         "entity_ids": [
@@ -129,10 +148,10 @@
     "similar_prior_cases": [
       "CC-4908",
       "CC-4309",
-      "CC-4872",
-      "CC-5507"
+      "CC-4502",
+      "CC-4872"
     ],
-    "summary": "Verdict is fraud at 0.92 probability. This is an undocumented coordinated recipient-email mule ring involving card C01727-K2 and 16 other cards, with an exposure of $967.68 across transactions 3660261, 3660262, and 3660263. The pattern was identified through a shared recipient email domain and the card's history of 5 prior fraud cases. A BLOCK_CARD is recommended (L1) and a SAR is being filed (L2) as requested by an analyst.",
+    "summary": "Verdict: Fraud (p=0.92). This case involves an undocumented coordinated recipient-email mule ring across 17 cards, with exposure of $967.68 from transactions 3660261, 3660262, and 3660263. The card has 5 prior confirmed fraud cases, and the flagged transaction's recipient email links to 16 other cards, some with confirmed fraud. An L1 block of card C01727-K2 and an L2 SAR filing are recommended, awaiting approval.",
     "written_to_graph": true,
     "graph_case_id": "AC-HHF-006"
   },
@@ -142,54 +161,54 @@
       {
         "action": "CREATE_CASE",
         "route": "auto",
-        "reason": "3a: A case is created on an analyst request and a fraud verdict due to an undocumented pattern, R9: this pattern fits no known pattern but shows coordinated abuse across customers, R6: the case connects to a shared origin (recipient email domain 'sc.rr.com') across 17 cards."
+        "reason": "3a: fraud is strongly suspected with an undocumented pattern, and evidence of a shared origin across multiple cards has been found."
       },
       {
         "action": "MONITOR_CONNECTED_CARDS",
         "route": "auto",
-        "reason": "R6: Connected cards are monitored due to confirmed shared origin through the recipient email 'sc.rr.com' across 17 cards."
+        "reason": "R6: a shared origin pattern (recipient email mule ring) has been identified across multiple connected cards."
       },
       {
         "action": "BLOCK_CARD",
         "route": "L1",
-        "reason": "§3b: Recommended BLOCK_CARD by L1 as fraud is confirmed due to an undocumented pattern and exposure $967.68 is ≤ $2,500."
+        "reason": "§3b: fraud is confirmed with a high probability of 0.92 and an exposure of $967.68, which is \nyour output is not a valid JSON. Invalid value. Did you mean \"true\", \"false\", \"null\" or a string? at line 1, column 1."
       },
       {
         "action": "FILE_REPORT",
         "route": "L2",
-        "reason": "3a: A SAR is required because fraud is strongly suspected with an undocumented coordinated pattern and shared origin, R9: the pattern shows coordinated abuse across customers, R6: the case connects to a shared recipient email domain across 17 cards."
+        "reason": "3a: fraud is strongly suspected with an exposure of $967.68, and an undocumented pattern of shared origin across multiple cards has been identified."
       },
       {
         "action": "ESCALATE_TO_ANALYST",
         "route": "auto",
-        "reason": "R9: The case fits an undocumented pattern showing coordinated abuse across customers, requiring escalation to an analyst."
+        "reason": "R9: an undocumented coordinated mule ring pattern has been identified across multiple customers, requiring escalation for broader investigation."
       }
     ],
     "final": [
       {
         "action": "CREATE_CASE",
         "route": "auto",
-        "reason": "3a: A case is created on an analyst request and a fraud verdict due to an undocumented pattern, R9: this pattern fits no known pattern but shows coordinated abuse across customers, R6: the case connects to a shared origin (recipient email domain 'sc.rr.com') across 17 cards."
+        "reason": "3a: fraud is strongly suspected with an undocumented pattern, and evidence of a shared origin across multiple cards has been found."
       },
       {
         "action": "MONITOR_CONNECTED_CARDS",
         "route": "auto",
-        "reason": "R6: Connected cards are monitored due to confirmed shared origin through the recipient email 'sc.rr.com' across 17 cards."
+        "reason": "R6: a shared origin pattern (recipient email mule ring) has been identified across multiple connected cards."
       },
       {
         "action": "BLOCK_CARD",
         "route": "L1",
-        "reason": "§3b: Recommended BLOCK_CARD by L1 as fraud is confirmed due to an undocumented pattern and exposure $967.68 is ≤ $2,500."
+        "reason": "§3b: fraud is confirmed with a high probability of 0.92 and an exposure of $967.68, which is \nyour output is not a valid JSON. Invalid value. Did you mean \"true\", \"false\", \"null\" or a string? at line 1, column 1."
       },
       {
         "action": "FILE_REPORT",
         "route": "L2",
-        "reason": "3a: A SAR is required because fraud is strongly suspected with an undocumented coordinated pattern and shared origin, R9: the pattern shows coordinated abuse across customers, R6: the case connects to a shared recipient email domain across 17 cards."
+        "reason": "3a: fraud is strongly suspected with an exposure of $967.68, and an undocumented pattern of shared origin across multiple cards has been identified."
       },
       {
         "action": "ESCALATE_TO_ANALYST",
         "route": "auto",
-        "reason": "R9: The case fits an undocumented pattern showing coordinated abuse across customers, requiring escalation to an analyst."
+        "reason": "R9: an undocumented coordinated mule ring pattern has been identified across multiple customers, requiring escalation for broader investigation."
       }
     ],
     "what_changed": "nothing"
@@ -197,7 +216,7 @@
   "sar": {
     "file": true,
     "reason": "3a / R9: undocumented coordinated pattern (Coordinated recipient-email mule ring across 17 cards paying R_emaildomain='sc.rr.com' with no shared device)",
-    "narrative": "This report details an undocumented coordinated fraud pattern identified in internal case AC-HHF-006, opened on 2017-01-28 following an analyst request. The customer C01727, holding Visa debit card C01727-K2, is involved. Card C01727-K2 is connected to 16 other cards, C00534-K2, C01357-K1, C01507-K1, C01594-K1, C02167-K2, C03060-K1, C04146-K1, C04668-K1, C05610-K1, C06115-K1, C06639-K1, C08384-K1, C10350-K1, C11617-K1, C11743-K2, and C11940-K1, through a shared recipient email domain. On 2017-01-17 at 15:29, transaction 3660261 for $305.41 was an online purchase with product code C in billing region 231.0. This was followed by transaction 3660262 on 2017-01-18 at 19:40 for $366.35, also an online purchase with product code C in billing region 231.0. The flagged transaction 3660263 occurred on 2017-01-28 at 07:59 for $295.92, an online purchase with product code C in billing region 231.0. All three transactions shared the recipient email domain 'sc.rr.com', which is identified as a shared origin element linking C01727-K2 to the aforementioned 16 other cards through online Product Code C transactions within 30 days before the case opened. This activity is suspicious as it represents a coordinated recipient-email mule ring across multiple cards, which does not align with the cardholder's typical activity, despite the amounts being within the card's baseline (prior median $107.86, prior maximum $1,419.28 over 121 transactions), and the region 231.0 being the card's modal region (120 prior transactions). A prior suspicious activity report was filed on this card under closed cases CC-1975, CC-1833, CC-1501. OFAC screening of the customer and card identifiers against the SDN list returned no match. Internal case AC-HHF-006 was opened, monitoring of connected cards was initiated, and escalation to an analyst was completed. A block of card C01727-K2 is recommended and awaits team-lead (L1) approval, and this report filing is recommended, awaiting fraud-manager (L2) approval, for a total suspicious amount of $967.68.",
+    "narrative": "An undocumented coordinated fraud pattern has been identified under internal case ID AC-HHF-006. The primary subjects are customer C01727 and their Visa debit card C01727-K2, along with 16 other connected cards. On 2017-01-17 at 15:29, transaction 3660261 for $305.41 was processed online from region 231.0 using product code C. This was followed by transaction 3660262 for $366.35 online from region 231.0 on 2017-01-18 at 19:40 using product code C, and then transaction 3660263 for $295.92 online from region 231.0 on 2017-01-28 at 07:59 using product code C. This activity forms part of a coordinated recipient-email mule ring across 17 cards, all paying the rare recipient email domain 'sc.rr.com' with no shared device, linking C01727-K2 to cards C00534-K2, C01357-K1, C01507-K1, C01594-K1, C02167-K2, C03060-K1, C04146-K1, C04668-K1, C05610-K1, C06115-K1, C06639-K1, C08384-K1, C10350-K1, C11617-K1, C11743-K2, and C11940-K1. This online activity, while within the card's baseline maximum amount of $1,419.28 and in its modal region of 231.0, is suspicious due to the coordinated pattern of shared recipient email across multiple cards, which is inconsistent with ordinary cardholder behavior. A prior suspicious activity report was filed on this card under closed case CC-1975, CC-1833, CC-1501. No prior reports were filed related to connected cards or device profiles. OFAC screening of the customer and card identifiers against the SDN list returned no match. A case has been created, monitoring of connected cards has been initiated, and an escalation to an analyst has been done. A block of card C01727-K2 is recommended and awaits team-lead approval, and this suspicious activity report is recommended, awaiting fraud-manager approval, for a total suspicious amount of $967.68.",
     "subjects": [
       "C01727",
       "C01727-K2",
@@ -224,8 +243,8 @@
       "2017-01-28"
     ]
   },
-  "stop_reason": "Policy §6 test 1: fraud probability 0.92 is at or above 0.85 with 3 independent evidence families (device, history, memory); no request could change the action set, so the initial recommendation is final.",
+  "stop_reason": "Policy §6 test 1 fired: the fraud probability is 0.92 (≥ 0.85) supported by three independent evidence families (device, history, memory), and no further evidence request could alter the recommended actions, making the initial recommendation final.",
   "tool_calls": 20,
-  "tokens": 193114,
-  "latency_s": 85.1
+  "tokens": 180782,
+  "latency_s": 90.9
 }

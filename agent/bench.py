@@ -61,6 +61,11 @@ def load_case_pack(path: Path) -> list[CaseContext]:
     if p.exists():
         with p.open(encoding="utf-8", newline="") as fh:
             raw_rows = list(csv.DictReader(fh))
+        # a Round 1 case pack on disk must not hide the Final Round cases (PR #1)
+        if p == SETTINGS.case_pack_csv and not any(str(r.get("case_id", "")).startswith("HHF-") for r in raw_rows):
+            from ui.common import round2_pack_rows
+
+            raw_rows.extend(round2_pack_rows())
     elif p == SETTINGS.case_pack_csv:
         import io
 

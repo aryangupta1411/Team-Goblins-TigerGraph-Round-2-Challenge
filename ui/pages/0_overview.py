@@ -131,7 +131,11 @@ if FINAL:
     eyebrow = f"Final Round · HHGOA 2026 · {N} cases ({_id_range(ORDER)})"
 else:
     eyebrow = f"Round 1 archive · {N} cases"
-common.page_header("Agentic fraud investigator on TigerGraph", _subtitle(), eyebrow=eyebrow)
+_title, _credit = st.columns([6, 1], vertical_alignment="center")
+with _title:
+    common.page_header("Agentic fraud investigator on TigerGraph", _subtitle(), eyebrow=eyebrow)
+with _credit:
+    common.tigergraph_credit("overview", width=128, align="right")
 if not FINAL:
     final_default = common.default_source()
     final_src = common.get_source(final_default)
@@ -163,6 +167,11 @@ common.measured(
     "Verdicts: fraud · legitimate · uncertain", f"{mix.get('fraud', 0)} · {mix.get('legitimate', 0)} · {mix.get('uncertain', 0)}" if n_done else None,
     source=ANSWERS_SRC, as_of=ANSWERS_AS_OF, container=t2, what="case.verdict over the decided cases", how="common.safety verdict_mix",
 )
+if n_done:
+    parts_v = [(mix.get(k, 0), cls, lbl) for k, cls, lbl in (("fraud", "ov-fraud", "fraud"), ("legitimate", "ov-legit", "legitimate"), ("uncertain", "ov-unc", "uncertain"))]
+    bar = "".join(f'<span class="{cls}" style="flex:{n}"></span>' for n, cls, _ in parts_v if n)
+    key = "".join(f'<span><i class="{cls}"></i>{n} {lbl}</span>' for n, cls, lbl in parts_v)
+    t2.markdown(f'<div class="ov-vbar">{bar}</div><div class="ov-vkey">{key}</div>', unsafe_allow_html=True)
 if FINAL:
     t2.caption(md(f"Brief: exactly {common.BRIEF_LEGITIMATE} legitimate — not graded here"))
 
@@ -276,6 +285,7 @@ approvers = f"Approvers 0 → approvals fail closed · {pend_txt}" if not ds["n"
 readback_case = next((c for c, u in usage.items() if u["agent_readbacks"]), None)
 no_trace = "no trace in this source" if src.kind == "submitted" else TRACE_SRC
 
+st.markdown('<div class="ov-section">Proof <b>measured from files, click through to the evidence</b></div>', unsafe_allow_html=True)
 with st.container(horizontal=True, key="ov-proofs"):
     common.proof_chip("Attacks blocked", _attacks_value(), source=attacks["source"] or attacks["error"], as_of=attacks["as_of"] or "missing", page_key="security")
     common.proof_chip("Detectors on the exam cases", _detector_value(), source=bt["source"] or bt["error"], as_of=bt["as_of"] or "missing", page_key="detectors")
@@ -373,6 +383,7 @@ for cid in ORDER:
         "Flags": _flags(v), "Run state": _run_state(v), "vs submitted": _vs_submitted(cid),
     })
 
+st.markdown(f'<div class="ov-section">Decision board <b>{N} cases · one click opens the case file</b></div>', unsafe_allow_html=True)
 lane_counts = Counter(r["_lane"] for r in rows)
 trigger_counts = Counter(r["_trigger"] for r in rows)
 with st.container(horizontal=True, vertical_alignment="bottom", key="ov-controls"):
@@ -384,6 +395,7 @@ with st.container(horizontal=True, vertical_alignment="bottom", key="ov-controls
     picked = st.pills("Trigger", [t for t, _ in trigger_counts.most_common()], selection_mode="multi", key="ov_trigger",
                       format_func=lambda t: f"{md(t)} · {trigger_counts[t]}")
     queue_order = st.toggle("Queue order (opened_at)", key="ov_order", help="Off: case-id order")
+    all_cols = st.toggle("All columns", key="ov_cols", help="Off: the decision at a glance (case, verdict, p(fraud), actions, approvals, flags)")
 
 shown = [r for r in rows if (not lane or lane == "all" or r["_lane"] == lane) and (not picked or r["_trigger"] in picked)]
 if not queue_order:
@@ -402,6 +414,7 @@ board = pd.DataFrame([{k: v for k, v in r.items() if not k.startswith("_")} for 
                      columns=["Case", "Trigger", "Verdict", "p(fraud)", "Final actions", "SAR", "Evidence request", "Approvals", "Flags", "Run state", "vs submitted"])
 st.dataframe(
     board, key="board", hide_index=True, height=35 * len(shown) + 38,
+    column_order=None if all_cols else ["Case", "Verdict", "p(fraud)", "Trigger", "Final actions", "Approvals", "Flags"],
     column_config={
         "Case": st.column_config.ButtonColumn("Case", type="tertiary", pinned=True, key="board_open", help="Open the Case file"),
         "Verdict": st.column_config.MultiselectColumn("Verdict", options=list(common.VERDICT_COLORS), color=list(common.VERDICT_COLORS.values())),
@@ -412,6 +425,8 @@ st.dataframe(
         "Flags": st.column_config.MultiselectColumn("Flags", options=flag_opts or None, color=[FLAG_COLORS.get(o, "gray") for o in flag_opts] or None,
                                                     help="guardrail notes from phases.jsonl, failed calls, DQ taints and detector waves"),
         "Evidence request": st.column_config.TextColumn("Evidence request", width="medium"),
+        "Trigger": st.column_config.TextColumn("Trigger", width="small"),
+        "Approvals": st.column_config.TextColumn("Approvals", width="medium"),
         "vs submitted": st.column_config.TextColumn("vs submitted", help=f"common.agreement against {REF_SRC}" if REF else "no submitted answers to compare"),
     },
 )

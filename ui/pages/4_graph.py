@@ -218,8 +218,9 @@ try:
 except Exception:  # noqa: BLE001 - no theme context in bare mode
     DARK = False
 COLORS = common.node_colors()
-FONT = "Inter, -apple-system, Helvetica, Arial, sans-serif"
-INK, PAPER, SUBTLE, SELECT = ("#e6edf3", "#0d1117", "#8b949e", "#58a6ff") if DARK else ("#1a1a1a", "#ffffff", "#5b6472", "#0b3d91")
+FONT = "'IBM Plex Sans', -apple-system, Helvetica, Arial, sans-serif"
+# ink and paper from .streamlit/config.toml; the selection ring is ink too, so colour on the canvas stays on the vertex types
+INK, PAPER, SUBTLE, SELECT = ("#e9e7e2", "#121314", "#9a978f", "#e9e7e2") if DARK else ("#18191c", "#fbfaf7", "#5f5d57", "#18191c")
 MUTED = SUBTLE
 NODE_STYLE = {  # (vis shape, size); the shape repeats the colour cue so the legend reads without colour
     "AgentCase": ("diamond", 28), "Card": ("dot", 24), "DeviceProfile": ("square", 20), "Customer": ("dot", 20),

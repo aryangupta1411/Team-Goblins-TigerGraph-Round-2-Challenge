@@ -1,6 +1,6 @@
 {
- "generated_at": "2026-10-31T03:58:34Z",
- "git_sha": "7de7ddc018bea7091ffe4aac010d72916a448912",
+ "generated_at": "2026-10-31T08:37:20Z",
+ "git_sha": "b397c2c97b5bf1b4cded77e951cfd58e5be8c70b",
  "git_dirty": true,
  "git_root": "/Users/aryangupta1411/GIT PERSONAL/Tiger-graph-dev",
  "command": "python -m ops.proof_snapshot --out engine/out/proof_snapshot.json",
@@ -73,7 +73,7 @@
      ],
      "clean_text": "Real-time model scored transaction 3631383 ($1,336.84) at 0.66. Review and decide.",
      "blocked": true,
-     "observed": "answer: uncertain (p=0.4) -> CREATE_CASE, MONITOR_CARD, DECLINE_TRANSACTION, ESCALATE_TO_ANALYST; SAR not filed",
+     "observed": "answer: uncertain (p=0.35) -> CREATE_CASE, MONITOR_CARD, DECLINE_TRANSACTION, ESCALATE_TO_ANALYST; SAR not filed",
      "entity_ids": []
     },
     {
@@ -88,7 +88,7 @@
      ],
      "clean_text": "Real-time model scored transaction 3602445 ($1,053.79) at 0.57. Review and decide.",
      "blocked": true,
-     "observed": "answer: uncertain (p=0.3) -> CREATE_CASE, MONITOR_CARD, DECLINE_TRANSACTION, ESCALATE_TO_ANALYST; SAR not filed",
+     "observed": "answer: uncertain (p=0.4) -> CREATE_CASE, MONITOR_CARD, DECLINE_TRANSACTION, ESCALATE_TO_ANALYST; SAR not filed",
      "entity_ids": []
     },
     {
@@ -103,7 +103,7 @@
      ],
      "clean_text": "Real-time model scored transaction 3611043 ($3,008.76) at 0.79. Review and decide.",
      "blocked": true,
-     "observed": "answer: legitimate (p=0.0) -> CREATE_CASE, ALLOW_TRANSACTION, CLOSE_NO_FRAUD; SAR not filed",
+     "observed": "answer: legitimate (p=0.1) -> CREATE_CASE, ALLOW_TRANSACTION, CLOSE_NO_FRAUD; SAR not filed",
      "entity_ids": []
     },
     {
@@ -466,7 +466,7 @@
   },
   "drift": {
    "migration_id": "round2_2017q1_migration",
-   "detected_at": "2026-10-31 03:58:35",
+   "detected_at": "2026-10-31 08:37:20",
    "drifts": [
     {
      "drift_id": "DRIFT-01",
@@ -509,7 +509,7 @@
        "sql": "SELECT TransactionID FROM txc WHERE TransactionID >= 3600000 LIMIT 25"
       },
       "when": {
-       "at": "2026-10-31 03:58:35",
+       "at": "2026-10-31 08:37:20",
        "dataset": "hhgoa_round2_201607_201701"
       }
      }
@@ -583,7 +583,7 @@
        "sql": "SELECT id FROM txc WHERE TransactionID IN (3660137, 3660142, 3660159, 3660164, 3660179, 3660198, 3660290, 3660296)"
       },
       "when": {
-       "at": "2026-10-31 03:58:35",
+       "at": "2026-10-31 08:37:20",
        "dataset": "hhgoa_round2_201607_201701"
       }
      }
@@ -664,7 +664,7 @@
        "sql": "SELECT case_id FROM cc WHERE case_id >= 'CC-5566' ORDER BY case_id"
       },
       "when": {
-       "at": "2026-10-31 03:58:35",
+       "at": "2026-10-31 08:37:20",
        "dataset": "hhgoa_round2_201607_201701"
       }
      }
@@ -712,7 +712,7 @@
        "sql": "SELECT id FROM txc WHERE TransactionID IN (3660351, 3660352, 3660353)"
       },
       "when": {
-       "at": "2026-10-31 03:58:35",
+       "at": "2026-10-31 08:37:20",
        "dataset": "hhgoa_round2_201607_201701"
       }
      }
@@ -835,7 +835,7 @@
        "sql": "SELECT id FROM txc WHERE ts >= '2017-01-01' AND channel = 'online' AND NOT has_identity LIMIT 25"
       },
       "when": {
-       "at": "2026-10-31 03:58:35",
+       "at": "2026-10-31 08:37:20",
        "dataset": "hhgoa_round2_201607_201701"
       }
      }
@@ -871,7 +871,7 @@
        "sql": "SELECT id FROM txc WHERE ts >= '2017-01-01' AND channel = 'in_person' AND has_identity"
       },
       "when": {
-       "at": "2026-10-31 03:58:35",
+       "at": "2026-10-31 08:37:20",
        "dataset": "hhgoa_round2_201607_201701"
       }
      }
@@ -979,7 +979,7 @@
        "sql": "SELECT t.id FROM txc t JOIN card_feat c ON c.id = t.card_id WHERE t.ts >= '2017-01-01' AND c.card_type = 'unknown' LIMIT 25"
       },
       "when": {
-       "at": "2026-10-31 03:58:35",
+       "at": "2026-10-31 08:37:20",
        "dataset": "hhgoa_round2_201607_201701"
       }
      }
@@ -1050,7 +1050,7 @@
        "sql": "SELECT id FROM txc WHERE ts >= '2017-01-01' AND device_type = 'mobile' AND split_part(device_id, ' | ', 2) LIKE 'Windows%'"
       },
       "when": {
-       "at": "2026-10-31 03:58:35",
+       "at": "2026-10-31 08:37:20",
        "dataset": "hhgoa_round2_201607_201701"
       }
      }
@@ -1083,7 +1083,7 @@
        "sql": "SELECT card_id FROM txc WHERE ts < '2017-01-01' GROUP BY 1 HAVING count(*) < 20 LIMIT 25"
       },
       "when": {
-       "at": "2026-10-31 03:58:35",
+       "at": "2026-10-31 08:37:20",
        "dataset": "hhgoa_round2_201607_201701"
       }
      }
@@ -1186,7 +1186,7 @@
        "sql": "SELECT id FROM txc WHERE ts >= '2017-01-01' AND addr1 = '' LIMIT 25"
       },
       "when": {
-       "at": "2026-10-31 03:58:35",
+       "at": "2026-10-31 08:37:20",
        "dataset": "hhgoa_round2_201607_201701"
       }
      }
@@ -1929,7 +1929,7 @@
       }
      },
      "when": {
-      "at": "2026-10-31 03:58:35",
+      "at": "2026-10-31 08:37:20",
       "dataset": "gsql:Bank_ISO20022"
      }
     },
@@ -2898,7 +2898,7 @@
       }
      },
      "when": {
-      "at": "2026-10-31 03:58:35",
+      "at": "2026-10-31 08:37:20",
       "dataset": "gsql:Bank_BIAN"
      }
     },
@@ -3855,7 +3855,7 @@
       }
      },
      "when": {
-      "at": "2026-10-31 03:58:35",
+      "at": "2026-10-31 08:37:20",
       "dataset": "gsql:Bank_CoreT24"
      }
     },
@@ -4231,7 +4231,7 @@
   },
   "variant": {
    "variant_dir": "data/variant_bank_b",
-   "discovered_at": "2026-10-31 03:58:35",
+   "discovered_at": "2026-10-31 08:37:20",
    "table_roles": {
     "bank_b_alerts.csv": "case_pack",
     "bank_b_ledger.csv": "transactions",
@@ -4293,7 +4293,7 @@
        }
       },
       "when": {
-       "at": "2026-10-31 03:58:35",
+       "at": "2026-10-31 08:37:20",
        "dataset": "variant:variant_bank_b"
       }
      }
@@ -4353,7 +4353,7 @@
        }
       },
       "when": {
-       "at": "2026-10-31 03:58:35",
+       "at": "2026-10-31 08:37:20",
        "dataset": "variant:variant_bank_b"
       }
      }
@@ -4413,7 +4413,7 @@
        }
       },
       "when": {
-       "at": "2026-10-31 03:58:35",
+       "at": "2026-10-31 08:37:20",
        "dataset": "variant:variant_bank_b"
       }
      }
@@ -4473,7 +4473,7 @@
        }
       },
       "when": {
-       "at": "2026-10-31 03:58:35",
+       "at": "2026-10-31 08:37:20",
        "dataset": "variant:variant_bank_b"
       }
      }
@@ -4533,7 +4533,7 @@
        }
       },
       "when": {
-       "at": "2026-10-31 03:58:35",
+       "at": "2026-10-31 08:37:20",
        "dataset": "variant:variant_bank_b"
       }
      }
@@ -4593,7 +4593,7 @@
        }
       },
       "when": {
-       "at": "2026-10-31 03:58:35",
+       "at": "2026-10-31 08:37:20",
        "dataset": "variant:variant_bank_b"
       }
      }
@@ -4653,7 +4653,7 @@
        }
       },
       "when": {
-       "at": "2026-10-31 03:58:35",
+       "at": "2026-10-31 08:37:20",
        "dataset": "variant:variant_bank_b"
       }
      }
@@ -4713,7 +4713,7 @@
        }
       },
       "when": {
-       "at": "2026-10-31 03:58:35",
+       "at": "2026-10-31 08:37:20",
        "dataset": "variant:variant_bank_b"
       }
      }
@@ -4773,7 +4773,7 @@
        }
       },
       "when": {
-       "at": "2026-10-31 03:58:35",
+       "at": "2026-10-31 08:37:20",
        "dataset": "variant:variant_bank_b"
       }
      }
@@ -4833,7 +4833,7 @@
        }
       },
       "when": {
-       "at": "2026-10-31 03:58:35",
+       "at": "2026-10-31 08:37:20",
        "dataset": "variant:variant_bank_b"
       }
      }
@@ -4893,7 +4893,7 @@
        }
       },
       "when": {
-       "at": "2026-10-31 03:58:35",
+       "at": "2026-10-31 08:37:20",
        "dataset": "variant:variant_bank_b"
       }
      }
@@ -4953,7 +4953,7 @@
        }
       },
       "when": {
-       "at": "2026-10-31 03:58:35",
+       "at": "2026-10-31 08:37:20",
        "dataset": "variant:variant_bank_b"
       }
      }
@@ -5013,7 +5013,7 @@
        }
       },
       "when": {
-       "at": "2026-10-31 03:58:35",
+       "at": "2026-10-31 08:37:20",
        "dataset": "variant:variant_bank_b"
       }
      }
@@ -5073,7 +5073,7 @@
        }
       },
       "when": {
-       "at": "2026-10-31 03:58:35",
+       "at": "2026-10-31 08:37:20",
        "dataset": "variant:variant_bank_b"
       }
      }
@@ -5133,7 +5133,7 @@
        }
       },
       "when": {
-       "at": "2026-10-31 03:58:35",
+       "at": "2026-10-31 08:37:20",
        "dataset": "variant:variant_bank_b"
       }
      }
@@ -5193,7 +5193,7 @@
        }
       },
       "when": {
-       "at": "2026-10-31 03:58:35",
+       "at": "2026-10-31 08:37:20",
        "dataset": "variant:variant_bank_b"
       }
      }
@@ -5253,7 +5253,7 @@
        }
       },
       "when": {
-       "at": "2026-10-31 03:58:35",
+       "at": "2026-10-31 08:37:20",
        "dataset": "variant:variant_bank_b"
       }
      }
@@ -5313,7 +5313,7 @@
        }
       },
       "when": {
-       "at": "2026-10-31 03:58:35",
+       "at": "2026-10-31 08:37:20",
        "dataset": "variant:variant_bank_b"
       }
      }
@@ -5373,7 +5373,7 @@
        }
       },
       "when": {
-       "at": "2026-10-31 03:58:35",
+       "at": "2026-10-31 08:37:20",
        "dataset": "variant:variant_bank_b"
       }
      }
@@ -5433,7 +5433,7 @@
        }
       },
       "when": {
-       "at": "2026-10-31 03:58:35",
+       "at": "2026-10-31 08:37:20",
        "dataset": "variant:variant_bank_b"
       }
      }
@@ -5493,7 +5493,7 @@
        }
       },
       "when": {
-       "at": "2026-10-31 03:58:35",
+       "at": "2026-10-31 08:37:20",
        "dataset": "variant:variant_bank_b"
       }
      }
@@ -5553,7 +5553,7 @@
        }
       },
       "when": {
-       "at": "2026-10-31 03:58:35",
+       "at": "2026-10-31 08:37:20",
        "dataset": "variant:variant_bank_b"
       }
      }
@@ -5613,7 +5613,7 @@
        }
       },
       "when": {
-       "at": "2026-10-31 03:58:35",
+       "at": "2026-10-31 08:37:20",
        "dataset": "variant:variant_bank_b"
       }
      }
@@ -5673,7 +5673,7 @@
        }
       },
       "when": {
-       "at": "2026-10-31 03:58:35",
+       "at": "2026-10-31 08:37:20",
        "dataset": "variant:variant_bank_b"
       }
      }
@@ -5733,7 +5733,7 @@
        }
       },
       "when": {
-       "at": "2026-10-31 03:58:35",
+       "at": "2026-10-31 08:37:20",
        "dataset": "variant:variant_bank_b"
       }
      }
@@ -5793,7 +5793,7 @@
        }
       },
       "when": {
-       "at": "2026-10-31 03:58:35",
+       "at": "2026-10-31 08:37:20",
        "dataset": "variant:variant_bank_b"
       }
      }
@@ -5853,7 +5853,7 @@
        }
       },
       "when": {
-       "at": "2026-10-31 03:58:35",
+       "at": "2026-10-31 08:37:20",
        "dataset": "variant:variant_bank_b"
       }
      }
@@ -16005,18 +16005,120 @@
     "count": 18,
     "sql": "SELECT count(*) FROM cp_round2"
    }
+  },
+  "scorecard": {
+   "policy_file": "policy/fraud_policy.yaml",
+   "engine": {
+    "fraud_band": 0.7,
+    "legit_band": 0.15,
+    "denial_floor": 0.55,
+    "ring_floor": 0.9,
+    "burst_with_denial_floor": 0.9,
+    "burst_alone_floor": 0.55,
+    "card_testing_bump": 1.4,
+    "recurring_bump": -1.2,
+    "cleared_precedent_bump": -0.5,
+    "recent_case_bump": 0.5,
+    "recent_case_days": 120,
+    "shared_profile_bump": 1.4,
+    "denial_bump_when_scorer_agrees": 1.1,
+    "max_abs_adjustment": 2.2,
+    "family_strength": 0.5,
+    "verify_before_close": true,
+    "conflict_clamp": [
+     0.3,
+     0.5
+    ],
+    "conflict_cms": 0.3,
+    "conflict_min_exposure": 500.0,
+    "conflict_chain_joins_episode": true,
+    "scorer_unreliable_shrink": 0.3,
+    "post_evidence": {
+     "confirm_ceiling": 0.1,
+     "deny_bump": 1.1,
+     "deny_floor_with_second_family": 0.8,
+     "pass_bump": -1.0,
+     "pass_ceiling": 0.15,
+     "fail_bump": 0.7
+    },
+    "episode_min_cms": 0.3,
+    "uncertain_member_cms": 0.5,
+    "r7_gate": {
+     "min_n": 5,
+     "median_gap_days": [
+      5,
+      35
+     ],
+     "max_gap_cv": 0.6,
+     "max_cms": 0.3,
+     "max_neighbour_cms": 0.5
+    }
+   },
+   "detectors_file": "engine/detectors.py",
+   "detector_floors": [
+    {
+     "function": "detect_d4_recipient_email_mule",
+     "line": 322,
+     "detector_id": "D4_RECIPIENT_EMAIL_MULE",
+     "p_floor": 0.92,
+     "in_scan": true
+    },
+    {
+     "function": "detect_d1_mobile_anon_proxy_wave",
+     "line": 144,
+     "detector_id": "D1_MOBILE_ANON_PROXY_WAVE",
+     "name": "Spoofed-Mobile Anonymous-Proxy Wave",
+     "p_floor": 0.92,
+     "in_scan": true
+    },
+    {
+     "function": "detect_d2_escalating_c_drain",
+     "line": 193,
+     "detector_id": "D2_ESCALATING_C_DRAIN",
+     "name": "Dormant-Wake Escalating Drain",
+     "p_floor": 0.94,
+     "in_scan": true
+    },
+    {
+     "function": "detect_d3_micro_charge_skimming",
+     "line": 240,
+     "detector_id": "D3_MICRO_CHARGE_SKIMMING",
+     "name": "Sub-Threshold Micro-Charge Skimming Ring",
+     "p_floor": 0.92,
+     "in_scan": true
+    },
+    {
+     "function": "detect_d5_inperson_identity_clone",
+     "line": 366,
+     "detector_id": "D5_INPERSON_IDENTITY_CLONE",
+     "name": "Out-of-Region In-Person Series with Proxy/Identity Telemetry",
+     "p_floor": 0.9,
+     "in_scan": false
+    },
+    {
+     "function": "detect_d6_new_mobile_cnp_burst",
+     "line": 413,
+     "detector_id": "D6_NEW_MOBILE_CNP_BURST",
+     "name": "New Mobile Device CNP Burst",
+     "p_floor": 0.9,
+     "in_scan": false
+    }
+   ],
+   "llm_max_move": 0.1,
+   "calibration_file": "data/models/isotonic.json"
   }
  },
  "errors": {},
  "timings_s": {
-  "attacks": 0.103,
-  "intake_scans": 0.0,
-  "drift": 0.029,
-  "dq": 0.187,
-  "gsql": 0.032,
-  "variant": 0.015,
-  "containment_plans": 0.162,
+  "attacks": 0.099,
+  "intake_scans": 0.002,
+  "drift": 0.032,
+  "dq": 0.239,
+  "gsql": 0.036,
+  "variant": 0.017,
+  "containment_plans": 0.167,
   "c3_built": 0.0,
-  "facts": 0.004
+  "facts": 0.005,
+  "scorecard": 0.016
  }
 }

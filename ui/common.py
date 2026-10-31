@@ -34,11 +34,12 @@ import shutil
 import sqlite3
 import subprocess
 import sys
+import threading
 import time
 from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
-from types import ModuleType
+from types import ModuleType, SimpleNamespace
 from typing import Any
 
 from ui import approvals_db
@@ -444,6 +445,12 @@ def final_round_pack() -> tuple[list[dict[str, str]], str | None]:
     except Exception as exc:  # noqa: BLE001 - the pack feeds every page; a reason beats a traceback
         return [], f"Final Round case pack unavailable: {type(exc).__name__}: {exc}"
     return [dict(r) for r in rows], notice
+
+
+def dq_covered(case_id: str) -> bool:
+    """The data-quality scan builds its taint matrix for the Final Round cases only (schema_engine/data_quality.py), so a
+    missing entry means 'no flag' only for those ids; for any other case it means 'not covered'."""
+    return case_id in {r.get("case_id") for r in final_round_pack()[0]}
 
 
 def round2_pack_rows() -> list[dict[str, str]]:
@@ -1643,7 +1650,10 @@ def _phase_sentence(code: str, entry: dict, view: Any, events: list[dict]) -> st
         allowed = (p.get("admissible") or {}).get("allowed") or []
         return (f"admissible {len(allowed)} actions; " if allowed else "") + f"final {_actions_str(p.get('actions'))}"
     if code == "P8":
-        return f"SAR {'filed' if p.get('file') else 'not filed'}"
+        sar = (getattr(view, "answer", None) or {}).get("sar") or {}
+        filed = p.get("file") if "file" in p else sar.get("file")
+        drafts = f" · {len(entry['llm'])} LLM draft call(s)" if entry["llm"] else ""
+        return (f"SAR {'filed' if filed else 'not filed'}" if filed is not None else "SAR filing not in a parsed answer") + drafts
     if code == "P9":
         problems = p.get("validation") or []
         return f"validation: {len(problems)} problem(s): {'; '.join(map(str, problems))[:240]}" if problems else "validation: no problems"
@@ -1661,7 +1671,9 @@ def _phase_sentence(code: str, entry: dict, view: Any, events: list[dict]) -> st
 
 def trace_timeline(view: Any) -> list[dict]:
     """One row per phase in execution order (P5-voi folded into P5): code, name, t, duration, sentence, calls, llm, notes
-    and payload. Vectors in params are replaced by '<N-d vector>'."""
+    and payload, for the newest attempt in the folder (a --resume rerun appends to the same files). Vectors in params are
+    replaced by '<N-d vector>'."""
+    view = _attempt_view(view)
     rows: list[dict] = []
     by_code: dict[str, dict] = {}
     phase_index: list[tuple[int, str]] = []
@@ -1687,6 +1699,22 @@ def trace_timeline(view: Any) -> list[dict]:
             entry["duration"] = round(t - entry["start"], 3)
             prev_t = t
         phase_index.append((i, code))
+    # P8 writes no phase row: its SAR-draft LLM calls (P8, P8-retryN) still get an entry, placed by their time, and the
+    # entry after it starts where P8 ended
+    p8 = [_float(c.get("t")) for c in getattr(view, "calls", None) or [] if _fold(c.get("phase", "")) == "P8"]
+    if p8 and "P8" not in by_code:
+        t8 = max((t for t in p8 if t is not None), default=None)
+        if t8 is None:  # untimed rows: P8 runs after P7 and before the P9 closing and P10
+            pos = next((k for k, e in enumerate(rows) if e["code"] in ("P9", "P10")), len(rows))
+        else:
+            pos = next((k for k, e in enumerate(rows) if e["t"] is not None and e["t"] > t8), len(rows))
+        start = next((e["t"] for e in reversed(rows[:pos]) if e["t"] is not None), 0.0)
+        by_code["P8"] = {"code": "P8", "name": PHASE_NAMES["P8"], "t": t8, "start": start, "duration": None if t8 is None else round(t8 - start, 3),
+                         "sentence": "", "calls": [], "llm": [], "notes": [], "payload": {}}
+        rows.insert(pos, by_code["P8"])
+        if t8 is not None and pos + 1 < len(rows) and rows[pos + 1]["t"] is not None:
+            rows[pos + 1]["start"] = t8
+            rows[pos + 1]["duration"] = round(rows[pos + 1]["t"] - t8, 3)
     for c in getattr(view, "calls", None) or []:
         code = _fold(c.get("phase", ""))
         entry = by_code.get(code)
@@ -1706,6 +1734,290 @@ def trace_timeline(view: Any) -> list[dict]:
     for entry in rows:
         entry["sentence"] = _phase_sentence(entry["code"], entry, view, entry["notes"])
     return rows
+
+
+# --------------------------------------------------------------------------- #
+# Pipeline: the S0 + P0-P10 strip, the live call console, the phase inspector #
+# --------------------------------------------------------------------------- #
+# The stages in agent/phase_machine.py's order. S0 is the schema and data-quality gate that runs offline before any case
+# (schema_engine/): its result is the proof snapshot's dq and drift sections, never part of a case trace. 'llm' marks the
+# stages whose code calls the LLM: P2 the investigate tool loop, P4 the assessment, P5 and P7 the action choice, P8 the
+# SAR draft (only when a SAR is filed) and P9 the closing. The others are harness reads, the engine or graph writes.
+PIPELINE: tuple[dict[str, Any], ...] = (
+    {"code": "S0", "label": "Schema & DQ gate", "module": "schema_engine/, offline before any case (proof snapshot dq and drift)", "llm": False},
+    {"code": "P0", "label": "Intake & shield", "module": "agent/phase_machine.py p0_intake · agent/security.py", "llm": False},
+    {"code": "P1", "label": "Case memory", "module": "p1_memory · TigerVector similar_prior_cases and grounding_chunks", "llm": False},
+    {"code": "P2", "label": "Investigate", "module": "p2_investigate · LLM tool loop over installed read queries", "llm": True},
+    {"code": "P3", "label": "Scorecard", "module": "p3_scorecard · engine/scorecard.py, engine/detectors.py", "llm": False},
+    {"code": "P4", "label": "Assess ±0.10", "module": "p4_assess · agent/security.py clamp_to_engine", "llm": True},
+    {"code": "P5", "label": "Initial actions", "module": "engine/voi.py value-of-information test · _decide('P5') · engine/policy.py", "llm": True},
+    {"code": "P6", "label": "Evidence request", "module": "p6_evidence · engine/simulator.py (assumed reply)", "llm": False},
+    {"code": "P7", "label": "Final actions", "module": "_decide('P7') · engine/policy.py", "llm": True},
+    {"code": "P8", "label": "SAR draft", "module": "p8_sar · rag/sar.py, rag/validate_sar.py", "llm": True},
+    {"code": "P9", "label": "Explain & validate", "module": "Closing (LLM) · answer builder · agent/validator.py", "llm": True},
+    {"code": "P10", "label": "Write-back", "module": "agent/persist.py", "llm": False},
+)
+PIPELINE_CODES = tuple(s["code"] for s in PIPELINE)
+STAGE_STYLE = {  # state -> (badge color, material icon)
+    "done": ("green", ":material/check_circle:"), "active": ("blue", ":material/autorenew:"), "stopped": ("orange", ":material/error:"),
+    "skipped": ("gray", ":material/remove:"), "pending": ("gray", ":material/radio_button_unchecked:"), "offline": ("violet", ":material/database:"),
+}
+STAGE_LABELS = {"done": "done", "active": "running", "stopped": "stopped here", "skipped": "no row", "pending": "not reached", "offline": "offline gate"}
+_SAR_OR_CLOSING = "an LLM call: the SAR draft when a SAR is filed (after its OFAC and grounding reads), else the P9 closing"
+# What a case that has not finished waits on after its newest row, in agent/phase_machine.py's order:
+# (row kind, phase) -> (stage now running, what it waits on, the model it waits on: '' no LLM call, 'main', 'sar' for the
+# SAR draft, 'either' when it is the SAR draft or the closing). Rows are written when a step completes, so this is an
+# inference from the two trace files, and the pages label it so. A P5 or P7 phase row is decided by its payload
+# (_after_decision); a newer retry note, or the phase a failed case's error names, overrides the table.
+_AFTER: dict[tuple[str, str], tuple[str, str, str]] = {
+    ("phase", "P0"): ("P0", "the intake reads", ""),
+    ("tool", "P0"): ("P0", "the intake reads", ""),
+    ("tool", "P1"): ("P1", "the vector search", ""),
+    ("phase", "P1"): ("P2", "an LLM investigate turn", "main"),
+    ("tool", "P2"): ("P2", "an LLM investigate turn", "main"),
+    ("llm", "P2"): ("P2", "the reads the LLM asked for, or the end of its tool loop", ""),
+    ("phase", "P2"): ("P3", "the scorecard reads and the engine", ""),
+    ("tool", "P3"): ("P3", "the scorecard reads and the engine", ""),
+    ("phase", "P3"): ("P4", "the LLM assessment", "main"),
+    ("llm", "P4"): ("P4", "the clamp to p_engine ± 0.10", ""),
+    ("phase", "P4"): ("P5", "the value-of-information test", ""),
+    ("phase", "P5-voi"): ("P5", "the LLM's initial action choice", "main"),
+    ("llm", "P5"): ("P5", "the policy check of the chosen actions", ""),
+    ("phase", "P6"): ("P7", "the LLM's final action choice", "main"),
+    ("llm", "P7"): ("P7", "the policy check of the chosen actions", ""),
+    ("tool", "P8"): ("P8", "the LLM's SAR draft", "sar"),
+    # a draft the validator rejects is followed by a 'SAR validation failed' note, then the retry (the retry-note rule)
+    ("llm", "P8"): ("P9", "the LLM's P9 closing (no newer 'SAR validation failed' note)", "main"),
+    ("llm", "P9"): ("P10", "the graph write-back (or a P9 summary retry)", ""),
+    ("tool", "P10"): ("P10", "the graph write-back", ""),
+    ("phase", "P10"): ("P9", "answer assembly and validation", ""),
+}
+# phases.jsonl notes written right before the agent calls the LLM again for the same phase
+_RETRY_EVENTS = {"structured_retry": "a structured-output retry", "policy_reprompt": "a re-prompt",
+                 "sar_validation_failed": "a P8 retry after the SAR validator (or the fallback narrative)"}
+
+
+def _row_key(r: dict) -> tuple[str, str]:
+    kind, raw = str(r.get("kind") or "phase"), str(r.get("phase") or "")
+    return kind, raw if kind == "phase" and raw == "P5-voi" else _fold(raw)
+
+
+def _latest_attempt(view: Any) -> tuple[list[dict], list[dict]]:
+    """(phases, calls) of one attempt in a case folder: the newest, or for a finished case the newest that wrote answer.json
+    (its P9 row; a later rerun may have failed). A rerun of a case into the same run appends to the same files (t restarts
+    at 0), and every attempt opens with its P0 phase row plus the notes written just before it (never the previous
+    attempt's 'case failed' note). Calls are cut at the P0 rows' wall clock ('at'; calls carry 'ts' in the same format),
+    else at their t resets."""
+    phases, calls = list(getattr(view, "phases", None) or []), list(getattr(view, "calls", None) or [])
+    p0 = [i for i, r in enumerate(phases) if _is_phase_row(r) and r.get("phase") == "P0"]
+    if len(p0) < 2:
+        return phases, calls
+    starts = []
+    for i in p0:
+        start, t0 = i, _float(phases[i].get("t")) or 0.0
+        while (start > 0 and phases[start - 1].get("kind") == "note" and phases[start - 1].get("text") != "case failed"
+               and (_float(phases[start - 1].get("t")) or 0.0) <= t0 and (not starts or start - 1 >= starts[-1])):
+            start -= 1
+        starts.append(start)
+    pick = len(p0) - 1
+    if getattr(view, "state", "") in ("done", "unreadable"):
+        wrote = [k for k in range(len(p0)) if any(_is_phase_row(r) and r.get("phase") == "P9" for r in phases[p0[k]:(starts[k + 1] if k + 1 < len(p0) else None)])]
+        pick = wrote[-1] if wrote else pick
+    end = starts[pick + 1] if pick + 1 < len(p0) else None
+    at, at_next = str(phases[p0[pick]].get("at") or ""), (str(phases[p0[pick + 1]].get("at") or "") if end is not None else "")
+    if at:
+        return phases[starts[pick]:end], [c for c in calls if str(c.get("ts") or "") >= at and (not at_next or str(c.get("ts") or "") < at_next)]
+    cuts = [0] + [i for i in range(1, len(calls)) if (a := _float(calls[i - 1].get("t"))) is not None and (b := _float(calls[i].get("t"))) is not None and b < a - 1.0]
+    k = pick if len(cuts) == len(p0) else len(cuts) - 1
+    return phases[starts[pick]:end], calls[cuts[k]:(cuts[k + 1] if k + 1 < len(cuts) else None)]
+
+
+def _attempt_view(view: Any) -> Any:
+    """The view cut to its newest attempt (_latest_attempt); the view itself when its folder holds one attempt."""
+    phases, calls = _latest_attempt(view)
+    if len(phases) == len(getattr(view, "phases", None) or []) and len(calls) == len(getattr(view, "calls", None) or []):
+        return view
+    try:
+        return SimpleNamespace(**{**vars(view), "phases": phases, "calls": calls})
+    except TypeError:  # an object without __dict__: keep it whole
+        return view
+
+
+def trace_attempts(view: Any) -> int:
+    """Attempts recorded in a case folder (its P0 phase rows): agent.bench --resume appends a rerun to the same files."""
+    return sum(1 for r in getattr(view, "phases", None) or [] if _is_phase_row(r) and r.get("phase") == "P0")
+
+
+def _newest_row(view: Any) -> dict | None:
+    """The newest phase row (phases.jsonl) or call (calls.jsonl, tool and llm) of a case by t. Notes and the llm copies in
+    phases.jsonl are skipped (calls.jsonl has each one); a phase row wins a tie, as it is written after its last call.
+    Callers pass the newest attempt only (_attempt_view): t restarts at 0 in a --resume rerun."""
+    best, row = None, None
+    for prio, rows in ((0, getattr(view, "calls", None) or []), (1, [r for r in getattr(view, "phases", None) or [] if _is_phase_row(r)])):
+        for i, r in enumerate(rows):
+            t = _float(r.get("t"))
+            key = (-1.0 if t is None else t, prio, i)
+            if best is None or key >= best:
+                best, row = key, r
+    return row
+
+
+def _after_decision(view: Any, code: str) -> tuple[str, str, str]:
+    """After the last decision row (P7, or P5 when P5-voi's ask is false): p8_sar drafts only when FILE_REPORT is in the
+    final actions, so without it the next call is the P9 closing. Actions not recorded keep the hedge."""
+    acts = phase_payload(view, code).get("actions")
+    if not isinstance(acts, list):
+        return "P8", _SAR_OR_CLOSING, "either"
+    if any(isinstance(a, dict) and a.get("action") == "FILE_REPORT" for a in acts):
+        return "P8", "the SAR step: its OFAC and grounding reads, then the LLM's SAR draft", "sar"
+    return "P9", "the LLM's P9 closing (no SAR to draft: FILE_REPORT is not in the final actions)", "main"
+
+
+def llm_models(views: Any) -> Counter:
+    """model -> llm rows in calls.jsonl over the given case views, the model as each row records it (never inferred)."""
+    return Counter(str(c.get("model")) for v in views for c in getattr(v, "calls", None) or [] if c.get("kind") == "llm" and c.get("model"))
+
+
+def pipeline_state(view: Any, run_model: str = "", run_sar_model: str = "", since: str = "") -> dict:
+    """The S0 + P0-P10 stages of one case, each with a state (done, active, stopped, skipped = no row, pending; S0 is
+    'offline') and its row count, read from the newest attempt in the case's phases.jsonl and calls.jsonl only. For a case
+    that has not finished, the stage after its newest row and what that stage waits on follow agent/phase_machine.py's
+    order: an inference, as rows are written when a step completes. A newer retry / re-prompt note (structured_retry,
+    policy_reprompt, sar_validation_failed) means the LLM is being called again for its phase; a failed case whose error
+    names its phase ('... during P2') stopped there. The model of an LLM call in flight is the newest one calls.jsonl
+    records for that kind of call (P8 rows for the SAR draft, the other rows otherwise): this case's, else `run_model` /
+    `run_sar_model` (the caller reads them from the run's other calls.jsonl files), else ''. `since` (the live lock's start)
+    keeps an earlier invocation's rows out of this case's own."""
+    view = _attempt_view(view)
+    phases, calls = getattr(view, "phases", None) or [], getattr(view, "calls", None) or []
+    rows: Counter = Counter(_fold(r.get("phase")) for r in phases if _is_phase_row(r))
+    rows.update(_fold(c.get("phase")) for c in calls if c.get("phase"))
+    state = getattr(view, "state", "")
+    finished = state in ("done", "unreadable")
+    newest = _newest_row(view)
+    active, waiting, kind, basis = None, "", "", "inferred"
+    if not finished and newest is not None:
+        key = _row_key(newest)
+        if key == ("phase", "P5"):
+            ask = bool(phase_payload(view, "P5-voi").get("ask"))
+            active, waiting, kind = ("P6", "the assumed reply to the evidence request", "") if ask else _after_decision(view, "P5")
+        elif key == ("phase", "P7"):
+            active, waiting, kind = _after_decision(view, "P7")
+        elif key != ("phase", "P9"):  # the P9 row is the last one a case writes
+            active, waiting, kind = _AFTER.get(key, (key[1] if key[1] in PIPELINE_CODES else None, "", ""))
+        # a retry / re-prompt note newer than that row: the agent is calling the LLM again for the note's phase
+        t_new = _float(newest.get("t"))
+        # ('case failed' is written after every failure, so it never hides the retry note before it)
+        last = max(((ev["t"], i, ev) for i, (_, ev) in enumerate(_events(view)) if ev["t"] is not None and ev["type"] != "case_failed"),
+                   default=None, key=lambda x: x[:2])
+        if last and t_new is not None and last[0] >= t_new and last[2]["type"] == "sar_fallback" and active == "P9":
+            waiting = "the LLM's P9 closing (the fallback narrative replaced three rejected SAR drafts)"
+        if last and t_new is not None and last[0] >= t_new and last[2]["type"] in _RETRY_EVENTS:
+            m = re.match(r"^(P\d+)", str(last[2].get("text") or ""))  # 'P9-retry: ...' names its phase too
+            code = _fold(last[2].get("phase")) or (m.group(1) if m else "")
+            active = code if code in PIPELINE_CODES else active
+            waiting = f"the LLM: {_RETRY_EVENTS[last[2]['type']]} ({last[2]['text']})"
+            kind = "sar" if active == "P8" else "main"
+    elif state == "running":
+        active, waiting = "P0", "the intake"
+    if state == "failed":  # the agent's own message only: a validation error can echo model text that names a phase
+        err = str(getattr(view, "error", "") or "")
+        m = re.match(r"""GraphUnavailable\(['"]graph unavailable during (P\d+)\b""", err) or re.match(r"""^\w+\(['"](P\d+)(?:-\w+)?: """, err)
+        if m and m.group(1) in PIPELINE_CODES:
+            active, waiting, kind, basis = m.group(1), "", "", "error"
+    ai = PIPELINE_CODES.index(active) if active in PIPELINE_CODES else None
+    stages = []
+    for i, s in enumerate(PIPELINE):
+        n = rows.get(s["code"], 0)
+        if s["code"] == "S0":
+            st_ = "offline"
+        elif finished or ai is None:
+            st_ = "done" if n else ("skipped" if finished else "pending")
+        elif i == ai:
+            st_ = "active" if state == "running" else "stopped"
+        else:  # P10 is written before the P9 row, so a stage after the active one can be done
+            st_ = "done" if n else ("skipped" if i < ai else "pending")
+        stages.append({**s, "state": st_, "rows": n})
+    llm_rows = [c for c in calls if c.get("kind") == "llm" and c.get("model") and str(c.get("ts") or "") >= since]
+    own = {"main": [str(c["model"]) for c in llm_rows if _fold(c.get("phase")) != "P8"], "sar": [str(c["model"]) for c in llm_rows if _fold(c.get("phase")) == "P8"]}
+    run = {"main": run_model, "sar": run_sar_model}
+
+    def pick(k: str) -> tuple[str, str]:
+        rows_of = " (P8 rows)" if k == "sar" else ""
+        if own[k]:
+            return own[k][-1], f"this case's calls.jsonl{rows_of}"
+        return (run[k], f"another case's calls.jsonl in this run{rows_of}") if run[k] else ("", "")
+
+    model, model_source = ("", "")
+    if kind in ("main", "sar"):
+        model, model_source = pick(kind)
+    elif kind == "either":
+        a, b = pick("main"), pick("sar")
+        model, model_source = (a[0], "calls.jsonl: the SAR-draft and closing models agree") if a[0] and a[0] == b[0] else (
+            "", "not known yet: the SAR draft and the closing can use different models")
+    return {"stages": stages, "active": active if state == "running" else None, "stopped_at": active if state in ("incomplete", "failed") else None,
+            "stopped_basis": basis, "waiting": waiting, "llm": bool(kind), "model": model, "model_source": model_source,
+            "newest": {k: newest.get(k) for k in ("kind", "phase", "name", "t", "model", "latency_s")} if newest else None}
+
+
+def compact_params(params: Any, limit: int = 160) -> str:
+    """Tool params on one line: embedding vectors become '<N-d vector>', and the line is cut at `limit` characters."""
+    if params in (None, "", {}, []):
+        return ""
+    text = json.dumps(_clean_params(params), default=str, ensure_ascii=False)
+    return text if len(text) <= limit else text[: limit - 1] + "…"
+
+
+def call_line(c: dict, case_id: str = "") -> str:
+    """One calls.jsonl row as one plain-text console line, for st.code (nothing in it is interpreted): case, t, phase,
+    then the model and its tokens as recorded, or the tool with its compacted params and caller; latency; a failure."""
+    t = _float(c.get("t"))
+    head = " ".join(x for x in (case_id, "t+     ?" if t is None else f"t+{t:6.1f}s", f"[{c.get('phase') or '?'}]") if x)
+    if c.get("kind") == "llm":
+        cached, written = _int(c.get("cache_read_tokens")), _int(c.get("cache_write_tokens"))
+        body = f"LLM   {c.get('model') or 'model not recorded'} · {_int(c.get('input_tokens')):,} in + {_int(c.get('output_tokens')):,} out" + (
+            f" + {cached:,} cached" if cached else "") + (f" + {written:,} cache-write" if written else "") + " tok"
+    else:
+        body = f"TOOL  {c.get('name') or '?'} {compact_params(c.get('params'))}".rstrip() + f" · {c.get('caller') or 'caller not recorded'}"
+    lat = _float(c.get("latency_s"))
+    tail = "" if lat is None else f" · {lat:.2f} s"
+    if c.get("ok") is False:
+        tail += " · FAILED" + (f": {str(c.get('error'))[:160]}" if c.get("error") else "")
+    return f"{head}  {body}{tail}"
+
+
+def run_console(views: list, limit: int = 40) -> list[str]:
+    """The calls of a run's cases as console lines, newest last: cases in the order of their newest call (the case running
+    now comes last), each case's calls in file order (calls.jsonl is append-only, so that is the order they finished, across
+    --resume attempts too) with a marker where a rerun's t restarts, and one line per case with a parsed answer."""
+    def newest(v: Any) -> tuple[str, str]:
+        return max((str(c.get("ts")) for c in getattr(v, "calls", None) or [] if c.get("ts")), default="~"), str(v.case_id)
+
+    lines: list[str] = []
+    for v in sorted(views, key=newest):
+        prev = None
+        for c in getattr(v, "calls", None) or []:
+            t = _float(c.get("t"))
+            if prev is not None and t is not None and t < prev - 1.0:
+                lines.append(f"{v.case_id} -- new attempt (agent.bench --resume reran the case; t restarts at 0) --")
+            prev = t if t is not None else prev
+            lines.append(call_line(c, v.case_id))
+        if getattr(v, "ok", False):
+            case = v.answer.get("case") or {}
+            lines.append(f"{v.case_id} answer.json · verdict {case.get('verdict') or '?'} · p {prob(case.get('fraud_probability'))}")
+    return lines[-limit:]
+
+
+def pipeline_strip(stages: list[dict], *, key: str) -> None:
+    """The stages as a wrapping row of small bordered boxes: state icon and code, the label and the state in words. Static;
+    the Case file's Decision path tab has the clickable inspector."""
+    st = _st()
+    with st.container(horizontal=True, gap="small", key=f"pipeline-{_slug(key)}"):
+        for s in stages:
+            color, icon = STAGE_STYLE.get(s["state"], ("gray", None))
+            with st.container(border=True, width=124, gap=None, key=f"stage-{_slug(key)}-{s['code'].lower()}"):
+                st.markdown(badge(s["code"], color, icon=icon))
+                st.caption(md(f"{s['label']} · {STAGE_LABELS.get(s['state'], s['state'])}"))
 
 
 _REF_RE = re.compile(r"^(?:query:)?([A-Za-z_][\w]*)\s*(?:\((.*)\))?\s*$")
@@ -1826,14 +2138,61 @@ SAR_CHECK_LABELS = [
 ]
 
 
+SAR_IDS_DB = ROOT / "data" / "ids.duckdb"  # the id-only dataset, checked in for CI
+_SAR_RESOLVERS: dict[str, tuple[Any | None, str, float]] = {}  # "path|signature" -> (resolver or None, where or why, built at)
+_SAR_LOCK = threading.Lock()
+
+
+class _SerialResolver:
+    """A rag.validate_sar Resolver whose lookups take turns: one read-only DuckDB connection serves every session."""
+
+    def __init__(self, inner: Any) -> None:
+        self.inner = inner
+
+    def exists(self, kind: str, ident: str) -> bool:
+        with _SAR_LOCK:
+            return bool(self.inner.exists(kind, ident))
+
+
+def sar_resolver() -> tuple[Any | None, str]:
+    """(resolver, where) for the SAR id checks: engine.validator.FactsResolver, the resolver P8 falls back to, over the
+    id-only dataset data/ids.duckdb, else over the engine facts DB, opened read-only (agent.validator.open_db). (None, why)
+    when neither is here, e.g. on the Railway image (no data/, duckdb or engine code); the checks then resolve against the
+    answer's own ids. Kept per database file signature, so it is built once; a failed open is retried after 60 s."""
+    reasons: list[str] = []
+    for path in dict.fromkeys((SAR_IDS_DB, _facts_db_path())):
+        sig = _sig(path)
+        if sig is None:
+            reasons.append(f"{rel(path)} not here")
+            continue
+        key = f"{path}|{sig}"
+        hit = _SAR_RESOLVERS.get(key)
+        if hit is None or (hit[0] is None and time.time() - hit[2] > 60):
+            try:
+                av, err = optional_import("agent.validator")
+                ev, err2 = optional_import("engine.validator")
+                if av is None or ev is None:
+                    raise ImportError(err or err2)
+                hit = (_SerialResolver(ev.FactsResolver(av.open_db(path))), f"ids checked against {rel(path)} (engine.validator.FactsResolver, read-only)", time.time())
+            except Exception as exc:  # noqa: BLE001 - no duckdb, no engine code or a locked file: the answer's ids are the fallback
+                hit = (None, f"{rel(path)}: {type(exc).__name__}: {str(exc)[:120]}", time.time())
+            _SAR_RESOLVERS[key] = hit
+        if hit[0] is not None:
+            return hit[0], hit[1]
+        reasons.append(hit[1])
+    return None, "ids checked against the answer's own lists only (no dataset in this deployment: " + "; ".join(reasons) + ")"
+
+
 def sar_checks(answer: dict, meta: dict | None = None, resolver: Any | None = None) -> list[tuple[str, bool, str]]:
     """[(check, ok, detail)] for the SAR tab, one row per rag.validate_sar code V00-V18 (V19 needs the as-of baseline and runs only in P8), computed from the answer
-    alone (plus the case pack's customer/card ids in `meta`). Ids resolve against the answer's own lists unless a
-    `resolver` (rag.validate_sar.DuckResolver over data/ids.duckdb) is given; the run's P8 validator payload is
-    merged in by the page. When sar.file is false only V00 applies."""
+    alone (plus the case pack's customer/card ids in `meta`). Ids resolve against sar_resolver() (the dataset, read-only)
+    unless a `resolver` is given, and against the answer's own lists when no dataset is here; the run's P8 validator
+    payload is merged in by the page. When sar.file is false only V00 applies."""
     from rag.validate_sar import validate_answer_sar
 
     meta = meta or {}
+    if resolver is None:
+        resolver = sar_resolver()[0]  # None: validate_answer_sar falls back to the answer's own ids
     try:
         errs = validate_answer_sar(answer, customer_id=meta.get("customer_id", ""), card_id=meta.get("card_id", ""), resolver=resolver)
     except Exception as exc:  # noqa: BLE001 - a half-written answer must still render
@@ -1908,6 +2267,37 @@ def chip(text: object, color: str = "gray", *, icon: str | None = None, help: st
     """st.badge with data-safe text (st.badge escapes the brackets itself, so only the rest is escaped here)."""
     body = md(text).replace("\\[", "[").replace("\\]", "]")
     (where or _st()).badge(body, color=color, icon=icon, help=md(help) if help else None)
+
+
+# TigerGraph's two official logo files, unmodified apart from the wordmark colour tigergraph.com's own stylesheet gives them:
+# the header version (black "Graph", for light backgrounds) and the footer version (white "Graph", for dark ones).
+TIGERGRAPH_LOGO = UI_DIR / "assets" / "tigergraph-logo.svg"
+TIGERGRAPH_LOGO_DARK = UI_DIR / "assets" / "tigergraph-logo-dark.svg"
+_CREDIT_CSS = "<style>[class*='st-key-tgcredit-'] [data-testid='stCaptionContainer'] p { margin: 0 !important; }</style>"
+
+
+def tigergraph_logo() -> Path:
+    """The official logo version for the current theme: white wordmark on a dark theme, black on a light (or unknown) one."""
+    st = _st()
+    try:
+        dark = st.context.theme.type == "dark"
+    except Exception:  # noqa: BLE001 - no theme known yet (first render, AppTest)
+        dark = False
+    return TIGERGRAPH_LOGO_DARK if dark and TIGERGRAPH_LOGO_DARK.is_file() else TIGERGRAPH_LOGO
+
+
+def tigergraph_credit(key: str, *, width: int = 112, align: str = "left") -> None:
+    """A 'Built on TigerGraph' credit: a small grey label beside TigerGraph's official logo, in the version that suits the
+    theme, with no box around it. It credits the platform the agent runs on; the header carries the app's own name and mark."""
+    st = _st()
+    st.html(_CREDIT_CSS)
+    logo = tigergraph_logo()
+    with st.container(horizontal=True, vertical_alignment="center", horizontal_alignment=align, gap="small", key=f"tgcredit-{_slug(key)}"):
+        st.caption("Built on", width="content")
+        if logo.is_file():
+            st.image(str(logo), width=width)
+        else:
+            st.markdown("**TigerGraph**", width="content")
 
 
 def route_badge(route: str) -> str:
@@ -1989,14 +2379,14 @@ def untrusted_text(label: str, text: str, *, codes: list[str] | None = None, cle
 
 
 def page_header(title: str, subtitle: str = "", icon: str = "", *, eyebrow: str = "", chips: list[tuple[str, str]] | None = None) -> None:
-    """The one header of every page: eyebrow caption, H2 title, one-line subtitle, optional chip row (text, colour).
-    The old positional call page_header(title, subtitle, icon) still works."""
+    """The one header of every page: the H1 title first, then one grey caption holding the scope (`eyebrow`, e.g. the round
+    and case range) on its first line and the subtitle on its second, then an optional chip row (text, colour). Nothing
+    sits above the title. The old positional call page_header(title, subtitle, icon) still works."""
     st = _st()
-    if eyebrow:
-        st.caption(md(eyebrow))
-    st.markdown(f"## {(icon + ' ') if icon else ''}{md(title)}")
-    if subtitle:
-        st.caption(md(subtitle))
+    st.markdown(f"# {(icon + ' ') if icon else ''}{md(title)}")
+    lines = [md(x) for x in (eyebrow, subtitle) if x]
+    if lines:
+        st.caption("  \n".join(lines))
     if chips:
         with st.container(horizontal=True, gap="small"):
             for text, color in chips:
@@ -2142,13 +2532,48 @@ def decision_card(view: CaseView, inbox: list[dict], compact: bool = False, *, k
 
 def inject_css() -> None:
     """The stylesheet on top of the config.toml theme: menu cleanup, wrapping labels, metric values, and the keyed
-    container rules (.st-key-ctxbar, untrusted-*, decision-*, proof-*). Called once per run by the router, or by
+    container rules (.st-key-ctxbar, untrusted-*, decision-*, proof-*, stage-*). Called once per run by the router, or by
     page_setup when a page runs alone."""
     _st().markdown(
         """
         <style>
-        /* the top navigation bar is an absolutely positioned 56 px header: start the page below it */
-        .block-container { padding-top: 4.25rem; padding-bottom: 3rem; max-width: 1480px; }
+        /* the top navigation bar: a quiet 56 px strip. Brand mark on the left, muted links that sharpen on hover, the
+           current page marked by a 2 px rule sitting on the bar's bottom border (no filled pill). Colours come from
+           currentColor and opacity, so the bar follows the light/dark theme without hardcoded values. The Proof /
+           System dropdowns share the link style; their panel is a small elevated card. */
+        [data-testid="stHeader"], [data-testid="stHeader"] [data-testid="stToolbar"] { height: 56px; }
+        [data-testid="stHeader"] { padding: 0 1.25rem; border-bottom: 1px solid rgba(128,128,128,.28); box-shadow: none; }
+        [data-testid="stHeaderLogo"] { height: 28px; width: auto; margin-right: 1.1rem; }
+        [data-testid="stTopNavLink"], [data-testid="stTopNavSection"] {
+            position: relative; height: 56px !important; padding: 0 .8rem !important; border-radius: 0 !important; gap: .4rem;
+            background: transparent !important; color: inherit !important; opacity: .62;
+            font-weight: 500 !important; transition: opacity .12s ease; }
+        [data-testid="stTopNavLink"] span, [data-testid="stTopNavSection"] p { font-size: .875rem !important; letter-spacing: -.003em; }
+        [data-testid="stTopNavLink"] [data-testid="stIconMaterial"] { font-size: 1.15rem !important; }
+        [data-testid="stTopNavSection"] svg { width: 1.05rem !important; height: 1.05rem !important; }
+        [data-testid="stTopNavLink"]:hover, [data-testid="stTopNavSection"]:hover,
+        [data-testid="stTopNavSection"][aria-expanded="true"] { opacity: 1; background: transparent !important; }
+        [data-testid="stTopNavLink"][aria-current="page"] { opacity: 1; font-weight: 600 !important; }
+        [data-testid="stTopNavLink"][aria-current="page"]::after { content: ""; position: absolute; left: .8rem; right: .8rem; bottom: -1px;
+            height: 2px; border-radius: 2px 2px 0 0; background: currentColor; }
+        [data-testid="stTopNavLink"]:focus-visible, [data-testid="stTopNavSection"]:focus-visible { outline: 2px solid currentColor; outline-offset: -4px; border-radius: 6px !important; opacity: 1; }
+        [data-testid="stTopNavPopoverBody"] { padding: .35rem; min-width: 16rem; border-radius: 10px; box-shadow: 0 12px 32px rgba(0,0,0,.28); }
+        [data-testid="stTopNavDropdownLink"] { height: 38px !important; padding: 0 .7rem !important; border-radius: 6px !important; font-weight: 500 !important; }
+        [data-testid="stTopNavDropdownLink"] span, [data-testid="stTopNavDropdownLink"] p { font-size: .875rem !important; }
+        [data-testid="stTopNavDropdownLink"] [data-testid="stIconMaterial"] { font-size: 1.1rem !important; }
+        [data-testid="stTopNavDropdownLink"]:hover { background: color-mix(in srgb, currentColor 8%, transparent) !important; }
+        [data-testid="stTopNavDropdownLink"][aria-current="page"] { background: color-mix(in srgb, currentColor 12%, transparent) !important; font-weight: 600 !important; }
+        .block-container { padding-top: 4.75rem; padding-bottom: 3rem; max-width: 1480px; }
+        /* the browser surfaces carry the ledger too: a highlighter-amber text selection (the one warm mark in the
+           chrome, as on a paper case file), thin neutral scrollbars, an ink focus ring, and tabular figures wherever
+           numbers are compared */
+        ::selection { background: rgba(224, 165, 38, .38); }
+        * { scrollbar-width: thin; scrollbar-color: rgba(128,128,128,.45) transparent; }
+        a:focus-visible, button:focus-visible, summary:focus-visible { outline: 2px solid currentColor !important; outline-offset: 2px; }
+        [data-testid="stMetricValue"], [data-testid="stTable"], table, [data-testid="stCaptionContainer"], code, .ov-vkey { font-variant-numeric: tabular-nums; }
+        h1 { letter-spacing: -.02em; line-height: 1.2 !important; padding-bottom: .15rem !important; }
+        [data-testid="stCode"] pre, [data-testid="stCode"] code { font-size: .84rem; }
+        [data-testid="stExpander"] summary p { font-weight: 500; }
         /* untrusted text is shown verbatim: no code-font ligatures turning "<!--" or "-->" into arrows */
         code, pre, [data-testid="stCode"] * { font-variant-ligatures: none !important; font-feature-settings: "liga" 0, "calt" 0 !important; }
         /* main-menu cleanup: keep Print and the theme toggle, drop the screen recorder and the version footer
@@ -2170,21 +2595,53 @@ def inject_css() -> None:
             max-width: 100% !important;
             line-height: 1.25 !important;
         }
+        [data-testid="stMetricLabel"] p { font-size: .82rem !important; font-weight: 500; opacity: .72; }
         [data-testid="stMetricValue"],
-        [data-testid="stMetricValue"] > div { font-size: 1.75rem !important; font-weight: 700; line-height: 1.2; }
+        [data-testid="stMetricValue"] > div { font-size: 1.65rem !important; font-weight: 600; line-height: 1.2; letter-spacing: -.015em; }
         /* a long measured value wraps onto a second line instead of being cut off with an ellipsis */
         [data-testid="stMetricValue"] > div,
         [data-testid="stMetricValue"] p { white-space: normal !important; overflow: visible !important; text-overflow: clip !important; overflow-wrap: anywhere; }
-        .st-key-ctxbar { padding: 4px 10px !important; gap: 8px !important; }
-        [class*="st-key-untrusted-"] { border-left: 3px dashed rgba(184, 134, 11, .9) !important; }
-        [class*="st-key-decision-fraud"] { border-left: 4px solid rgba(192, 57, 43, .85) !important; }
-        [class*="st-key-decision-legitimate"] { border-left: 4px solid rgba(30, 126, 52, .85) !important; }
-        [class*="st-key-decision-uncertain"] { border-left: 4px solid rgba(37, 99, 235, .85) !important; }
+        .st-key-ctxbar { padding: 6px 10px !important; gap: 8px !important; }
+        /* the Case file's toolbar leads with the case id as the page's h1, sized to sit on the toolbar's centre line */
+        .st-key-casebar h1 { font-size: 1.45rem !important; padding: 0 !important; margin: 0 !important; }
+        .st-key-casebar h1 [data-testid="stHeaderActionElements"] { display: none; }
+        /* untrusted input is quarantined: a dashed amber frame all the way round and a faint wash, never followed */
+        [class*="st-key-untrusted-"] { border: 1px dashed rgba(180, 83, 9, .75) !important; background: rgba(224, 138, 60, .045); }
+        /* a decision card takes its verdict as a 1px frame in the verdict hue and a faint wash of it: state, not a stripe */
+        [class*="st-key-decision-fraud"] { border-color: rgba(214, 69, 65, .55) !important; background: rgba(214, 69, 65, .03); }
+        [class*="st-key-decision-legitimate"] { border-color: rgba(47, 154, 102, .55) !important; background: rgba(47, 154, 102, .03); }
+        [class*="st-key-decision-uncertain"] { border-color: rgba(79, 127, 224, .55) !important; background: rgba(79, 127, 224, .03); }
         [class*="st-key-proof-"] { min-width: 180px; }
         /* a horizontal strip of proof cards wraps whole cards: the minimum width goes on the flex item that holds each
            card, otherwise the item shrinks below it and the card overflows into its neighbour */
         .stHorizontalBlock > div:has([class*="st-key-proof-"]) { flex: 1 1 180px !important; min-width: 180px !important; }
-        h1, h2, h3 { letter-spacing: -0.01em; }
+        /* Overview (marked by its .st-key-ov-proofs strip): section titles, headline tiles, a verdict bar and an even proof
+           strip. Section titles are sentence-case headings with a grey note after them and a hairline running out to the
+           right edge: no tiny tracked capitals. */
+        .ov-section { display: flex; align-items: baseline; gap: .6rem; margin: 2.25rem 0 .8rem; font-size: 1rem; font-weight: 600;
+            letter-spacing: -.005em; }
+        .ov-section::after { content: ""; flex: 1; height: 1px; background: rgba(128,128,128,.28); }
+        .ov-section b { font-weight: 400; font-size: .875rem; opacity: .62; }
+        .stMainBlockContainer:has(.st-key-ov-proofs) [data-testid="stMetric"] { padding: .95rem 1.1rem !important; border-radius: 8px; min-height: 7.25rem; }
+        .stMainBlockContainer:has(.st-key-ov-proofs) [data-testid="stMetricValue"],
+        .stMainBlockContainer:has(.st-key-ov-proofs) [data-testid="stMetricValue"] > div { font-size: 2rem !important; font-weight: 600; letter-spacing: -.02em; }
+        .ov-vbar { display: flex; height: 8px; border-radius: 4px; overflow: hidden; gap: 2px; margin: .55rem 0 .45rem; }
+        .ov-vbar span { display: block; min-width: 4px; }
+        .ov-vkey { display: flex; flex-wrap: wrap; gap: .25rem .9rem; font-size: .82rem; }
+        .ov-vkey span { white-space: nowrap; }
+        .ov-vkey i { display: inline-block; width: .55rem; height: .55rem; border-radius: 50%; margin-right: .35rem; }
+        .ov-fraud { background: #d64541; } .ov-legit { background: #2f9a66; } .ov-unc { background: #4f7fe0; }
+        .st-key-ov-proofs { align-items: stretch !important; gap: .75rem !important; }
+        .st-key-ov-proofs > div { display: flex; }
+        .st-key-ov-proofs [class*="st-key-proof-"] { width: 100%; border-radius: 8px; padding: .8rem .95rem !important; gap: .35rem !important; }
+        .st-key-ov-proofs [class*="st-key-proof-"] > :last-child { margin-top: auto; padding-top: .4rem; }
+        .st-key-ov-proofs [class*="st-key-proof-"] [data-testid="stCaptionContainer"] p { font-size: .82rem; font-weight: 500; opacity: .72; }
+        .st-key-ov-proofs [class*="st-key-proof-"] [data-testid="stMarkdownContainer"] p { font-size: .92rem; line-height: 1.4; }
+        .stMainBlockContainer:has(.st-key-ov-proofs) h4 { font-size: 1rem; font-weight: 600; margin-top: 1.5rem; }
+        /* pipeline strip (common.pipeline_strip): compact stage boxes that wrap whole */
+        [class*="st-key-stage-"] { padding: 0.4rem 0.55rem !important; gap: 0.1rem !important; }
+        [class*="st-key-stage-"] [data-testid="stCaptionContainer"] p { line-height: 1.25; margin: 0; }
+        h2, h3 { letter-spacing: -0.01em; }
         </style>
         """,
         unsafe_allow_html=True,
@@ -2195,7 +2652,7 @@ def inject_css() -> None:
 # Proof and honesty: measured artifacts, known limits, README facts           #
 # --------------------------------------------------------------------------- #
 SNAPSHOT_PATH = ROOT / "engine" / "out" / "proof_snapshot.json"
-SNAPSHOT_SECTIONS = ("attacks", "intake_scans", "drift", "dq", "gsql", "variant", "containment_plans", "c3_built", "facts")
+SNAPSHOT_SECTIONS = ("attacks", "intake_scans", "drift", "dq", "gsql", "variant", "containment_plans", "c3_built", "facts", "scorecard")
 _PROOF_FILES = {"backtest": "engine/out/detector_backtest.json", "containment_summary": "engine/out/containment_summary.json", "schema_approval": "data/schema_approvals.json"}
 
 
@@ -2225,6 +2682,28 @@ def proof(name: str) -> dict:
     else:
         out["error"] = "; ".join(x for x in (out["error"], serr or f"{rel(SNAPSHOT_PATH)} not in this deployment") if x)
     return out
+
+
+SCORECARD_SOURCES = "{policy} (engine block) · engine/detectors.py (DetectorHit p_floor, hit_from_scan order) · agent/security.py (clamp_to_engine)"
+
+
+def scorecard_rules() -> dict:
+    """The scorecard's numbers as the code holds them, in proof() shape with mode 'code' | 'snapshot' | 'missing': read now
+    (the policy file afresh on every call) with ops.proof_snapshot.sec_scorecard where policy/ and engine/ exist (local,
+    CI), else the snapshot's 'scorecard' section (the Railway image ships neither). Never typed in, never written."""
+    mod, err = optional_import("ops.proof_snapshot")
+    if mod is not None and hasattr(mod, "sec_scorecard"):
+        try:
+            data, partial = mod.sec_scorecard()
+            policy = str(data.get("policy_file") or "policy/fraud_policy.yaml")  # the file the values came from (ENGINE_POLICY_YAML)
+            return {"name": "scorecard", "data": data, "mode": "code", "source": SCORECARD_SOURCES.format(policy=policy), "as_of": as_of(policy),
+                    "generated_at": "", "git_sha": "", "error": "; ".join(partial)}
+        except Exception as exc:  # noqa: BLE001 - engine/, policy/ or pyyaml absent here: the snapshot is the fallback
+            err = f"{type(exc).__name__}: {exc}"
+    snap = proof("scorecard")
+    if snap["data"] is None and err:
+        snap["error"] = "; ".join(x for x in (f"not readable from the code here ({err})", snap["error"]) if x)
+    return snap
 
 
 def readme_facts() -> dict:
@@ -2340,8 +2819,9 @@ PAGES: dict[str, dict[str, str]] = {
     "runs": {"file": "pages/5_runs.py", "title": "Runs & consistency", "icon": ":material/monitoring:", "url_path": "runs", "section": "Proof"},
     "console": {"file": "pages/1_queue.py", "title": "Run console", "icon": ":material/play_circle:", "url_path": "console", "section": "System"},
     "system": {"file": "pages/7_architecture.py", "title": "How it works", "icon": ":material/account_tree:", "url_path": "system", "section": "System"},
+    "live_architecture": {"file": "pages/10_live_architecture.py", "title": "Live architecture", "icon": ":material/animation:", "url_path": "live-architecture", "section": "System"},
 }
-CASE_PAGES = {"case", "graph"}  # the pages that show the Case picker
+CASE_PAGES = {"case", "graph", "live_architecture"}  # the pages that show the Case picker
 PAGE_ICONS = {k: v["icon"] for k, v in PAGES.items()} | {
     "app": ":material/verified_user:", "queue": PAGES["console"]["icon"], "schema": PAGES["data"]["icon"], "architecture": PAGES["system"]["icon"]}
 

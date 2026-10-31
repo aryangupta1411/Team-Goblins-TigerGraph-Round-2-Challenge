@@ -3,7 +3,7 @@
   "case": {
     "status": "closed_legitimate",
     "verdict": "legitimate",
-    "fraud_probability": 0.1,
+    "fraud_probability": 0.05,
     "pattern": "none",
     "pattern_description": "",
     "affected_txn_ids": [],
@@ -13,88 +13,74 @@
     "exposure_usd": 0.0,
     "evidence": [
       {
-        "claim": "Flagged transaction 3612011 ($34.22) on card C02753-K1 occurred online from address 299.0 via an anonymous proxy using device Trident/7.0 | NULL | ie 11.0 for desktop | NULL.",
-        "source": "graph",
-        "ref": "query:case_context(t=3612011)",
-        "entity_ids": [
-          "3612011",
-          "C02753-K1",
-          "Trident/7.0 | NULL | ie 11.0 for desktop | NULL"
-        ]
-      },
-      {
-        "claim": "The device profile Trident/7.0 | NULL | ie 11.0 for desktop | NULL used for transaction 3612011, while not strong, has been associated with 244 cards all-time, 120 cards in 30 days, 123 proxy uses, and is linked to 10 prior fraud cases.",
-        "source": "graph",
-        "ref": "query:case_context(t=3612011)",
-        "entity_ids": [
-          "Trident/7.0 | NULL | ie 11.0 for desktop | NULL",
-          "3612011"
-        ]
-      },
-      {
-        "claim": "Card C02753-K1 has two prior confirmed fraud cases (CC-4010, CC-1739) of out_of_region_use.",
-        "source": "graph",
-        "ref": "query:prior_cases_for_customer(cu=C02753)",
-        "entity_ids": [
-          "C02753-K1",
-          "CC-4010",
-          "CC-1739"
-        ]
-      },
-      {
-        "claim": "The flagged transaction 3612011 is part of an 8-transaction episode, including both in-person (e.g., 3612022) and online transactions, which is consistent with an account takeover pattern.",
-        "source": "graph",
-        "ref": "query:episode_candidates(t=3612011)",
-        "entity_ids": [
-          "3587491",
-          "3587492",
-          "3587495",
-          "3588066",
-          "3590482",
-          "3612022",
-          "3612011",
-          "3612009"
-        ]
-      },
-      {
-        "claim": "The total exposure for this 8-transaction episode is $760.81.",
-        "source": "graph",
-        "ref": "query:card_window(c=C02753-K1, from_ts=2016-12-29 15:29:48, to_ts=2017-01-01 18:29:48, max_rows=60)",
-        "entity_ids": [
-          "3587491",
-          "3587492",
-          "3587495",
-          "3588066",
-          "3590482",
-          "3612022",
-          "3612011",
-          "3612009"
-        ]
-      },
-      {
-        "claim": "The calibrated model score (cms_p) for transaction 3612011 is 0.001437, suggesting a low fraud probability.",
-        "source": "graph",
-        "ref": "query:case_context(t=3612011)",
+        "claim": "The alert was triggered by a real-time model risk score of 0.8 for transaction 3612011 ($34.22).",
+        "source": "external",
+        "ref": "trigger",
         "entity_ids": [
           "3612011"
         ]
       },
       {
-        "claim": "The transaction amount of $34.22 is below the card's prior median amount of $150.56 and prior maximum amount of $3162.97 over 110 prior transactions.",
+        "claim": "Transaction 3612011 ($34.22) is below card C02753-K1's prior median amount of $150.56 and prior maximum of $3162.97 over 110 transactions.",
         "source": "graph",
-        "ref": "query:case_context(t=3612011)",
+        "ref": "query:case_context(txn=3612011)",
         "entity_ids": [
           "3612011",
           "C02753-K1"
         ]
       },
       {
-        "claim": "Card C02753-K1 had one prior risk-score alert (CC-4570) cleared after the customer confirmed travel.",
+        "claim": "The purchaser email domain aol.com for transaction 3612011 has been used 5 times before on card C02753-K1.",
+        "source": "graph",
+        "ref": "query:case_context(txn=3612011)",
+        "entity_ids": [
+          "3612011",
+          "C02753-K1"
+        ]
+      },
+      {
+        "claim": "Transaction 3612011 occurred in billing region 299.0, a known region for card C02753-K1 with 6 prior uses.",
+        "source": "graph",
+        "ref": "query:case_context(txn=3612011)",
+        "entity_ids": [
+          "3612011",
+          "C02753-K1"
+        ]
+      },
+      {
+        "claim": "Card C02753-K1 had a prior cleared case CC-4570 for 'cleared_travel' of a similar alert shape.",
         "source": "graph",
         "ref": "query:prior_cases_for_customer(cu=C02753)",
         "entity_ids": [
           "C02753-K1",
           "CC-4570"
+        ]
+      },
+      {
+        "claim": "The memory-informed calibrated score (cms_p) for transaction 3612011 is 0.001437, indicating low fraud probability.",
+        "source": "graph",
+        "ref": "query:case_context(txn=3612011)",
+        "entity_ids": [
+          "3612011"
+        ]
+      },
+      {
+        "claim": "Transaction 3612011 was routed through IP_PROXY:ANONYMOUS and used device Trident/7.0 | NULL | ie 11.0 for desktop | NULL, which is associated with 10 prior fraud cases across all cards.",
+        "source": "graph",
+        "ref": "query:case_context(txn=3612011)",
+        "entity_ids": [
+          "3612011",
+          "Trident/7.0 | NULL | ie 11.0 for desktop | NULL"
+        ]
+      },
+      {
+        "claim": "Card C02753-K1 has 2 prior confirmed fraud cases (CC-4010, CC-1739) for 'out_of_region_use'.",
+        "source": "graph",
+        "ref": "query:prior_cases_for_customer(cu=C02753)",
+        "entity_ids": [
+          "C02753-K1",
+          "CC-4010",
+          "CC-1739"
         ]
       },
       {
@@ -107,20 +93,21 @@
       }
     ],
     "similar_prior_cases": [
-      "CC-5285",
       "CC-4943",
+      "CC-5285",
       "CC-4208",
+      "CC-5234",
       "CC-4783",
-      "CC-5234"
+      "CC-5339"
     ],
-    "summary": "Verdict: legitimate (0.1 probability). The flagged online transaction (3612011) was confirmed by the customer, despite an initial risk score alert and two prior fraud cases on the card. A customer validation was requested and the customer confirmed the activity. Actions: ALLOW_TRANSACTION and CLOSE_NO_FRAUD (auto).",
+    "summary": "The case for transaction 3612011 has a legitimate verdict with a fraud probability of 0.05, and no fraud pattern. The transaction had no associated exposure. After a customer validation request, the customer confirmed the $34.22 transaction. This, along with consistency with the card's history and low calibrated risk, led to the recommendation to ALLOW_TRANSACTION and CLOSE_NO_FRAUD, both via auto route.",
     "written_to_graph": true,
     "graph_case_id": "AC-HHF-018"
   },
   "evidence_requests": [
     {
       "type": "customer_validation",
-      "asked_after_step": 22,
+      "asked_after_step": 23,
       "assumed_response": "ASSUMED (simulated): customer confirmed an unusual amount of $34.22 consistent with stated intent"
     }
   ],
@@ -129,32 +116,32 @@
       {
         "action": "CREATE_CASE",
         "route": "auto",
-        "reason": "3a: multiple transactions identified as part of an episode of potential fraud on card C02753-K1."
+        "reason": "3a: a case is opened when evidence is requested."
       },
       {
         "action": "VERIFY_WITH_CUSTOMER",
         "route": "auto",
-        "reason": "R1: the fraud probability of 0.10 is below 0.70 with a single signal (risk score trigger)."
+        "reason": "R1: the fraud probability of 0.05 is below 0.70 and triggered by a single signal."
       }
     ],
     "final": [
       {
         "action": "CREATE_CASE",
         "route": "auto",
-        "reason": "3a: multiple transactions identified as part of an episode of potential fraud on card C02753-K1."
+        "reason": "3a: a case was opened when evidence was requested."
       },
       {
         "action": "ALLOW_TRANSACTION",
         "route": "auto",
-        "reason": "R3: customer confirmed the transaction."
+        "reason": "R3: the customer confirmed the transaction."
       },
       {
         "action": "CLOSE_NO_FRAUD",
         "route": "auto",
-        "reason": "R3: customer confirmed the transaction."
+        "reason": "R3: the customer confirmed the transaction, settling the case."
       }
     ],
-    "what_changed": "The assumed customer validation reply (confirm) left the probability at 0.10 and kept the verdict legitimate, adding ALLOW_TRANSACTION, CLOSE_NO_FRAUD, removing VERIFY_WITH_CUSTOMER. Counterfactual: had the customer denied the purchase, R2 would have applied: BLOCK_CARD (L1) and CREATE_CASE."
+    "what_changed": "The assumed customer validation reply (confirm) left the probability at 0.05 and kept the verdict legitimate, adding ALLOW_TRANSACTION, CLOSE_NO_FRAUD, removing VERIFY_WITH_CUSTOMER. Counterfactual: had the customer denied the purchase, R2 would have applied: BLOCK_CARD (L1) and CREATE_CASE."
   },
   "sar": {
     "file": false,
@@ -164,8 +151,8 @@
     "total_amount_usd": 0,
     "activity_dates": []
   },
-  "stop_reason": "The case is settled by the assumed customer confirmation (Policy §6 test 2). The final probability of 0.10, supported by three independent evidence families, also meets the criteria for stopping the investigation (Policy §6 test 1).",
-  "tool_calls": 22,
-  "tokens": 258408,
-  "latency_s": 124.9
+  "stop_reason": "Policy §6 test 2: the assumed customer confirmation settled the question. Probability 0.05 with 3 evidence families also meets §6 test 1.",
+  "tool_calls": 23,
+  "tokens": 252686,
+  "latency_s": 88.4
 }

@@ -1,0 +1,1731 @@
+{
+  "detector_id": "POLICY-R7",
+  "policy": {
+    "file": "policy/fraud_policy.md",
+    "version": "1.0",
+    "sha256": "58c4cc3b5fe9200b85d947d2d467d076ac039eb6009736c0735a5e47e5fd7513"
+  },
+  "compiler": "deterministic regex parse (engine/policy_compiler.py); no LLM call",
+  "rule_id": "R7",
+  "rule_text": "Disputed but legitimate. When the customer disputes a charge that matches their own recurring pattern (same merchant, same amount, monthly), recommend `CREATE_CASE`, `VERIFY_WITH_CUSTOMER`, and `WARN_CUSTOMER`. Do not block.",
+  "parse": [
+    {
+      "param": "trigger",
+      "value": "customer_report",
+      "source": "policy_text",
+      "matched_text": "customer disputes a charge",
+      "span": [
+        34,
+        60
+      ],
+      "note": "applies to a dispute, i.e. a customer_report case"
+    },
+    {
+      "param": "merchant_key",
+      "value": "p_email (online) / addr1 (in person) + product_cd",
+      "source": "policy_text",
+      "matched_text": "same merchant",
+      "span": [
+        103,
+        116
+      ],
+      "note": "the data has no merchant id; the engine's recurring check uses the same proxy"
+    },
+    {
+      "param": "same_amount",
+      "value": true,
+      "source": "policy_text",
+      "matched_text": "same amount",
+      "span": [
+        118,
+        129
+      ]
+    },
+    {
+      "param": "gap_band_days",
+      "value": [
+        25,
+        35
+      ],
+      "source": "policy_text",
+      "matched_text": "monthly",
+      "span": [
+        131,
+        138
+      ],
+      "note": "monthly read as a median gap of 25-35 days"
+    },
+    {
+      "param": "forbid_block",
+      "value": true,
+      "source": "policy_text",
+      "matched_text": "Do not block",
+      "span": [
+        211,
+        223
+      ]
+    },
+    {
+      "param": "amount_tol",
+      "value": 0.01,
+      "source": "operational_default",
+      "why_not_in_text": "'same amount' gives no tolerance",
+      "ref": "engine.facts_duckdb.recurring_charge_check tol"
+    },
+    {
+      "param": "min_prior",
+      "value": 2,
+      "source": "operational_default",
+      "why_not_in_text": "'pattern' gives no count; two prior gaps make a pattern",
+      "ref": "R7 compiler default"
+    }
+  ],
+  "params": {
+    "trigger": "customer_report",
+    "merchant_key": "p_email (online) / addr1 (in person) + product_cd",
+    "same_amount": true,
+    "gap_band_days": [
+      25,
+      35
+    ],
+    "forbid_block": true,
+    "amount_tol": 0.01,
+    "min_prior": 2
+  },
+  "sql_params": {
+    "trigger": "customer_report",
+    "merchant_key": "p_email (online) / addr1 (in person) + product_cd",
+    "amount_tol": 0.01,
+    "min_prior": 2,
+    "gap_min_d": 25,
+    "gap_max_d": 35
+  },
+  "sql_template": "WITH target AS ( SELECT t.id, t.TransactionID, t.card_id, t.customer_id, t.ts, t.amt, t.product_cd, CASE WHEN t.channel = 'in_person' THEN t.addr1 ELSE t.p_email END AS merchant FROM txc t WHERE t.id IN ({target_ids}) ), prior AS ( SELECT g.id AS target_id, p.ts FROM target g JOIN txc p ON p.card_id = g.card_id AND p.product_cd = g.product_cd AND p.ts < g.ts AND p.ts <= '{as_of}' AND abs(p.amt - g.amt) <= {amount_tol} * g.amt AND (CASE WHEN p.channel = 'in_person' THEN p.addr1 ELSE p.p_email END) = g.merchant AND g.merchant <> '' ), gaps AS ( SELECT target_id, date_diff('second', lag(ts) OVER (PARTITION BY target_id ORDER BY ts), ts) / 86400.0 AS gap_d FROM (SELECT target_id, ts FROM prior UNION ALL SELECT id, ts FROM target) ) SELECT g.id, g.card_id, g.customer_id, g.ts::VARCHAR, g.amt, g.merchant, count(x.gap_d) AS n_prior, median(x.gap_d) AS median_gap_days FROM target g JOIN gaps x ON x.target_id = g.id GROUP BY ALL HAVING count(x.gap_d) >= {min_prior} AND median(x.gap_d) BETWEEN {gap_min_d} AND {gap_max_d} ORDER BY g.id",
+  "compile_ms": 0.22,
+  "timing_ms": {
+    "prose_to_detector": 0.22,
+    "backtest": 37.6,
+    "comparison": 142.6
+  },
+  "backtest": {
+    "query": "WITH target AS ( SELECT t.id, t.TransactionID, t.card_id, t.customer_id, t.ts, t.amt, t.product_cd, CASE WHEN t.channel = 'in_person' THEN t.addr1 ELSE t.p_email END AS merchant FROM txc t WHERE t.id IN ('3000120','3000332','3000607','3000906','3000183','3001230','3000264','3001018','3002486','3002792','3000989','3002019','3002951','3002010','3002758','3001839','3003172','3001565','3002476','3000808','3003708','3001611','3004228','3003459','3003546','3004354','3003757','3003607','3000150','3003913','3001820','3005276','3001937','3005972','3004895','3003325','3006461','3006275','3004695','30064 ... (target_ids = every closed case's first_fraud_txn_id, or its first txn when cleared)",
+    "params": {
+      "trigger": "customer_report",
+      "merchant_key": "p_email (online) / addr1 (in person) + product_cd",
+      "amount_tol": 0.01,
+      "min_prior": 2,
+      "gap_min_d": 25,
+      "gap_max_d": 35
+    },
+    "as_of": "2017-01-31 23:59:59",
+    "closed_cases_total": 5585,
+    "matched": 47,
+    "legitimate_customers_protected": [
+      {
+        "case_id": "CC-3837",
+        "pattern": "none",
+        "customer_id": "C06657",
+        "card_id": "C06657-K1",
+        "txn_id": "3289884",
+        "n_prior": 2,
+        "median_gap_days": 28.31
+      },
+      {
+        "case_id": "CC-4681",
+        "pattern": "none",
+        "customer_id": "C10900",
+        "card_id": "C10900-K1",
+        "txn_id": "3352777",
+        "n_prior": 2,
+        "median_gap_days": 25.92
+      },
+      {
+        "case_id": "CC-5167",
+        "pattern": "none",
+        "customer_id": "C09206",
+        "card_id": "C09206-K2",
+        "txn_id": "3388671",
+        "n_prior": 3,
+        "median_gap_days": 27.91
+      },
+      {
+        "case_id": "CC-5331",
+        "pattern": "none",
+        "customer_id": "C02147",
+        "card_id": "C02147-K2",
+        "txn_id": "3401751",
+        "n_prior": 2,
+        "median_gap_days": 28.51
+      }
+    ],
+    "fraud_waved_through_without_block": [
+      {
+        "case_id": "CC-2754",
+        "pattern": "out_of_region_use",
+        "customer_id": "C02502",
+        "card_id": "C02502-K2",
+        "txn_id": "3215223",
+        "n_prior": 2,
+        "median_gap_days": 26.0
+      },
+      {
+        "case_id": "CC-2778",
+        "pattern": "account_takeover",
+        "customer_id": "C03231",
+        "card_id": "C03231-K2",
+        "txn_id": "3217743",
+        "n_prior": 3,
+        "median_gap_days": 26.03
+      },
+      {
+        "case_id": "CC-2839",
+        "pattern": "out_of_region_use",
+        "customer_id": "C04118",
+        "card_id": "C04118-K2",
+        "txn_id": "3221284",
+        "n_prior": 2,
+        "median_gap_days": 26.63
+      },
+      {
+        "case_id": "CC-2849",
+        "pattern": "card_not_present_fraud",
+        "customer_id": "C00294",
+        "card_id": "C00294-K2",
+        "txn_id": "3219107",
+        "n_prior": 2,
+        "median_gap_days": 25.29
+      },
+      {
+        "case_id": "CC-3006",
+        "pattern": "card_not_present_fraud",
+        "customer_id": "C08256",
+        "card_id": "C08256-K2",
+        "txn_id": "3232052",
+        "n_prior": 2,
+        "median_gap_days": 29.28
+      },
+      {
+        "case_id": "CC-3153",
+        "pattern": "account_takeover",
+        "customer_id": "C12144",
+        "card_id": "C12144-K2",
+        "txn_id": "3242085",
+        "n_prior": 2,
+        "median_gap_days": 26.18
+      },
+      {
+        "case_id": "CC-3166",
+        "pattern": "out_of_region_use",
+        "customer_id": "C01333",
+        "card_id": "C01333-K2",
+        "txn_id": "3243494",
+        "n_prior": 2,
+        "median_gap_days": 32.55
+      },
+      {
+        "case_id": "CC-3254",
+        "pattern": "account_takeover",
+        "customer_id": "C13036",
+        "card_id": "C13036-K1",
+        "txn_id": "3248574",
+        "n_prior": 2,
+        "median_gap_days": 32.46
+      },
+      {
+        "case_id": "CC-3317",
+        "pattern": "card_not_present_fraud",
+        "customer_id": "C11919",
+        "card_id": "C11919-K2",
+        "txn_id": "3252839",
+        "n_prior": 2,
+        "median_gap_days": 27.45
+      },
+      {
+        "case_id": "CC-3326",
+        "pattern": "account_takeover",
+        "customer_id": "C04551",
+        "card_id": "C04551-K1",
+        "txn_id": "3240298",
+        "n_prior": 2,
+        "median_gap_days": 29.04
+      },
+      {
+        "case_id": "CC-3337",
+        "pattern": "card_not_present_fraud",
+        "customer_id": "C03066",
+        "card_id": "C03066-K1",
+        "txn_id": "3250956",
+        "n_prior": 2,
+        "median_gap_days": 29.55
+      },
+      {
+        "case_id": "CC-3432",
+        "pattern": "card_not_present_new_device",
+        "customer_id": "C11847",
+        "card_id": "C11847-K2",
+        "txn_id": "3255341",
+        "n_prior": 2,
+        "median_gap_days": 31.61
+      },
+      {
+        "case_id": "CC-3468",
+        "pattern": "out_of_region_use",
+        "customer_id": "C10553",
+        "card_id": "C10553-K1",
+        "txn_id": "3265506",
+        "n_prior": 3,
+        "median_gap_days": 31.4
+      },
+      {
+        "case_id": "CC-3553",
+        "pattern": "card_not_present_new_device",
+        "customer_id": "C05031",
+        "card_id": "C05031-K2",
+        "txn_id": "3254109",
+        "n_prior": 2,
+        "median_gap_days": 27.32
+      },
+      {
+        "case_id": "CC-3562",
+        "pattern": "card_not_present_new_device",
+        "customer_id": "C11919",
+        "card_id": "C11919-K2",
+        "txn_id": "3262097",
+        "n_prior": 2,
+        "median_gap_days": 33.4
+      },
+      {
+        "case_id": "CC-3638",
+        "pattern": "account_takeover",
+        "customer_id": "C03218",
+        "card_id": "C03218-K2",
+        "txn_id": "3261651",
+        "n_prior": 2,
+        "median_gap_days": 33.5
+      },
+      {
+        "case_id": "CC-3724",
+        "pattern": "card_not_present_fraud",
+        "customer_id": "C12166",
+        "card_id": "C12166-K2",
+        "txn_id": "3282687",
+        "n_prior": 2,
+        "median_gap_days": 27.46
+      },
+      {
+        "case_id": "CC-3807",
+        "pattern": "card_not_present_fraud",
+        "customer_id": "C08489",
+        "card_id": "C08489-K2",
+        "txn_id": "3276043",
+        "n_prior": 2,
+        "median_gap_days": 25.69
+      },
+      {
+        "case_id": "CC-3868",
+        "pattern": "account_takeover",
+        "customer_id": "C07212",
+        "card_id": "C07212-K2",
+        "txn_id": "3283427",
+        "n_prior": 3,
+        "median_gap_days": 26.49
+      },
+      {
+        "case_id": "CC-3871",
+        "pattern": "card_not_present_fraud",
+        "customer_id": "C06744",
+        "card_id": "C06744-K2",
+        "txn_id": "3292914",
+        "n_prior": 3,
+        "median_gap_days": 30.6
+      },
+      {
+        "case_id": "CC-3885",
+        "pattern": "account_takeover",
+        "customer_id": "C10010",
+        "card_id": "C10010-K1",
+        "txn_id": "3294553",
+        "n_prior": 2,
+        "median_gap_days": 31.23
+      },
+      {
+        "case_id": "CC-3939",
+        "pattern": "out_of_region_use",
+        "customer_id": "C02716",
+        "card_id": "C02716-K2",
+        "txn_id": "3295155",
+        "n_prior": 2,
+        "median_gap_days": 30.14
+      },
+      {
+        "case_id": "CC-4062",
+        "pattern": "card_not_present_fraud",
+        "customer_id": "C11844",
+        "card_id": "C11844-K2",
+        "txn_id": "3305835",
+        "n_prior": 2,
+        "median_gap_days": 34.07
+      },
+      {
+        "case_id": "CC-4087",
+        "pattern": "out_of_region_use",
+        "customer_id": "C09174",
+        "card_id": "C09174-K1",
+        "txn_id": "3299211",
+        "n_prior": 2,
+        "median_gap_days": 29.41
+      },
+      {
+        "case_id": "CC-4119",
+        "pattern": "card_not_present_fraud",
+        "customer_id": "C02147",
+        "card_id": "C02147-K2",
+        "txn_id": "3307433",
+        "n_prior": 2,
+        "median_gap_days": 34.8
+      },
+      {
+        "case_id": "CC-4137",
+        "pattern": "account_takeover",
+        "customer_id": "C07171",
+        "card_id": "C07171-K2",
+        "txn_id": "3308471",
+        "n_prior": 2,
+        "median_gap_days": 29.84
+      },
+      {
+        "case_id": "CC-4169",
+        "pattern": "card_not_present_fraud",
+        "customer_id": "C06947",
+        "card_id": "C06947-K2",
+        "txn_id": "3312832",
+        "n_prior": 2,
+        "median_gap_days": 33.05
+      },
+      {
+        "case_id": "CC-4289",
+        "pattern": "out_of_region_use",
+        "customer_id": "C02000",
+        "card_id": "C02000-K2",
+        "txn_id": "3324501",
+        "n_prior": 2,
+        "median_gap_days": 26.95
+      },
+      {
+        "case_id": "CC-4356",
+        "pattern": "out_of_region_use",
+        "customer_id": "C07648",
+        "card_id": "C07648-K2",
+        "txn_id": "3321053",
+        "n_prior": 2,
+        "median_gap_days": 32.09
+      },
+      {
+        "case_id": "CC-4449",
+        "pattern": "out_of_region_use",
+        "customer_id": "C10553",
+        "card_id": "C10553-K1",
+        "txn_id": "3337089",
+        "n_prior": 4,
+        "median_gap_days": 26.66
+      },
+      {
+        "case_id": "CC-4453",
+        "pattern": "out_of_region_use",
+        "customer_id": "C01119",
+        "card_id": "C01119-K2",
+        "txn_id": "3332749",
+        "n_prior": 3,
+        "median_gap_days": 27.48
+      },
+      {
+        "case_id": "CC-4644",
+        "pattern": "account_takeover",
+        "customer_id": "C11224",
+        "card_id": "C11224-K1",
+        "txn_id": "3345022",
+        "n_prior": 2,
+        "median_gap_days": 28.87
+      },
+      {
+        "case_id": "CC-4796",
+        "pattern": "out_of_region_use",
+        "customer_id": "C11709",
+        "card_id": "C11709-K2",
+        "txn_id": "3357781",
+        "n_prior": 2,
+        "median_gap_days": 31.81
+      },
+      {
+        "case_id": "CC-5000",
+        "pattern": "account_takeover",
+        "customer_id": "C08597",
+        "card_id": "C08597-K2",
+        "txn_id": "3367312",
+        "n_prior": 2,
+        "median_gap_days": 31.38
+      },
+      {
+        "case_id": "CC-5039",
+        "pattern": "account_takeover",
+        "customer_id": "C08847",
+        "card_id": "C08847-K1",
+        "txn_id": "3377377",
+        "n_prior": 2,
+        "median_gap_days": 30.11
+      },
+      {
+        "case_id": "CC-5153",
+        "pattern": "out_of_region_use",
+        "customer_id": "C02502",
+        "card_id": "C02502-K2",
+        "txn_id": "3387311",
+        "n_prior": 2,
+        "median_gap_days": 27.96
+      },
+      {
+        "case_id": "CC-5202",
+        "pattern": "card_not_present_fraud",
+        "customer_id": "C06663",
+        "card_id": "C06663-K2",
+        "txn_id": "3385650",
+        "n_prior": 3,
+        "median_gap_days": 26.26
+      },
+      {
+        "case_id": "CC-5213",
+        "pattern": "out_of_region_use",
+        "customer_id": "C08450",
+        "card_id": "C08450-K2",
+        "txn_id": "3390201",
+        "n_prior": 3,
+        "median_gap_days": 27.18
+      },
+      {
+        "case_id": "CC-5215",
+        "pattern": "card_not_present_fraud",
+        "customer_id": "C11597",
+        "card_id": "C11597-K2",
+        "txn_id": "3385143",
+        "n_prior": 3,
+        "median_gap_days": 28.92
+      },
+      {
+        "case_id": "CC-5223",
+        "pattern": "account_takeover",
+        "customer_id": "C03218",
+        "card_id": "C03218-K2",
+        "txn_id": "3376099",
+        "n_prior": 4,
+        "median_gap_days": 30.4
+      },
+      {
+        "case_id": "CC-5257",
+        "pattern": "account_takeover",
+        "customer_id": "C04984",
+        "card_id": "C04984-K2",
+        "txn_id": "3392024",
+        "n_prior": 3,
+        "median_gap_days": 31.24
+      },
+      {
+        "case_id": "CC-5535",
+        "pattern": "card_not_present_fraud",
+        "customer_id": "C06663",
+        "card_id": "C06663-K2",
+        "txn_id": "3414823",
+        "n_prior": 3,
+        "median_gap_days": 29.38
+      },
+      {
+        "case_id": "CC-5572",
+        "pattern": "out_of_region_use",
+        "customer_id": "C09933",
+        "card_id": "C09933-K2",
+        "txn_id": "3504015",
+        "n_prior": 3,
+        "median_gap_days": 29.56
+      }
+    ],
+    "cleared_cases_total": 910,
+    "cleared_cases_blocked_historically": 0
+  },
+  "comparison": {
+    "n": 38,
+    "agree": 38,
+    "disagree": 0,
+    "agree_ids": [
+      "HHF-001",
+      "HHF-002",
+      "HHF-003",
+      "HHF-004",
+      "HHF-005",
+      "HHF-006",
+      "HHF-007",
+      "HHF-008",
+      "HHF-009",
+      "HHF-010",
+      "HHF-011",
+      "HHF-012",
+      "HHF-013",
+      "HHF-014",
+      "HHF-015",
+      "HHF-016",
+      "HHF-017",
+      "HHF-018",
+      "HHG-001",
+      "HHG-002",
+      "HHG-003",
+      "HHG-004",
+      "HHG-005",
+      "HHG-006",
+      "HHG-007",
+      "HHG-008",
+      "HHG-009",
+      "HHG-010",
+      "HHG-011",
+      "HHG-012",
+      "HHG-013",
+      "HHG-014",
+      "HHG-015",
+      "HHG-016",
+      "HHG-017",
+      "HHG-018",
+      "HHG-019",
+      "HHG-020"
+    ],
+    "disagree_ids": [],
+    "rule_fires_ids": [],
+    "cases": [
+      {
+        "case_id": "HHF-001",
+        "agree": true,
+        "kind": "agree: rule does not apply",
+        "rule_fires": false,
+        "recurring_match": false,
+        "match": null,
+        "rule_actions": [],
+        "trigger_type": "analyst_request",
+        "flagged_txn_id": "3660108",
+        "agent_verdict": "fraud",
+        "agent_final_actions": [
+          "CREATE_CASE",
+          "MONITOR_CONNECTED_CARDS",
+          "BLOCK_CARD",
+          "FILE_REPORT",
+          "ESCALATE_TO_ANALYST"
+        ],
+        "agent_cites_R7": false,
+        "as_of": "2017-01-15 01:25:19",
+        "query": "WITH target AS ( SELECT t.id, t.TransactionID, t.card_id, t.customer_id, t.ts, t.amt, t.product_cd, CASE WHEN t.channel = 'in_person' THEN t.addr1 ELSE t.p_email END AS merchant FROM txc t WHERE t.id IN ('3660108') ), prior AS ( SELECT g.id AS target_id, p.ts FROM target g JOIN txc p ON p.card_id = g.card_id AND p.product_cd = g.product_cd AND p.ts < g.ts AND p.ts <= '2017-01-15 01:25:19' AND abs(p.amt - g.amt) <= 0.01 * g.amt AND (CASE WHEN p.channel = 'in_person' THEN p.addr1 ELSE p.p_email END) = g.merchant AND g.merchant <> '' ), gaps AS ( SELECT target_id, date_diff('second', lag(ts) OVER (PARTITION BY target_id ORDER BY ts), ts) / 86400.0 AS gap_d FROM (SELECT target_id, ts FROM prior UNION ALL SELECT id, ts FROM target) ) SELECT g.id, g.card_id, g.customer_id, g.ts::VARCHAR, g.amt, g.merchant, count(x.gap_d) AS n_prior, median(x.gap_d) AS median_gap_days FROM target g JOIN gaps x ON x.target_id = g.id GROUP BY ALL HAVING count(x.gap_d) >= 2 AND median(x.gap_d) BETWEEN 25 AND 35 ORDER BY g.id",
+        "params": {
+          "trigger": "customer_report",
+          "merchant_key": "p_email (online) / addr1 (in person) + product_cd",
+          "amount_tol": 0.01,
+          "min_prior": 2,
+          "gap_min_d": 25,
+          "gap_max_d": 35,
+          "txn_id": "3660108"
+        }
+      },
+      {
+        "case_id": "HHF-002",
+        "agree": true,
+        "kind": "agree: rule does not apply",
+        "rule_fires": false,
+        "recurring_match": false,
+        "match": null,
+        "rule_actions": [],
+        "trigger_type": "analyst_request",
+        "flagged_txn_id": "3660127",
+        "agent_verdict": "fraud",
+        "agent_final_actions": [
+          "CREATE_CASE",
+          "MONITOR_CONNECTED_CARDS",
+          "BLOCK_CARD",
+          "FILE_REPORT",
+          "ESCALATE_TO_ANALYST"
+        ],
+        "agent_cites_R7": false,
+        "as_of": "2017-01-19 23:18:58",
+        "query": "WITH target AS ( SELECT t.id, t.TransactionID, t.card_id, t.customer_id, t.ts, t.amt, t.product_cd, CASE WHEN t.channel = 'in_person' THEN t.addr1 ELSE t.p_email END AS merchant FROM txc t WHERE t.id IN ('3660127') ), prior AS ( SELECT g.id AS target_id, p.ts FROM target g JOIN txc p ON p.card_id = g.card_id AND p.product_cd = g.product_cd AND p.ts < g.ts AND p.ts <= '2017-01-19 23:18:58' AND abs(p.amt - g.amt) <= 0.01 * g.amt AND (CASE WHEN p.channel = 'in_person' THEN p.addr1 ELSE p.p_email END) = g.merchant AND g.merchant <> '' ), gaps AS ( SELECT target_id, date_diff('second', lag(ts) OVER (PARTITION BY target_id ORDER BY ts), ts) / 86400.0 AS gap_d FROM (SELECT target_id, ts FROM prior UNION ALL SELECT id, ts FROM target) ) SELECT g.id, g.card_id, g.customer_id, g.ts::VARCHAR, g.amt, g.merchant, count(x.gap_d) AS n_prior, median(x.gap_d) AS median_gap_days FROM target g JOIN gaps x ON x.target_id = g.id GROUP BY ALL HAVING count(x.gap_d) >= 2 AND median(x.gap_d) BETWEEN 25 AND 35 ORDER BY g.id",
+        "params": {
+          "trigger": "customer_report",
+          "merchant_key": "p_email (online) / addr1 (in person) + product_cd",
+          "amount_tol": 0.01,
+          "min_prior": 2,
+          "gap_min_d": 25,
+          "gap_max_d": 35,
+          "txn_id": "3660127"
+        }
+      },
+      {
+        "case_id": "HHF-003",
+        "agree": true,
+        "kind": "agree: rule does not apply",
+        "rule_fires": false,
+        "recurring_match": false,
+        "match": null,
+        "rule_actions": [],
+        "trigger_type": "customer_report",
+        "flagged_txn_id": "3660153",
+        "agent_verdict": "fraud",
+        "agent_final_actions": [
+          "CREATE_CASE",
+          "MONITOR_CONNECTED_CARDS",
+          "BLOCK_CARD",
+          "FILE_REPORT",
+          "ESCALATE_TO_ANALYST"
+        ],
+        "agent_cites_R7": false,
+        "as_of": "2017-01-31 20:31:28",
+        "query": "WITH target AS ( SELECT t.id, t.TransactionID, t.card_id, t.customer_id, t.ts, t.amt, t.product_cd, CASE WHEN t.channel = 'in_person' THEN t.addr1 ELSE t.p_email END AS merchant FROM txc t WHERE t.id IN ('3660153') ), prior AS ( SELECT g.id AS target_id, p.ts FROM target g JOIN txc p ON p.card_id = g.card_id AND p.product_cd = g.product_cd AND p.ts < g.ts AND p.ts <= '2017-01-31 20:31:28' AND abs(p.amt - g.amt) <= 0.01 * g.amt AND (CASE WHEN p.channel = 'in_person' THEN p.addr1 ELSE p.p_email END) = g.merchant AND g.merchant <> '' ), gaps AS ( SELECT target_id, date_diff('second', lag(ts) OVER (PARTITION BY target_id ORDER BY ts), ts) / 86400.0 AS gap_d FROM (SELECT target_id, ts FROM prior UNION ALL SELECT id, ts FROM target) ) SELECT g.id, g.card_id, g.customer_id, g.ts::VARCHAR, g.amt, g.merchant, count(x.gap_d) AS n_prior, median(x.gap_d) AS median_gap_days FROM target g JOIN gaps x ON x.target_id = g.id GROUP BY ALL HAVING count(x.gap_d) >= 2 AND median(x.gap_d) BETWEEN 25 AND 35 ORDER BY g.id",
+        "params": {
+          "trigger": "customer_report",
+          "merchant_key": "p_email (online) / addr1 (in person) + product_cd",
+          "amount_tol": 0.01,
+          "min_prior": 2,
+          "gap_min_d": 25,
+          "gap_max_d": 35,
+          "txn_id": "3660153"
+        }
+      },
+      {
+        "case_id": "HHF-004",
+        "agree": true,
+        "kind": "agree: rule does not apply",
+        "rule_fires": false,
+        "recurring_match": false,
+        "match": null,
+        "rule_actions": [],
+        "trigger_type": "customer_report",
+        "flagged_txn_id": "3660260",
+        "agent_verdict": "fraud",
+        "agent_final_actions": [
+          "CREATE_CASE",
+          "MONITOR_CONNECTED_CARDS",
+          "BLOCK_CARD",
+          "FILE_REPORT",
+          "ESCALATE_TO_ANALYST"
+        ],
+        "agent_cites_R7": false,
+        "as_of": "2017-01-26 21:09:37",
+        "query": "WITH target AS ( SELECT t.id, t.TransactionID, t.card_id, t.customer_id, t.ts, t.amt, t.product_cd, CASE WHEN t.channel = 'in_person' THEN t.addr1 ELSE t.p_email END AS merchant FROM txc t WHERE t.id IN ('3660260') ), prior AS ( SELECT g.id AS target_id, p.ts FROM target g JOIN txc p ON p.card_id = g.card_id AND p.product_cd = g.product_cd AND p.ts < g.ts AND p.ts <= '2017-01-26 21:09:37' AND abs(p.amt - g.amt) <= 0.01 * g.amt AND (CASE WHEN p.channel = 'in_person' THEN p.addr1 ELSE p.p_email END) = g.merchant AND g.merchant <> '' ), gaps AS ( SELECT target_id, date_diff('second', lag(ts) OVER (PARTITION BY target_id ORDER BY ts), ts) / 86400.0 AS gap_d FROM (SELECT target_id, ts FROM prior UNION ALL SELECT id, ts FROM target) ) SELECT g.id, g.card_id, g.customer_id, g.ts::VARCHAR, g.amt, g.merchant, count(x.gap_d) AS n_prior, median(x.gap_d) AS median_gap_days FROM target g JOIN gaps x ON x.target_id = g.id GROUP BY ALL HAVING count(x.gap_d) >= 2 AND median(x.gap_d) BETWEEN 25 AND 35 ORDER BY g.id",
+        "params": {
+          "trigger": "customer_report",
+          "merchant_key": "p_email (online) / addr1 (in person) + product_cd",
+          "amount_tol": 0.01,
+          "min_prior": 2,
+          "gap_min_d": 25,
+          "gap_max_d": 35,
+          "txn_id": "3660260"
+        }
+      },
+      {
+        "case_id": "HHF-005",
+        "agree": true,
+        "kind": "agree: rule does not apply",
+        "rule_fires": false,
+        "recurring_match": false,
+        "match": null,
+        "rule_actions": [],
+        "trigger_type": "customer_report",
+        "flagged_txn_id": "3660250",
+        "agent_verdict": "fraud",
+        "agent_final_actions": [
+          "CREATE_CASE",
+          "MONITOR_CONNECTED_CARDS",
+          "BLOCK_CARD",
+          "FILE_REPORT",
+          "ESCALATE_TO_ANALYST"
+        ],
+        "agent_cites_R7": false,
+        "as_of": "2017-01-28 23:45:16",
+        "query": "WITH target AS ( SELECT t.id, t.TransactionID, t.card_id, t.customer_id, t.ts, t.amt, t.product_cd, CASE WHEN t.channel = 'in_person' THEN t.addr1 ELSE t.p_email END AS merchant FROM txc t WHERE t.id IN ('3660250') ), prior AS ( SELECT g.id AS target_id, p.ts FROM target g JOIN txc p ON p.card_id = g.card_id AND p.product_cd = g.product_cd AND p.ts < g.ts AND p.ts <= '2017-01-28 23:45:16' AND abs(p.amt - g.amt) <= 0.01 * g.amt AND (CASE WHEN p.channel = 'in_person' THEN p.addr1 ELSE p.p_email END) = g.merchant AND g.merchant <> '' ), gaps AS ( SELECT target_id, date_diff('second', lag(ts) OVER (PARTITION BY target_id ORDER BY ts), ts) / 86400.0 AS gap_d FROM (SELECT target_id, ts FROM prior UNION ALL SELECT id, ts FROM target) ) SELECT g.id, g.card_id, g.customer_id, g.ts::VARCHAR, g.amt, g.merchant, count(x.gap_d) AS n_prior, median(x.gap_d) AS median_gap_days FROM target g JOIN gaps x ON x.target_id = g.id GROUP BY ALL HAVING count(x.gap_d) >= 2 AND median(x.gap_d) BETWEEN 25 AND 35 ORDER BY g.id",
+        "params": {
+          "trigger": "customer_report",
+          "merchant_key": "p_email (online) / addr1 (in person) + product_cd",
+          "amount_tol": 0.01,
+          "min_prior": 2,
+          "gap_min_d": 25,
+          "gap_max_d": 35,
+          "txn_id": "3660250"
+        }
+      },
+      {
+        "case_id": "HHF-006",
+        "agree": true,
+        "kind": "agree: rule does not apply",
+        "rule_fires": false,
+        "recurring_match": false,
+        "match": null,
+        "rule_actions": [],
+        "trigger_type": "analyst_request",
+        "flagged_txn_id": "3660263",
+        "agent_verdict": "fraud",
+        "agent_final_actions": [
+          "CREATE_CASE",
+          "MONITOR_CONNECTED_CARDS",
+          "BLOCK_CARD",
+          "FILE_REPORT",
+          "ESCALATE_TO_ANALYST"
+        ],
+        "agent_cites_R7": false,
+        "as_of": "2017-01-28 10:59:42",
+        "query": "WITH target AS ( SELECT t.id, t.TransactionID, t.card_id, t.customer_id, t.ts, t.amt, t.product_cd, CASE WHEN t.channel = 'in_person' THEN t.addr1 ELSE t.p_email END AS merchant FROM txc t WHERE t.id IN ('3660263') ), prior AS ( SELECT g.id AS target_id, p.ts FROM target g JOIN txc p ON p.card_id = g.card_id AND p.product_cd = g.product_cd AND p.ts < g.ts AND p.ts <= '2017-01-28 10:59:42' AND abs(p.amt - g.amt) <= 0.01 * g.amt AND (CASE WHEN p.channel = 'in_person' THEN p.addr1 ELSE p.p_email END) = g.merchant AND g.merchant <> '' ), gaps AS ( SELECT target_id, date_diff('second', lag(ts) OVER (PARTITION BY target_id ORDER BY ts), ts) / 86400.0 AS gap_d FROM (SELECT target_id, ts FROM prior UNION ALL SELECT id, ts FROM target) ) SELECT g.id, g.card_id, g.customer_id, g.ts::VARCHAR, g.amt, g.merchant, count(x.gap_d) AS n_prior, median(x.gap_d) AS median_gap_days FROM target g JOIN gaps x ON x.target_id = g.id GROUP BY ALL HAVING count(x.gap_d) >= 2 AND median(x.gap_d) BETWEEN 25 AND 35 ORDER BY g.id",
+        "params": {
+          "trigger": "customer_report",
+          "merchant_key": "p_email (online) / addr1 (in person) + product_cd",
+          "amount_tol": 0.01,
+          "min_prior": 2,
+          "gap_min_d": 25,
+          "gap_max_d": 35,
+          "txn_id": "3660263"
+        }
+      },
+      {
+        "case_id": "HHF-007",
+        "agree": true,
+        "kind": "agree: rule does not apply",
+        "rule_fires": false,
+        "recurring_match": false,
+        "match": null,
+        "rule_actions": [],
+        "trigger_type": "customer_report",
+        "flagged_txn_id": "3660350",
+        "agent_verdict": "fraud",
+        "agent_final_actions": [
+          "CREATE_CASE",
+          "STEP_UP_AUTH",
+          "DECLINE_TRANSACTION",
+          "BLOCK_CARD"
+        ],
+        "agent_cites_R7": false,
+        "as_of": "2017-01-14 15:57:30",
+        "query": "WITH target AS ( SELECT t.id, t.TransactionID, t.card_id, t.customer_id, t.ts, t.amt, t.product_cd, CASE WHEN t.channel = 'in_person' THEN t.addr1 ELSE t.p_email END AS merchant FROM txc t WHERE t.id IN ('3660350') ), prior AS ( SELECT g.id AS target_id, p.ts FROM target g JOIN txc p ON p.card_id = g.card_id AND p.product_cd = g.product_cd AND p.ts < g.ts AND p.ts <= '2017-01-14 15:57:30' AND abs(p.amt - g.amt) <= 0.01 * g.amt AND (CASE WHEN p.channel = 'in_person' THEN p.addr1 ELSE p.p_email END) = g.merchant AND g.merchant <> '' ), gaps AS ( SELECT target_id, date_diff('second', lag(ts) OVER (PARTITION BY target_id ORDER BY ts), ts) / 86400.0 AS gap_d FROM (SELECT target_id, ts FROM prior UNION ALL SELECT id, ts FROM target) ) SELECT g.id, g.card_id, g.customer_id, g.ts::VARCHAR, g.amt, g.merchant, count(x.gap_d) AS n_prior, median(x.gap_d) AS median_gap_days FROM target g JOIN gaps x ON x.target_id = g.id GROUP BY ALL HAVING count(x.gap_d) >= 2 AND median(x.gap_d) BETWEEN 25 AND 35 ORDER BY g.id",
+        "params": {
+          "trigger": "customer_report",
+          "merchant_key": "p_email (online) / addr1 (in person) + product_cd",
+          "amount_tol": 0.01,
+          "min_prior": 2,
+          "gap_min_d": 25,
+          "gap_max_d": 35,
+          "txn_id": "3660350"
+        }
+      },
+      {
+        "case_id": "HHF-008",
+        "agree": true,
+        "kind": "agree: rule does not apply",
+        "rule_fires": false,
+        "recurring_match": false,
+        "match": null,
+        "rule_actions": [],
+        "trigger_type": "risk_score",
+        "flagged_txn_id": "3660353",
+        "agent_verdict": "legitimate",
+        "agent_final_actions": [
+          "CREATE_CASE",
+          "ALLOW_TRANSACTION",
+          "CLOSE_NO_FRAUD"
+        ],
+        "agent_cites_R7": false,
+        "as_of": "2017-01-21 13:23:58",
+        "query": "WITH target AS ( SELECT t.id, t.TransactionID, t.card_id, t.customer_id, t.ts, t.amt, t.product_cd, CASE WHEN t.channel = 'in_person' THEN t.addr1 ELSE t.p_email END AS merchant FROM txc t WHERE t.id IN ('3660353') ), prior AS ( SELECT g.id AS target_id, p.ts FROM target g JOIN txc p ON p.card_id = g.card_id AND p.product_cd = g.product_cd AND p.ts < g.ts AND p.ts <= '2017-01-21 13:23:58' AND abs(p.amt - g.amt) <= 0.01 * g.amt AND (CASE WHEN p.channel = 'in_person' THEN p.addr1 ELSE p.p_email END) = g.merchant AND g.merchant <> '' ), gaps AS ( SELECT target_id, date_diff('second', lag(ts) OVER (PARTITION BY target_id ORDER BY ts), ts) / 86400.0 AS gap_d FROM (SELECT target_id, ts FROM prior UNION ALL SELECT id, ts FROM target) ) SELECT g.id, g.card_id, g.customer_id, g.ts::VARCHAR, g.amt, g.merchant, count(x.gap_d) AS n_prior, median(x.gap_d) AS median_gap_days FROM target g JOIN gaps x ON x.target_id = g.id GROUP BY ALL HAVING count(x.gap_d) >= 2 AND median(x.gap_d) BETWEEN 25 AND 35 ORDER BY g.id",
+        "params": {
+          "trigger": "customer_report",
+          "merchant_key": "p_email (online) / addr1 (in person) + product_cd",
+          "amount_tol": 0.01,
+          "min_prior": 2,
+          "gap_min_d": 25,
+          "gap_max_d": 35,
+          "txn_id": "3660353"
+        }
+      },
+      {
+        "case_id": "HHF-009",
+        "agree": true,
+        "kind": "agree: rule does not apply",
+        "rule_fires": false,
+        "recurring_match": false,
+        "match": null,
+        "rule_actions": [],
+        "trigger_type": "risk_score",
+        "flagged_txn_id": "3660355",
+        "agent_verdict": "legitimate",
+        "agent_final_actions": [
+          "CREATE_CASE",
+          "ALLOW_TRANSACTION",
+          "CLOSE_NO_FRAUD"
+        ],
+        "agent_cites_R7": false,
+        "as_of": "2017-01-27 18:08:36",
+        "query": "WITH target AS ( SELECT t.id, t.TransactionID, t.card_id, t.customer_id, t.ts, t.amt, t.product_cd, CASE WHEN t.channel = 'in_person' THEN t.addr1 ELSE t.p_email END AS merchant FROM txc t WHERE t.id IN ('3660355') ), prior AS ( SELECT g.id AS target_id, p.ts FROM target g JOIN txc p ON p.card_id = g.card_id AND p.product_cd = g.product_cd AND p.ts < g.ts AND p.ts <= '2017-01-27 18:08:36' AND abs(p.amt - g.amt) <= 0.01 * g.amt AND (CASE WHEN p.channel = 'in_person' THEN p.addr1 ELSE p.p_email END) = g.merchant AND g.merchant <> '' ), gaps AS ( SELECT target_id, date_diff('second', lag(ts) OVER (PARTITION BY target_id ORDER BY ts), ts) / 86400.0 AS gap_d FROM (SELECT target_id, ts FROM prior UNION ALL SELECT id, ts FROM target) ) SELECT g.id, g.card_id, g.customer_id, g.ts::VARCHAR, g.amt, g.merchant, count(x.gap_d) AS n_prior, median(x.gap_d) AS median_gap_days FROM target g JOIN gaps x ON x.target_id = g.id GROUP BY ALL HAVING count(x.gap_d) >= 2 AND median(x.gap_d) BETWEEN 25 AND 35 ORDER BY g.id",
+        "params": {
+          "trigger": "customer_report",
+          "merchant_key": "p_email (online) / addr1 (in person) + product_cd",
+          "amount_tol": 0.01,
+          "min_prior": 2,
+          "gap_min_d": 25,
+          "gap_max_d": 35,
+          "txn_id": "3660355"
+        }
+      },
+      {
+        "case_id": "HHF-010",
+        "agree": true,
+        "kind": "agree: rule does not apply",
+        "rule_fires": false,
+        "recurring_match": false,
+        "match": null,
+        "rule_actions": [],
+        "trigger_type": "risk_score",
+        "flagged_txn_id": "3631383",
+        "agent_verdict": "uncertain",
+        "agent_final_actions": [
+          "CREATE_CASE",
+          "MONITOR_CARD",
+          "DECLINE_TRANSACTION",
+          "ESCALATE_TO_ANALYST"
+        ],
+        "agent_cites_R7": false,
+        "as_of": "2017-01-08 16:13:05",
+        "query": "WITH target AS ( SELECT t.id, t.TransactionID, t.card_id, t.customer_id, t.ts, t.amt, t.product_cd, CASE WHEN t.channel = 'in_person' THEN t.addr1 ELSE t.p_email END AS merchant FROM txc t WHERE t.id IN ('3631383') ), prior AS ( SELECT g.id AS target_id, p.ts FROM target g JOIN txc p ON p.card_id = g.card_id AND p.product_cd = g.product_cd AND p.ts < g.ts AND p.ts <= '2017-01-08 16:13:05' AND abs(p.amt - g.amt) <= 0.01 * g.amt AND (CASE WHEN p.channel = 'in_person' THEN p.addr1 ELSE p.p_email END) = g.merchant AND g.merchant <> '' ), gaps AS ( SELECT target_id, date_diff('second', lag(ts) OVER (PARTITION BY target_id ORDER BY ts), ts) / 86400.0 AS gap_d FROM (SELECT target_id, ts FROM prior UNION ALL SELECT id, ts FROM target) ) SELECT g.id, g.card_id, g.customer_id, g.ts::VARCHAR, g.amt, g.merchant, count(x.gap_d) AS n_prior, median(x.gap_d) AS median_gap_days FROM target g JOIN gaps x ON x.target_id = g.id GROUP BY ALL HAVING count(x.gap_d) >= 2 AND median(x.gap_d) BETWEEN 25 AND 35 ORDER BY g.id",
+        "params": {
+          "trigger": "customer_report",
+          "merchant_key": "p_email (online) / addr1 (in person) + product_cd",
+          "amount_tol": 0.01,
+          "min_prior": 2,
+          "gap_min_d": 25,
+          "gap_max_d": 35,
+          "txn_id": "3631383"
+        }
+      },
+      {
+        "case_id": "HHF-011",
+        "agree": true,
+        "kind": "agree: rule does not apply",
+        "rule_fires": false,
+        "recurring_match": false,
+        "match": null,
+        "rule_actions": [],
+        "trigger_type": "risk_score",
+        "flagged_txn_id": "3640919",
+        "agent_verdict": "legitimate",
+        "agent_final_actions": [
+          "CREATE_CASE",
+          "ALLOW_TRANSACTION",
+          "CLOSE_NO_FRAUD"
+        ],
+        "agent_cites_R7": false,
+        "as_of": "2017-01-20 09:06:19",
+        "query": "WITH target AS ( SELECT t.id, t.TransactionID, t.card_id, t.customer_id, t.ts, t.amt, t.product_cd, CASE WHEN t.channel = 'in_person' THEN t.addr1 ELSE t.p_email END AS merchant FROM txc t WHERE t.id IN ('3640919') ), prior AS ( SELECT g.id AS target_id, p.ts FROM target g JOIN txc p ON p.card_id = g.card_id AND p.product_cd = g.product_cd AND p.ts < g.ts AND p.ts <= '2017-01-20 09:06:19' AND abs(p.amt - g.amt) <= 0.01 * g.amt AND (CASE WHEN p.channel = 'in_person' THEN p.addr1 ELSE p.p_email END) = g.merchant AND g.merchant <> '' ), gaps AS ( SELECT target_id, date_diff('second', lag(ts) OVER (PARTITION BY target_id ORDER BY ts), ts) / 86400.0 AS gap_d FROM (SELECT target_id, ts FROM prior UNION ALL SELECT id, ts FROM target) ) SELECT g.id, g.card_id, g.customer_id, g.ts::VARCHAR, g.amt, g.merchant, count(x.gap_d) AS n_prior, median(x.gap_d) AS median_gap_days FROM target g JOIN gaps x ON x.target_id = g.id GROUP BY ALL HAVING count(x.gap_d) >= 2 AND median(x.gap_d) BETWEEN 25 AND 35 ORDER BY g.id",
+        "params": {
+          "trigger": "customer_report",
+          "merchant_key": "p_email (online) / addr1 (in person) + product_cd",
+          "amount_tol": 0.01,
+          "min_prior": 2,
+          "gap_min_d": 25,
+          "gap_max_d": 35,
+          "txn_id": "3640919"
+        }
+      },
+      {
+        "case_id": "HHF-012",
+        "agree": true,
+        "kind": "agree: rule does not apply",
+        "rule_fires": false,
+        "recurring_match": false,
+        "match": null,
+        "rule_actions": [],
+        "trigger_type": "risk_score",
+        "flagged_txn_id": "3655457",
+        "agent_verdict": "legitimate",
+        "agent_final_actions": [
+          "CREATE_CASE",
+          "ALLOW_TRANSACTION",
+          "CLOSE_NO_FRAUD"
+        ],
+        "agent_cites_R7": false,
+        "as_of": "2017-01-09 04:34:19",
+        "query": "WITH target AS ( SELECT t.id, t.TransactionID, t.card_id, t.customer_id, t.ts, t.amt, t.product_cd, CASE WHEN t.channel = 'in_person' THEN t.addr1 ELSE t.p_email END AS merchant FROM txc t WHERE t.id IN ('3655457') ), prior AS ( SELECT g.id AS target_id, p.ts FROM target g JOIN txc p ON p.card_id = g.card_id AND p.product_cd = g.product_cd AND p.ts < g.ts AND p.ts <= '2017-01-09 04:34:19' AND abs(p.amt - g.amt) <= 0.01 * g.amt AND (CASE WHEN p.channel = 'in_person' THEN p.addr1 ELSE p.p_email END) = g.merchant AND g.merchant <> '' ), gaps AS ( SELECT target_id, date_diff('second', lag(ts) OVER (PARTITION BY target_id ORDER BY ts), ts) / 86400.0 AS gap_d FROM (SELECT target_id, ts FROM prior UNION ALL SELECT id, ts FROM target) ) SELECT g.id, g.card_id, g.customer_id, g.ts::VARCHAR, g.amt, g.merchant, count(x.gap_d) AS n_prior, median(x.gap_d) AS median_gap_days FROM target g JOIN gaps x ON x.target_id = g.id GROUP BY ALL HAVING count(x.gap_d) >= 2 AND median(x.gap_d) BETWEEN 25 AND 35 ORDER BY g.id",
+        "params": {
+          "trigger": "customer_report",
+          "merchant_key": "p_email (online) / addr1 (in person) + product_cd",
+          "amount_tol": 0.01,
+          "min_prior": 2,
+          "gap_min_d": 25,
+          "gap_max_d": 35,
+          "txn_id": "3655457"
+        }
+      },
+      {
+        "case_id": "HHF-013",
+        "agree": true,
+        "kind": "agree: rule does not apply",
+        "rule_fires": false,
+        "recurring_match": false,
+        "match": null,
+        "rule_actions": [],
+        "trigger_type": "risk_score",
+        "flagged_txn_id": "3626720",
+        "agent_verdict": "uncertain",
+        "agent_final_actions": [
+          "CREATE_CASE",
+          "MONITOR_CARD",
+          "MONITOR_CONNECTED_CARDS",
+          "DECLINE_TRANSACTION",
+          "ESCALATE_TO_ANALYST"
+        ],
+        "agent_cites_R7": false,
+        "as_of": "2017-01-26 20:40:00",
+        "query": "WITH target AS ( SELECT t.id, t.TransactionID, t.card_id, t.customer_id, t.ts, t.amt, t.product_cd, CASE WHEN t.channel = 'in_person' THEN t.addr1 ELSE t.p_email END AS merchant FROM txc t WHERE t.id IN ('3626720') ), prior AS ( SELECT g.id AS target_id, p.ts FROM target g JOIN txc p ON p.card_id = g.card_id AND p.product_cd = g.product_cd AND p.ts < g.ts AND p.ts <= '2017-01-26 20:40:00' AND abs(p.amt - g.amt) <= 0.01 * g.amt AND (CASE WHEN p.channel = 'in_person' THEN p.addr1 ELSE p.p_email END) = g.merchant AND g.merchant <> '' ), gaps AS ( SELECT target_id, date_diff('second', lag(ts) OVER (PARTITION BY target_id ORDER BY ts), ts) / 86400.0 AS gap_d FROM (SELECT target_id, ts FROM prior UNION ALL SELECT id, ts FROM target) ) SELECT g.id, g.card_id, g.customer_id, g.ts::VARCHAR, g.amt, g.merchant, count(x.gap_d) AS n_prior, median(x.gap_d) AS median_gap_days FROM target g JOIN gaps x ON x.target_id = g.id GROUP BY ALL HAVING count(x.gap_d) >= 2 AND median(x.gap_d) BETWEEN 25 AND 35 ORDER BY g.id",
+        "params": {
+          "trigger": "customer_report",
+          "merchant_key": "p_email (online) / addr1 (in person) + product_cd",
+          "amount_tol": 0.01,
+          "min_prior": 2,
+          "gap_min_d": 25,
+          "gap_max_d": 35,
+          "txn_id": "3626720"
+        }
+      },
+      {
+        "case_id": "HHF-014",
+        "agree": true,
+        "kind": "agree: rule does not apply",
+        "rule_fires": false,
+        "recurring_match": false,
+        "match": null,
+        "rule_actions": [],
+        "trigger_type": "risk_score",
+        "flagged_txn_id": "3602445",
+        "agent_verdict": "uncertain",
+        "agent_final_actions": [
+          "CREATE_CASE",
+          "MONITOR_CARD",
+          "DECLINE_TRANSACTION",
+          "ESCALATE_TO_ANALYST"
+        ],
+        "agent_cites_R7": false,
+        "as_of": "2017-01-01 05:00:25",
+        "query": "WITH target AS ( SELECT t.id, t.TransactionID, t.card_id, t.customer_id, t.ts, t.amt, t.product_cd, CASE WHEN t.channel = 'in_person' THEN t.addr1 ELSE t.p_email END AS merchant FROM txc t WHERE t.id IN ('3602445') ), prior AS ( SELECT g.id AS target_id, p.ts FROM target g JOIN txc p ON p.card_id = g.card_id AND p.product_cd = g.product_cd AND p.ts < g.ts AND p.ts <= '2017-01-01 05:00:25' AND abs(p.amt - g.amt) <= 0.01 * g.amt AND (CASE WHEN p.channel = 'in_person' THEN p.addr1 ELSE p.p_email END) = g.merchant AND g.merchant <> '' ), gaps AS ( SELECT target_id, date_diff('second', lag(ts) OVER (PARTITION BY target_id ORDER BY ts), ts) / 86400.0 AS gap_d FROM (SELECT target_id, ts FROM prior UNION ALL SELECT id, ts FROM target) ) SELECT g.id, g.card_id, g.customer_id, g.ts::VARCHAR, g.amt, g.merchant, count(x.gap_d) AS n_prior, median(x.gap_d) AS median_gap_days FROM target g JOIN gaps x ON x.target_id = g.id GROUP BY ALL HAVING count(x.gap_d) >= 2 AND median(x.gap_d) BETWEEN 25 AND 35 ORDER BY g.id",
+        "params": {
+          "trigger": "customer_report",
+          "merchant_key": "p_email (online) / addr1 (in person) + product_cd",
+          "amount_tol": 0.01,
+          "min_prior": 2,
+          "gap_min_d": 25,
+          "gap_max_d": 35,
+          "txn_id": "3602445"
+        }
+      },
+      {
+        "case_id": "HHF-015",
+        "agree": true,
+        "kind": "agree: rule does not apply",
+        "rule_fires": false,
+        "recurring_match": false,
+        "match": null,
+        "rule_actions": [],
+        "trigger_type": "risk_score",
+        "flagged_txn_id": "3601725",
+        "agent_verdict": "legitimate",
+        "agent_final_actions": [
+          "CREATE_CASE",
+          "ALLOW_TRANSACTION",
+          "CLOSE_NO_FRAUD"
+        ],
+        "agent_cites_R7": false,
+        "as_of": "2017-01-22 12:21:48",
+        "query": "WITH target AS ( SELECT t.id, t.TransactionID, t.card_id, t.customer_id, t.ts, t.amt, t.product_cd, CASE WHEN t.channel = 'in_person' THEN t.addr1 ELSE t.p_email END AS merchant FROM txc t WHERE t.id IN ('3601725') ), prior AS ( SELECT g.id AS target_id, p.ts FROM target g JOIN txc p ON p.card_id = g.card_id AND p.product_cd = g.product_cd AND p.ts < g.ts AND p.ts <= '2017-01-22 12:21:48' AND abs(p.amt - g.amt) <= 0.01 * g.amt AND (CASE WHEN p.channel = 'in_person' THEN p.addr1 ELSE p.p_email END) = g.merchant AND g.merchant <> '' ), gaps AS ( SELECT target_id, date_diff('second', lag(ts) OVER (PARTITION BY target_id ORDER BY ts), ts) / 86400.0 AS gap_d FROM (SELECT target_id, ts FROM prior UNION ALL SELECT id, ts FROM target) ) SELECT g.id, g.card_id, g.customer_id, g.ts::VARCHAR, g.amt, g.merchant, count(x.gap_d) AS n_prior, median(x.gap_d) AS median_gap_days FROM target g JOIN gaps x ON x.target_id = g.id GROUP BY ALL HAVING count(x.gap_d) >= 2 AND median(x.gap_d) BETWEEN 25 AND 35 ORDER BY g.id",
+        "params": {
+          "trigger": "customer_report",
+          "merchant_key": "p_email (online) / addr1 (in person) + product_cd",
+          "amount_tol": 0.01,
+          "min_prior": 2,
+          "gap_min_d": 25,
+          "gap_max_d": 35,
+          "txn_id": "3601725"
+        }
+      },
+      {
+        "case_id": "HHF-016",
+        "agree": true,
+        "kind": "agree: rule does not apply",
+        "rule_fires": false,
+        "recurring_match": false,
+        "match": null,
+        "rule_actions": [],
+        "trigger_type": "risk_score",
+        "flagged_txn_id": "3611043",
+        "agent_verdict": "legitimate",
+        "agent_final_actions": [
+          "CREATE_CASE",
+          "ALLOW_TRANSACTION",
+          "CLOSE_NO_FRAUD"
+        ],
+        "agent_cites_R7": false,
+        "as_of": "2017-01-01 03:07:47",
+        "query": "WITH target AS ( SELECT t.id, t.TransactionID, t.card_id, t.customer_id, t.ts, t.amt, t.product_cd, CASE WHEN t.channel = 'in_person' THEN t.addr1 ELSE t.p_email END AS merchant FROM txc t WHERE t.id IN ('3611043') ), prior AS ( SELECT g.id AS target_id, p.ts FROM target g JOIN txc p ON p.card_id = g.card_id AND p.product_cd = g.product_cd AND p.ts < g.ts AND p.ts <= '2017-01-01 03:07:47' AND abs(p.amt - g.amt) <= 0.01 * g.amt AND (CASE WHEN p.channel = 'in_person' THEN p.addr1 ELSE p.p_email END) = g.merchant AND g.merchant <> '' ), gaps AS ( SELECT target_id, date_diff('second', lag(ts) OVER (PARTITION BY target_id ORDER BY ts), ts) / 86400.0 AS gap_d FROM (SELECT target_id, ts FROM prior UNION ALL SELECT id, ts FROM target) ) SELECT g.id, g.card_id, g.customer_id, g.ts::VARCHAR, g.amt, g.merchant, count(x.gap_d) AS n_prior, median(x.gap_d) AS median_gap_days FROM target g JOIN gaps x ON x.target_id = g.id GROUP BY ALL HAVING count(x.gap_d) >= 2 AND median(x.gap_d) BETWEEN 25 AND 35 ORDER BY g.id",
+        "params": {
+          "trigger": "customer_report",
+          "merchant_key": "p_email (online) / addr1 (in person) + product_cd",
+          "amount_tol": 0.01,
+          "min_prior": 2,
+          "gap_min_d": 25,
+          "gap_max_d": 35,
+          "txn_id": "3611043"
+        }
+      },
+      {
+        "case_id": "HHF-017",
+        "agree": true,
+        "kind": "agree: rule does not apply",
+        "rule_fires": false,
+        "recurring_match": false,
+        "match": null,
+        "rule_actions": [],
+        "trigger_type": "risk_score",
+        "flagged_txn_id": "3638829",
+        "agent_verdict": "legitimate",
+        "agent_final_actions": [
+          "CREATE_CASE",
+          "ALLOW_TRANSACTION",
+          "CLOSE_NO_FRAUD"
+        ],
+        "agent_cites_R7": false,
+        "as_of": "2017-01-01 02:02:06",
+        "query": "WITH target AS ( SELECT t.id, t.TransactionID, t.card_id, t.customer_id, t.ts, t.amt, t.product_cd, CASE WHEN t.channel = 'in_person' THEN t.addr1 ELSE t.p_email END AS merchant FROM txc t WHERE t.id IN ('3638829') ), prior AS ( SELECT g.id AS target_id, p.ts FROM target g JOIN txc p ON p.card_id = g.card_id AND p.product_cd = g.product_cd AND p.ts < g.ts AND p.ts <= '2017-01-01 02:02:06' AND abs(p.amt - g.amt) <= 0.01 * g.amt AND (CASE WHEN p.channel = 'in_person' THEN p.addr1 ELSE p.p_email END) = g.merchant AND g.merchant <> '' ), gaps AS ( SELECT target_id, date_diff('second', lag(ts) OVER (PARTITION BY target_id ORDER BY ts), ts) / 86400.0 AS gap_d FROM (SELECT target_id, ts FROM prior UNION ALL SELECT id, ts FROM target) ) SELECT g.id, g.card_id, g.customer_id, g.ts::VARCHAR, g.amt, g.merchant, count(x.gap_d) AS n_prior, median(x.gap_d) AS median_gap_days FROM target g JOIN gaps x ON x.target_id = g.id GROUP BY ALL HAVING count(x.gap_d) >= 2 AND median(x.gap_d) BETWEEN 25 AND 35 ORDER BY g.id",
+        "params": {
+          "trigger": "customer_report",
+          "merchant_key": "p_email (online) / addr1 (in person) + product_cd",
+          "amount_tol": 0.01,
+          "min_prior": 2,
+          "gap_min_d": 25,
+          "gap_max_d": 35,
+          "txn_id": "3638829"
+        }
+      },
+      {
+        "case_id": "HHF-018",
+        "agree": true,
+        "kind": "agree: rule does not apply",
+        "rule_fires": false,
+        "recurring_match": false,
+        "match": null,
+        "rule_actions": [],
+        "trigger_type": "risk_score",
+        "flagged_txn_id": "3612011",
+        "agent_verdict": "legitimate",
+        "agent_final_actions": [
+          "CREATE_CASE",
+          "ALLOW_TRANSACTION",
+          "CLOSE_NO_FRAUD"
+        ],
+        "agent_cites_R7": false,
+        "as_of": "2017-01-01 18:29:48",
+        "query": "WITH target AS ( SELECT t.id, t.TransactionID, t.card_id, t.customer_id, t.ts, t.amt, t.product_cd, CASE WHEN t.channel = 'in_person' THEN t.addr1 ELSE t.p_email END AS merchant FROM txc t WHERE t.id IN ('3612011') ), prior AS ( SELECT g.id AS target_id, p.ts FROM target g JOIN txc p ON p.card_id = g.card_id AND p.product_cd = g.product_cd AND p.ts < g.ts AND p.ts <= '2017-01-01 18:29:48' AND abs(p.amt - g.amt) <= 0.01 * g.amt AND (CASE WHEN p.channel = 'in_person' THEN p.addr1 ELSE p.p_email END) = g.merchant AND g.merchant <> '' ), gaps AS ( SELECT target_id, date_diff('second', lag(ts) OVER (PARTITION BY target_id ORDER BY ts), ts) / 86400.0 AS gap_d FROM (SELECT target_id, ts FROM prior UNION ALL SELECT id, ts FROM target) ) SELECT g.id, g.card_id, g.customer_id, g.ts::VARCHAR, g.amt, g.merchant, count(x.gap_d) AS n_prior, median(x.gap_d) AS median_gap_days FROM target g JOIN gaps x ON x.target_id = g.id GROUP BY ALL HAVING count(x.gap_d) >= 2 AND median(x.gap_d) BETWEEN 25 AND 35 ORDER BY g.id",
+        "params": {
+          "trigger": "customer_report",
+          "merchant_key": "p_email (online) / addr1 (in person) + product_cd",
+          "amount_tol": 0.01,
+          "min_prior": 2,
+          "gap_min_d": 25,
+          "gap_max_d": 35,
+          "txn_id": "3612011"
+        }
+      },
+      {
+        "case_id": "HHG-001",
+        "agree": true,
+        "kind": "agree: rule does not apply",
+        "rule_fires": false,
+        "recurring_match": false,
+        "match": null,
+        "rule_actions": [],
+        "trigger_type": "risk_score",
+        "flagged_txn_id": "3514030",
+        "agent_verdict": "legitimate",
+        "agent_final_actions": [
+          "CREATE_CASE",
+          "ALLOW_TRANSACTION",
+          "CLOSE_NO_FRAUD"
+        ],
+        "agent_cites_R7": false,
+        "as_of": "2016-12-05 01:55:28",
+        "query": "WITH target AS ( SELECT t.id, t.TransactionID, t.card_id, t.customer_id, t.ts, t.amt, t.product_cd, CASE WHEN t.channel = 'in_person' THEN t.addr1 ELSE t.p_email END AS merchant FROM txc t WHERE t.id IN ('3514030') ), prior AS ( SELECT g.id AS target_id, p.ts FROM target g JOIN txc p ON p.card_id = g.card_id AND p.product_cd = g.product_cd AND p.ts < g.ts AND p.ts <= '2016-12-05 01:55:28' AND abs(p.amt - g.amt) <= 0.01 * g.amt AND (CASE WHEN p.channel = 'in_person' THEN p.addr1 ELSE p.p_email END) = g.merchant AND g.merchant <> '' ), gaps AS ( SELECT target_id, date_diff('second', lag(ts) OVER (PARTITION BY target_id ORDER BY ts), ts) / 86400.0 AS gap_d FROM (SELECT target_id, ts FROM prior UNION ALL SELECT id, ts FROM target) ) SELECT g.id, g.card_id, g.customer_id, g.ts::VARCHAR, g.amt, g.merchant, count(x.gap_d) AS n_prior, median(x.gap_d) AS median_gap_days FROM target g JOIN gaps x ON x.target_id = g.id GROUP BY ALL HAVING count(x.gap_d) >= 2 AND median(x.gap_d) BETWEEN 25 AND 35 ORDER BY g.id",
+        "params": {
+          "trigger": "customer_report",
+          "merchant_key": "p_email (online) / addr1 (in person) + product_cd",
+          "amount_tol": 0.01,
+          "min_prior": 2,
+          "gap_min_d": 25,
+          "gap_max_d": 35,
+          "txn_id": "3514030"
+        }
+      },
+      {
+        "case_id": "HHG-002",
+        "agree": true,
+        "kind": "agree: rule does not apply",
+        "rule_fires": false,
+        "recurring_match": false,
+        "match": null,
+        "rule_actions": [],
+        "trigger_type": "risk_score",
+        "flagged_txn_id": "3478782",
+        "agent_verdict": "fraud",
+        "agent_final_actions": [
+          "CREATE_CASE",
+          "BLOCK_CARD"
+        ],
+        "agent_cites_R7": false,
+        "as_of": "2016-11-22 23:27:07",
+        "query": "WITH target AS ( SELECT t.id, t.TransactionID, t.card_id, t.customer_id, t.ts, t.amt, t.product_cd, CASE WHEN t.channel = 'in_person' THEN t.addr1 ELSE t.p_email END AS merchant FROM txc t WHERE t.id IN ('3478782') ), prior AS ( SELECT g.id AS target_id, p.ts FROM target g JOIN txc p ON p.card_id = g.card_id AND p.product_cd = g.product_cd AND p.ts < g.ts AND p.ts <= '2016-11-22 23:27:07' AND abs(p.amt - g.amt) <= 0.01 * g.amt AND (CASE WHEN p.channel = 'in_person' THEN p.addr1 ELSE p.p_email END) = g.merchant AND g.merchant <> '' ), gaps AS ( SELECT target_id, date_diff('second', lag(ts) OVER (PARTITION BY target_id ORDER BY ts), ts) / 86400.0 AS gap_d FROM (SELECT target_id, ts FROM prior UNION ALL SELECT id, ts FROM target) ) SELECT g.id, g.card_id, g.customer_id, g.ts::VARCHAR, g.amt, g.merchant, count(x.gap_d) AS n_prior, median(x.gap_d) AS median_gap_days FROM target g JOIN gaps x ON x.target_id = g.id GROUP BY ALL HAVING count(x.gap_d) >= 2 AND median(x.gap_d) BETWEEN 25 AND 35 ORDER BY g.id",
+        "params": {
+          "trigger": "customer_report",
+          "merchant_key": "p_email (online) / addr1 (in person) + product_cd",
+          "amount_tol": 0.01,
+          "min_prior": 2,
+          "gap_min_d": 25,
+          "gap_max_d": 35,
+          "txn_id": "3478782"
+        }
+      },
+      {
+        "case_id": "HHG-003",
+        "agree": true,
+        "kind": "agree: rule does not apply",
+        "rule_fires": false,
+        "recurring_match": false,
+        "match": null,
+        "rule_actions": [],
+        "trigger_type": "customer_report",
+        "flagged_txn_id": "3530164",
+        "agent_verdict": "uncertain",
+        "agent_final_actions": [
+          "CREATE_CASE",
+          "BLOCK_CARD"
+        ],
+        "agent_cites_R7": true,
+        "as_of": "2016-12-10 15:01:21",
+        "query": "WITH target AS ( SELECT t.id, t.TransactionID, t.card_id, t.customer_id, t.ts, t.amt, t.product_cd, CASE WHEN t.channel = 'in_person' THEN t.addr1 ELSE t.p_email END AS merchant FROM txc t WHERE t.id IN ('3530164') ), prior AS ( SELECT g.id AS target_id, p.ts FROM target g JOIN txc p ON p.card_id = g.card_id AND p.product_cd = g.product_cd AND p.ts < g.ts AND p.ts <= '2016-12-10 15:01:21' AND abs(p.amt - g.amt) <= 0.01 * g.amt AND (CASE WHEN p.channel = 'in_person' THEN p.addr1 ELSE p.p_email END) = g.merchant AND g.merchant <> '' ), gaps AS ( SELECT target_id, date_diff('second', lag(ts) OVER (PARTITION BY target_id ORDER BY ts), ts) / 86400.0 AS gap_d FROM (SELECT target_id, ts FROM prior UNION ALL SELECT id, ts FROM target) ) SELECT g.id, g.card_id, g.customer_id, g.ts::VARCHAR, g.amt, g.merchant, count(x.gap_d) AS n_prior, median(x.gap_d) AS median_gap_days FROM target g JOIN gaps x ON x.target_id = g.id GROUP BY ALL HAVING count(x.gap_d) >= 2 AND median(x.gap_d) BETWEEN 25 AND 35 ORDER BY g.id",
+        "params": {
+          "trigger": "customer_report",
+          "merchant_key": "p_email (online) / addr1 (in person) + product_cd",
+          "amount_tol": 0.01,
+          "min_prior": 2,
+          "gap_min_d": 25,
+          "gap_max_d": 35,
+          "txn_id": "3530164"
+        }
+      },
+      {
+        "case_id": "HHG-004",
+        "agree": true,
+        "kind": "agree: rule does not apply",
+        "rule_fires": false,
+        "recurring_match": false,
+        "match": null,
+        "rule_actions": [],
+        "trigger_type": "customer_report",
+        "flagged_txn_id": "3583227",
+        "agent_verdict": "uncertain",
+        "agent_final_actions": [
+          "CREATE_CASE",
+          "MONITOR_CARD",
+          "DECLINE_TRANSACTION",
+          "BLOCK_CARD"
+        ],
+        "agent_cites_R7": false,
+        "as_of": "2016-12-29 07:53:54",
+        "query": "WITH target AS ( SELECT t.id, t.TransactionID, t.card_id, t.customer_id, t.ts, t.amt, t.product_cd, CASE WHEN t.channel = 'in_person' THEN t.addr1 ELSE t.p_email END AS merchant FROM txc t WHERE t.id IN ('3583227') ), prior AS ( SELECT g.id AS target_id, p.ts FROM target g JOIN txc p ON p.card_id = g.card_id AND p.product_cd = g.product_cd AND p.ts < g.ts AND p.ts <= '2016-12-29 07:53:54' AND abs(p.amt - g.amt) <= 0.01 * g.amt AND (CASE WHEN p.channel = 'in_person' THEN p.addr1 ELSE p.p_email END) = g.merchant AND g.merchant <> '' ), gaps AS ( SELECT target_id, date_diff('second', lag(ts) OVER (PARTITION BY target_id ORDER BY ts), ts) / 86400.0 AS gap_d FROM (SELECT target_id, ts FROM prior UNION ALL SELECT id, ts FROM target) ) SELECT g.id, g.card_id, g.customer_id, g.ts::VARCHAR, g.amt, g.merchant, count(x.gap_d) AS n_prior, median(x.gap_d) AS median_gap_days FROM target g JOIN gaps x ON x.target_id = g.id GROUP BY ALL HAVING count(x.gap_d) >= 2 AND median(x.gap_d) BETWEEN 25 AND 35 ORDER BY g.id",
+        "params": {
+          "trigger": "customer_report",
+          "merchant_key": "p_email (online) / addr1 (in person) + product_cd",
+          "amount_tol": 0.01,
+          "min_prior": 2,
+          "gap_min_d": 25,
+          "gap_max_d": 35,
+          "txn_id": "3583227"
+        }
+      },
+      {
+        "case_id": "HHG-005",
+        "agree": true,
+        "kind": "agree: rule does not apply",
+        "rule_fires": false,
+        "recurring_match": false,
+        "match": null,
+        "rule_actions": [],
+        "trigger_type": "risk_score",
+        "flagged_txn_id": "3523199",
+        "agent_verdict": "legitimate",
+        "agent_final_actions": [
+          "CREATE_CASE",
+          "ALLOW_TRANSACTION",
+          "CLOSE_NO_FRAUD"
+        ],
+        "agent_cites_R7": false,
+        "as_of": "2016-12-08 03:38:37",
+        "query": "WITH target AS ( SELECT t.id, t.TransactionID, t.card_id, t.customer_id, t.ts, t.amt, t.product_cd, CASE WHEN t.channel = 'in_person' THEN t.addr1 ELSE t.p_email END AS merchant FROM txc t WHERE t.id IN ('3523199') ), prior AS ( SELECT g.id AS target_id, p.ts FROM target g JOIN txc p ON p.card_id = g.card_id AND p.product_cd = g.product_cd AND p.ts < g.ts AND p.ts <= '2016-12-08 03:38:37' AND abs(p.amt - g.amt) <= 0.01 * g.amt AND (CASE WHEN p.channel = 'in_person' THEN p.addr1 ELSE p.p_email END) = g.merchant AND g.merchant <> '' ), gaps AS ( SELECT target_id, date_diff('second', lag(ts) OVER (PARTITION BY target_id ORDER BY ts), ts) / 86400.0 AS gap_d FROM (SELECT target_id, ts FROM prior UNION ALL SELECT id, ts FROM target) ) SELECT g.id, g.card_id, g.customer_id, g.ts::VARCHAR, g.amt, g.merchant, count(x.gap_d) AS n_prior, median(x.gap_d) AS median_gap_days FROM target g JOIN gaps x ON x.target_id = g.id GROUP BY ALL HAVING count(x.gap_d) >= 2 AND median(x.gap_d) BETWEEN 25 AND 35 ORDER BY g.id",
+        "params": {
+          "trigger": "customer_report",
+          "merchant_key": "p_email (online) / addr1 (in person) + product_cd",
+          "amount_tol": 0.01,
+          "min_prior": 2,
+          "gap_min_d": 25,
+          "gap_max_d": 35,
+          "txn_id": "3523199"
+        }
+      },
+      {
+        "case_id": "HHG-006",
+        "agree": true,
+        "kind": "agree: rule does not apply",
+        "rule_fires": false,
+        "recurring_match": false,
+        "match": null,
+        "rule_actions": [],
+        "trigger_type": "customer_report",
+        "flagged_txn_id": "3476682",
+        "agent_verdict": "fraud",
+        "agent_final_actions": [
+          "CREATE_CASE",
+          "BLOCK_CARD",
+          "FILE_REPORT",
+          "ESCALATE_TO_ANALYST"
+        ],
+        "agent_cites_R7": false,
+        "as_of": "2016-11-22 02:30:00",
+        "query": "WITH target AS ( SELECT t.id, t.TransactionID, t.card_id, t.customer_id, t.ts, t.amt, t.product_cd, CASE WHEN t.channel = 'in_person' THEN t.addr1 ELSE t.p_email END AS merchant FROM txc t WHERE t.id IN ('3476682') ), prior AS ( SELECT g.id AS target_id, p.ts FROM target g JOIN txc p ON p.card_id = g.card_id AND p.product_cd = g.product_cd AND p.ts < g.ts AND p.ts <= '2016-11-22 02:30:00' AND abs(p.amt - g.amt) <= 0.01 * g.amt AND (CASE WHEN p.channel = 'in_person' THEN p.addr1 ELSE p.p_email END) = g.merchant AND g.merchant <> '' ), gaps AS ( SELECT target_id, date_diff('second', lag(ts) OVER (PARTITION BY target_id ORDER BY ts), ts) / 86400.0 AS gap_d FROM (SELECT target_id, ts FROM prior UNION ALL SELECT id, ts FROM target) ) SELECT g.id, g.card_id, g.customer_id, g.ts::VARCHAR, g.amt, g.merchant, count(x.gap_d) AS n_prior, median(x.gap_d) AS median_gap_days FROM target g JOIN gaps x ON x.target_id = g.id GROUP BY ALL HAVING count(x.gap_d) >= 2 AND median(x.gap_d) BETWEEN 25 AND 35 ORDER BY g.id",
+        "params": {
+          "trigger": "customer_report",
+          "merchant_key": "p_email (online) / addr1 (in person) + product_cd",
+          "amount_tol": 0.01,
+          "min_prior": 2,
+          "gap_min_d": 25,
+          "gap_max_d": 35,
+          "txn_id": "3476682"
+        }
+      },
+      {
+        "case_id": "HHG-007",
+        "agree": true,
+        "kind": "agree: rule does not apply (recurring match but not a dispute)",
+        "rule_fires": false,
+        "recurring_match": true,
+        "match": {
+          "n_prior": 5,
+          "median_gap_days": 32.0,
+          "merchant": "264.0"
+        },
+        "rule_actions": [],
+        "trigger_type": "risk_score",
+        "flagged_txn_id": "3514948",
+        "agent_verdict": "fraud",
+        "agent_final_actions": [
+          "CREATE_CASE",
+          "MONITOR_CARD",
+          "DECLINE_TRANSACTION",
+          "BLOCK_CARD"
+        ],
+        "agent_cites_R7": false,
+        "as_of": "2016-12-05 03:46:14",
+        "query": "WITH target AS ( SELECT t.id, t.TransactionID, t.card_id, t.customer_id, t.ts, t.amt, t.product_cd, CASE WHEN t.channel = 'in_person' THEN t.addr1 ELSE t.p_email END AS merchant FROM txc t WHERE t.id IN ('3514948') ), prior AS ( SELECT g.id AS target_id, p.ts FROM target g JOIN txc p ON p.card_id = g.card_id AND p.product_cd = g.product_cd AND p.ts < g.ts AND p.ts <= '2016-12-05 03:46:14' AND abs(p.amt - g.amt) <= 0.01 * g.amt AND (CASE WHEN p.channel = 'in_person' THEN p.addr1 ELSE p.p_email END) = g.merchant AND g.merchant <> '' ), gaps AS ( SELECT target_id, date_diff('second', lag(ts) OVER (PARTITION BY target_id ORDER BY ts), ts) / 86400.0 AS gap_d FROM (SELECT target_id, ts FROM prior UNION ALL SELECT id, ts FROM target) ) SELECT g.id, g.card_id, g.customer_id, g.ts::VARCHAR, g.amt, g.merchant, count(x.gap_d) AS n_prior, median(x.gap_d) AS median_gap_days FROM target g JOIN gaps x ON x.target_id = g.id GROUP BY ALL HAVING count(x.gap_d) >= 2 AND median(x.gap_d) BETWEEN 25 AND 35 ORDER BY g.id",
+        "params": {
+          "trigger": "customer_report",
+          "merchant_key": "p_email (online) / addr1 (in person) + product_cd",
+          "amount_tol": 0.01,
+          "min_prior": 2,
+          "gap_min_d": 25,
+          "gap_max_d": 35,
+          "txn_id": "3514948"
+        }
+      },
+      {
+        "case_id": "HHG-008",
+        "agree": true,
+        "kind": "agree: rule does not apply",
+        "rule_fires": false,
+        "recurring_match": false,
+        "match": null,
+        "rule_actions": [],
+        "trigger_type": "customer_report",
+        "flagged_txn_id": "3558054",
+        "agent_verdict": "fraud",
+        "agent_final_actions": [
+          "CREATE_CASE",
+          "BLOCK_CARD"
+        ],
+        "agent_cites_R7": true,
+        "as_of": "2016-12-20 03:08:56",
+        "query": "WITH target AS ( SELECT t.id, t.TransactionID, t.card_id, t.customer_id, t.ts, t.amt, t.product_cd, CASE WHEN t.channel = 'in_person' THEN t.addr1 ELSE t.p_email END AS merchant FROM txc t WHERE t.id IN ('3558054') ), prior AS ( SELECT g.id AS target_id, p.ts FROM target g JOIN txc p ON p.card_id = g.card_id AND p.product_cd = g.product_cd AND p.ts < g.ts AND p.ts <= '2016-12-20 03:08:56' AND abs(p.amt - g.amt) <= 0.01 * g.amt AND (CASE WHEN p.channel = 'in_person' THEN p.addr1 ELSE p.p_email END) = g.merchant AND g.merchant <> '' ), gaps AS ( SELECT target_id, date_diff('second', lag(ts) OVER (PARTITION BY target_id ORDER BY ts), ts) / 86400.0 AS gap_d FROM (SELECT target_id, ts FROM prior UNION ALL SELECT id, ts FROM target) ) SELECT g.id, g.card_id, g.customer_id, g.ts::VARCHAR, g.amt, g.merchant, count(x.gap_d) AS n_prior, median(x.gap_d) AS median_gap_days FROM target g JOIN gaps x ON x.target_id = g.id GROUP BY ALL HAVING count(x.gap_d) >= 2 AND median(x.gap_d) BETWEEN 25 AND 35 ORDER BY g.id",
+        "params": {
+          "trigger": "customer_report",
+          "merchant_key": "p_email (online) / addr1 (in person) + product_cd",
+          "amount_tol": 0.01,
+          "min_prior": 2,
+          "gap_min_d": 25,
+          "gap_max_d": 35,
+          "txn_id": "3558054"
+        }
+      },
+      {
+        "case_id": "HHG-009",
+        "agree": true,
+        "kind": "agree: rule does not apply",
+        "rule_fires": false,
+        "recurring_match": false,
+        "match": null,
+        "rule_actions": [],
+        "trigger_type": "customer_report",
+        "flagged_txn_id": "3581141",
+        "agent_verdict": "fraud",
+        "agent_final_actions": [
+          "CREATE_CASE",
+          "BLOCK_CARD"
+        ],
+        "agent_cites_R7": true,
+        "as_of": "2016-12-28 17:10:53",
+        "query": "WITH target AS ( SELECT t.id, t.TransactionID, t.card_id, t.customer_id, t.ts, t.amt, t.product_cd, CASE WHEN t.channel = 'in_person' THEN t.addr1 ELSE t.p_email END AS merchant FROM txc t WHERE t.id IN ('3581141') ), prior AS ( SELECT g.id AS target_id, p.ts FROM target g JOIN txc p ON p.card_id = g.card_id AND p.product_cd = g.product_cd AND p.ts < g.ts AND p.ts <= '2016-12-28 17:10:53' AND abs(p.amt - g.amt) <= 0.01 * g.amt AND (CASE WHEN p.channel = 'in_person' THEN p.addr1 ELSE p.p_email END) = g.merchant AND g.merchant <> '' ), gaps AS ( SELECT target_id, date_diff('second', lag(ts) OVER (PARTITION BY target_id ORDER BY ts), ts) / 86400.0 AS gap_d FROM (SELECT target_id, ts FROM prior UNION ALL SELECT id, ts FROM target) ) SELECT g.id, g.card_id, g.customer_id, g.ts::VARCHAR, g.amt, g.merchant, count(x.gap_d) AS n_prior, median(x.gap_d) AS median_gap_days FROM target g JOIN gaps x ON x.target_id = g.id GROUP BY ALL HAVING count(x.gap_d) >= 2 AND median(x.gap_d) BETWEEN 25 AND 35 ORDER BY g.id",
+        "params": {
+          "trigger": "customer_report",
+          "merchant_key": "p_email (online) / addr1 (in person) + product_cd",
+          "amount_tol": 0.01,
+          "min_prior": 2,
+          "gap_min_d": 25,
+          "gap_max_d": 35,
+          "txn_id": "3581141"
+        }
+      },
+      {
+        "case_id": "HHG-010",
+        "agree": true,
+        "kind": "agree: rule does not apply",
+        "rule_fires": false,
+        "recurring_match": false,
+        "match": null,
+        "rule_actions": [],
+        "trigger_type": "risk_score",
+        "flagged_txn_id": "3506725",
+        "agent_verdict": "legitimate",
+        "agent_final_actions": [
+          "CREATE_CASE",
+          "ALLOW_TRANSACTION",
+          "CLOSE_NO_FRAUD"
+        ],
+        "agent_cites_R7": false,
+        "as_of": "2016-12-02 18:18:27",
+        "query": "WITH target AS ( SELECT t.id, t.TransactionID, t.card_id, t.customer_id, t.ts, t.amt, t.product_cd, CASE WHEN t.channel = 'in_person' THEN t.addr1 ELSE t.p_email END AS merchant FROM txc t WHERE t.id IN ('3506725') ), prior AS ( SELECT g.id AS target_id, p.ts FROM target g JOIN txc p ON p.card_id = g.card_id AND p.product_cd = g.product_cd AND p.ts < g.ts AND p.ts <= '2016-12-02 18:18:27' AND abs(p.amt - g.amt) <= 0.01 * g.amt AND (CASE WHEN p.channel = 'in_person' THEN p.addr1 ELSE p.p_email END) = g.merchant AND g.merchant <> '' ), gaps AS ( SELECT target_id, date_diff('second', lag(ts) OVER (PARTITION BY target_id ORDER BY ts), ts) / 86400.0 AS gap_d FROM (SELECT target_id, ts FROM prior UNION ALL SELECT id, ts FROM target) ) SELECT g.id, g.card_id, g.customer_id, g.ts::VARCHAR, g.amt, g.merchant, count(x.gap_d) AS n_prior, median(x.gap_d) AS median_gap_days FROM target g JOIN gaps x ON x.target_id = g.id GROUP BY ALL HAVING count(x.gap_d) >= 2 AND median(x.gap_d) BETWEEN 25 AND 35 ORDER BY g.id",
+        "params": {
+          "trigger": "customer_report",
+          "merchant_key": "p_email (online) / addr1 (in person) + product_cd",
+          "amount_tol": 0.01,
+          "min_prior": 2,
+          "gap_min_d": 25,
+          "gap_max_d": 35,
+          "txn_id": "3506725"
+        }
+      },
+      {
+        "case_id": "HHG-011",
+        "agree": true,
+        "kind": "agree: rule does not apply",
+        "rule_fires": false,
+        "recurring_match": false,
+        "match": null,
+        "rule_actions": [],
+        "trigger_type": "customer_report",
+        "flagged_txn_id": "3583368",
+        "agent_verdict": "uncertain",
+        "agent_final_actions": [
+          "CREATE_CASE",
+          "MONITOR_CARD",
+          "DECLINE_TRANSACTION",
+          "BLOCK_CARD",
+          "ESCALATE_TO_ANALYST"
+        ],
+        "agent_cites_R7": true,
+        "as_of": "2016-12-29 06:27:44",
+        "query": "WITH target AS ( SELECT t.id, t.TransactionID, t.card_id, t.customer_id, t.ts, t.amt, t.product_cd, CASE WHEN t.channel = 'in_person' THEN t.addr1 ELSE t.p_email END AS merchant FROM txc t WHERE t.id IN ('3583368') ), prior AS ( SELECT g.id AS target_id, p.ts FROM target g JOIN txc p ON p.card_id = g.card_id AND p.product_cd = g.product_cd AND p.ts < g.ts AND p.ts <= '2016-12-29 06:27:44' AND abs(p.amt - g.amt) <= 0.01 * g.amt AND (CASE WHEN p.channel = 'in_person' THEN p.addr1 ELSE p.p_email END) = g.merchant AND g.merchant <> '' ), gaps AS ( SELECT target_id, date_diff('second', lag(ts) OVER (PARTITION BY target_id ORDER BY ts), ts) / 86400.0 AS gap_d FROM (SELECT target_id, ts FROM prior UNION ALL SELECT id, ts FROM target) ) SELECT g.id, g.card_id, g.customer_id, g.ts::VARCHAR, g.amt, g.merchant, count(x.gap_d) AS n_prior, median(x.gap_d) AS median_gap_days FROM target g JOIN gaps x ON x.target_id = g.id GROUP BY ALL HAVING count(x.gap_d) >= 2 AND median(x.gap_d) BETWEEN 25 AND 35 ORDER BY g.id",
+        "params": {
+          "trigger": "customer_report",
+          "merchant_key": "p_email (online) / addr1 (in person) + product_cd",
+          "amount_tol": 0.01,
+          "min_prior": 2,
+          "gap_min_d": 25,
+          "gap_max_d": 35,
+          "txn_id": "3583368"
+        }
+      },
+      {
+        "case_id": "HHG-012",
+        "agree": true,
+        "kind": "agree: rule does not apply",
+        "rule_fires": false,
+        "recurring_match": false,
+        "match": null,
+        "rule_actions": [],
+        "trigger_type": "risk_score",
+        "flagged_txn_id": "3553342",
+        "agent_verdict": "legitimate",
+        "agent_final_actions": [
+          "CREATE_CASE",
+          "ALLOW_TRANSACTION",
+          "CLOSE_NO_FRAUD"
+        ],
+        "agent_cites_R7": false,
+        "as_of": "2016-12-18 05:00:31",
+        "query": "WITH target AS ( SELECT t.id, t.TransactionID, t.card_id, t.customer_id, t.ts, t.amt, t.product_cd, CASE WHEN t.channel = 'in_person' THEN t.addr1 ELSE t.p_email END AS merchant FROM txc t WHERE t.id IN ('3553342') ), prior AS ( SELECT g.id AS target_id, p.ts FROM target g JOIN txc p ON p.card_id = g.card_id AND p.product_cd = g.product_cd AND p.ts < g.ts AND p.ts <= '2016-12-18 05:00:31' AND abs(p.amt - g.amt) <= 0.01 * g.amt AND (CASE WHEN p.channel = 'in_person' THEN p.addr1 ELSE p.p_email END) = g.merchant AND g.merchant <> '' ), gaps AS ( SELECT target_id, date_diff('second', lag(ts) OVER (PARTITION BY target_id ORDER BY ts), ts) / 86400.0 AS gap_d FROM (SELECT target_id, ts FROM prior UNION ALL SELECT id, ts FROM target) ) SELECT g.id, g.card_id, g.customer_id, g.ts::VARCHAR, g.amt, g.merchant, count(x.gap_d) AS n_prior, median(x.gap_d) AS median_gap_days FROM target g JOIN gaps x ON x.target_id = g.id GROUP BY ALL HAVING count(x.gap_d) >= 2 AND median(x.gap_d) BETWEEN 25 AND 35 ORDER BY g.id",
+        "params": {
+          "trigger": "customer_report",
+          "merchant_key": "p_email (online) / addr1 (in person) + product_cd",
+          "amount_tol": 0.01,
+          "min_prior": 2,
+          "gap_min_d": 25,
+          "gap_max_d": 35,
+          "txn_id": "3553342"
+        }
+      },
+      {
+        "case_id": "HHG-013",
+        "agree": true,
+        "kind": "agree: rule does not apply",
+        "rule_fires": false,
+        "recurring_match": false,
+        "match": null,
+        "rule_actions": [],
+        "trigger_type": "risk_score",
+        "flagged_txn_id": "3526826",
+        "agent_verdict": "legitimate",
+        "agent_final_actions": [
+          "CREATE_CASE",
+          "ALLOW_TRANSACTION",
+          "CLOSE_NO_FRAUD"
+        ],
+        "agent_cites_R7": false,
+        "as_of": "2016-12-09 05:39:29",
+        "query": "WITH target AS ( SELECT t.id, t.TransactionID, t.card_id, t.customer_id, t.ts, t.amt, t.product_cd, CASE WHEN t.channel = 'in_person' THEN t.addr1 ELSE t.p_email END AS merchant FROM txc t WHERE t.id IN ('3526826') ), prior AS ( SELECT g.id AS target_id, p.ts FROM target g JOIN txc p ON p.card_id = g.card_id AND p.product_cd = g.product_cd AND p.ts < g.ts AND p.ts <= '2016-12-09 05:39:29' AND abs(p.amt - g.amt) <= 0.01 * g.amt AND (CASE WHEN p.channel = 'in_person' THEN p.addr1 ELSE p.p_email END) = g.merchant AND g.merchant <> '' ), gaps AS ( SELECT target_id, date_diff('second', lag(ts) OVER (PARTITION BY target_id ORDER BY ts), ts) / 86400.0 AS gap_d FROM (SELECT target_id, ts FROM prior UNION ALL SELECT id, ts FROM target) ) SELECT g.id, g.card_id, g.customer_id, g.ts::VARCHAR, g.amt, g.merchant, count(x.gap_d) AS n_prior, median(x.gap_d) AS median_gap_days FROM target g JOIN gaps x ON x.target_id = g.id GROUP BY ALL HAVING count(x.gap_d) >= 2 AND median(x.gap_d) BETWEEN 25 AND 35 ORDER BY g.id",
+        "params": {
+          "trigger": "customer_report",
+          "merchant_key": "p_email (online) / addr1 (in person) + product_cd",
+          "amount_tol": 0.01,
+          "min_prior": 2,
+          "gap_min_d": 25,
+          "gap_max_d": 35,
+          "txn_id": "3526826"
+        }
+      },
+      {
+        "case_id": "HHG-014",
+        "agree": true,
+        "kind": "agree: rule does not apply",
+        "rule_fires": false,
+        "recurring_match": false,
+        "match": null,
+        "rule_actions": [],
+        "trigger_type": "analyst_request",
+        "flagged_txn_id": "3478561",
+        "agent_verdict": "fraud",
+        "agent_final_actions": [
+          "CREATE_CASE",
+          "MONITOR_CONNECTED_CARDS",
+          "BLOCK_CARD",
+          "FILE_REPORT",
+          "ESCALATE_TO_ANALYST"
+        ],
+        "agent_cites_R7": false,
+        "as_of": "2016-11-22 20:11:00",
+        "query": "WITH target AS ( SELECT t.id, t.TransactionID, t.card_id, t.customer_id, t.ts, t.amt, t.product_cd, CASE WHEN t.channel = 'in_person' THEN t.addr1 ELSE t.p_email END AS merchant FROM txc t WHERE t.id IN ('3478561') ), prior AS ( SELECT g.id AS target_id, p.ts FROM target g JOIN txc p ON p.card_id = g.card_id AND p.product_cd = g.product_cd AND p.ts < g.ts AND p.ts <= '2016-11-22 20:11:00' AND abs(p.amt - g.amt) <= 0.01 * g.amt AND (CASE WHEN p.channel = 'in_person' THEN p.addr1 ELSE p.p_email END) = g.merchant AND g.merchant <> '' ), gaps AS ( SELECT target_id, date_diff('second', lag(ts) OVER (PARTITION BY target_id ORDER BY ts), ts) / 86400.0 AS gap_d FROM (SELECT target_id, ts FROM prior UNION ALL SELECT id, ts FROM target) ) SELECT g.id, g.card_id, g.customer_id, g.ts::VARCHAR, g.amt, g.merchant, count(x.gap_d) AS n_prior, median(x.gap_d) AS median_gap_days FROM target g JOIN gaps x ON x.target_id = g.id GROUP BY ALL HAVING count(x.gap_d) >= 2 AND median(x.gap_d) BETWEEN 25 AND 35 ORDER BY g.id",
+        "params": {
+          "trigger": "customer_report",
+          "merchant_key": "p_email (online) / addr1 (in person) + product_cd",
+          "amount_tol": 0.01,
+          "min_prior": 2,
+          "gap_min_d": 25,
+          "gap_max_d": 35,
+          "txn_id": "3478561"
+        }
+      },
+      {
+        "case_id": "HHG-015",
+        "agree": true,
+        "kind": "agree: rule does not apply",
+        "rule_fires": false,
+        "recurring_match": false,
+        "match": null,
+        "rule_actions": [],
+        "trigger_type": "risk_score",
+        "flagged_txn_id": "3464869",
+        "agent_verdict": "uncertain",
+        "agent_final_actions": [
+          "CREATE_CASE",
+          "MONITOR_CARD",
+          "DECLINE_TRANSACTION",
+          "ESCALATE_TO_ANALYST"
+        ],
+        "agent_cites_R7": false,
+        "as_of": "2016-11-17 19:03:36",
+        "query": "WITH target AS ( SELECT t.id, t.TransactionID, t.card_id, t.customer_id, t.ts, t.amt, t.product_cd, CASE WHEN t.channel = 'in_person' THEN t.addr1 ELSE t.p_email END AS merchant FROM txc t WHERE t.id IN ('3464869') ), prior AS ( SELECT g.id AS target_id, p.ts FROM target g JOIN txc p ON p.card_id = g.card_id AND p.product_cd = g.product_cd AND p.ts < g.ts AND p.ts <= '2016-11-17 19:03:36' AND abs(p.amt - g.amt) <= 0.01 * g.amt AND (CASE WHEN p.channel = 'in_person' THEN p.addr1 ELSE p.p_email END) = g.merchant AND g.merchant <> '' ), gaps AS ( SELECT target_id, date_diff('second', lag(ts) OVER (PARTITION BY target_id ORDER BY ts), ts) / 86400.0 AS gap_d FROM (SELECT target_id, ts FROM prior UNION ALL SELECT id, ts FROM target) ) SELECT g.id, g.card_id, g.customer_id, g.ts::VARCHAR, g.amt, g.merchant, count(x.gap_d) AS n_prior, median(x.gap_d) AS median_gap_days FROM target g JOIN gaps x ON x.target_id = g.id GROUP BY ALL HAVING count(x.gap_d) >= 2 AND median(x.gap_d) BETWEEN 25 AND 35 ORDER BY g.id",
+        "params": {
+          "trigger": "customer_report",
+          "merchant_key": "p_email (online) / addr1 (in person) + product_cd",
+          "amount_tol": 0.01,
+          "min_prior": 2,
+          "gap_min_d": 25,
+          "gap_max_d": 35,
+          "txn_id": "3464869"
+        }
+      },
+      {
+        "case_id": "HHG-016",
+        "agree": true,
+        "kind": "agree: rule does not apply",
+        "rule_fires": false,
+        "recurring_match": false,
+        "match": null,
+        "rule_actions": [],
+        "trigger_type": "customer_report",
+        "flagged_txn_id": "3534820",
+        "agent_verdict": "fraud",
+        "agent_final_actions": [
+          "CREATE_CASE",
+          "MONITOR_CARD",
+          "DECLINE_TRANSACTION",
+          "BLOCK_CARD"
+        ],
+        "agent_cites_R7": true,
+        "as_of": "2016-12-12 01:39:08",
+        "query": "WITH target AS ( SELECT t.id, t.TransactionID, t.card_id, t.customer_id, t.ts, t.amt, t.product_cd, CASE WHEN t.channel = 'in_person' THEN t.addr1 ELSE t.p_email END AS merchant FROM txc t WHERE t.id IN ('3534820') ), prior AS ( SELECT g.id AS target_id, p.ts FROM target g JOIN txc p ON p.card_id = g.card_id AND p.product_cd = g.product_cd AND p.ts < g.ts AND p.ts <= '2016-12-12 01:39:08' AND abs(p.amt - g.amt) <= 0.01 * g.amt AND (CASE WHEN p.channel = 'in_person' THEN p.addr1 ELSE p.p_email END) = g.merchant AND g.merchant <> '' ), gaps AS ( SELECT target_id, date_diff('second', lag(ts) OVER (PARTITION BY target_id ORDER BY ts), ts) / 86400.0 AS gap_d FROM (SELECT target_id, ts FROM prior UNION ALL SELECT id, ts FROM target) ) SELECT g.id, g.card_id, g.customer_id, g.ts::VARCHAR, g.amt, g.merchant, count(x.gap_d) AS n_prior, median(x.gap_d) AS median_gap_days FROM target g JOIN gaps x ON x.target_id = g.id GROUP BY ALL HAVING count(x.gap_d) >= 2 AND median(x.gap_d) BETWEEN 25 AND 35 ORDER BY g.id",
+        "params": {
+          "trigger": "customer_report",
+          "merchant_key": "p_email (online) / addr1 (in person) + product_cd",
+          "amount_tol": 0.01,
+          "min_prior": 2,
+          "gap_min_d": 25,
+          "gap_max_d": 35,
+          "txn_id": "3534820"
+        }
+      },
+      {
+        "case_id": "HHG-017",
+        "agree": true,
+        "kind": "agree: rule does not apply",
+        "rule_fires": false,
+        "recurring_match": false,
+        "match": null,
+        "rule_actions": [],
+        "trigger_type": "risk_score",
+        "flagged_txn_id": "3450629",
+        "agent_verdict": "legitimate",
+        "agent_final_actions": [
+          "CREATE_CASE",
+          "ALLOW_TRANSACTION",
+          "CLOSE_NO_FRAUD"
+        ],
+        "agent_cites_R7": false,
+        "as_of": "2016-11-12 00:46:24",
+        "query": "WITH target AS ( SELECT t.id, t.TransactionID, t.card_id, t.customer_id, t.ts, t.amt, t.product_cd, CASE WHEN t.channel = 'in_person' THEN t.addr1 ELSE t.p_email END AS merchant FROM txc t WHERE t.id IN ('3450629') ), prior AS ( SELECT g.id AS target_id, p.ts FROM target g JOIN txc p ON p.card_id = g.card_id AND p.product_cd = g.product_cd AND p.ts < g.ts AND p.ts <= '2016-11-12 00:46:24' AND abs(p.amt - g.amt) <= 0.01 * g.amt AND (CASE WHEN p.channel = 'in_person' THEN p.addr1 ELSE p.p_email END) = g.merchant AND g.merchant <> '' ), gaps AS ( SELECT target_id, date_diff('second', lag(ts) OVER (PARTITION BY target_id ORDER BY ts), ts) / 86400.0 AS gap_d FROM (SELECT target_id, ts FROM prior UNION ALL SELECT id, ts FROM target) ) SELECT g.id, g.card_id, g.customer_id, g.ts::VARCHAR, g.amt, g.merchant, count(x.gap_d) AS n_prior, median(x.gap_d) AS median_gap_days FROM target g JOIN gaps x ON x.target_id = g.id GROUP BY ALL HAVING count(x.gap_d) >= 2 AND median(x.gap_d) BETWEEN 25 AND 35 ORDER BY g.id",
+        "params": {
+          "trigger": "customer_report",
+          "merchant_key": "p_email (online) / addr1 (in person) + product_cd",
+          "amount_tol": 0.01,
+          "min_prior": 2,
+          "gap_min_d": 25,
+          "gap_max_d": 35,
+          "txn_id": "3450629"
+        }
+      },
+      {
+        "case_id": "HHG-018",
+        "agree": true,
+        "kind": "agree: rule does not apply",
+        "rule_fires": false,
+        "recurring_match": false,
+        "match": null,
+        "rule_actions": [],
+        "trigger_type": "customer_report",
+        "flagged_txn_id": "3491361",
+        "agent_verdict": "uncertain",
+        "agent_final_actions": [
+          "CREATE_CASE",
+          "BLOCK_CARD",
+          "ESCALATE_TO_ANALYST"
+        ],
+        "agent_cites_R7": false,
+        "as_of": "2016-11-27 14:41:26",
+        "query": "WITH target AS ( SELECT t.id, t.TransactionID, t.card_id, t.customer_id, t.ts, t.amt, t.product_cd, CASE WHEN t.channel = 'in_person' THEN t.addr1 ELSE t.p_email END AS merchant FROM txc t WHERE t.id IN ('3491361') ), prior AS ( SELECT g.id AS target_id, p.ts FROM target g JOIN txc p ON p.card_id = g.card_id AND p.product_cd = g.product_cd AND p.ts < g.ts AND p.ts <= '2016-11-27 14:41:26' AND abs(p.amt - g.amt) <= 0.01 * g.amt AND (CASE WHEN p.channel = 'in_person' THEN p.addr1 ELSE p.p_email END) = g.merchant AND g.merchant <> '' ), gaps AS ( SELECT target_id, date_diff('second', lag(ts) OVER (PARTITION BY target_id ORDER BY ts), ts) / 86400.0 AS gap_d FROM (SELECT target_id, ts FROM prior UNION ALL SELECT id, ts FROM target) ) SELECT g.id, g.card_id, g.customer_id, g.ts::VARCHAR, g.amt, g.merchant, count(x.gap_d) AS n_prior, median(x.gap_d) AS median_gap_days FROM target g JOIN gaps x ON x.target_id = g.id GROUP BY ALL HAVING count(x.gap_d) >= 2 AND median(x.gap_d) BETWEEN 25 AND 35 ORDER BY g.id",
+        "params": {
+          "trigger": "customer_report",
+          "merchant_key": "p_email (online) / addr1 (in person) + product_cd",
+          "amount_tol": 0.01,
+          "min_prior": 2,
+          "gap_min_d": 25,
+          "gap_max_d": 35,
+          "txn_id": "3491361"
+        }
+      },
+      {
+        "case_id": "HHG-019",
+        "agree": true,
+        "kind": "agree: rule does not apply",
+        "rule_fires": false,
+        "recurring_match": false,
+        "match": null,
+        "rule_actions": [],
+        "trigger_type": "risk_score",
+        "flagged_txn_id": "3503878",
+        "agent_verdict": "fraud",
+        "agent_final_actions": [
+          "CREATE_CASE",
+          "MONITOR_CARD",
+          "DECLINE_TRANSACTION",
+          "BLOCK_CARD"
+        ],
+        "agent_cites_R7": false,
+        "as_of": "2016-12-01 22:28:53",
+        "query": "WITH target AS ( SELECT t.id, t.TransactionID, t.card_id, t.customer_id, t.ts, t.amt, t.product_cd, CASE WHEN t.channel = 'in_person' THEN t.addr1 ELSE t.p_email END AS merchant FROM txc t WHERE t.id IN ('3503878') ), prior AS ( SELECT g.id AS target_id, p.ts FROM target g JOIN txc p ON p.card_id = g.card_id AND p.product_cd = g.product_cd AND p.ts < g.ts AND p.ts <= '2016-12-01 22:28:53' AND abs(p.amt - g.amt) <= 0.01 * g.amt AND (CASE WHEN p.channel = 'in_person' THEN p.addr1 ELSE p.p_email END) = g.merchant AND g.merchant <> '' ), gaps AS ( SELECT target_id, date_diff('second', lag(ts) OVER (PARTITION BY target_id ORDER BY ts), ts) / 86400.0 AS gap_d FROM (SELECT target_id, ts FROM prior UNION ALL SELECT id, ts FROM target) ) SELECT g.id, g.card_id, g.customer_id, g.ts::VARCHAR, g.amt, g.merchant, count(x.gap_d) AS n_prior, median(x.gap_d) AS median_gap_days FROM target g JOIN gaps x ON x.target_id = g.id GROUP BY ALL HAVING count(x.gap_d) >= 2 AND median(x.gap_d) BETWEEN 25 AND 35 ORDER BY g.id",
+        "params": {
+          "trigger": "customer_report",
+          "merchant_key": "p_email (online) / addr1 (in person) + product_cd",
+          "amount_tol": 0.01,
+          "min_prior": 2,
+          "gap_min_d": 25,
+          "gap_max_d": 35,
+          "txn_id": "3503878"
+        }
+      },
+      {
+        "case_id": "HHG-020",
+        "agree": true,
+        "kind": "agree: rule does not apply",
+        "rule_fires": false,
+        "recurring_match": false,
+        "match": null,
+        "rule_actions": [],
+        "trigger_type": "risk_score",
+        "flagged_txn_id": "3509359",
+        "agent_verdict": "legitimate",
+        "agent_final_actions": [
+          "CREATE_CASE",
+          "ALLOW_TRANSACTION",
+          "CLOSE_NO_FRAUD"
+        ],
+        "agent_cites_R7": false,
+        "as_of": "2016-12-03 12:04:26",
+        "query": "WITH target AS ( SELECT t.id, t.TransactionID, t.card_id, t.customer_id, t.ts, t.amt, t.product_cd, CASE WHEN t.channel = 'in_person' THEN t.addr1 ELSE t.p_email END AS merchant FROM txc t WHERE t.id IN ('3509359') ), prior AS ( SELECT g.id AS target_id, p.ts FROM target g JOIN txc p ON p.card_id = g.card_id AND p.product_cd = g.product_cd AND p.ts < g.ts AND p.ts <= '2016-12-03 12:04:26' AND abs(p.amt - g.amt) <= 0.01 * g.amt AND (CASE WHEN p.channel = 'in_person' THEN p.addr1 ELSE p.p_email END) = g.merchant AND g.merchant <> '' ), gaps AS ( SELECT target_id, date_diff('second', lag(ts) OVER (PARTITION BY target_id ORDER BY ts), ts) / 86400.0 AS gap_d FROM (SELECT target_id, ts FROM prior UNION ALL SELECT id, ts FROM target) ) SELECT g.id, g.card_id, g.customer_id, g.ts::VARCHAR, g.amt, g.merchant, count(x.gap_d) AS n_prior, median(x.gap_d) AS median_gap_days FROM target g JOIN gaps x ON x.target_id = g.id GROUP BY ALL HAVING count(x.gap_d) >= 2 AND median(x.gap_d) BETWEEN 25 AND 35 ORDER BY g.id",
+        "params": {
+          "trigger": "customer_report",
+          "merchant_key": "p_email (online) / addr1 (in person) + product_cd",
+          "amount_tol": 0.01,
+          "min_prior": 2,
+          "gap_min_d": 25,
+          "gap_max_d": 35,
+          "txn_id": "3509359"
+        }
+      }
+    ]
+  }
+}

@@ -253,36 +253,59 @@ def detect_d3_micro_charge_skimming(con: Any, card_id: str, as_of: str, rows: li
     )
 
 
-def d4_wave(con: Any, flagged_txn_id: str, as_of: str) -> tuple[str, list[tuple]] | None:
-    """The flagged transaction's recipient domain and the 30 days of online 'C' payments to it, or None when D4's gates fail."""
+def d4_wave(con: Any, flagged_txn_id: str, as_of: str, card_id: str = "") -> tuple[str, list[tuple]] | None:
+    """A rare recipient domain and the 30 days of online 'C' payments to it, or None when D4's gates fail.
+
+    The domain judged is the flagged transaction's when the flagged transaction is an online 'C' payment with a recipient
+    email. Otherwise (an in-person alert on a card already in the ring, HHF-013) each domain `card_id` itself paid that way
+    in the 30 days to as_of is judged on its own; when several pass, the rows are their union and the name is the greatest
+    domain, as the GSQL's MaxAccum does.
+    """
     flagged_row = con.execute(
         "SELECT id, product_cd, channel, r_email FROM txc WHERE TransactionID = ?", [int(flagged_txn_id)]
     ).fetchone()
-    if not flagged_row or flagged_row[1] != "C" or flagged_row[2] != "online" or not flagged_row[3]:
-        return None
-    dom = str(flagged_row[3])
     window = "ts > ?::TIMESTAMP - INTERVAL 30 DAY AND ts <= ?::TIMESTAMP"
-    n_dom_cards = int(
-        con.execute(
-            f"SELECT count(DISTINCT card_id) FROM txc WHERE r_email = ? AND product_cd = 'C' AND channel = 'online' AND {window}",
-            [dom, as_of, as_of],
-        ).fetchone()[0]
-    )
-    if not (10 <= n_dom_cards <= 35):
+    if flagged_row and flagged_row[1] == "C" and flagged_row[2] == "online" and flagged_row[3]:
+        domains = [str(flagged_row[3])]
+    elif card_id:
+        domains = [
+            str(r[0])
+            for r in con.execute(
+                f"SELECT DISTINCT r_email FROM txc WHERE card_id = ? AND product_cd = 'C' AND channel = 'online' AND coalesce(r_email, '') <> '' AND {window} ORDER BY 1",
+                [card_id, as_of, as_of],
+            ).fetchall()
+        ]
+    else:
         return None
     # rarity needs history: judge a domain only once 60 days of data precede the case, and only if it is rare over all of
     # it (<= 40 cards up to as_of). Without this, every webmail domain looks "rare" in the dataset's first weeks.
-    first_ts, n_upto = con.execute(
-        "SELECT (SELECT min(ts) FROM txc), count(DISTINCT card_id) FROM txc WHERE r_email = ? AND product_cd = 'C' AND channel = 'online' AND ts <= ?::TIMESTAMP",
-        [dom, as_of],
-    ).fetchone()
-    if first_ts is None or str(first_ts) > str(__import__("datetime").datetime.fromisoformat(str(as_of)) - __import__("datetime").timedelta(days=60)) or int(n_upto) > 40:
+    first_ts = con.execute("SELECT min(ts) FROM txc").fetchone()[0]
+    if first_ts is None or str(first_ts) > str(__import__("datetime").datetime.fromisoformat(str(as_of)) - __import__("datetime").timedelta(days=60)):
         return None
-    rows = con.execute(
-        f"SELECT id, card_id, ts::VARCHAR, amt FROM txc WHERE product_cd = 'C' AND channel = 'online' AND r_email = ? AND {window} ORDER BY ts, TransactionID",
-        [dom, as_of, as_of],
-    ).fetchall()
-    return (dom, rows) if rows else None
+    passed: list[str] = []
+    rows: list[tuple] = []
+    for dom in domains:
+        n_dom_cards = int(
+            con.execute(
+                f"SELECT count(DISTINCT card_id) FROM txc WHERE r_email = ? AND product_cd = 'C' AND channel = 'online' AND {window}",
+                [dom, as_of, as_of],
+            ).fetchone()[0]
+        )
+        n_upto = int(
+            con.execute(
+                "SELECT count(DISTINCT card_id) FROM txc WHERE r_email = ? AND product_cd = 'C' AND channel = 'online' AND ts <= ?::TIMESTAMP", [dom, as_of]
+            ).fetchone()[0]
+        )
+        if not (10 <= n_dom_cards <= 35) or n_upto > 40:
+            continue
+        passed.append(dom)
+        rows += con.execute(
+            f"SELECT id, card_id, ts::VARCHAR, amt FROM txc WHERE product_cd = 'C' AND channel = 'online' AND r_email = ? AND {window} ORDER BY ts, TransactionID",
+            [dom, as_of, as_of],
+        ).fetchall()
+    if len(passed) > 1:
+        rows.sort(key=lambda r: (str(r[2]), int(r[0]) if str(r[0]).isdigit() else 0))
+    return (max(passed), rows) if passed and rows else None
 
 
 def detect_d4_recipient_email_mule(con: Any, card_id: str, flagged_txn_id: str, as_of: str, wave: tuple[str, list[tuple]] | None = None) -> DetectorHit | None:
@@ -290,10 +313,12 @@ def detect_d4_recipient_email_mule(con: Any, card_id: str, flagged_txn_id: str, 
 
     Detects when the flagged online ProductCD='C' transaction pays a recipient email domain (`r_email`)
     that receives online ProductCD='C' payments from 10..35 distinct cards within 30 days (a mule hub,
-    excluding major consumer webmail providers with > 40 cards). `wave` is (domain, rows) when the graph
-    already applied the gates; otherwise they are applied here (`d4_wave`).
+    excluding major consumer webmail providers with > 40 cards). When the flagged transaction pays no recipient
+    domain (an in-person alert), the card's own payments in the 30 days to as_of are judged instead, and the hit names
+    the card as a ring member whose flagged purchase is not one of the ring payments. `wave` is (domain, rows) when the
+    graph already applied the gates; otherwise they are applied here (`d4_wave`).
     """
-    wave = d4_wave(con, flagged_txn_id, as_of) if wave is None else wave
+    wave = d4_wave(con, flagged_txn_id, as_of, card_id) if wave is None else wave
     if not wave:
         return None
     dom, rows = wave
@@ -311,6 +336,8 @@ def detect_d4_recipient_email_mule(con: Any, card_id: str, flagged_txn_id: str, 
         f"card {card_id} has {len(ep_ids)} online ProductCD='C' payments ({', '.join(ep_ids)}) totaling ${exp:,.2f} to {dom}, "
         f"connected to {len(other_cards)} other cards paying the same recipient domain in the 30 days before the case opened."
     )
+    if str(flagged_txn_id) not in ep_ids:
+        desc += f" The flagged transaction {flagged_txn_id} is not one of these payments: the alert surfaced a card already in the ring."
     claim = attest(
         what=desc,
         evidence=ep_ids + [card_id] + other_cards,
@@ -435,6 +462,7 @@ def scan_card(con: Any, card_id: str, flagged_txn_id: str, as_of: str) -> Detect
     """
     if str(as_of) < "2017-01-01":
         return None
+    card_level: DetectorHit | None = None
     for fn in (
         lambda: detect_d4_recipient_email_mule(con, card_id, flagged_txn_id, as_of),
         lambda: detect_d1_mobile_anon_proxy_wave(con, card_id, as_of),
@@ -444,7 +472,15 @@ def scan_card(con: Any, card_id: str, flagged_txn_id: str, as_of: str) -> Detect
         hit = fn()
         if hit is not None and str(flagged_txn_id) in hit.episode_txn_ids:
             return hit
-    return None
+        card_level = card_level or _card_level(hit)
+    return card_level
+
+
+def _card_level(hit: DetectorHit | None) -> DetectorHit | None:
+    """A hit that may stand without the flagged purchase: D4 on the card's own earlier ring payments, when the alert surfaced
+    a ring card on another purchase (HHF-013). Every other detector needs the flagged purchase in its episode, and a
+    detector that holds it wins over this one."""
+    return hit if hit is not None and hit.detector_id == "D4_RECIPIENT_EMAIL_MULE" else None
 
 
 # ---------------------------------------------------------------------------------------------------------------------
@@ -465,7 +501,7 @@ def scan_rows(con: Any, card_id: str, flagged_txn_id: str, as_of: str, data_star
     d1 = wave_rows(con, "D1_MOBILE_ANON_PROXY_WAVE", str(data_start)[:10])
     d2 = wave_rows(con, "D2_ESCALATING_C_DRAIN")
     d3 = wave_rows(con, "D3_MICRO_CHARGE_SKIMMING")
-    d4w = d4_wave(con, flagged_txn_id, as_of) if str(data_start) <= str(__import__("datetime").datetime.fromisoformat(str(as_of)) - __import__("datetime").timedelta(days=60)) else None
+    d4w = d4_wave(con, flagged_txn_id, as_of, card_id) if str(data_start) <= str(__import__("datetime").datetime.fromisoformat(str(as_of)) - __import__("datetime").timedelta(days=60)) else None
     d4 = d4w[1] if d4w else []
     ids = sorted({str(r[0]) for rows in (d1, d2, d3, d4) for r in rows})
     card_rows: list[dict[str, Any]] = []
@@ -495,6 +531,7 @@ def hit_from_scan(scan: dict[str, Any], card_id: str, flagged_txn_id: str, as_of
         return None
     d4_rows = _wave_tuples(scan, "d4_rows")
     d4 = (str(scan.get("d4_domain") or ""), d4_rows) if d4_rows and scan.get("d4_domain") else None
+    card_level: DetectorHit | None = None
     for fn in (
         lambda: detect_d4_recipient_email_mule(None, card_id, flagged_txn_id, as_of, wave=d4) if d4 else None,
         lambda: detect_d1_mobile_anon_proxy_wave(None, card_id, as_of, rows=_wave_tuples(scan, "d1_rows")),
@@ -504,7 +541,8 @@ def hit_from_scan(scan: dict[str, Any], card_id: str, flagged_txn_id: str, as_of
         hit = fn()
         if hit is not None and str(flagged_txn_id) in hit.episode_txn_ids:
             return hit
-    return None
+        card_level = card_level or _card_level(hit)
+    return card_level
 
 
 def episode_rows(scan: dict[str, Any], hit: DetectorHit) -> list[dict[str, Any]]:
@@ -592,3 +630,28 @@ def discover_unlabelled_patterns(con: Any) -> list[dict[str, Any]]:
             "approved_at": ap.get("at"),
         })
     return out
+
+
+def compile_policy_rule_detector(rule_id: str, con: Any = None, write: bool = True) -> dict[str, Any]:
+    """Challenge 3: compile a Fraud Policy rule's prose (policy/fraud_policy.md) into a parameterised SQL detector, backtest
+    it over the closed cases and compare it with the agent's verdicts on HHF-001..018 / HHG-001..020. R5 and R7 have a data
+    shape; see engine/policy_compiler.py for the parse, the query and the output (engine/out/policy_detector_<rule>.json)."""
+    from engine.policy_compiler import compile_and_backtest
+
+    return compile_and_backtest(rule_id, con=con, write=write)
+
+
+def mined_detector_proposals() -> list[dict[str, Any]]:
+    """Challenge 2: the proposal engine/discovery.py mined from uncovered January activity (engine/out/discovery_jan2017.json),
+    with its approval status read live from data/detector_approvals.json; admitted only through `approve_detector`."""
+    import json
+    from pathlib import Path
+
+    path = Path(__file__).resolve().parent / "out" / "discovery_jan2017.json"
+    if not path.exists():
+        return []
+    p = json.loads(path.read_text(encoding="utf-8")).get("proposal")
+    if not p:
+        return []
+    ap = _approvals().get(p["proposal_id"], {})
+    return [{**p, "approval_status": ap.get("status", "pending"), "approved_by": ap.get("by"), "approved_at": ap.get("at")}]

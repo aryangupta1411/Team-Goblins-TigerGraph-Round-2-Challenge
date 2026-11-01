@@ -9,7 +9,8 @@ that fired, the raw manifest and the graph hygiene log.
 
 Files only: runs/<source>/run_manifest.json and provenance.json, runs/<source>/<case>/{answer.json, calls.jsonl,
 phases.jsonl}, cases/HH*-*.json, README.md and runs/*/stale_writebacks.json. Reads and tokens follow common.trace_stats
-(the answer.json rule). This file imports no engine, agent, schema_engine or duckdb code and writes nothing.
+(the answer.json rule). Cost per case prices the calls.jsonl LLM rows with agent/pricing.py (a price table, no agent
+runtime). This file imports no engine, schema_engine or duckdb code and writes nothing.
 """
 from __future__ import annotations
 
@@ -26,6 +27,7 @@ import streamlit as st
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
+from agent import pricing  # noqa: E402
 from ui import common, design  # noqa: E402
 
 md, esc, tag = common.md, design.esc, design.tag
@@ -57,6 +59,12 @@ def _percentiles(values) -> dict | None:
     r95 = max(1, math.ceil(0.95 * n))
     return {"n": n, "p50": vals[mid] if n % 2 else (vals[mid - 1] + vals[mid]) / 2, "p95": vals[r95 - 1], "rank95": r95,
             "nr50": vals[max(1, math.ceil(0.5 * n)) - 1], "min": vals[0], "max": vals[-1]}
+
+
+def _cost(view) -> float | None:
+    """USD of the case's LLM calls (agent/pricing.py); None with no trace or an unpriced model (mock)."""
+    c = pricing.case_cost(list(getattr(view, "calls", None) or []))
+    return c["usd"] if c["llm_calls"] and not c["unpriced_calls"] else None
 
 
 def _final(answer: dict) -> list[dict]:
@@ -540,12 +548,13 @@ for cid, v in views.items():
         "p": _num(c.get("fraud_probability")) if v.ok else None,
         "final actions": ", ".join(f"{x.get('action')} {x.get('route', 'auto')}" for x in _final(a)) if v.ok else "",
         "SAR": ("yes" if (a.get("sar") or {}).get("file") else "no") if v.ok else "", "reads": s["reads"] if s else None, "writes": s["writes"] if s else None,
-        "LLM calls": s["llm_calls"] if s else None, "tokens": s["tokens_total"] if s else None, "seconds": s["latency_s"] if s else None,
+        "LLM calls": s["llm_calls"] if s else None, "tokens": s["tokens_total"] if s else None, "cost $": _cost(v), "seconds": s["latency_s"] if s else None,
         "guardrails": sum(1 for e in common.guardrail_events(v) if e["type"] not in INFO_NOTES) if v.has_trace else 0, "write-back": wb, "error": v.error,
     })
 st.dataframe(pd.DataFrame(table), key="runs_table", hide_index=True, width="stretch", height=common.table_height(len(table)),
              column_config={"Open trace": st.column_config.ButtonColumn("Open trace", type="tertiary", pinned=True, key="runs_open", help="Open the Case file"),
                             "p": st.column_config.NumberColumn("p", format="%.2f"), "tokens": st.column_config.NumberColumn("tokens", format="localized"),
+                            "cost $": st.column_config.NumberColumn("cost $", format="%.4f", help=f"LLM rows of calls.jsonl x per-token price, {pricing.PRICE_SOURCE}"),
                             "SAR": st.column_config.TextColumn("SAR", help="sar.file in the answer: a SAR drafted; filing waits for its L2 approval")})
 st.caption(md(f"Reads and tokens by common.trace_stats: {match_txt}"))
 opened = st.session_state.get("runs_open")

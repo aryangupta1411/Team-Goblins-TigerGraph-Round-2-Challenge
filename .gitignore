@@ -13,6 +13,8 @@ runs/*
 # the Final Round live run (source of cases/HHF-*.json); r2-final is the earlier canonical run
 !runs/r2-final/
 !runs/hhf-final/
+# the submitted Final Round run since 2026-11-01 (source of cases/HHF-*.json); hhf-final above is the run it superseded
+!runs/hhf-final-2/
 
 # raw data (708 MB) and the full DuckDB; the id-only data/ids.duckdb IS checked in for CI
 data/raw/

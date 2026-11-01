@@ -22,7 +22,7 @@ from datetime import datetime
 
 import numpy as np
 
-from engine import config, pattern_rule
+from engine import config, feedback, pattern_rule
 from engine import episode as episode_rule
 from engine.policy import params as policy_params
 from engine.types import CaseContext, Evidence, Facts, Scorecard
@@ -130,6 +130,21 @@ def _r7(facts: Facts, txn: dict, chain: list[dict], P: dict) -> dict:
         and not neighbour_hi
     )
     return {"recurring_match": fires, "recurring_group": grp, "recurring_total_n": int(rc.get("total_n", 0) or 0), "recurring_neighbour_hi": neighbour_hi, "recurring_place": place}
+
+
+def _graph_neighbourhood(pcard: dict, sos: dict) -> dict:
+    """Card.wcc_id / Card.device_degree (graph/run_algos.py) when populated, else the shared_origin_scan twin of the degree."""
+    strong = [d for d in sos.get("devices", []) or [] if d.get("is_strong")]
+    n_fraud = sum(int(d.get("n_fraud_cases", 0) or 0) for d in strong)
+    devices = [str(d["device_id"]) for d in strong if int(d.get("n_fraud_cases", 0) or 0) > 0]
+    wcc_id, deg = int(pcard.get("wcc_id", -1) if pcard.get("wcc_id") is not None else -1), int(pcard.get("device_degree", 0) or 0)
+    if wcc_id >= 0 or deg > 0:
+        source = "tg_wcc/degree"
+    else:
+        source, deg = "offline twin: 30-day strong-profile sharing", sum(max(int(d.get("n_cards_30d", 0) or 0) - 1, 0) for d in strong)
+    G = policy_params()["engine"]["graph_neighbourhood"]
+    fires = G["min_degree"] <= deg <= G["max_degree"] and n_fraud >= 1
+    return {"wcc_id": wcc_id, "degree": deg, "n_fraud": n_fraud, "devices": devices, "source": source, "fires": fires}
 
 
 def _cleared_template_matches(case: dict, txn: dict, rh: dict) -> bool:
@@ -548,7 +563,34 @@ def compute(ctx: CaseContext, facts: Facts, evidence: list[Evidence]) -> Scoreca
     flags["shared_device_fraud"] = len(shared_fraud_cards) >= 2 or flags["ring_hit"]
     prior_n = int(dh.get("prior_n", 0) or 0)
     flags["device_known"] = bool(dev_id) and (prior_n >= 3 or (txn["device_new"] == "Found" and prior_n >= 1))
-    if dev_id and not flags["ring_hit"]:
+    # A card-present purchase has no browser, so a device record on an in-person transaction contradicts its channel. A
+    # fingerprint copied from the cardholder's own devices must not vouch for it as "known" (HHF-008: the only in-person
+    # rows in January carrying one, each presenting a different one of the cardholder's devices).
+    ip_dev = (
+        [m for m in chain if m.get("channel") == "in_person" and m.get("device_id") and str(m["ts"]) <= str(as_of)]
+        if txn["channel"] == "in_person" and dev_id
+        else []
+    )
+    flags["in_person_device"] = bool(ip_dev)
+    flags["in_person_device_ids"] = sorted({str(m["id"]) for m in ip_dev} | ({str(txn["id"])} if ip_dev else set()))
+    if flags["in_person_device"] and not flags["ring_hit"]:
+        ids = flags["in_person_device_ids"]
+        regions = sorted({str(m.get("addr1") or "") for m in ip_dev if m.get("addr1")})
+        led.append(
+            Evidence(
+                f"In-person purchase {txn['id']} carries an online device record (`{dev_id}`"
+                + (f", {txn['proxy']}" if txn["proxy"] else "")
+                + "): a card-present purchase has no browser, so the record contradicts the channel"
+                + (f"; {len(ids)} in-person purchases on this card carry one ({', '.join(ids)}), in billing region {', '.join(regions)}" if len(ids) > 1 else ""),
+                "graph",
+                _q("episode_candidates", txn=txn["id"]),
+                ids + [dev_id],
+                "device",
+                "fraud",
+                0.8,
+            )
+        )
+    if dev_id and not flags["ring_hit"] and not flags["in_person_device"]:
         n_cards = int(dev.get("n_cards_alltime", 0) or 0)
         if flags["device_known"]:
             led.append(
@@ -573,13 +615,30 @@ def compute(ctx: CaseContext, facts: Facts, evidence: list[Evidence]) -> Scoreca
                 led.append(Evidence(note, "graph", _q("case_context", txn=txn["id"]), [dev_id, txn["id"]], "device", "neutral", 0.0))
         elif txn["proxy"] == config.ANON_PROXY:
             led.append(Evidence(f"Transaction routed through {txn['proxy']}", "graph", _q("case_context", txn=txn["id"]), [txn["id"]], "device", "fraud", 0.4))
+    # Graph-algorithm signal (graph/run_algos.py): Card.wcc_id / Card.device_degree from tg_wcc + degree on the SHARES_DEVICE projection.
+    # When the algorithms have not been run (wcc_id = -1 and degree 0 on every card, as in the offline facts DB) the degree is
+    # derived from the same 30-day strong-profile sharing shared_origin_scan reports (the projection's edge rule), and the item
+    # says which source it used. Bounded: below family_strength, so on its own it never makes the device family count for fraud.
+    flags["graph_neighbourhood"] = _graph_neighbourhood(pcard, sos)
+    gn = flags["graph_neighbourhood"]
+    if gn["fires"] and not flags["ring_hit"] and len(shared_fraud_cards) < 2:
+        led.append(
+            Evidence(
+                f"SHARES_DEVICE neighbourhood ({gn['source']}): the card has device degree {gn['degree']}"
+                + (f" in weakly connected component {gn['wcc_id']}" if gn["wcc_id"] >= 0 else "")
+                + f", and {gn['n_fraud']} confirmed-fraud case(s) sit on the strong profiles it shares ({', '.join(gn['devices'])})",
+                "graph",
+                _q("card_profile", card=cid) if gn["source"] == "tg_wcc/degree" else _q("shared_origin_scan", card=cid),
+                [cid] + gn["devices"],
+                "device",
+                "fraud",
+                P["graph_neighbourhood_bump"],
+            )
+        )
     # R6 recipient-email clause: only a rare recipient domain (<= 40 other cards in 30 d) shared with >= 2 other cards' fraud
+    # A domain shared by many cards in 30 days with no fraud behind it is D4's to judge (it also needs <= 40 cards ever and 60
+    # days of history): a 30-day count alone cannot tell a mule hub (sc.rr.com) from a webmail domain (mac.com, HHF-014).
     rem_fraud = [e for e in sos.get("recipient_emails", []) or [] if int(e.get("n_fraud_cases", 0)) >= 2 and 0 < int(e.get("n_cards_30d", 0)) <= 40]
-    rem_mule = [
-        e
-        for e in sos.get("recipient_emails", []) or []
-        if 10 <= int(e.get("n_cards_30d", 0)) <= 30 and int(e.get("n_fraud_cases", 0)) == 0 and config.in_final_round(as_of)
-    ]
     flags["shared_recipient_email"] = [e["domain"] for e in rem_fraud]
     if rem_fraud:
         e = rem_fraud[0]
@@ -592,19 +651,6 @@ def compute(ctx: CaseContext, facts: Facts, evidence: list[Evidence]) -> Scoreca
                 "device",
                 "fraud",
                 1.0,
-            )
-        )
-    elif rem_mule and not flags["r2_detector_hit"]:
-        e = rem_mule[0]
-        led.append(
-            Evidence(
-                f"Recent online ProductCD='C' activity on this card paid recipient email domain {e['domain']}, which is shared by {e['n_cards_30d']} other cards in 30 days",
-                "graph",
-                _q("shared_origin_scan", card=cid),
-                [e["domain"], cid],
-                "device",
-                "fraud",
-                0.8,
             )
         )
     if flags["r2_detector_hit"]:
@@ -782,9 +828,16 @@ def compute(ctx: CaseContext, facts: Facts, evidence: list[Evidence]) -> Scoreca
     if analyst:
         led.append(Evidence("Analyst request: several cards this month show purchases from the same unusual device profile", "customer", "trigger", [txn["id"], cid], "customer", "neutral", 0.0))
 
+    # ---------------------------------------------------------------- analyst feedback (Challenge 8, engine/feedback.py)
+    det_id = str(r2_det.get("detector_id") or "")
+    fb = feedback.apply(ctx, flags, [str(o.get("id")) for o in prof.get("other_cards", []) or []], P, detector_id=det_id)
+    led.extend(fb["evidence"])
+    if fb["rows"]:
+        flags["analyst_feedback"] = fb["rows"]
+
     # ---------------------------------------------------------------- families and adjustments
     fam_f, fam_l = _families(led)
-    adj: list[tuple[str, float]] = []
+    adj: list[tuple[str, float]] = list(fb["adjustments"])
     if flags["r5_run"]:
         adj.append(("R5 card-testing run feeding the flagged purchase", P["card_testing_bump"]))
     if flags["recurring_match"]:
@@ -795,6 +848,8 @@ def compute(ctx: CaseContext, facts: Facts, evidence: list[Evidence]) -> Scoreca
         adj.append(("recent card-testing / CNP case on the card", P["recent_case_bump"]))
     if len(shared_fraud_cards) >= 2 and not flags["ring_hit"]:
         adj.append(("strong shared profile with >= 2 other fraud cards within +-30 d", P["shared_profile_bump"]))
+    if gn["fires"] and not flags["ring_hit"] and len(shared_fraud_cards) < 2:
+        adj.append((f"graph neighbourhood: device degree {gn['degree']} with {gn['n_fraud']} fraud case(s) on shared profiles ({gn['source']})", P["graph_neighbourhood_bump"]))
     if denial and cal_p >= 0.5 and not flags["recurring_match"]:
         adj.append(("customer denial corroborated by the scorer (calibrated >= 0.5)", P["denial_bump_when_scorer_agrees"]))
     total = max(-P["max_abs_adjustment"], min(P["max_abs_adjustment"], sum(a for _, a in adj)))
@@ -807,6 +862,13 @@ def compute(ctx: CaseContext, facts: Facts, evidence: list[Evidence]) -> Scoreca
         lo, hi = P["conflict_clamp"]
         p1 = min(max(p1, lo), hi)
         adj.append((f"conflict override: rulebook chain ${flags['rulebook_chain_sum']:,.2f} vs scorer {cms_p:.2f} → clamp [{lo}, {hi}]", 0.0))
+    if flags["in_person_device"] and not flags["ring_hit"] and not flags.get("r2_detector_hit"):
+        # channel and telemetry disagree: neither the scorer's low score nor the copied fingerprint settles it (R1 / R8)
+        flags["conflict"] = flags["conflict_chain"] = True
+        flags["conflict_chain_ids"] = list(flags["in_person_device_ids"])
+        lo, hi = P["conflict_clamp"]
+        p1 = min(max(p1, lo), hi)
+        adj.append((f"in-person purchase carrying a device record: channel and telemetry disagree → clamp [{lo}, {hi}]", 0.0))
     floor = 0.0
     if flags["ring_hit"]:
         floor = P["ring_floor"]
@@ -826,24 +888,9 @@ def compute(ctx: CaseContext, facts: Facts, evidence: list[Evidence]) -> Scoreca
     elif denial and not flags["recurring_match"]:
         floor = P["denial_floor"]
         adj.append(("customer denial not explained by R7 → floor", floor))
-    # Round 2 mixed-channel / recipient-email conflict check on high-exposure in-person risk alerts (HHF-010, HHF-013)
-    # Mixed-channel / recipient-email conflict check on in-person risk alerts with concurrent un-identitied online ProductCD='C' activity
-    if (
-        config.in_final_round(as_of)
-        and not flags.get("r2_detector_hit")
-        and risk_alert
-        and txn["channel"] == "in_person"
-        and (
-            bool(rem_mule)
-            or any(m.get("channel") == "online" and m.get("product_cd") == "C" and float(m.get("amt", 0)) >= 80.0 and not m.get("device_id") for m in raw48)
-        )
-    ):
-        flags["conflict_chain"] = True
-        flags["conflict"] = True
-        flags["conflict_chain_ids"] = [str(txn["id"])]
-        lo, hi = P["conflict_clamp"]
-        p1 = min(max(p1, lo), hi)
-        adj.append(("Mixed-channel / recipient-email conflict override → clamp [0.30, 0.50]", 0.0))
+    if floor and feedback.floor_kind(flags, det_id) in fb["lifted"]:
+        adj.append((f"analyst rejected the finding behind the floor ({feedback.floor_kind(flags, det_id)}) → floor lifted", 0.0))
+        floor = 0.0
     p = round(max(p1, floor), 4)
     flags["floor"] = floor
     flags["families_conflict"] = _families_conflict(fam_f, fam_l)

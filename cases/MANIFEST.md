@@ -5,43 +5,47 @@
 
 ## Final Round (HHF-001 … HHF-018)
 
-- run: `hhf-final`. Each `cases/HHF-*.json` is byte-identical to `runs/hhf-final/HHF-*/answer.json`.
-- invocations (`runs/hhf-final/run_manifest.json`):
-  - main run, started 2026-10-31 11:02:41. HHF-005 failed closed in P5: Gemini's structured output failed validation three times, so no answer was written. The run went on to finish HHF-003 and the other 16 cases.
-  - `--resume`, started 11:35:37, after HHF-005's write-back was removed: HHF-005, then HHF-003, in `opened_at` order. The last case finished at 11:38:45.
-  - the failure, the superseded first HHF-003 attempt and the tracked-file guard are in `runs/hhf-final/provenance.json` and `runs/hhf-final/_failed_attempt/`.
-- model: `gemini-2.5-flash` for all 141 model calls (`kind=llm` rows of `calls.jsonl`, 0 failed); llm backend `gemini`; `sar_model` `gemini-2.5-flash`.
-- git: `b397c2c97b5bf1b4cded77e951cfd58e5be8c70b`, `git_dirty: false`, the same for both invocations and all 18 cases.
+- run: `hhf-final-2`. Each `cases/HHF-*.json` is byte-identical to `runs/hhf-final-2/HHF-*/answer.json`.
+- one invocation (`runs/hhf-final-2/run_manifest.json`), 2026-11-01 22:41:46 to 23:03:26: 18 / 18 completed, 0 failed,
+  nothing resumed.
+- model: `gemini-3.6-flash` for all 143 model calls (`kind=llm` rows of `calls.jsonl`, 0 failed); llm backend `gemini`;
+  `sar_model` `gemini-3.6-flash`.
+- git: `8dc9e0723f42bd735e1c4d5b36e8ad09c7e988d0` (tag `hhf-final-2-run`), `git_dirty: false`. A tracked-file guard
+  hashed 642 files before and after the run; the two lists are identical (`runs/hhf-final-2/provenance.json`).
 - prompt sha256: `assess.md`=ff8dd8b37336, `explain.md`=9580d7143059, `investigate.md`=87b9249c670e, `nba.md`=67043e265092, `sar.md`=b68538088664, `system.md`=940a201b9574
 - detectors: D1-D4 ran in the graph through the installed `typology_scan`: 18 harness calls through MCP, all `ok`.
-- superseded, not promoted: `r2-final`, `r2-live-gemini`, `r2-graph`, and `r2-submit`, which was discarded because tracked files changed while it was starting.
+- official grader (`grader/grade.py`, sha256 b27e39ce756b…): 18 / 18 clean, 0 hard, 0 policy, 1 warning (HHF-013
+  `flagged_not_affected`: the flagged in-person purchase is genuine; the ring payments are the affected transactions).
+- supersedes `hhf-final` (commit `b397c2c`, `gemini-2.5-flash`), kept in `runs/hhf-final/`. Four verdicts changed:
+  HHF-008 legitimate → uncertain, HHF-010 and HHF-014 uncertain → legitimate, HHF-013 uncertain → fraud. The
+  `hhf-final` write-backs were deleted from the graph before this run (`provenance.json`, `graph_before_run`).
 
 | case | verdict | p | pattern | final actions (route) | sar | tool_calls | tokens | latency_s |
 |---|---|---|---|---|---|---|---|---|
-| HHF-001 | fraud | 0.92 | undocumented | CREATE_CASE (auto), MONITOR_CONNECTED_CARDS (auto), BLOCK_CARD (L1), FILE_REPORT (L2), ESCALATE_TO_ANALYST (auto) | True | 22 | 331456 | 186.4 |
-| HHF-002 | fraud | 0.92 | undocumented | CREATE_CASE (auto), MONITOR_CONNECTED_CARDS (auto), BLOCK_CARD (L1), FILE_REPORT (L2), ESCALATE_TO_ANALYST (auto) | True | 22 | 246248 | 134.8 |
-| HHF-003 (resumed run) | fraud | 0.94 | undocumented | CREATE_CASE (auto), MONITOR_CONNECTED_CARDS (auto), BLOCK_CARD (L2), FILE_REPORT (L2), ESCALATE_TO_ANALYST (auto) | True | 23 | 242287 | 84.7 |
-| HHF-004 | fraud | 0.92 | undocumented | CREATE_CASE (auto), MONITOR_CONNECTED_CARDS (auto), BLOCK_CARD (L1), FILE_REPORT (L2), ESCALATE_TO_ANALYST (auto) | True | 22 | 217775 | 93.2 |
-| HHF-005 (resumed run) | fraud | 0.92 | undocumented | CREATE_CASE (auto), MONITOR_CONNECTED_CARDS (auto), BLOCK_CARD (L1), FILE_REPORT (L2), ESCALATE_TO_ANALYST (auto) | True | 21 | 191664 | 101.4 |
-| HHF-006 | fraud | 0.92 | undocumented | CREATE_CASE (auto), MONITOR_CONNECTED_CARDS (auto), BLOCK_CARD (L1), FILE_REPORT (L2), ESCALATE_TO_ANALYST (auto) | True | 20 | 180782 | 90.9 |
-| HHF-007 | fraud | 0.92 | card_testing | CREATE_CASE (auto), STEP_UP_AUTH (auto), DECLINE_TRANSACTION (L1), BLOCK_CARD (L1) | False | 19 | 206345 | 97.4 |
-| HHF-008 | legitimate | 0.01 | none | CREATE_CASE (auto), ALLOW_TRANSACTION (auto), CLOSE_NO_FRAUD (auto) | False | 19 | 180370 | 69.8 |
-| HHF-009 | legitimate | 0.01 | none | CREATE_CASE (auto), ALLOW_TRANSACTION (auto), CLOSE_NO_FRAUD (auto) | False | 22 | 216185 | 114.9 |
-| HHF-010 | uncertain | 0.35 | out_of_region_use | CREATE_CASE (auto), MONITOR_CARD (auto), DECLINE_TRANSACTION (L1), ESCALATE_TO_ANALYST (auto) | False | 17 | 193244 | 76.0 |
-| HHF-011 | legitimate | 0.1 | none | CREATE_CASE (auto), ALLOW_TRANSACTION (auto), CLOSE_NO_FRAUD (auto) | False | 17 | 269213 | 96.1 |
-| HHF-012 | legitimate | 0.0 | none | CREATE_CASE (auto), ALLOW_TRANSACTION (auto), CLOSE_NO_FRAUD (auto) | False | 16 | 133625 | 62.4 |
-| HHF-013 | uncertain | 0.3 | out_of_region_use | CREATE_CASE (auto), MONITOR_CARD (auto), MONITOR_CONNECTED_CARDS (auto), DECLINE_TRANSACTION (L1), ESCALATE_TO_ANALYST (auto) | False | 15 | 115149 | 77.4 |
-| HHF-014 | uncertain | 0.4 | out_of_region_use | CREATE_CASE (auto), MONITOR_CARD (auto), DECLINE_TRANSACTION (L1), ESCALATE_TO_ANALYST (auto) | False | 17 | 188194 | 74.0 |
-| HHF-015 | legitimate | 0.01 | none | CREATE_CASE (auto), ALLOW_TRANSACTION (auto), CLOSE_NO_FRAUD (auto) | False | 16 | 128606 | 63.7 |
-| HHF-016 | legitimate | 0.1 | none | CREATE_CASE (auto), ALLOW_TRANSACTION (auto), CLOSE_NO_FRAUD (auto) | False | 17 | 323889 | 96.6 |
-| HHF-017 | legitimate | 0.1 | none | CREATE_CASE (auto), ALLOW_TRANSACTION (auto), CLOSE_NO_FRAUD (auto) | False | 24 | 282878 | 131.4 |
-| HHF-018 | legitimate | 0.05 | none | CREATE_CASE (auto), ALLOW_TRANSACTION (auto), CLOSE_NO_FRAUD (auto) | False | 23 | 252686 | 88.4 |
+| HHF-001 | fraud | 0.92 | undocumented | CREATE_CASE (auto), MONITOR_CONNECTED_CARDS (auto), BLOCK_CARD (L1), FILE_REPORT (L2), ESCALATE_TO_ANALYST (auto) | True | 26 | 271576 | 105.1 |
+| HHF-002 | fraud | 0.92 | undocumented | CREATE_CASE (auto), MONITOR_CONNECTED_CARDS (auto), BLOCK_CARD (L1), FILE_REPORT (L2), ESCALATE_TO_ANALYST (auto) | True | 26 | 350878 | 82.8 |
+| HHF-003 | fraud | 0.94 | undocumented | CREATE_CASE (auto), MONITOR_CONNECTED_CARDS (auto), BLOCK_CARD (L2), FILE_REPORT (L2), ESCALATE_TO_ANALYST (auto) | True | 25 | 222567 | 101.7 |
+| HHF-004 | fraud | 0.92 | undocumented | CREATE_CASE (auto), MONITOR_CONNECTED_CARDS (auto), BLOCK_CARD (L1), FILE_REPORT (L2), ESCALATE_TO_ANALYST (auto) | True | 23 | 229349 | 63.1 |
+| HHF-005 | fraud | 0.92 | undocumented | CREATE_CASE (auto), MONITOR_CONNECTED_CARDS (auto), BLOCK_CARD (L1), FILE_REPORT (L2), ESCALATE_TO_ANALYST (auto) | True | 23 | 227510 | 78.4 |
+| HHF-006 | fraud | 0.92 | undocumented | CREATE_CASE (auto), MONITOR_CONNECTED_CARDS (auto), BLOCK_CARD (L1), FILE_REPORT (L2), ESCALATE_TO_ANALYST (auto) | True | 23 | 254832 | 93.2 |
+| HHF-007 | fraud | 0.92 | card_testing | CREATE_CASE (auto), STEP_UP_AUTH (auto), DECLINE_TRANSACTION (L1), BLOCK_CARD (L1) | False | 18 | 158123 | 52.2 |
+| HHF-008 | uncertain | 0.3 | out_of_region_use | CREATE_CASE (auto), MONITOR_CARD (auto), DECLINE_TRANSACTION (L1), ESCALATE_TO_ANALYST (auto) | False | 19 | 193441 | 72.5 |
+| HHF-009 | legitimate | 0.0 | none | CREATE_CASE (auto), ALLOW_TRANSACTION (auto), CLOSE_NO_FRAUD (auto) | False | 22 | 158933 | 56.3 |
+| HHF-010 | legitimate | 0.01 | none | CREATE_CASE (auto), ALLOW_TRANSACTION (auto), CLOSE_NO_FRAUD (auto) | False | 17 | 191960 | 57.3 |
+| HHF-011 | legitimate | 0.1 | none | CREATE_CASE (auto), ALLOW_TRANSACTION (auto), CLOSE_NO_FRAUD (auto) | False | 17 | 267005 | 82.0 |
+| HHF-012 | legitimate | 0.0 | none | CREATE_CASE (auto), ALLOW_TRANSACTION (auto), CLOSE_NO_FRAUD (auto) | False | 17 | 159324 | 55.1 |
+| HHF-013 | fraud | 0.92 | undocumented | CREATE_CASE (auto), MONITOR_CONNECTED_CARDS (auto), BLOCK_CARD (L1), FILE_REPORT (L2), ESCALATE_TO_ANALYST (auto) | True | 20 | 205155 | 95.7 |
+| HHF-014 | legitimate | 0.1 | none | CREATE_CASE (auto), ALLOW_TRANSACTION (auto), CLOSE_NO_FRAUD (auto) | False | 17 | 185542 | 53.7 |
+| HHF-015 | legitimate | 0.0 | none | CREATE_CASE (auto), ALLOW_TRANSACTION (auto), CLOSE_NO_FRAUD (auto) | False | 17 | 148577 | 52.5 |
+| HHF-016 | legitimate | 0.0 | none | CREATE_CASE (auto), ALLOW_TRANSACTION (auto), CLOSE_NO_FRAUD (auto) | False | 17 | 322107 | 57.8 |
+| HHF-017 | legitimate | 0.0 | none | CREATE_CASE (auto), ALLOW_TRANSACTION (auto), CLOSE_NO_FRAUD (auto) | False | 23 | 174657 | 75.6 |
+| HHF-018 | legitimate | 0.0 | none | CREATE_CASE (auto), ALLOW_TRANSACTION (auto), CLOSE_NO_FRAUD (auto) | False | 23 | 250837 | 57.9 |
 
-Totals: 7 fraud / 3 uncertain / 8 legitimate; 6 SARs; final actions 54 auto, 10 L1, 7 L2; 352 tool calls, 3,900,596
-tokens, 1,739.5 s. Per case: tool calls median 19.5 (p95 24), tokens median 211,265 (p95 331,456), latency median
-92.1 s (p95 186.4 s). p95 is nearest-rank, which with 18 values is the maximum.
+Totals: 8 fraud / 1 uncertain / 9 legitimate; 7 SARs; final actions 53 auto, 9 L1, 8 L2; 373 tool calls, 3,972,373
+tokens, 1,292.9 s. Per case: tool calls median 21 (p95 26), tokens median 213,861 (p95 350,878), latency median
+67.8 s (p95 105.1 s). p95 is nearest-rank, which with 18 values is the maximum.
 
-Sources: `cases/HHF-*.json` (`case.verdict`, `case.fraud_probability`, `case.pattern`, `next_best_actions.final`, `sar.file`, `tool_calls`, `tokens`, `latency_s`); `runs/hhf-final/run_manifest.json`; `runs/hhf-final/HHF-*/calls.jsonl`. Failure detail: `runs/hhf-final/provenance.json` (`failed_attempt`) and `runs/hhf-final/_failed_attempt/HHF-005/`.
+Sources: `cases/HHF-*.json` (`case.verdict`, `case.fraud_probability`, `case.pattern`, `next_best_actions.final`, `sar.file`, `tool_calls`, `tokens`, `latency_s`); `runs/hhf-final-2/run_manifest.json`; `runs/hhf-final-2/HHF-*/calls.jsonl`; `runs/hhf-final-2/provenance.json`.
 
 ## Round 1 (HHG-001 … HHG-020)
 

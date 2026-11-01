@@ -16,6 +16,8 @@ RX_PATTERNS: dict[str, re.Pattern[str]] = {
     "exam_case_id": re.compile(r"^HH[GF]-\d{3}$"),
     "ts_iso": re.compile(r"^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}$"),
     "ts_epoch": re.compile(r"^14[678]\d{7}(\.\d+)?$"),
+    "date_only": re.compile(r"^\d{4}-\d{2}-\d{2}$"),
+    "time_only": re.compile(r"^\d{2}:\d{2}:\d{2}$"),
     "email_domain": re.compile(r"^[a-z0-9.-]+\.(com|net|org|edu|gov|co\.uk|de|fr|es|jp|me)$", re.I),
     "proxy_type": re.compile(r"^IP_PROXY:(ANONYMOUS|TRANSPARENT|HIDDEN)$", re.I),
     "device_bundle": re.compile(r"^.+ \| .+ \| .+ \| .+$"),
@@ -55,6 +57,9 @@ def profile_csv(path: str | Path, max_rows: int = 5000) -> dict[str, Any]:
 
     col_profiles: dict[str, ColumnProfile] = {}
     n_sample = len(rows)
+    # a sample's record id is the row's own key (the first column holding transaction or case ids), whatever it is named
+    key_col = next((c for rx in ("txn_id", "exam_case_id", "closed_case_id") for c in cols
+                    if rows and sum(1 for r in rows[:200] if RX_PATTERNS[rx].match(str(r.get(c) or "").strip())) >= 0.9 * min(len(rows), 200)), None)
     for col in cols:
         vals = [str(r.get(col) or "").strip() for r in rows]
         non_null = [v for v in vals if v != "" and v.lower() not in ("null", "none", "nan")]
@@ -102,7 +107,7 @@ def profile_csv(path: str | Path, max_rows: int = 5000) -> dict[str, Any]:
         for idx, r in enumerate(rows):
             v = str(r.get(col) or "").strip()
             if v and v.lower() not in ("null", "none"):
-                pk = r.get("TransactionID") or r.get("txn_id") or r.get("tx_id") or r.get("case_id") or r.get("id") or str(idx + 1)
+                pk = (r.get(key_col) if key_col else None) or r.get("TransactionID") or r.get("txn_id") or r.get("tx_id") or r.get("case_id") or r.get("id") or str(idx + 1)
                 samples.append({"record_id": str(pk), "value": v[:120]})
                 if len(samples) >= 5:
                     break

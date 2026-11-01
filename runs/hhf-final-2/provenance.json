@@ -1,0 +1,97 @@
+{
+  "run_id": "hhf-final-2",
+  "code": {
+    "commit": "8dc9e0723f42bd735e1c4d5b36e8ad09c7e988d0",
+    "git_dirty": false,
+    "note": "run from a clean detached worktree; the same content as round2-final d552519 on engine/agent/graph/policy/schema_engine/etl (they differ only in ui/ and tests/unit/test_ui_common.py)",
+    "guard": "every tracked file hashed (sha256) before and after the run; both lists identical",
+    "tracked_files": 642,
+    "list_sha256": {
+      "before_main_run": "2977667324c199adcb0bf8890fbef76eb925966c7e12aacd84ef2e88d8da983c",
+      "after_main_run": "2977667324c199adcb0bf8890fbef76eb925966c7e12aacd84ef2e88d8da983c"
+    }
+  },
+  "model": {
+    "requested": "gemini-3.6-flash",
+    "served": "gemini-3.6-flash (143/143 llm calls)",
+    "note": "the user asked for gemini-3.5-flash; on this API key Google answers gemini-3.5-flash requests with modelVersion gemini-3.6-flash, so 3.6 was requested explicitly"
+  },
+  "invocations": [
+    {
+      "started": "2026-11-01T22:41:46",
+      "finished": "2026-11-01 23:03:26",
+      "cases": 18,
+      "completed": 18,
+      "failed": 0,
+      "resumed": []
+    }
+  ],
+  "graph_before_run": {
+    "cleared_hhf_final_writebacks": {
+      "AgentCase": 18,
+      "CaseEvent": 122,
+      "Approval": 17,
+      "total": 157
+    },
+    "remaining_after_clear": 0,
+    "how": "ops.clear_case_writebacks --cases HHF-001..018 --apply; 3 of the 122 CaseEvents (AC-HHF-008-002, AC-HHF-008-008, AC-HHF-015-006) survived the first delete and were removed by a second --apply"
+  },
+  "graph_at_end": {
+    "read_at": "2026-11-01 23:03:52",
+    "vertex_counts": {
+      "Transaction": 650938,
+      "ClosedCase": 5585,
+      "AgentCase": 20,
+      "CaseEvent": 137,
+      "Approval": 19
+    },
+    "hhf_agentcase_run_ids": {
+      "hhf-final-2": 18
+    },
+    "hhf_case_events": 121,
+    "hhf_approvals": 17,
+    "how": "pyTigerGraph getVertexCount / getVertices on FraudGraph (read-only)"
+  },
+  "grader": {
+    "file": "grader/grade.py from the organisers' Drive (sha256 b27e39ce756b000ba379b9658c78028019bf5f0fc1babe27874974c0ef9244b3)",
+    "result": "18/18 clean, hard 0, policy 0, warning 1 (HHF-013 flagged_not_affected: the flagged in-person purchase is genuine; the ring payments are the affected txns)",
+    "report": "_guard/grade_report.json"
+  },
+  "vs_offline_engine": "0 differences on verdict, pattern, SAR, final actions with routes, |dp| <= 0.10 (engine.run_cases at 8dc9e07)",
+  "vs_hhf_final": {
+    "HHF-008": "legitimate 0.01 -> uncertain 0.30",
+    "HHF-010": "uncertain 0.35 -> legitimate 0.01",
+    "HHF-013": "uncertain 0.30 -> fraud 0.92",
+    "HHF-014": "uncertain 0.40 -> legitimate 0.10"
+  },
+  "stats": {
+    "verdicts": {
+      "fraud": 8,
+      "uncertain": 1,
+      "legitimate": 9
+    },
+    "sars": 7,
+    "tool_calls": 373,
+    "tokens_total": 3972373,
+    "tokens_median": 213861,
+    "tokens_p95": 350878,
+    "latency_median_s": 67.8,
+    "latency_p95_s": 105.1,
+    "persist_writes_ok": 274,
+    "written_to_graph": "18/18",
+    "tipoff_hits": 0,
+    "validator_problems": 0
+  },
+  "promotion": {
+    "promoted_at": "2026-11-01",
+    "checked_independently_by": "R2 MAIN session before promotion",
+    "checks": {
+      "validator": "18 clean, 0 problems (agent.validator --db data/ids.duckdb)",
+      "grader": "18/18 clean, hard 0, policy 0, warn 1 (same grade.py sha256 b27e39ce756b...)",
+      "guard_lists_identical": true,
+      "manifest": "git_sha 8dc9e07, git_dirty false, 1 invocation",
+      "secrets_scan": "no API key, TG secret, TG host or local path in runs/hhf-final-2"
+    },
+    "supersedes": "hhf-final (b397c2c, gemini-2.5-flash); its graph write-backs were deleted before this run (graph_before_run)"
+  }
+}

@@ -1,0 +1,30 @@
+{
+  "generated_at": "2026-11-01T22:41:31",
+  "cases": [
+    "HHF-001",
+    "HHF-002",
+    "HHF-003",
+    "HHF-004",
+    "HHF-005",
+    "HHF-006",
+    "HHF-007",
+    "HHF-008",
+    "HHF-009",
+    "HHF-010",
+    "HHF-011",
+    "HHF-012",
+    "HHF-013",
+    "HHF-014",
+    "HHF-015",
+    "HHF-016",
+    "HHF-017",
+    "HHF-018"
+  ],
+  "applied": false,
+  "found": [],
+  "counts": {
+    "CaseEvent": 0,
+    "Approval": 0,
+    "AgentCase": 0
+  }
+}

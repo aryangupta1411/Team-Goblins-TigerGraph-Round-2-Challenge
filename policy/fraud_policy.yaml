@@ -62,6 +62,14 @@ engine:                                       # PLAN §4.5 (calibrated engine), 
   shared_profile_bump: 1.4                    # strong profile with >= 2 other confirmed-fraud cards within +-30 d
   denial_bump_when_scorer_agrees: 1.1         # D4 (kept; PLAN §4.5 list addition): a dispute whose calibrated scorer is already >= 0.5 —
                                               # the denial corroborates an independent family (puts HHG-016 in the fraud band pre-evidence)
+  graph_neighbourhood_bump: 0.3               # Card.device_degree / wcc_id (graph/run_algos.py): fraud on the card's SHARES_DEVICE neighbours
+  graph_neighbourhood:                        # (log-odds and evidence weight; below family_strength so it never makes a family alone)
+    min_degree: 2                             # at least two neighbour cards through strong profiles
+    max_degree: 12                            # a hub above this is a generic profile, not a neighbourhood
+  feedback:                                   # Challenge 8 (engine/feedback.py): analyst accept / reject rows from ui/approvals_db analyst_feedback
+    rejected_bump: -2.0                       # a rejected finding on this card (log-odds; also lifts the floor that finding set)
+    accepted_bump: 1.0                        # an accepted finding on this card
+    customer_scope_factor: 0.5                # the same decision recorded on another card of the customer
   max_abs_adjustment: 2.2
   family_strength: 0.5                        # |net weight| a family needs before it counts as "for fraud" / "for legitimacy"
   verify_before_close: true                   # house rule: a risk-score alert is never closed as legitimate without a customer verification
@@ -139,8 +147,13 @@ rules:
   R4:
     text: "No reply within 24 hours: MONITOR_CARD and DECLINE_TRANSACTION for pending authorizations; escalate if exposure > $500."
     when: [no_reply]
-    require: [MONITOR_CARD, DECLINE_TRANSACTION]
+    require: [MONITOR_CARD]
     add_if:
+      # "DECLINE_TRANSACTION for pending authorizations" after a 24 h lapse. At answer time that lapse is ASSUMED (simulated), not
+      # observed, so on an uncertain verdict the decline would act against a customer who may still reply and clear it: it is held
+      # until a real reply window lapses (the verification stays outstanding, uncertain_final). Fraud verdicts keep it.
+      - when: [not_verdict_uncertain]
+        actions: [DECLINE_TRANSACTION]
       - when: [exposure_gt_500]
         actions: [ESCALATE_TO_ANALYST]
   R5:
@@ -186,9 +199,10 @@ rules:
   uncertain_final:                            # verification came back but did not settle it (failed / not completed): R4 set; R8 only when gated (D3),
                                               # otherwise the case stays `open` with the reply pending
     cite: "R4"
-    text: "Uncertain verdict after the requested evidence: MONITOR_CARD and DECLINE_TRANSACTION for pending authorizations; escalate when R8 holds."
+    text: "Uncertain verdict after the requested evidence: MONITOR_CARD with the verification still outstanding (no decline before a real reply lapses); escalate when R8 holds."
     when: [verdict_uncertain, stage_final, not_customer_confirmed, requested]   # only after a request (a settled R2 denial asks none)
-    require: [CREATE_CASE, MONITOR_CARD, DECLINE_TRANSACTION]
+    require: [CREATE_CASE, MONITOR_CARD]
+    require_one_of: [VERIFY_WITH_CUSTOMER, STEP_UP_AUTH]
     add_if:
       - when: [r8_trigger]
         cite: "R8"

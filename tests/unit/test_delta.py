@@ -201,7 +201,7 @@ def built(tmp_path_factory):
     root = tmp_path_factory.mktemp("delta_ok")
     month = write_month(root / "month")
     work = root / "work.duckdb"
-    gates, stats = delta.build(BASE, delta.find_month_files(month), work, score="none")
+    gates, stats = delta.build(BASE, delta.find_month_files(month), work, score="none", allow_unapproved=True)
     return {"root": root, "work": work, "gates": gates, "stats": stats}
 
 
@@ -227,7 +227,7 @@ def test_a_clean_month_passes_every_build_gate_and_appends_only(built):
 @needs_base
 def test_export_writes_only_the_delta_and_an_undo_pack_that_reverses_it(built, tmp_path):
     out = tmp_path / "delta"
-    assert delta_export.export_delta(str(BASE), str(built["work"]), str(out)) == 0
+    assert delta_export.export_delta(str(BASE), str(built["work"]), str(out), allow_unapproved=True) == 0
     m = json.loads((out / delta_export.MANIFEST).read_text())
     assert not [g for g in m["export_gates"] if g["status"] == "FAIL"]
     n_new = N_CARDS * N_PER_CARD
@@ -244,7 +244,7 @@ def test_export_writes_only_the_delta_and_an_undo_pack_that_reverses_it(built, t
     assert not (out / "fraud_pattern.csv").exists()                 # nothing the month does not touch is written
     # the export is a pure function of the work DB: a second export is byte-identical
     out2 = tmp_path / "delta2"
-    assert delta_export.export_delta(str(BASE), str(built["work"]), str(out2)) == 0
+    assert delta_export.export_delta(str(BASE), str(built["work"]), str(out2), allow_unapproved=True) == 0
     assert json.loads((out2 / delta_export.MANIFEST).read_text())["delta_digest"] == m["delta_digest"]
 
 
@@ -257,9 +257,30 @@ def test_export_writes_only_the_delta_and_an_undo_pack_that_reverses_it(built, t
 def test_a_bad_month_fails_closed_and_export_refuses_it(tmp_path, mutation, gate, fragment):
     month = write_month(tmp_path / "month", mutate=mutation)
     work = tmp_path / "work.duckdb"
-    gates, _ = delta.build(BASE, delta.find_month_files(month), work, score="none")
+    gates, _ = delta.build(BASE, delta.find_month_files(month), work, score="none", allow_unapproved=True)
     bad = {g.name: g for g in delta_gates.failed(gates)}
     assert gate in bad and fragment in bad[gate].summary, [(g.name, g.status, g.summary) for g in gates]
     with pytest.raises(DeltaError):                                  # nothing is exported from a failed build
-        delta_export.export_delta(str(BASE), str(work), str(tmp_path / "delta"))
+        delta_export.export_delta(str(BASE), str(work), str(tmp_path / "delta"), allow_unapproved=True)
     assert not (tmp_path / "delta" / delta_export.MANIFEST).exists()
+
+
+def test_the_month_is_not_built_or_exported_until_the_migration_is_signed(tmp_path, monkeypatch):
+    from etl import delta_base
+    from schema_engine import drift
+
+    pending = tmp_path / "approvals.json"
+    pending.write_text(json.dumps({delta_base.MIGRATION_ID: {"status": "pending", "approved_by": None, "role": None}}))
+    monkeypatch.setattr(drift, "APPROVAL_FILE", pending)
+    with pytest.raises(DeltaError, match="schema_engine.cli approve"):
+        delta.build(BASE, None, tmp_path / "w.duckdb", score="none")
+    with pytest.raises(DeltaError, match="not built or loaded"):
+        delta_export.export_delta(str(BASE), str(tmp_path / "w.duckdb"), str(tmp_path / "out"))
+    assert not (tmp_path / "w.duckdb").exists()
+    # an `approved` record with no authenticated principal is not a signature
+    pending.write_text(json.dumps({delta_base.MIGRATION_ID: {"status": "approved", "approved_by": None, "role": None}}))
+    with pytest.raises(DeltaError):
+        delta_base.require_migration_approval()
+    assert delta_base.require_migration_approval(allow_unapproved=True)["gate"].startswith("bypassed")
+    pending.write_text(json.dumps({delta_base.MIGRATION_ID: {"status": "approved", "approved_by": "lead@x", "role": "team_lead"}}))
+    assert delta_base.require_migration_approval()["gate"] == "approved"

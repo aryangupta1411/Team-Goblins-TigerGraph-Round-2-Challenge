@@ -1,0 +1,285 @@
+{
+  "run": "runs/hhf-final",
+  "n_cases": 18,
+  "latency_s": {
+    "n": 18,
+    "p50": 92.1,
+    "p95": 186.4,
+    "min": 62.4,
+    "max": 186.4,
+    "mean": 96.6
+  },
+  "cost_usd_per_case": {
+    "n": 18,
+    "p50": 0.05952,
+    "p95": 0.13428,
+    "min": 0.03574,
+    "max": 0.13428,
+    "mean": 0.06257
+  },
+  "cost_usd_total": 1.1263,
+  "price_source": "https://ai.google.dev/gemini-api/docs/pricing (paid tier, read 2026-11-01)",
+  "prices_usd_per_1m_tokens": {
+    "gemini-2.5-flash": {
+      "input": 0.3,
+      "output": 2.5,
+      "cache_read": 0.03,
+      "cache_write": 0.0
+    }
+  },
+  "rules": "latency = answer.json latency_s; p95 nearest-rank; cost = calls.jsonl llm rows x per-token price (input excludes cached tokens, output includes thinking tokens)",
+  "cases": [
+    {
+      "case_id": "HHF-001",
+      "latency_s": 186.4,
+      "tokens": 331456,
+      "models": [
+        "gemini-2.5-flash"
+      ],
+      "usd": 0.134278,
+      "input_tokens": 106877,
+      "output_tokens": 38655,
+      "cache_read_tokens": 185924,
+      "llm_calls": 8,
+      "unpriced_calls": 0
+    },
+    {
+      "case_id": "HHF-002",
+      "latency_s": 134.8,
+      "tokens": 246248,
+      "models": [
+        "gemini-2.5-flash"
+      ],
+      "usd": 0.068982,
+      "input_tokens": 84391,
+      "output_tokens": 15712,
+      "cache_read_tokens": 146145,
+      "llm_calls": 7,
+      "unpriced_calls": 0
+    },
+    {
+      "case_id": "HHF-003",
+      "latency_s": 84.7,
+      "tokens": 242287,
+      "models": [
+        "gemini-2.5-flash"
+      ],
+      "usd": 0.060629,
+      "input_tokens": 76831,
+      "output_tokens": 13205,
+      "cache_read_tokens": 152251,
+      "llm_calls": 11,
+      "unpriced_calls": 0
+    },
+    {
+      "case_id": "HHF-004",
+      "latency_s": 93.2,
+      "tokens": 217775,
+      "models": [
+        "gemini-2.5-flash"
+      ],
+      "usd": 0.05756,
+      "input_tokens": 62587,
+      "output_tokens": 13817,
+      "cache_read_tokens": 141371,
+      "llm_calls": 9,
+      "unpriced_calls": 0
+    },
+    {
+      "case_id": "HHF-005",
+      "latency_s": 101.4,
+      "tokens": 191664,
+      "models": [
+        "gemini-2.5-flash"
+      ],
+      "usd": 0.058403,
+      "input_tokens": 69425,
+      "output_tokens": 13728,
+      "cache_read_tokens": 108511,
+      "llm_calls": 8,
+      "unpriced_calls": 0
+    },
+    {
+      "case_id": "HHF-006",
+      "latency_s": 90.9,
+      "tokens": 180782,
+      "models": [
+        "gemini-2.5-flash"
+      ],
+      "usd": 0.061633,
+      "input_tokens": 84967,
+      "output_tokens": 13469,
+      "cache_read_tokens": 82346,
+      "llm_calls": 7,
+      "unpriced_calls": 0
+    },
+    {
+      "case_id": "HHF-007",
+      "latency_s": 97.4,
+      "tokens": 206345,
+      "models": [
+        "gemini-2.5-flash"
+      ],
+      "usd": 0.07391,
+      "input_tokens": 86541,
+      "output_tokens": 17957,
+      "cache_read_tokens": 101847,
+      "llm_calls": 6,
+      "unpriced_calls": 0
+    },
+    {
+      "case_id": "HHF-008",
+      "latency_s": 69.8,
+      "tokens": 180370,
+      "models": [
+        "gemini-2.5-flash"
+      ],
+      "usd": 0.047203,
+      "input_tokens": 56855,
+      "output_tokens": 10705,
+      "cache_read_tokens": 112810,
+      "llm_calls": 7,
+      "unpriced_calls": 0
+    },
+    {
+      "case_id": "HHF-009",
+      "latency_s": 114.9,
+      "tokens": 216185,
+      "models": [
+        "gemini-2.5-flash"
+      ],
+      "usd": 0.051398,
+      "input_tokens": 51624,
+      "output_tokens": 12540,
+      "cache_read_tokens": 152021,
+      "llm_calls": 10,
+      "unpriced_calls": 0
+    },
+    {
+      "case_id": "HHF-010",
+      "latency_s": 76.0,
+      "tokens": 193244,
+      "models": [
+        "gemini-2.5-flash"
+      ],
+      "usd": 0.052925,
+      "input_tokens": 61421,
+      "output_tokens": 12366,
+      "cache_read_tokens": 119457,
+      "llm_calls": 7,
+      "unpriced_calls": 0
+    },
+    {
+      "case_id": "HHF-011",
+      "latency_s": 96.1,
+      "tokens": 269213,
+      "models": [
+        "gemini-2.5-flash"
+      ],
+      "usd": 0.071348,
+      "input_tokens": 88051,
+      "output_tokens": 15991,
+      "cache_read_tokens": 165171,
+      "llm_calls": 7,
+      "unpriced_calls": 0
+    },
+    {
+      "case_id": "HHF-012",
+      "latency_s": 62.4,
+      "tokens": 133625,
+      "models": [
+        "gemini-2.5-flash"
+      ],
+      "usd": 0.035737,
+      "input_tokens": 43081,
+      "output_tokens": 8136,
+      "cache_read_tokens": 82408,
+      "llm_calls": 6,
+      "unpriced_calls": 0
+    },
+    {
+      "case_id": "HHF-013",
+      "latency_s": 77.4,
+      "tokens": 115149,
+      "models": [
+        "gemini-2.5-flash"
+      ],
+      "usd": 0.046821,
+      "input_tokens": 43476,
+      "output_tokens": 12805,
+      "cache_read_tokens": 58868,
+      "llm_calls": 5,
+      "unpriced_calls": 0
+    },
+    {
+      "case_id": "HHF-014",
+      "latency_s": 74.0,
+      "tokens": 188194,
+      "models": [
+        "gemini-2.5-flash"
+      ],
+      "usd": 0.05026,
+      "input_tokens": 56513,
+      "output_tokens": 11885,
+      "cache_read_tokens": 119796,
+      "llm_calls": 7,
+      "unpriced_calls": 0
+    },
+    {
+      "case_id": "HHF-015",
+      "latency_s": 63.7,
+      "tokens": 128606,
+      "models": [
+        "gemini-2.5-flash"
+      ],
+      "usd": 0.039,
+      "input_tokens": 40630,
+      "output_tokens": 9786,
+      "cache_read_tokens": 78190,
+      "llm_calls": 6,
+      "unpriced_calls": 0
+    },
+    {
+      "case_id": "HHF-016",
+      "latency_s": 96.6,
+      "tokens": 323889,
+      "models": [
+        "gemini-2.5-flash"
+      ],
+      "usd": 0.081731,
+      "input_tokens": 120240,
+      "output_tokens": 16012,
+      "cache_read_tokens": 187637,
+      "llm_calls": 7,
+      "unpriced_calls": 0
+    },
+    {
+      "case_id": "HHF-017",
+      "latency_s": 131.4,
+      "tokens": 282878,
+      "models": [
+        "gemini-2.5-flash"
+      ],
+      "usd": 0.073816,
+      "input_tokens": 109010,
+      "output_tokens": 14533,
+      "cache_read_tokens": 159335,
+      "llm_calls": 12,
+      "unpriced_calls": 0
+    },
+    {
+      "case_id": "HHF-018",
+      "latency_s": 88.4,
+      "tokens": 252686,
+      "models": [
+        "gemini-2.5-flash"
+      ],
+      "usd": 0.060681,
+      "input_tokens": 67632,
+      "output_tokens": 14105,
+      "cache_read_tokens": 170949,
+      "llm_calls": 11,
+      "unpriced_calls": 0
+    }
+  ]
+}

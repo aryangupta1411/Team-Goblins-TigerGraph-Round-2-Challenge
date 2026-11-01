@@ -1,7 +1,7 @@
 # Build context for the Dockerfile (the full app: UI, agent, engine, MCP launcher). Allowlist: start from nothing,
 # then let in only what the Dockerfile copies. Everything else stays out, including .env, .git, .venv, .claude,
 # data/raw/ (708 MB of CSVs), every *.duckdb except the two checked-in ones, docs/, tests/ and every run other than
-# the two canonical ones. runs/hhf-final/ is the Dockerfile's default CANONICAL_RUN.
+# the canonical ones. runs/hhf-final-2/ is the Dockerfile's default CANONICAL_RUN; runs/hhf-final/ is the run it superseded.
 *
 
 !requirements-live.txt
@@ -19,6 +19,7 @@
 !ui/
 !cases/
 !data/
+!runs/hhf-final-2/
 !runs/hhf-final/
 !runs/live-final-2/
 

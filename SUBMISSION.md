@@ -7,9 +7,9 @@ asks for is listed here, each with where to find it and how it was checked.
 
 | Brief asks for | Where | Checked |
 |---|---|---|
-| Frozen commit | [`b397c2c97b5bf1b4cded77e951cfd58e5be8c70b`](https://github.com/aryangupta1411/Team-Goblins-TigerGraph-Round-2-Challenge/commit/b397c2c97b5bf1b4cded77e951cfd58e5be8c70b) | `runs/hhf-final/run_manifest.json` records this sha with `git_dirty: false` for both invocations and all 18 cases |
-| 18 answers produced by the frozen code | [`cases/HHF-001.json`](cases/HHF-001.json) … `HHF-018.json`, per-case table in [`cases/MANIFEST.md`](cases/MANIFEST.md) | byte-identical to `runs/hhf-final/HHF-*/answer.json`; `make validate`: 38 files (20 Round 1 + 18 Final Round), 0 problems |
-| The run behind them | [`runs/hhf-final/`](runs/hhf-final/): `answer.json`, `calls.jsonl`, `phases.jsonl` and `sar.md` per case, `run_manifest.json`, `provenance.json` | one live run on `gemini-2.5-flash` against FraudGraph through MCP; tracked-file fingerprints identical before and after (`provenance.json`, `code.list_sha256`) |
+| Frozen commit | [`8dc9e0723f42bd735e1c4d5b36e8ad09c7e988d0`](https://github.com/aryangupta1411/Team-Goblins-TigerGraph-Round-2-Challenge/commit/8dc9e0723f42bd735e1c4d5b36e8ad09c7e988d0), tag [`hhf-final-2-run`](https://github.com/aryangupta1411/Team-Goblins-TigerGraph-Round-2-Challenge/tree/hhf-final-2-run) | `runs/hhf-final-2/run_manifest.json` records this sha with `git_dirty: false` for the run's one invocation and all 18 cases |
+| 18 answers produced by the frozen code | [`cases/HHF-001.json`](cases/HHF-001.json) … `HHF-018.json`, per-case table in [`cases/MANIFEST.md`](cases/MANIFEST.md) | byte-identical to `runs/hhf-final-2/HHF-*/answer.json`; `make validate`: 38 files (20 Round 1 + 18 Final Round), 0 problems; the organisers' `grade.py`: 18 / 18 clean, 0 hard, 0 policy |
+| The run behind them | [`runs/hhf-final-2/`](runs/hhf-final-2/): `answer.json`, `calls.jsonl`, `phases.jsonl` and `sar.md` per case, `run_manifest.json`, `provenance.json`, `_guard/` | one live run on `gemini-3.6-flash` against FraudGraph through MCP, 18 / 18 with no failure; tracked-file fingerprints (642 files) identical before and after (`provenance.json`, `code.list_sha256`); identical to the offline engine at the same commit |
 | One clean-clone, single-case command | [below](#clean-clone-one-command-one-case) | run on 2026-11-01 from a fresh clone of this repository (`main` at `40ad6ae`): 31 s, 0 validator problems; CI runs it on Ubuntu |
 | One-page resilience statement | [`docs/RESILIENCE.md`](docs/RESILIENCE.md) | |
 | Innovation claim | [`docs/INNOVATION.md`](docs/INNOVATION.md) | every number names the file or command it comes from |
@@ -31,25 +31,26 @@ model replies are recorded fixtures and the facts come from DuckDB, including th
 scan. The same case against the live graph and Gemini needs `TG_HOST`, `TG_SECRET` and `GEMINI_API_KEY` in `.env`:
 
 ```bash
-RUN_MODE=live LLM_BACKEND=gemini uv run python -m agent.bench --cases HHF-004 --run-id live-drill-1
+RUN_MODE=live LLM_BACKEND=gemini MODEL=gemini-3.6-flash uv run python -m agent.bench --cases HHF-004 --run-id live-drill-1
 ```
 
 ## Results of the submitted run
 
 | Measure | Value |
 |---|---|
-| Completed | 18 / 18, every case `written_to_graph: true` |
-| Verdicts | 7 fraud (HHF-001 … 007), 3 uncertain (HHF-010, 013, 014), 8 legitimate |
-| SARs filed | 6, on the four January waves that share no device (HHF-001 … 006) |
-| Block, decline or report on a non-fraud case | 0 blocks or reports; the 3 uncertain cases carry `DECLINE_TRANSACTION` (L1), the 8 legitimate cases none |
-| Final actions by route | 54 auto, 10 L1, 7 L2 |
-| `typology_scan` in the graph | 18 calls through MCP, one per case, all `ok`; 0 differences from the DuckDB twin over 30 cases |
-| Graph write-backs | 276 calls, all `ok`: 18 `AgentCase`, 122 `CaseEvent`s, 17 `Approval`s with `run_id` `hhf-final` |
-| Model | 141 calls, all `gemini-2.5-flash`, 0 failed |
+| Completed | 18 / 18 in one invocation, 0 failed, nothing resumed; every case `written_to_graph: true` |
+| Verdicts | 8 fraud (HHF-001 … 007, HHF-013), 1 uncertain (HHF-008), 9 legitimate |
+| SARs filed | 7, on the January rings that share no device (HHF-001 … 006, HHF-013) |
+| Block, decline or report on a non-fraud case | 0 blocks or reports; the uncertain HHF-008 carries `DECLINE_TRANSACTION` (L1), the 9 legitimate cases none |
+| Final actions by route | 53 auto, 9 L1, 8 L2 |
+| `typology_scan` in the graph | 18 calls through MCP, one per case, all `ok`; 0 differences from the DuckDB twin over 30 cases (7 hits) |
+| Graph write-backs | 274 calls, all `ok`: 18 `AgentCase`, 121 `CaseEvent`s, 17 `Approval`s with `run_id` `hhf-final-2` |
+| Model | 143 calls, all `gemini-3.6-flash`, 0 failed |
+| Per case | latency median 67.8 s (p95 105.1 s), tokens median 213,861 (p95 350,878), tool calls median 21 |
 
-HHF-005 failed closed once in P5 (Gemini's structured output was cut off three times) and was re-run with `--resume`;
-the story is in [`docs/RESILIENCE.md`](docs/RESILIENCE.md#what-happened-in-the-submitted-run). Every figure here is
-sourced in [`README.md`](README.md#results-of-the-promoted-run-runshhf-final).
+This run supersedes `runs/hhf-final` (commit `b397c2c`, `gemini-2.5-flash`), kept in the repository. The engine change
+between them moves four verdicts: HHF-008 legitimate → uncertain, HHF-010 and HHF-014 uncertain → legitimate, HHF-013
+uncertain → fraud. Every figure here is sourced in [`README.md`](README.md#results-of-the-promoted-run-runshhf-final-2).
 
 ## Live deployment
 
@@ -70,14 +71,25 @@ Deploy instructions and every variable: [`README.md`](README.md#deploy-on-railwa
 
 ## What changed after the frozen commit
 
-The answers were produced at `b397c2c`; the commits after it add the dashboard, the deployment and documentation. On
-the answer path (`agent/`, `engine/`, `graph/`, `mcp/`, `rag/`, `policy/`, prompts) they change only:
+The answers were produced at `8dc9e07` (tag `hhf-final-2-run`). The commits after it add challenge work, the dashboard,
+the deployment and documentation. On the answer path (`agent/`, `engine/`, `graph/`, `mcp/`, `rag/`, `policy/`, `etl/`,
+`schema_engine/`) they add or change only:
 
-- `agent/case_ids.py` and two lines of `agent/phase_machine.py`: the write-back namespace. With `AGENT_CASE_NAMESPACE`
-  unset, as in the submitted run, the ids are `AC-<case>` exactly as before.
-- `agent/bench.py`: a Round 1 case pack on disk no longer hides the Final Round cases.
-- `engine/detectors.py`: who may admit a new detector is read from the role permissions. The scan and its decisions
-  are unchanged.
+- `agent/sar_doc.py` and `agent/phase_machine.py` (`_write_sar_md`): `sar.md` is written as a fileable document (cited
+  narrative, timeline, evidence graph, attestation). The answer's `sar` object is unchanged.
+- `engine/containment.py`: the containment planner ranks wave cards by exposure stopped (Challenge 7).
+- `engine/policy_compiler.py`, `engine/discovery.py` and two entry points in `engine/detectors.py`: policy prose to
+  detector (Challenge 3) and a mined detector proposal (Challenge 2). Neither is called by a case investigation.
+- `engine/scorecard.py`, `engine/feedback.py`, `policy/fraud_policy.yaml` (`3c56196`): an uncertain case's L1 decline
+  waits on verification (R4), graph-neighbourhood evidence, and analyst feedback (Challenge 8).
+- `agent/` lifecycle (`427bc8f`): a final approval or customer reply closes the case (`close_case` and a `CaseEvent`);
+  an alert watcher and cost per case (Challenge 9 and 14).
+- `etl/delta*.py`: the January build refuses to run before the schema migration is signed (Challenge 12).
+- `schema_engine/mapper.py` and `profiler.py`: the variant mapper (Challenge 13).
+- regenerated outputs under `engine/out/`.
 
-`git diff b397c2c HEAD -- agent/ engine/ graph/ mcp/ rag/ policy/` shows exactly these, plus the regenerated
-`engine/out/proof_snapshot.json` and `engine/out/typology_parity.json`.
+Checked on the pushed head (`engine.run_cases`, offline): the same verdict, pattern and SAR decision as `cases/HHF-*.json`
+on all 18 cases, probability within 0.10, and the same final actions with routes on 17. The exception is HHF-008
+(uncertain): from `3c56196` its final set has `VERIFY_WITH_CUSTOMER` instead of the L1 `DECLINE_TRANSACTION` the
+submitted answer carries. At the frozen commit `8dc9e07` the engine matches the submitted answers on all 18. `git diff
+8dc9e07 HEAD -- agent/ engine/ graph/ mcp/ rag/ policy/ etl/ schema_engine/` shows every change.

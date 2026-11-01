@@ -68,6 +68,32 @@ class DeltaError(RuntimeError):
     """An input or an invariant the delta build refuses to go on with. Fail closed: nothing half-built is left behind."""
 
 
+# Challenge 12: the January migration loads only after a human with approve_migration signed it (schema_engine.drift).
+MIGRATION_ID = "round2_2017q1_migration"
+APPROVE_CMD = "uv run python -m schema_engine.cli approve --by <principal>"
+
+
+def require_migration_approval(allow_unapproved: bool = False, approvals: str | Path | None = None) -> dict:
+    """The approval record for the January migration, or DeltaError when it is not signed. The record must be `approved` and
+    name the authenticated principal and role (approve_schema_migration writes both). `allow_unapproved` is for the offline
+    synthetic-month fixtures only: the record is then returned marked `bypassed` and nothing is loaded from it."""
+    from schema_engine import drift
+
+    path = Path(approvals) if approvals else drift.APPROVAL_FILE
+    try:
+        rec = json.loads(path.read_text(encoding="utf-8")).get(MIGRATION_ID, {}) if path.exists() else {}
+    except (OSError, ValueError):
+        rec = {}
+    signed = rec.get("status") == "approved" and bool(rec.get("approved_by")) and bool(rec.get("role"))
+    if signed:
+        return {**rec, "gate": "approved"}
+    if allow_unapproved:
+        return {**rec, "migration_id": MIGRATION_ID, "gate": "bypassed (offline fixture)"}
+    raise DeltaError(f"schema migration {MIGRATION_ID} is {rec.get('status') or 'missing'} in {path}: January is not built or loaded "
+                     f"until a team lead or fraud manager approves it. Run `{APPROVE_CMD}` (prompts for the passphrase) "
+                     "or approve it on the Schema page after signing in")
+
+
 @dataclass(frozen=True)
 class MonthFiles:
     """The four files one appended month consists of (the final-round dataset folder)."""

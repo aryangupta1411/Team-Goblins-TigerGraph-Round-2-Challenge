@@ -1,0 +1,362 @@
+{
+  "universe": {
+    "january_txns": 60196,
+    "covered_by_existing": {
+      "D1_MOBILE_ANON_PROXY_WAVE": 35,
+      "D2_ESCALATING_C_DRAIN": 32,
+      "D3_MICRO_CHARGE_SKIMMING": 148,
+      "D4_RECIPIENT_EMAIL_MULE": 39,
+      "D5_INPERSON_IDENTITY": 3,
+      "D6_NEW_MOBILE_CNP_BURST": 3,
+      "R5_CARD_TESTING": 370,
+      "R1_RING_AND_BURST": 211
+    },
+    "covered_total_any_period": 838
+  },
+  "thresholds": {
+    "max_value_cards": 60,
+    "burst_hours": 72,
+    "min_burst_cards": 3,
+    "min_cards": 3,
+    "min_lift": 2.0,
+    "max_baseline_cards_per_month": 3.0,
+    "baseline": "2016-07-01..2017-01-01 (6 months)"
+  },
+  "clusters_found": 346,
+  "top_clusters": [
+    {
+      "attributes": {
+        "clock_slot": "Wed 09",
+        "cadence": "weekly_same_amount"
+      },
+      "jan_cards": 3,
+      "jan_txns": 9,
+      "baseline_cards_per_month": 0.0,
+      "lift": 6.0,
+      "median_hours_to_other_card": 0.005,
+      "burst_cards_72h": 3,
+      "burst_card_ids": [
+        "C04105-K2",
+        "C12030-K1",
+        "C12223-K1"
+      ],
+      "jan_usd": 65.31,
+      "first_ts": "2017-01-11 09:00:00",
+      "last_ts": "2017-01-25 09:00:43",
+      "score": 16.04
+    },
+    {
+      "attributes": {
+        "product_cd": "C",
+        "clock_slot": "Thu 10",
+        "escalation": "escalating_x1.7"
+      },
+      "jan_cards": 5,
+      "jan_txns": 5,
+      "baseline_cards_per_month": 0.5,
+      "lift": 10.0,
+      "median_hours_to_other_card": 0.022,
+      "burst_cards_72h": 5,
+      "burst_card_ids": [
+        "C01525-K2",
+        "C02456-K1",
+        "C06464-K1",
+        "C07562-K2",
+        "C11597-K2"
+      ],
+      "jan_usd": 375.79,
+      "first_ts": "2017-01-26 10:03:35",
+      "last_ts": "2017-01-26 10:57:01",
+      "score": 11.27
+    },
+    {
+      "attributes": {
+        "product_cd": "C",
+        "clock_slot": "Thu 09",
+        "escalation": "escalating_x1.7"
+      },
+      "jan_cards": 10,
+      "jan_txns": 12,
+      "baseline_cards_per_month": 1.33,
+      "lift": 7.5,
+      "median_hours_to_other_card": 0.083,
+      "burst_cards_72h": 7,
+      "burst_card_ids": [
+        "C05381-K2",
+        "C06630-K2",
+        "C06940-K1",
+        "C07562-K2",
+        "C08106-K1",
+        "C11919-K2",
+        "C11923-K2"
+      ],
+      "jan_usd": 948.05,
+      "first_ts": "2017-01-05 09:46:12",
+      "last_ts": "2017-01-19 09:53:41",
+      "score": 10.94
+    },
+    {
+      "attributes": {
+        "product_cd": "C",
+        "clock_slot": "Fri 11",
+        "escalation": "escalating_x1.7"
+      },
+      "jan_cards": 11,
+      "jan_txns": 12,
+      "baseline_cards_per_month": 0.83,
+      "lift": 13.2,
+      "median_hours_to_other_card": 0.179,
+      "burst_cards_72h": 7,
+      "burst_card_ids": [
+        "C01521-K2",
+        "C04154-K1",
+        "C05996-K1",
+        "C08391-K2",
+        "C11509-K2",
+        "C11923-K2",
+        "C13171-K2"
+      ],
+      "jan_usd": 683.85,
+      "first_ts": "2017-01-06 11:12:05",
+      "last_ts": "2017-01-27 11:06:28",
+      "score": 10.63
+    },
+    {
+      "attributes": {
+        "amount_band": "200-500",
+        "clock_slot": "Sat 09",
+        "escalation": "escalating_x1.7"
+      },
+      "jan_cards": 27,
+      "jan_txns": 27,
+      "baseline_cards_per_month": 2.5,
+      "lift": 10.8,
+      "median_hours_to_other_card": 0.035,
+      "burst_cards_72h": 11,
+      "burst_card_ids": [
+        "C01155-K2",
+        "C01744-K2",
+        "C01755-K2",
+        "C02897-K1",
+        "C03184-K1",
+        "C04582-K1",
+        "C07149-K2",
+        "C07648-K2",
+        "C09933-K2",
+        "C10867-K2",
+        "C11743-K2"
+      ],
+      "jan_usd": 8279.38,
+      "first_ts": "2017-01-07 09:01:44",
+      "last_ts": "2017-01-28 09:54:24",
+      "score": 10.3
+    },
+    {
+      "attributes": {
+        "channel_device": "online:desktop:New",
+        "clock_slot": "Fri 08",
+        "escalation": "escalating_x1.7"
+      },
+      "jan_cards": 7,
+      "jan_txns": 7,
+      "baseline_cards_per_month": 0.33,
+      "lift": 14.0,
+      "median_hours_to_other_card": 0.143,
+      "burst_cards_72h": 5,
+      "burst_card_ids": [
+        "C01521-K2",
+        "C01757-K1",
+        "C04248-K2",
+        "C08962-K2",
+        "C11847-K2"
+      ],
+      "jan_usd": 503.36,
+      "first_ts": "2017-01-06 08:06:07",
+      "last_ts": "2017-01-27 08:37:15",
+      "score": 8.25
+    },
+    {
+      "attributes": {
+        "product_cd": "C",
+        "clock_slot": "Mon 12",
+        "escalation": "escalating_x1.7"
+      },
+      "jan_cards": 16,
+      "jan_txns": 19,
+      "baseline_cards_per_month": 1.67,
+      "lift": 9.6,
+      "median_hours_to_other_card": 0.093,
+      "burst_cards_72h": 7,
+      "burst_card_ids": [
+        "C00294-K2",
+        "C05031-K2",
+        "C06464-K1",
+        "C07562-K2",
+        "C08924-K2",
+        "C08962-K2",
+        "C11844-K2"
+      ],
+      "jan_usd": 1370.98,
+      "first_ts": "2017-01-02 12:15:19",
+      "last_ts": "2017-01-30 12:45:23",
+      "score": 7.53
+    },
+    {
+      "attributes": {
+        "amount_band": "500-1000",
+        "clock_slot": "Wed 09",
+        "escalation": "escalating_x1.7"
+      },
+      "jan_cards": 9,
+      "jan_txns": 9,
+      "baseline_cards_per_month": 0.5,
+      "lift": 18.0,
+      "median_hours_to_other_card": 0.071,
+      "burst_cards_72h": 5,
+      "burst_card_ids": [
+        "C00854-K2",
+        "C07118-K1",
+        "C07338-K1",
+        "C12030-K1",
+        "C12796-K1"
+      ],
+      "jan_usd": 6268.62,
+      "first_ts": "2017-01-11 09:15:15",
+      "last_ts": "2017-01-25 09:38:46",
+      "score": 7.5
+    },
+    {
+      "attributes": {
+        "channel_device": "online:desktop:New",
+        "clock_slot": "Thu 09",
+        "escalation": "escalating_x1.7"
+      },
+      "jan_cards": 5,
+      "jan_txns": 6,
+      "baseline_cards_per_month": 0.5,
+      "lift": 10.0,
+      "median_hours_to_other_card": 0.207,
+      "burst_cards_72h": 4,
+      "burst_card_ids": [
+        "C02231-K1",
+        "C05381-K2",
+        "C06940-K1",
+        "C11923-K2"
+      ],
+      "jan_usd": 494.91,
+      "first_ts": "2017-01-05 09:46:12",
+      "last_ts": "2017-01-26 09:50:38",
+      "score": 7.32
+    },
+    {
+      "attributes": {
+        "amount_band": "200-500",
+        "clock_slot": "Fri 08",
+        "escalation": "escalating_x1.7"
+      },
+      "jan_cards": 24,
+      "jan_txns": 24,
+      "baseline_cards_per_month": 2.5,
+      "lift": 9.6,
+      "median_hours_to_other_card": 0.071,
+      "burst_cards_72h": 9,
+      "burst_card_ids": [
+        "C00059-K2",
+        "C01155-K2",
+        "C01744-K2",
+        "C02133-K1",
+        "C04046-K2",
+        "C04105-K2",
+        "C05530-K2",
+        "C07646-K2",
+        "C08899-K1"
+      ],
+      "jan_usd": 6362.32,
+      "first_ts": "2017-01-06 08:01:31",
+      "last_ts": "2017-01-27 08:56:42",
+      "score": 7.13
+    }
+  ],
+  "proposal": {
+    "proposal_id": "AUTO-DISC-E583474A",
+    "name": "Mined cluster: cadence=weekly_same_amount, clock_slot=Wed 09",
+    "discovered_by": "engine.discovery.mine (attribute-combination burst over uncovered January transactions)",
+    "cluster": {
+      "attributes": {
+        "clock_slot": "Wed 09",
+        "cadence": "weekly_same_amount"
+      },
+      "jan_cards": 3,
+      "jan_txns": 9,
+      "baseline_cards_per_month": 0.0,
+      "lift": 6.0,
+      "median_hours_to_other_card": 0.005,
+      "burst_cards_72h": 3,
+      "burst_card_ids": [
+        "C04105-K2",
+        "C12030-K1",
+        "C12223-K1"
+      ],
+      "jan_usd": 65.31,
+      "first_ts": "2017-01-11 09:00:00",
+      "last_ts": "2017-01-25 09:00:43",
+      "score": 16.04
+    },
+    "synthesized_sql": "WITH seq AS (SELECT *, lag(amt) OVER w AS prev_amt, date_diff('second', lag(ts) OVER w, ts) / 86400.0 AS gap_d,\n                            date_diff('second', lag(ts) OVER a, ts) / 86400.0 AS same_amt_gap_d\n                     FROM txc WINDOW w AS (PARTITION BY card_id, product_cd, channel ORDER BY ts, TransactionID),\n                                     a AS (PARTITION BY card_id, round(amt, 2) ORDER BY ts, TransactionID)) SELECT id, card_id, ts::VARCHAR, amt FROM seq WHERE ts >= '2016-07-01' AND (CASE WHEN same_amt_gap_d BETWEEN 6.9 AND 7.1 THEN 'weekly_same_amount'\n                   WHEN same_amt_gap_d BETWEEN 27 AND 32 THEN 'monthly_same_amount' ELSE '' END)::VARCHAR = 'weekly_same_amount' AND (strftime(ts, '%a %H'))::VARCHAR = 'Wed 09' ORDER BY ts, TransactionID",
+    "backtest": {
+      "query": "WITH seq AS (SELECT *, lag(amt) OVER w AS prev_amt, date_diff('second', lag(ts) OVER w, ts) / 86400.0 AS gap_d,\n                            date_diff('second', lag(ts) OVER a, ts) / 86400.0 AS same_amt_gap_d\n                     FROM txc WINDOW w AS (PARTITION BY card_id, product_cd, channel ORDER BY ts, TransactionID),\n                                     a AS (PARTITION BY card_id, round(amt, 2) ORDER BY ts, TransactionID)) SELECT id, card_id, ts::VARCHAR, amt FROM seq WHERE ts >= '2016-07-01' AND (CASE WHEN same_amt_gap_d BETWEEN 6.9 AND 7.1 THEN 'weekly_same_amount'\n                   WHEN same_amt_gap_d BETWEEN 27 AND 32 THEN 'monthly_same_amount' ELSE '' END)::VARCHAR = 'weekly_same_amount' AND (strftime(ts, '%a %H'))::VARCHAR = 'Wed 09' ORDER BY ts, TransactionID",
+      "as_of": "2017-01-31 23:59:59",
+      "txns_matched": 9,
+      "cards_matched": 3,
+      "january_txn_ids": [
+        "3660300",
+        "3660304",
+        "3660308",
+        "3660305",
+        "3660309",
+        "3660301",
+        "3660302",
+        "3660310",
+        "3660306"
+      ],
+      "january_card_ids": [
+        "C04105-K2",
+        "C12030-K1",
+        "C12223-K1"
+      ],
+      "january_exposure_usd": 65.31,
+      "per_card_profile": {
+        "C04105-K2": {
+          "n": 3,
+          "distinct_amounts": [
+            6.57
+          ],
+          "total_usd": 19.71
+        },
+        "C12030-K1": {
+          "n": 3,
+          "distinct_amounts": [
+            7.78
+          ],
+          "total_usd": 23.34
+        },
+        "C12223-K1": {
+          "n": 3,
+          "distinct_amounts": [
+            7.42
+          ],
+          "total_usd": 22.26
+        }
+      },
+      "reading": "fixed small amount per card on a fixed schedule: looks like merchant batch billing, propose as a do-not-block (protect) signal and verify with the customers, not as a fraud alert",
+      "closed_case_true_positives": [],
+      "legitimate_customers_acted_against": []
+    },
+    "approval_status": "pending",
+    "approved_by": null,
+    "approved_at": null,
+    "approve_with": "engine.detectors.approve_detector('AUTO-DISC-E583474A', session)  # fraud_manager or admin session"
+  },
+  "honest_note": null,
+  "elapsed_s": 3.48
+}

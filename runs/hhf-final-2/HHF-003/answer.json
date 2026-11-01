@@ -1,0 +1,184 @@
+{
+  "case_id": "HHF-003",
+  "case": {
+    "status": "escalated",
+    "verdict": "fraud",
+    "fraud_probability": 0.94,
+    "pattern": "undocumented",
+    "pattern_description": "Coordinated dormant-wake escalating online drain across 6 cards with no identity records: card C11663-K1 woke after at least 21 days without activity into 7 online ProductCD='C' charges (3660147, 3660148, 3660149, 3660150, 3660151, 3660152, 3660153) ramping $181.73 -> $357.82 -> $811.92 -> $1,800.00 -> $1,800.00 -> $1,800.00 -> $1,800.00 (total $8,551.47), matching 5 peer cards exhibiting the same doubling ramp.",
+    "affected_txn_ids": [
+      "3660147",
+      "3660148",
+      "3660149",
+      "3660150",
+      "3660151",
+      "3660152",
+      "3660153"
+    ],
+    "first_suspicious_txn_id": "3660147",
+    "connected_card_ids": [
+      "C04096-K1",
+      "C07847-K1",
+      "C08563-K1",
+      "C09026-K1",
+      "C09148-K1"
+    ],
+    "connected_device_profiles": [],
+    "exposure_usd": 8551.47,
+    "evidence": [
+      {
+        "claim": "Customer C11663 reported that they did not make the $1,800.00 purchase 3660153.",
+        "source": "customer",
+        "ref": "trigger",
+        "entity_ids": [
+          "3660153",
+          "C11663"
+        ]
+      },
+      {
+        "claim": "Card C11663-K1 woke after 21 days without activity into 7 online ProductCD='C' charges (3660147, 3660148, 3660149, 3660150, 3660151, 3660152, 3660153) escalating from $181.73 to $1,800.00 with total exposure of $8,551.47.",
+        "source": "graph",
+        "ref": "query:card_window(to_ts=2017-01-31 20:31:28, from_ts=2017-01-01 00:00:00, c=C11663-K1, max_rows=60)",
+        "entity_ids": [
+          "3660147",
+          "3660148",
+          "3660149",
+          "3660150",
+          "3660151",
+          "3660152",
+          "3660153",
+          "C11663-K1"
+        ]
+      },
+      {
+        "claim": "A coordinated telemetry signature of dormant wake and escalating online ProductCD='C' charges without identity records connects card C11663-K1 to 5 peer cards (C04096-K1, C07847-K1, C08563-K1, C09026-K1, C09148-K1).",
+        "source": "graph",
+        "ref": "query:shared_origin_scan(c=C11663-K1, as_of=2017-01-31 20:31:28, days=30)",
+        "entity_ids": [
+          "C11663-K1",
+          "C04096-K1",
+          "C07847-K1",
+          "C08563-K1",
+          "C09026-K1",
+          "C09148-K1"
+        ]
+      },
+      {
+        "claim": "Card C11663-K1 had 57 prior transactions with a prior median amount of $91.98, which is far below the $1,800.00 flagged charge 3660153.",
+        "source": "graph",
+        "ref": "query:case_context(t=3660153, as_of=2017-01-31 20:31:28)",
+        "entity_ids": [
+          "3660153",
+          "C11663-K1"
+        ]
+      },
+      {
+        "claim": "The flagged transaction 3660153 occurred in billing region 315.0, where card C11663-K1 had 9 prior transactions across 9 days.",
+        "source": "graph",
+        "ref": "query:region_history(c=C11663-K1, addr1=315.0, as_of=2017-01-31 17:31:27)",
+        "entity_ids": [
+          "3660153",
+          "C11663-K1"
+        ]
+      },
+      {
+        "claim": "The calibrated model score cms_p is 0.001456 and the real-time risk score was 0.09 for transaction 3660153.",
+        "source": "graph",
+        "ref": "query:case_context(t=3660153, as_of=2017-01-31 20:31:28)",
+        "entity_ids": [
+          "3660153"
+        ]
+      }
+    ],
+    "similar_prior_cases": [
+      "CC-5180",
+      "CC-5246",
+      "CC-5148",
+      "CC-4564"
+    ],
+    "summary": "Case AC-HHF-003 is assessed as fraud with 0.94 probability under an undocumented pattern of a dormant-wake online drain across 7 transactions (3660147–3660153) totaling $8,551.47 in exposure. Decisive evidence includes direct customer denial of transaction 3660153 and a shared telemetry signature connecting card C11663-K1 to 5 peer cards exhibiting identical ramping behavior. Blocking card C11663-K1 and filing a SAR are recommended awaiting L2 manager approval.",
+    "written_to_graph": true,
+    "graph_case_id": "AC-HHF-003"
+  },
+  "evidence_requests": [],
+  "next_best_actions": {
+    "initial": [
+      {
+        "action": "CREATE_CASE",
+        "route": "auto",
+        "reason": "R2: customer denied transaction 3660153; open case with exposure of $8,551.47."
+      },
+      {
+        "action": "MONITOR_CONNECTED_CARDS",
+        "route": "auto",
+        "reason": "R6: shared telemetry signature across 5 peer cards requires monitoring connected cards."
+      },
+      {
+        "action": "BLOCK_CARD",
+        "route": "L2",
+        "reason": "R2: customer denied transaction 3660153; exposure $8,551.47 > $2,500."
+      },
+      {
+        "action": "FILE_REPORT",
+        "route": "L2",
+        "reason": "3a: SAR required for confirmed fraud with exposure $8,551.47 > $1,000 and an undocumented pattern."
+      },
+      {
+        "action": "ESCALATE_TO_ANALYST",
+        "route": "auto",
+        "reason": "R9: undocumented coordinated pattern across multiple cards requires analyst review."
+      }
+    ],
+    "final": [
+      {
+        "action": "CREATE_CASE",
+        "route": "auto",
+        "reason": "R2: customer denied transaction 3660153; open case with exposure of $8,551.47."
+      },
+      {
+        "action": "MONITOR_CONNECTED_CARDS",
+        "route": "auto",
+        "reason": "R6: shared telemetry signature across 5 peer cards requires monitoring connected cards."
+      },
+      {
+        "action": "BLOCK_CARD",
+        "route": "L2",
+        "reason": "R2: customer denied transaction 3660153; exposure $8,551.47 > $2,500."
+      },
+      {
+        "action": "FILE_REPORT",
+        "route": "L2",
+        "reason": "3a: SAR required for confirmed fraud with exposure $8,551.47 > $1,000 and an undocumented pattern."
+      },
+      {
+        "action": "ESCALATE_TO_ANALYST",
+        "route": "auto",
+        "reason": "R9: undocumented coordinated pattern across multiple cards requires analyst review."
+      }
+    ],
+    "what_changed": "nothing"
+  },
+  "sar": {
+    "file": true,
+    "reason": "3a / R9: undocumented coordinated pattern (Coordinated dormant-wake escalating online drain across 6 cards with no identity records)",
+    "narrative": "This Suspicious Activity Report is filed to report an undocumented coordinated fraud pattern under internal case ID AC-HHF-003. The suspicious activity involves customer C11663 and mastercard debit card C11663-K1, which connects to 5 peer cards (C04096-K1, C07847-K1, C08563-K1, C09026-K1, and C09148-K1) through a shared telemetry signature. Between 2017-01-22 and 2017-01-31, card C11663-K1 engaged in a dormant-wake online drain of 7 online product code C transactions without identity records: transaction 3660147 on 2017-01-22 at 12:55 for $181.73 in region 327.0, transaction 3660148 on 2017-01-23 at 07:25 for $357.82 in region 327.0, transaction 3660149 on 2017-01-24 at 19:13 for $811.92 in region 327.0, transaction 3660150 on 2017-01-26 at 19:51 for $1,800.00 in region 327.0, transaction 3660151 on 2017-01-27 at 19:12 for $1,800.00 in region 327.0, transaction 3660152 on 2017-01-28 at 17:31 for $1,800.00 in region 327.0, and transaction 3660153 on 2017-01-31 at 17:31 for $1,800.00 in region 315.0. Customer C11663 submitted a message stating they did not make transaction 3660153. This escalating series matches a coordinated pattern across 6 cards exhibiting the same dormant-wake doubling ramp. Prior to opening on 2017-01-31, card C11663-K1 had 57 transactions with a median amount of $91.98, making this rapid series totaling $8,551.47 highly unusual and inconsistent with historical baseline activity. No prior suspicious activity report has been filed on this card, and OFAC screening of the customer and card identifiers against the SDN list returned no match. The bank opened case AC-HHF-003, initiated monitoring of connected cards, and escalated the case to an analyst, while a block of card C11663-K1 and this report filing are recommended and await fraud-manager approval for total suspicious activity of $8,551.47.",
+    "subjects": [
+      "C11663",
+      "C11663-K1",
+      "C04096-K1",
+      "C07847-K1",
+      "C08563-K1",
+      "C09026-K1",
+      "C09148-K1"
+    ],
+    "total_amount_usd": 8551.47,
+    "activity_dates": [
+      "2017-01-22",
+      "2017-01-31"
+    ]
+  },
+  "stop_reason": "Policy §6 test 1: fraud probability 0.94 is at or above 0.85 with 3 independent evidence families (customer, device, history); no evidence request could change the action set, making the recommendation final.",
+  "tool_calls": 25,
+  "tokens": 222567,
+  "latency_s": 101.7
+}

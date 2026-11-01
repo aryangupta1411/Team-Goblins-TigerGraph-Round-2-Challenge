@@ -30,7 +30,7 @@ Taken from the repository (`docs/INNOVATION.md`, the team's stated claim). The o
 
 ## Operating Context
 
-- The canonical run is `runs/hhf-final`: a live run on Gemini 2.5 Flash. `cases/HHF-*.json` are byte-identical copies of its answers.
+- The canonical run is `runs/hhf-final-2`: a live run on Gemini 3.6 Flash. `cases/HHF-*.json` are byte-identical copies of its answers.
 - Per case, the files are `runs/<run>/<case>/answer.json`, `phases.jsonl`, `calls.jsonl` and `sar.md`, plus `run_manifest.json` and `provenance.json` per run. Proof artifacts are `engine/out/*.json`, facts are in `data/*.duckdb`, and approvals are in a SQLite store.
 - The public deployment is Railway, read-only (`DEPLOY_READONLY=1`): it never spawns the agent and never writes to the graph. When TigerGraph is unreachable, the console reads the recorded files (files-only / mock mode) and says so.
 - In the demo the console is served by `make ui` at localhost:8501. If a live re-run fails, the presenter shows the failure and carries on from the recorded run; data is never switched silently.
@@ -59,7 +59,7 @@ The owner marked all of these as binding ("everything stays").
 
 ## Evidence on Hand
 
-- **Final Round answers:** 18 (7 fraud, 8 legitimate, 3 uncertain; 6 SARs, all on the multi-card waves), with full traces in `runs/hhf-final/`.
+- **Final Round answers:** 18 (8 fraud, 9 legitimate, 1 uncertain; 7 SARs, all on the multi-card rings), with full traces in `runs/hhf-final-2/`.
 - **Round 1 / Round 2 archives:** HHG cases and runs under `runs/`.
 - **Detector backtest:** over 5,585 closed cases (`engine/out/detector_backtest.json`).
 - **Containment summary:** 0 legitimate customers touched by the targeted plans (`engine/out/containment_summary.json`).

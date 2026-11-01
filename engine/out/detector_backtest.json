@@ -15,7 +15,8 @@
       "HHF-005"
     ],
     "D4_RECIPIENT_EMAIL_MULE": [
-      "HHF-006"
+      "HHF-006",
+      "HHF-013"
     ]
   },
   "detectors": [
@@ -75,7 +76,7 @@
           }
         },
         "when": {
-          "at": "2026-10-31 03:04:12",
+          "at": "2026-11-01 17:41:43",
           "dataset": "hhgoa_round2_201607_201701"
         }
       }
@@ -119,7 +120,7 @@
           }
         },
         "when": {
-          "at": "2026-10-31 03:04:12",
+          "at": "2026-11-01 17:41:43",
           "dataset": "hhgoa_round2_201607_201701"
         }
       }
@@ -203,7 +204,7 @@
           }
         },
         "when": {
-          "at": "2026-10-31 03:04:12",
+          "at": "2026-11-01 17:41:43",
           "dataset": "hhgoa_round2_201607_201701"
         }
       }
@@ -238,7 +239,7 @@
         "C11940-K1",
         "C13269-K2"
       ],
-      "txns_matched": 28,
+      "txns_matched": 46,
       "closed_cases_caught": [
         "CC-2971",
         "CC-3138",
@@ -254,7 +255,8 @@
         "CC-3407"
       ],
       "exam_cases_caught": [
-        "HHF-006"
+        "HHF-006",
+        "HHF-013"
       ],
       "attestation": {
         "what": "One recipient email domain paid by many cards: matches 23 cards (17 in January 2017) over July 2016-January 2017; it overlaps 5 confirmed-fraud closed cases and 1 cleared closed cases.",
@@ -294,7 +296,7 @@
           }
         },
         "when": {
-          "at": "2026-10-31 03:04:14",
+          "at": "2026-11-01 17:41:45",
           "dataset": "hhgoa_round2_201607_201701"
         }
       }
@@ -409,7 +411,7 @@
           }
         },
         "when": {
-          "at": "2026-10-31 03:04:14",
+          "at": "2026-11-01 17:41:45",
           "dataset": "hhgoa_round2_201607_201701"
         }
       }
@@ -503,7 +505,7 @@
           }
         },
         "when": {
-          "at": "2026-10-31 03:04:14",
+          "at": "2026-11-01 17:41:45",
           "dataset": "hhgoa_round2_201607_201701"
         }
       }

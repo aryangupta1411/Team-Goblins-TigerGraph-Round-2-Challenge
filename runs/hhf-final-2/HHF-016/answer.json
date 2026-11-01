@@ -1,0 +1,131 @@
+{
+  "case_id": "HHF-016",
+  "case": {
+    "status": "closed_legitimate",
+    "verdict": "legitimate",
+    "fraud_probability": 0.0,
+    "pattern": "none",
+    "pattern_description": "",
+    "affected_txn_ids": [],
+    "first_suspicious_txn_id": "",
+    "connected_card_ids": [],
+    "connected_device_profiles": [],
+    "exposure_usd": 0.0,
+    "evidence": [
+      {
+        "claim": "The flagged transaction 3611043 ($3,008.76) occurred in billing region 123.0, which is the cardholder's primary modal region with 1,432 prior transactions across 183 distinct days.",
+        "source": "graph",
+        "ref": "query:region_history(addr1=123.0, c=C02502-K2, as_of=2017-01-01 03:07:47)",
+        "entity_ids": [
+          "3611043",
+          "C02502-K2"
+        ]
+      },
+      {
+        "claim": "The transaction amount of $3,008.76 on card C02502-K2 is below the cardholder's historical maximum in-person transaction amount of $3,247.90.",
+        "source": "graph",
+        "ref": "query:case_context(t=3611043, as_of=2017-01-01 03:07:47)",
+        "entity_ids": [
+          "3611043",
+          "C02502-K2"
+        ]
+      },
+      {
+        "claim": "The bank's calibrated case-memory model puts the probability of fraud for transaction 3611043 at 0.00359, reflecting strong baseline legitimacy.",
+        "source": "graph",
+        "ref": "query:case_context(t=3611043, as_of=2017-01-01 03:07:47)",
+        "entity_ids": [
+          "3611043"
+        ]
+      },
+      {
+        "claim": "Card C02502-K2 shows continuous in-person activity in its home region 123.0 and adjacent region 181.0 across 48 transactions in the 72 hours prior to case opening.",
+        "source": "graph",
+        "ref": "query:card_window(c=C02502-K2, from_ts=2016-12-29 01:07:47, to_ts=2017-01-01 03:07:47, max_rows=60)",
+        "entity_ids": [
+          "C02502-K2",
+          "3611043",
+          "3611104"
+        ]
+      },
+      {
+        "claim": "Card C02502-K2 has 16 prior confirmed fraud cases, including account takeover cases CC-2656 and CC-3942, but current transactions remain consistent with normal home-region activity.",
+        "source": "graph",
+        "ref": "query:prior_cases_for_customer(cu=C02502, as_of=2017-01-01 03:07:47)",
+        "entity_ids": [
+          "C02502-K2",
+          "CC-2656",
+          "CC-3942"
+        ]
+      },
+      {
+        "claim": "Assumed reply: customer confirmed travel to billing region 123.0 and recognises the $3,008.76 purchase",
+        "source": "customer",
+        "ref": "evidence_request:1",
+        "entity_ids": [
+          "3611043"
+        ]
+      }
+    ],
+    "similar_prior_cases": [
+      "CC-3570",
+      "CC-3942",
+      "CC-3007",
+      "CC-3613"
+    ],
+    "summary": "The case is assessed as legitimate with a fraud probability of 0.0026 and pattern none. The real-time risk alert for transaction 3611043 ($3,008.76) occurred in the cardholder's primary home region 123.0 and fell below the historical maximum in-person purchase amount. Upon customer validation, the customer confirmed authorizing the transaction. The final recommended actions are CREATE_CASE, ALLOW_TRANSACTION, and CLOSE_NO_FRAUD under route auto.",
+    "written_to_graph": true,
+    "graph_case_id": "AC-HHF-016"
+  },
+  "evidence_requests": [
+    {
+      "type": "customer_validation",
+      "asked_after_step": 17,
+      "assumed_response": "ASSUMED (simulated): customer confirmed travel to billing region 123.0 and recognises the $3,008.76 purchase"
+    }
+  ],
+  "next_best_actions": {
+    "initial": [
+      {
+        "action": "CREATE_CASE",
+        "route": "auto",
+        "reason": "3a/§6: Open a case to document the real-time model risk alert on transaction 3611043."
+      },
+      {
+        "action": "VERIFY_WITH_CUSTOMER",
+        "route": "auto",
+        "reason": "R1/§6: Single risk score signal with probability 0.0026 < 0.70 requires customer verification before taking block action."
+      }
+    ],
+    "final": [
+      {
+        "action": "CREATE_CASE",
+        "route": "auto",
+        "reason": "3a: Open a case to document the real-time model risk alert investigation."
+      },
+      {
+        "action": "ALLOW_TRANSACTION",
+        "route": "auto",
+        "reason": "R3: Customer confirmed authorizing the transaction; allow transaction."
+      },
+      {
+        "action": "CLOSE_NO_FRAUD",
+        "route": "auto",
+        "reason": "R3/§6: Customer confirmed the activity; close case as no fraud."
+      }
+    ],
+    "what_changed": "The assumed customer validation reply (confirm) left the probability at 0.00 and kept the verdict legitimate, adding ALLOW_TRANSACTION, CLOSE_NO_FRAUD, removing VERIFY_WITH_CUSTOMER. Counterfactual: had the customer denied the purchase, R2 would have applied: BLOCK_CARD (L1) and CREATE_CASE."
+  },
+  "sar": {
+    "file": false,
+    "reason": "3a not met: verdict legitimate (fraud not confirmed or strongly suspected), exposure $0.00; no report",
+    "narrative": "",
+    "subjects": [],
+    "total_amount_usd": 0,
+    "activity_dates": []
+  },
+  "stop_reason": "Policy §6 test 2: the assumed customer confirmation settled the question.",
+  "tool_calls": 17,
+  "tokens": 322107,
+  "latency_s": 57.8
+}

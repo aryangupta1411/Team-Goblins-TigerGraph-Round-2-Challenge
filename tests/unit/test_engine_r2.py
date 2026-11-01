@@ -56,7 +56,7 @@ def test_online_denial_blocks_at_intake_and_steps_up():
     assert ask and "BLOCK_CARD" in branches["fail"] and "BLOCK_CARD" in branches["inconclusive"]
     post = _sc(0.55, ["customer"], [], denial=True, outcome="inconclusive", asked=True)
     fin = policy.admissible(DISP, post, "final")
-    assert fin["required"] == ["CREATE_CASE", "MONITOR_CARD", "DECLINE_TRANSACTION", "BLOCK_CARD"]
+    assert fin["required"] == ["CREATE_CASE", "STEP_UP_AUTH", "MONITOR_CARD", "BLOCK_CARD"]   # R2's block stands; R4's decline waits
     assert "R2's block" in stop.stop_reason(sc, post, True, False)
 
 
@@ -189,3 +189,28 @@ def test_out_of_region_label_follows_the_banks_convention():
                            FROM cc c JOIN cc_txn x USING(case_id) JOIN txc t ON t.TransactionID = x.TransactionID
                            WHERE c.outcome = 'confirmed_fraud' AND c.pattern = 'out_of_region_use' GROUP BY 1)""").iloc[0]
     assert (int(d.n), int(d.known), int(d.new_region)) in ((955, 581, 173), (957, 583, 173))
+
+
+@needs_db
+def test_final_round_alerts_follow_the_raw_january_data():
+    """HHF-010 / HHF-014: nothing shared behind the alert (a 30-day count made mac.com look like a mule hub; an online
+    purchase with no identity row is a data gap) → legitimate after the confirmation, no decline. HHF-013: a sc.rr.com ring
+    card alerted on a genuine in-person purchase → fraud on the two ring payments, reported. HHF-008: in-person purchases
+    carrying device records contradict their channel → uncertain and escalated, never blocked or reported."""
+    from engine.facts_duckdb import DuckFacts
+    from engine.run_cases import contexts, run_one
+
+    fx = DuckFacts()
+    got = {ctx.case_id: run_one(ctx, fx)["answer"] for ctx in contexts(fx, ["HHF-008", "HHF-010", "HHF-013", "HHF-014"])}
+
+    def final(cid):
+        return {x["action"] for x in got[cid]["next_best_actions"]["final"]}
+
+    for cid in ("HHF-010", "HHF-014"):
+        assert got[cid]["case"]["verdict"] == "legitimate" and "DECLINE_TRANSACTION" not in final(cid), cid
+    c13 = got["HHF-013"]["case"]
+    assert c13["verdict"] == "fraud" and c13["pattern"] == "undocumented" and c13["affected_txn_ids"] == ["3660311", "3660312"]
+    assert got["HHF-013"]["sar"]["file"] and "FILE_REPORT" in final("HHF-013")
+    c8 = got["HHF-008"]["case"]
+    assert c8["verdict"] == "uncertain" and c8["affected_txn_ids"] == ["3660351", "3660352", "3660353"]
+    assert "ESCALATE_TO_ANALYST" in final("HHF-008") and not final("HHF-008") & {"BLOCK_CARD", "BLOCK_ALL_CARDS", "FILE_REPORT"}

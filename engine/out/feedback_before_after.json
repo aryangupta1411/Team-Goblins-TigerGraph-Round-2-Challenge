@@ -1,0 +1,219 @@
+{
+  "what": "Same cases scored by the deterministic engine before and after analyst feedback rows were recorded (temp sqlite).",
+  "wrongly_acted_against": "a case whose final actions include BLOCK_CARD / BLOCK_ALL_CARDS / DECLINE_TRANSACTION / FILE_REPORT on a card or customer where an analyst rejected the finding (the analyst label is the demo's ground truth)",
+  "feedback_rows": [
+    {
+      "case_id": "HHF-013",
+      "card_id": "C06115-K1",
+      "finding_kind": "D4_RECIPIENT_EMAIL_MULE",
+      "decision": "rejected",
+      "reason": "sc.rr.com payments are the cardholder's own utility bills (demo label)",
+      "decided_by": "lead@demo",
+      "role": "team_lead"
+    },
+    {
+      "case_id": "HHG-019",
+      "card_id": "C07987-K2",
+      "finding_kind": "graph_neighbourhood",
+      "decision": "rejected",
+      "reason": "shared Windows profile is an office machine, not a fraud neighbourhood (demo label)",
+      "decided_by": "lead@demo",
+      "role": "team_lead"
+    },
+    {
+      "case_id": "HHG-019",
+      "card_id": "C07987-K2",
+      "finding_kind": "fraud_verdict",
+      "decision": "rejected",
+      "reason": "cardholder reached by phone, recognises the purchase (demo label)",
+      "decided_by": "lead@demo",
+      "role": "team_lead"
+    },
+    {
+      "case_id": "HHG-007",
+      "card_id": "C09933-K1",
+      "finding_kind": "fraud_verdict",
+      "decision": "rejected",
+      "reason": "customer cleared the account-takeover alert on their other card (demo label)",
+      "decided_by": "lead@demo",
+      "role": "team_lead"
+    },
+    {
+      "case_id": "HHF-001",
+      "card_id": "C05061-K1",
+      "finding_kind": "D1_MOBILE_ANON_PROXY_WAVE",
+      "decision": "accepted",
+      "reason": "wave pattern confirmed (demo label)",
+      "decided_by": "lead@demo",
+      "role": "team_lead"
+    }
+  ],
+  "wrongly_acted_against_before": [
+    "HHF-013",
+    "HHG-007",
+    "HHG-019"
+  ],
+  "wrongly_acted_against_after": [
+    "HHF-013"
+  ],
+  "cases": {
+    "HHF-001": {
+      "before": {
+        "verdict": "fraud",
+        "p": 0.92,
+        "actions": [
+          "CREATE_CASE",
+          "MONITOR_CONNECTED_CARDS",
+          "BLOCK_CARD",
+          "FILE_REPORT",
+          "ESCALATE_TO_ANALYST"
+        ]
+      },
+      "after": {
+        "verdict": "fraud",
+        "p": 0.92,
+        "actions": [
+          "CREATE_CASE",
+          "MONITOR_CONNECTED_CARDS",
+          "BLOCK_CARD",
+          "FILE_REPORT",
+          "ESCALATE_TO_ANALYST"
+        ]
+      },
+      "caused_by": [
+        {
+          "id": 5,
+          "case_id": "HHF-001",
+          "card_id": "C05061-K1",
+          "finding_kind": "D1_MOBILE_ANON_PROXY_WAVE",
+          "decision": "accepted",
+          "decided_by": "lead@demo",
+          "role": "team_lead",
+          "at": "2026-11-01 17:33:38",
+          "scope": "card",
+          "weight": 1.0
+        }
+      ]
+    },
+    "HHF-013": {
+      "before": {
+        "verdict": "fraud",
+        "p": 0.92,
+        "actions": [
+          "CREATE_CASE",
+          "MONITOR_CONNECTED_CARDS",
+          "BLOCK_CARD",
+          "FILE_REPORT",
+          "ESCALATE_TO_ANALYST"
+        ]
+      },
+      "after": {
+        "verdict": "fraud",
+        "p": 0.8,
+        "actions": [
+          "CREATE_CASE",
+          "MONITOR_CONNECTED_CARDS",
+          "BLOCK_CARD",
+          "FILE_REPORT",
+          "ESCALATE_TO_ANALYST"
+        ]
+      },
+      "caused_by": [
+        {
+          "id": 1,
+          "case_id": "HHF-013",
+          "card_id": "C06115-K1",
+          "finding_kind": "D4_RECIPIENT_EMAIL_MULE",
+          "decision": "rejected",
+          "decided_by": "lead@demo",
+          "role": "team_lead",
+          "at": "2026-11-01 17:33:38",
+          "scope": "card",
+          "weight": -2.0
+        }
+      ]
+    },
+    "HHG-007": {
+      "before": {
+        "verdict": "fraud",
+        "p": 0.7674,
+        "actions": [
+          "CREATE_CASE",
+          "MONITOR_CARD",
+          "DECLINE_TRANSACTION",
+          "BLOCK_CARD"
+        ]
+      },
+      "after": {
+        "verdict": "uncertain",
+        "p": 0.5483,
+        "actions": [
+          "CREATE_CASE",
+          "VERIFY_WITH_CUSTOMER",
+          "MONITOR_CARD"
+        ]
+      },
+      "caused_by": [
+        {
+          "id": 4,
+          "case_id": "HHG-007",
+          "card_id": "C09933-K1",
+          "finding_kind": "fraud_verdict",
+          "decision": "rejected",
+          "decided_by": "lead@demo",
+          "role": "team_lead",
+          "at": "2026-11-01 17:33:38",
+          "scope": "customer",
+          "weight": -1.0
+        }
+      ]
+    },
+    "HHG-019": {
+      "before": {
+        "verdict": "fraud",
+        "p": 0.8167,
+        "actions": [
+          "CREATE_CASE",
+          "MONITOR_CARD",
+          "DECLINE_TRANSACTION",
+          "BLOCK_CARD"
+        ]
+      },
+      "after": {
+        "verdict": "legitimate",
+        "p": 0.1,
+        "actions": [
+          "CREATE_CASE",
+          "ALLOW_TRANSACTION",
+          "CLOSE_NO_FRAUD"
+        ]
+      },
+      "caused_by": [
+        {
+          "id": 2,
+          "case_id": "HHG-019",
+          "card_id": "C07987-K2",
+          "finding_kind": "graph_neighbourhood",
+          "decision": "rejected",
+          "decided_by": "lead@demo",
+          "role": "team_lead",
+          "at": "2026-11-01 17:33:38",
+          "scope": "card",
+          "weight": -2.0
+        },
+        {
+          "id": 3,
+          "case_id": "HHG-019",
+          "card_id": "C07987-K2",
+          "finding_kind": "fraud_verdict",
+          "decision": "rejected",
+          "decided_by": "lead@demo",
+          "role": "team_lead",
+          "at": "2026-11-01 17:33:38",
+          "scope": "card",
+          "weight": -2.0
+        }
+      ]
+    }
+  }
+}

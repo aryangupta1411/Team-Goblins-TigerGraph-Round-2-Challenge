@@ -22,7 +22,7 @@ case_pack_final.csv ──► agent/security.py (Prompt-Injection Shield + Trigg
                     engine/ (Deterministic Scorecard · D1–D4 Wave Detectors · Policy Gate R1–R10 · VoI · Simulator)
                               │
                               ▼
-                    cases/HHF-001..018.json (run hhf-final) + Graph Write-Back + RBAC Approvals Inbox
+                    cases/HHF-001..018.json (run hhf-final-2) + Graph Write-Back + RBAC Approvals Inbox
 ```
 
 | Stage / Phase | Subsystem | Authority | What Happens |
@@ -30,7 +30,7 @@ case_pack_final.csv ──► agent/security.py (Prompt-Injection Shield + Trigg
 | **Stage 0** | `etl/delta*`, `schema_engine/` | Deterministic + Gemini AST | Appends the January delta to 590,742 Jul–Dec 2016 rows + 60,196 Jan 2017 rows (**650,938 total**) and **5,585 closed cases** (`CC-0001`…`CC-5585`). Gates 4 schema drifts, maps foreign `.gsql` schemas (`Bank_ISO20022`, `Bank_BIAN`, `Bank_CoreT24`), scans `DQ-01`…`DQ-06`, and scores `cms_p`. |
 | **`P0` Intake** | `agent/security.py` + MCP | Code + Shield | Strips all 6 planted prompt injections (`HHF-004, 005, 008, 010, 014, 016`), cross-checks `trigger_text` against DB facts (`HHF-008` `online` vs `in_person`), opens `AC-<case_id>`, and runs 4 mandatory time-boxed queries (`ts <= opened_at`). |
 | **`P1` Memory** | `rag/` + TigerVector | Vector + Graph | Retrieves top-8 similar prior closed cases (`ClosedCase.note_emb`, 1024-d local `BAAI/bge-large-en-v1.5`) and top-5 regulatory/policy chunks (`FinCEN`, `FFIEC`, `FATF`, `Fraud Policy v1.0`). |
-| **`P2` Investigate** | `agent/llm.py` (`GeminiBackend`) | Google Gemini + MCP | `gemini-2.5-flash` / `gemini-2.5-pro` investigates via `functionDeclarations` over 16 read-only MCP tools (`shared_origin_scan`, `ring_profile`, `card_testing_check`, `episode_candidates`, `region_history`, `device_neighbors`, etc.). |
+| **`P2` Investigate** | `agent/llm.py` (`GeminiBackend`) | Google Gemini + MCP | `gemini-3.6-flash` (the submitted run; `gemini-2.5-flash` by default) investigates via `functionDeclarations` over 16 read-only MCP tools (`shared_origin_scan`, `ring_profile`, `card_testing_check`, `episode_candidates`, `region_history`, `device_neighbors`, etc.). |
 | **`P3` Scorecard** | `engine/scorecard.py` + `detectors.py` | Deterministic Engine | Computes calibrated `p_engine`, evaluates the 4 evidence families (`history`, `device`, `memory`, `customer`), runs the 4 undocumented wave detectors (`D1`–`D4`), and derives `affected_txn_ids` and `exposure_usd`. |
 | **`P4` Assess** | `agent/llm.py` (`responseSchema`) | Gemini (Clamped `±0.10`) | Synthesizes 4-part attested claims (`what`, `evidence`, `how`, `when`); probability is strictly clamped to `[p_engine - 0.10, p_engine + 0.10]`. |
 | **`P5` Initial Gate** | `engine/policy.py` | Deterministic Gate | Computes admissible initial actions and approval routes (`auto`, `L1`, `L2`) under Policy Rules `R1`–`R10`. |

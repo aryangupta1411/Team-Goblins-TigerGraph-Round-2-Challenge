@@ -1,32 +1,43 @@
-# Build context for the Dockerfile (the Streamlit UI image). Allowlist: start from nothing, then let
-# in only what the Dockerfile copies. Everything else stays out, including .env, .git, .venv, .claude,
-# data/ (raw CSVs and every *.duckdb; the UI opens none of them), graph/, docs/, IMPLEMENTATION.md,
-# PLAN.md, every run other than the two canonical ones, and all of agent/ and schema_engine/ except the two
-# stdlib-only modules the UI imports. runs/hhf-final/ is the Dockerfile's default CANONICAL_RUN.
+# Build context for the Dockerfile (the full app: UI, agent, engine, MCP launcher). Allowlist: start from nothing,
+# then let in only what the Dockerfile copies. Everything else stays out, including .env, .git, .venv, .claude,
+# data/raw/ (708 MB of CSVs), every *.duckdb except the two checked-in ones, docs/, tests/ and every run other than
+# the two canonical ones. runs/hhf-final/ is the Dockerfile's default CANONICAL_RUN.
 *
 
-!requirements-ui.txt
+!requirements-live.txt
 !.streamlit/config.toml
+!agent/
+!engine/
+!etl/
+!graph/
+!mcp/
 !ops/
+!policy/
 !rag/
-!agent/__init__.py
-!agent/security.py
-!schema_engine/__init__.py
-!schema_engine/attestation.py
+!schema_engine/
+!contracts/
+!ui/
 !cases/
+!data/
 !runs/hhf-final/
 !runs/live-final-2/
-!engine/out/detector_backtest.json
-!engine/out/containment_summary.json
-!engine/out/proof_snapshot.json
-!ui/
 
-# Never, even inside the paths let in above.
+data/raw/
+data/out/
+data/out_delta/
+data/backup/
+data/corpus/raw/
 **/.env
 **/.env.*
 **/*.sqlite
 **/*.sqlite-journal
 **/*.duckdb
+**/*.wal
 **/__pycache__
 **/*.pyc
 **/.DS_Store
+ui/principals.json
+
+# the facts snapshot (base + January) and the validator's ids: both checked in, both read by a live run
+!data/hhgoa_engine.duckdb
+!data/ids.duckdb

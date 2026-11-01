@@ -1,14 +1,15 @@
-# The Streamlit analyst dashboard (ui/) as a container, for Railway or any other host. Railway builds
-# this file automatically; see "Deploy on Railway" in README.md.
-# Railway deploys this repo's main branch with the DOCKERFILE builder (railway.json).
+# The whole app as a container, for Railway or any other host: the Streamlit analyst dashboard (ui/) and everything a
+# live agent run needs (agent/, engine/, the MCP launcher in mcp/, rag/ with the bge-large embedding model baked in,
+# the checked-in facts snapshot data/hhgoa_engine.duckdb and the validator's data/ids.duckdb). Railway builds this file
+# automatically; see "Deploy on Railway" in README.md.
 #
-# The image holds the UI, the answer files, the canonical runs' traces (runs/${CANONICAL_RUN}, default hhf-final, for
-# the Final Round; runs/live-final-2 for Round 1), the engine's saved detector backtest and containment summary, and the
-# measured proof snapshot (engine/out/proof_snapshot.json, from `make proof-snapshot`) that stands in for the engine
-# sections the image cannot compute. Besides ui/ it ships two stdlib-only modules: agent/security.py (the intake
-# sanitiser) and schema_engine/attestation.py (which it imports). It installs only what ui/ imports
-# (requirements-ui.txt, pinned to uv.lock): no torch, no agent stack, no duckdb and no data/. It starts in mock mode
-# and read-only: no agent runs, no graph writes.
+# It still starts in mock mode and read-only (RUN_MODE=mock, DEPLOY_READONLY=1): it replays the canonical runs'
+# traces (runs/${CANONICAL_RUN}, default hhf-final; runs/live-final-2 for Round 1) and touches no graph and no model.
+# Live runs need Railway variables: RUN_MODE=live, DEPLOY_READONLY=0, LLM_BACKEND=gemini, the secrets TG_HOST,
+# TG_SECRET and GEMINI_API_KEY, an approver directory (APPROVER_DIRECTORY_JSON) because RUNS_NEED_APPROVER=1 lets only
+# a signed-in approver start a run, and AGENT_CASE_NAMESPACE so the deployment's write-backs (AC-<ns>-<case>) never
+# overwrite the submitted run's AC-<case>. RUNS_DIR and APPROVALS_DB on a volume keep runs and decisions across
+# redeploys; the canonical runs are copied onto it at start.
 FROM python:3.12-slim
 
 # The Final Round run promoted into cases/. Changing it also needs its !runs/<name>/ line in .dockerignore and its
@@ -23,32 +24,47 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-# Wheels only, exactly the pinned set; `pip check` fails the build if the list is not closed.
-COPY requirements-ui.txt ./
-RUN pip install --no-deps --only-binary=:all: -r requirements-ui.txt && pip check
+# torch from the PyTorch CPU index first (the PyPI Linux wheel pulls ~3 GB of CUDA libraries), then the rest of the
+# pinned set from uv.lock (requirements-live.txt), wheels only; `pip check` fails the build if the set is not closed.
+ARG TORCH_VERSION=2.14.0
+RUN pip install --only-binary=:all: --index-url https://download.pytorch.org/whl/cpu "torch==${TORCH_VERSION}"
+COPY requirements-live.txt ./
+RUN pip install --only-binary=:all: -r requirements-live.txt && pip check
 
-# Only the files ui/ reads at runtime. .dockerignore keeps everything else out of the build context.
+# The embedding model (rag/embed.py, EMBED_BACKEND=local), downloaded at build time so a run never waits on it. Only
+# the safetensors weights and the sentence-transformers config: no ONNX/OpenVINO copies, and no torch at build time.
+ENV HF_HOME=/opt/hf
+RUN python -c "from huggingface_hub import snapshot_download as d; d('BAAI/bge-large-en-v1.5', ignore_patterns=['onnx/*', 'openvino/*', '*.onnx', '*.bin', '*.h5', '*.ot', '*.msgpack'])" \
+    && chmod -R a+rX /opt/hf
+
+# .dockerignore keeps everything else out of the build context (.env, data/raw/, the work DBs, tests/, docs/).
 COPY .streamlit/config.toml .streamlit/
-COPY ops/__init__.py ops/ensure_awake.py ops/
-COPY rag/__init__.py rag/validate_sar.py rag/
-COPY agent/__init__.py agent/security.py agent/
-COPY schema_engine/__init__.py schema_engine/attestation.py schema_engine/
+COPY agent/ agent/
+COPY engine/ engine/
+COPY etl/ etl/
+COPY graph/ graph/
+COPY mcp/ mcp/
+COPY ops/ ops/
+COPY policy/ policy/
+COPY rag/ rag/
+COPY schema_engine/ schema_engine/
+COPY contracts/ contracts/
+COPY data/ data/
 COPY cases/ cases/
-COPY engine/out/detector_backtest.json engine/out/containment_summary.json engine/out/proof_snapshot.json engine/out/
 COPY runs/${CANONICAL_RUN}/ runs/${CANONICAL_RUN}/
 COPY runs/live-final-2/ runs/live-final-2/
 COPY ui/ ui/
 
-RUN useradd --create-home --uid 10001 app
+# runs/ is where agent.bench writes when RUNS_DIR is not a volume
+RUN useradd --create-home --uid 10001 app && chown -R app runs
 USER app
 
-# Railway variables override any of these at runtime. Live mode needs RUN_MODE=live plus TG_HOST and
-# TG_SECRET; DEPLOY_READONLY=1 still keeps the agent subprocess and the graph writes switched off.
-# APPROVALS_DB sits on the container's disk, which every redeploy wipes: attach a volume and point it
-# there to keep decisions (README.md).
+# Railway variables override any of these at runtime (see the header). HF_HUB_OFFLINE: the model is in the image.
 ENV RUN_MODE=mock \
     DEPLOY_READONLY=1 \
+    RUNS_NEED_APPROVER=1 \
     APPROVALS_DB=/tmp/approvals.sqlite \
+    HF_HUB_OFFLINE=1 \
     STREAMLIT_SERVER_HEADLESS=true \
     STREAMLIT_SERVER_FILE_WATCHER_TYPE=none \
     STREAMLIT_BROWSER_GATHER_USAGE_STATS=false \
@@ -57,6 +73,7 @@ ENV RUN_MODE=mock \
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
     CMD python -c "import os, urllib.request as u; u.urlopen('http://127.0.0.1:%s/_stcore/health' % os.environ.get('PORT', '8501'), timeout=4)"
 
-# Railway injects PORT at runtime; 8501 is the local default. `exec` makes streamlit PID 1 so it gets SIGTERM.
-# Run from /app so Streamlit picks up .streamlit/config.toml (the theme).
-CMD ["sh", "-c", "exec streamlit run ui/app.py --server.address=0.0.0.0 --server.port=${PORT:-8501}"]
+# Railway injects PORT at runtime; 8501 is the local default. When RUNS_DIR points outside the image (a volume), the
+# canonical runs are copied there first without overwriting anything already on it. `exec` makes streamlit PID 1 so
+# it gets SIGTERM. Run from /app so Streamlit picks up .streamlit/config.toml (the theme).
+CMD ["sh", "-c", "if [ -n \"$RUNS_DIR\" ] && [ \"$RUNS_DIR\" != /app/runs ]; then mkdir -p \"$RUNS_DIR\" && cp -rn /app/runs/. \"$RUNS_DIR\"/; fi; exec streamlit run ui/app.py --server.address=0.0.0.0 --server.port=${PORT:-8501}"]

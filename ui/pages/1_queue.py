@@ -286,7 +286,7 @@ def _confirm_launch(cases: list[str], backend: str, run_id: str, resume: bool, c
     ack = st.checkbox(ack_text, key="console_ack")
     if st.button("Confirm and start", type="primary", icon=":material/play_arrow:", disabled=bool(problems) or not ack, key="console_confirm"):
         try:
-            res = common.launch_run(cases, backend, run_id, resume=resume)
+            res = common.launch_run(cases, backend, run_id, resume=resume, session=common.approver_session())
         except OSError as exc:  # Popen itself failed (interpreter missing, folder not writable): shown, never swallowed
             res = {"ok": False, "error": f"agent.bench did not start: {type(exc).__name__}: {exc}"}
         if not res["ok"]:

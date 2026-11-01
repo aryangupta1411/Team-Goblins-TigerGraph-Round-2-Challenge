@@ -124,22 +124,32 @@ def directory_path() -> Path:
     return Path(os.getenv("APPROVER_DIRECTORY", str(Path(__file__).resolve().parent / "principals.json")))
 
 
+def _directory_json_env() -> str:
+    """APPROVER_DIRECTORY_JSON: the directory file's content in an environment variable, for a host that takes secrets
+    as variables rather than files (Railway). Used only when no explicit path is given."""
+    return os.getenv("APPROVER_DIRECTORY_JSON", "").strip()
+
+
 def _load_directory(path: str | os.PathLike | None = None) -> dict[str, dict]:
-    p = Path(path) if path else directory_path()
-    if not p.exists():
-        return {}
-    data = json.loads(p.read_text(encoding="utf-8"))
+    if path is None and _directory_json_env():
+        data = json.loads(_directory_json_env())
+    else:
+        p = Path(path) if path else directory_path()
+        if not p.exists():
+            return {}
+        data = json.loads(p.read_text(encoding="utf-8"))
     return {str(k).strip().lower(): v for k, v in data.items()}
 
 
 def directory_status(path: str | os.PathLike | None = None) -> dict:
     """{path, exists, n, roles: Counter, error} of the principal directory, for display. Never raises."""
+    from_env = path is None and bool(_directory_json_env())
     p = Path(path) if path else directory_path()
-    out: dict = {"path": str(p), "exists": p.exists(), "n": 0, "roles": Counter(), "error": ""}
+    out: dict = {"path": "$APPROVER_DIRECTORY_JSON" if from_env else str(p), "exists": from_env or p.exists(), "n": 0, "roles": Counter(), "error": ""}
     if not out["exists"]:
         return out
     try:
-        data = _load_directory(p)
+        data = _load_directory(None if from_env else p)
     except (OSError, ValueError, AttributeError, TypeError) as exc:  # unreadable or not a JSON object: nobody can sign in
         out["error"] = f"{type(exc).__name__}: {exc}"
         return out
@@ -538,7 +548,10 @@ def run_rbac_drills() -> list[dict]:
 # Graph write-through (live mode)                                             #
 # --------------------------------------------------------------------------- #
 def graph_case_id(case_id: str) -> str:
-    return case_id if case_id.startswith("AC-") else f"AC-{case_id}"
+    """The AgentCase this approval belongs to: agent.case_ids.agent_case_id, so AGENT_CASE_NAMESPACE applies here too."""
+    from agent.case_ids import agent_case_id
+
+    return agent_case_id(case_id)
 
 
 def approval_vertex_id(case_id: str, action: str) -> str:

@@ -87,6 +87,12 @@ def read_only() -> bool:
     return _env("DEPLOY_READONLY", "").strip().lower() in ("1", "true", "yes", "on")
 
 
+def runs_need_approver() -> bool:
+    """RUNS_NEED_APPROVER=1 (the Dockerfile default): on a deployment that runs the agent, only a signed-in approver
+    (approvals_db.authenticate) may start a live run, so a public URL cannot spend tokens or write to the graph."""
+    return _env("RUNS_NEED_APPROVER", "").strip().lower() in ("1", "true", "yes", "on")
+
+
 def runs_root() -> Path:
     p = Path(_env("RUNS_DIR", str(ROOT / "runs")))
     return p if p.is_absolute() else ROOT / p
@@ -3328,14 +3334,20 @@ def backend_status(backend: str) -> dict:
     return {"ok": False, "reason": f"unknown backend {backend!r}; one of {', '.join(LLM_BACKENDS)}"}
 
 
-def launch_run(cases: list[str], backend: str, run_id: str, resume: bool = False) -> dict:
+def launch_run(cases: list[str], backend: str, run_id: str, resume: bool = False, session: object = None) -> dict:
     """Start agent.bench detached (its own session) for `cases` under runs/<run_id>/, logging to runs/<run_id>/bench.log and
     writing runs/<run_id>/.bench.lock {pid, started, cases, backend}. RUN_MODE and --llm-backend are always explicit.
-    Refuses on a read-only deployment, for a live backend outside live mode, when the backend is not ready, and while
-    any live lock exists. Returns {ok, error, pid, cmd, log, lock}."""
+    Refuses on a read-only deployment, for a live backend without a verified approver `session` when RUNS_NEED_APPROVER
+    is set, for a live backend outside live mode, when the backend is not ready, and while any live lock exists.
+    Returns {ok, error, pid, cmd, log, lock}."""
     out: dict = {"ok": False, "error": "", "pid": None, "cmd": [], "log": "", "lock": ""}
     if read_only():
         return {**out, "error": "read-only deployment (DEPLOY_READONLY=1): runs are never started here"}
+    if backend != "mock" and runs_need_approver():
+        try:
+            approvals_db.verify_session(session)
+        except PermissionError:
+            return {**out, "error": "live runs on this deployment need a signed-in approver (Sign in, top right)"}
     if not _safe_id(run_id) or not cases or not all(_safe_id(c) for c in cases):
         return {**out, "error": "a run id and at least one case id are needed"}
     mode, reason = mode_status()

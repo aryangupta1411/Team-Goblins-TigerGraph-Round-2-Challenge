@@ -36,6 +36,7 @@ from typing import Any
 from agent import tools_local
 from agent.answer_fallback import build as build_answer_fallback
 from agent.answer_fallback import check_invariants
+from agent.case_ids import agent_case_id, all_agent_case_ids
 from agent.config import SETTINGS, Settings
 from agent.engine_api import ENGINE, CaseContext, Evidence
 from agent.llm import wrap_client
@@ -264,7 +265,7 @@ class PhaseMachine:
 
     # ------------------------------------------------------------------ P0
     async def p0_intake(self, ctx: CaseContext) -> str:
-        self.graph_case_id = f"AC-{ctx.case_id}"
+        self.graph_case_id = agent_case_id(ctx.case_id)
         self.log.record_phase("P0", {"ctx": _to_jsonable(ctx), "graph_case_id": self.graph_case_id, "engine": self.E.source})
         tok = current_caller.set("persist")
         try:
@@ -958,14 +959,14 @@ class PhaseMachine:
 
     def _memory_exclusions(self, ctx: CaseContext) -> set[str]:
         """AgentCase ids case memory must never return for this case: its own AC-<case_id> (written by an earlier
-        run) and the agent case of every exam case opened at or after this one (some query rows, e.g.
-        device_neighbors.agent_cases, carry no opened_at to filter on)."""
-        out = {f"AC-{ctx.case_id}"}
+        run, under the default id or AGENT_CASE_NAMESPACE's) and the agent case of every exam case opened at or after
+        this one (some query rows, e.g. device_neighbors.agent_cases, carry no opened_at to filter on)."""
+        out = set(all_agent_case_ids(ctx.case_id))
         from agent.bench import load_case_pack
 
         for c in load_case_pack(self.s.case_pack_csv):
             if str(c.opened_at) >= ctx.opened_at:
-                out.add(f"AC-{c.case_id}")
+                out |= all_agent_case_ids(c.case_id)
         self.log.note("case memory excludes agent cases opened at or after this one", n=len(out))
         return out
 

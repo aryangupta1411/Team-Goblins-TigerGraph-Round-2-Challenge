@@ -100,13 +100,34 @@ COLUMNS = ("id", "case_id", "action", "route", "reason", "status", "decided_by",
 # page can grant a permission. No directory file means nobody can approve (fail closed).
 #
 #   uv run python -m ui.approvals_db add-principal fraud-manager@bank --role fraud_manager   # prompts for the passphrase
-ROLE_ALLOWED_ROUTES: dict[str, set[str]] = {
-    "fraud_manager": {"L1", "L2"},
-    "team_lead": {"L1"},
-    "analyst": set(),
-    "unauthorized": set(),
+#   uv run python -m ui.approvals_db seed-demo   # one demo principal per role; passphrases in demo_accounts.local.txt
+#
+# What each role may do. Every gate asks has_permission() with a verified session, so the role always comes from the
+# directory. The admin holds every permission. run_live, workspace and own_data are enforced only on a deployment
+# with RUNS_NEED_APPROVER (ui/common.py); elsewhere the Run console is open, as in local development.
+PERMISSIONS: dict[str, str] = {
+    "feedback": "record analyst feedback on a card",
+    "approve_L1": "approve or reject L1 actions (DECLINE_TRANSACTION, BLOCK_CARD up to the L2 limit)",
+    "approve_L2": "approve or reject L2 actions (BLOCK_ALL_CARDS, FILE_REPORT, large blocks)",
+    "approve_migration": "approve the schema migration",
+    "approve_detector": "admit or reject a proposed detector",
+    "run_live": "start live agent runs (TigerGraph and a paid LLM)",
+    "workspace": "connect another TigerGraph workspace on the Run console",
+    "own_data": "upload data and run the load steps into another workspace",
+    "users_view": "see every principal and its role",
 }
-FEEDBACK_ROLES = {"fraud_manager", "team_lead", "analyst"}
+ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
+    "admin": frozenset(PERMISSIONS),
+    "fraud_manager": frozenset({"feedback", "approve_L1", "approve_L2", "approve_migration", "approve_detector", "run_live"}),
+    "team_lead": frozenset({"feedback", "approve_L1", "approve_migration", "run_live"}),
+    "analyst": frozenset({"feedback"}),
+    "unauthorized": frozenset(),
+}
+ROLE_LABELS = {"admin": "server admin", "fraud_manager": "fraud manager", "team_lead": "team lead", "analyst": "analyst",
+               "unauthorized": "unauthorized"}
+ROLE_ALLOWED_ROUTES: dict[str, set[str]] = {r: {x for x in ("L1", "L2") if f"approve_{x}" in p} for r, p in ROLE_PERMISSIONS.items()}
+FEEDBACK_ROLES = {r for r, p in ROLE_PERMISSIONS.items() if "feedback" in p}
+DEMO_PRINCIPALS = {"admin@demo": "admin", "manager@demo": "fraud_manager", "lead@demo": "team_lead", "analyst@demo": "analyst"}
 _SCRYPT = {"n": 2**14, "r": 8, "p": 1, "dklen": 32}
 # Signs sessions so one built outside authenticate() is rejected. Per process unless APPROVALS_SIGNING_KEY is set.
 _SIGNING_KEY = (os.getenv("APPROVALS_SIGNING_KEY") or "").encode() or secrets.token_bytes(32)
@@ -221,6 +242,46 @@ def verify_session(session: object) -> ApproverSession:
     if left is not None and left <= 0:
         raise PermissionError("session expired; sign in again")
     return session
+
+
+def roles_with(permission: str) -> list[str]:
+    """The roles holding `permission`, in ROLE_PERMISSIONS order."""
+    return [r for r, p in ROLE_PERMISSIONS.items() if permission in p]
+
+
+def has_permission(session: object, permission: str) -> bool:
+    """Whether a session minted by authenticate() (and not expired) holds `permission`; anything else holds none."""
+    try:
+        who = verify_session(session)
+    except PermissionError:
+        return False
+    return permission in ROLE_PERMISSIONS.get(who.role, frozenset())
+
+
+def directory_rows(path: str | os.PathLike | None = None) -> list[dict]:
+    """[{principal, role}] of the directory, without hashes, for an admin's view. Never raises."""
+    try:
+        data = _load_directory(path)
+    except (OSError, ValueError, AttributeError, TypeError):
+        return []
+    return [{"principal": k, "role": str(v.get("role", "?")) if isinstance(v, dict) else "?"} for k, v in sorted(data.items())]
+
+
+def seed_demo(directory: str | os.PathLike | None = None, sheet: str | os.PathLike | None = None) -> dict:
+    """One principal per role (DEMO_PRINCIPALS) with a fresh random passphrase each, written into the directory (other
+    entries kept) and listed, passphrases included, in `sheet` (default demo_accounts.local.txt at the repo root:
+    git-ignored and outside the Docker build context), mode 0600. Re-running replaces the demo passphrases."""
+    sheet_path = Path(sheet) if sheet else Path(__file__).resolve().parents[1] / "demo_accounts.local.txt"
+    lines = ["# HHGOA Fraud Investigator demo principals (seed-demo). Keep this file private; re-run seed-demo to replace them.",
+             "# Sign in from the top-right badge with a principal and its passphrase.", ""]
+    for principal, role in DEMO_PRINCIPALS.items():
+        secret = secrets.token_urlsafe(12)
+        add_principal(principal, role, secret, directory)
+        perms = ", ".join(sorted(ROLE_PERMISSIONS[role]))
+        lines.append(f"{principal:<14} {ROLE_LABELS[role]:<14} passphrase: {secret}    may: {perms}")
+    sheet_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    os.chmod(sheet_path, 0o600)
+    return {"directory": str(Path(directory) if directory else directory_path()), "sheet": str(sheet_path), "principals": dict(DEMO_PRINCIPALS)}
 
 
 def resolve_server_role(principal: str | None, path: str | os.PathLike | None = None) -> str:
@@ -599,7 +660,16 @@ def main(argv: list[str] | None = None) -> int:
     a.add_argument("principal")
     a.add_argument("--role", required=True, choices=sorted(ROLE_ALLOWED_ROUTES))
     a.add_argument("--directory", default=None)
+    d = sub.add_parser("seed-demo", help="one demo principal per role with random passphrases, listed in a private local file")
+    d.add_argument("--directory", default=None)
+    d.add_argument("--sheet", default=None, help="where the passphrases go (default demo_accounts.local.txt at the repo root)")
     args = ap.parse_args(argv)
+    if args.cmd == "seed-demo":
+        res = seed_demo(args.directory, args.sheet)
+        print(f"{len(res['principals'])} demo principals ({', '.join(f'{p} = {r}' for p, r in res['principals'].items())}) written to {res['directory']}")
+        print(f"their passphrases are in {res['sheet']} (mode 0600, git-ignored; never printed here)")
+        print("Railway: set APPROVER_DIRECTORY_JSON to the content of the directory file (scrypt hashes only)")
+        return 0
     secret = os.getenv("APPROVER_PASSPHRASE") or getpass.getpass(f"passphrase for {args.principal}: ")
     add_principal(args.principal, args.role, secret, args.directory)
     print(f"{args.principal}: role {args.role} written to {args.directory or directory_path()}")

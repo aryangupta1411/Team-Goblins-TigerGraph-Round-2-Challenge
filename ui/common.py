@@ -2064,16 +2064,28 @@ def run_console(views: list, limit: int = 40) -> list[str]:
     return lines[-limit:]
 
 
+STAGE_GLYPH = {"done": "check", "stopped": "cross", "skipped": "dash", "offline": "gate"}  # active / pending: a ring, filled when active
+
+
+def stage_flow_html(stages: list[dict]) -> str:
+    """The stages as one grid of equal boxes that wraps with the width: the code with its state mark, the label, the state
+    in words. Each stage: {code, label, state (STAGE_STYLE keys), state_label?}. All text escaped."""
+    items = []
+    for s in stages:
+        state = str(s.get("state") or "pending")
+        name = STAGE_GLYPH.get(state)
+        mark = design.glyph(name) if name else '<span class="ring"></span>'
+        words = s.get("state_label") or STAGE_LABELS.get(state, state)
+        items.append(f'<li class="{design.esc(state)}" title="{design.esc(s["code"])} · {design.esc(s["label"])}: {design.esc(words)}">'
+                     f'<span class="c">{mark}{design.esc(s["code"])}</span><span class="l">{design.esc(s["label"])}</span>'
+                     f'<span class="s">{design.esc(words)}</span></li>')
+    return f'<ol class="tc tc-flow">{"".join(items)}</ol>'
+
+
 def pipeline_strip(stages: list[dict], *, key: str) -> None:
-    """The stages as a wrapping row of small bordered boxes: state icon and code, the label and the state in words. Static;
-    the Case file's Decision path tab has the clickable inspector."""
-    st = _st()
-    with st.container(horizontal=True, gap="small", key=f"pipeline-{_slug(key)}"):
-        for s in stages:
-            color, icon = STAGE_STYLE.get(s["state"], ("gray", None))
-            with st.container(border=True, width=124, gap=None, key=f"stage-{_slug(key)}-{s['code'].lower()}"):
-                st.markdown(badge(s["code"], color, icon=icon))
-                st.caption(md(f"{s['label']} · {s.get('state_label') or STAGE_LABELS.get(s['state'], s['state'])}"))
+    """The stages as a wrapping grid of equal boxes (stage_flow_html). Static; the Case file's Decision path tab has the
+    clickable inspector. `key` is kept for callers."""
+    design.html_block(stage_flow_html(stages))
 
 
 _REF_RE = re.compile(r"^(?:query:)?([A-Za-z_][\w]*)\s*(?:\((.*)\))?\s*$")
@@ -3085,7 +3097,8 @@ def case_select(where: Any, pack_ids: list[str], key: str, preferred: str | None
 # --------------------------------------------------------------------------- #
 # Identity: one shared sign-in for every human gate                           #
 # --------------------------------------------------------------------------- #
-ADD_PRINCIPAL_CMD = "uv run python -m ui.approvals_db add-principal <name> --role team_lead|fraud_manager"
+ADD_PRINCIPAL_CMD = "uv run python -m ui.approvals_db add-principal <name> --role analyst|team_lead|fraud_manager|admin"
+SEED_DEMO_CMD = "uv run python -m ui.approvals_db seed-demo"
 
 
 def approver_session() -> approvals_db.ApproverSession | None:
@@ -3110,9 +3123,11 @@ def identity_popover() -> None:
     sess = approver_session()
     with st.popover(md(sess.principal) if sess else "Sign in", icon=":material/badge:", key="identity"):
         if sess:
-            routes = "/".join(sorted(approvals_db.ROLE_ALLOWED_ROUTES.get(sess.role, set()))) or "nothing"
             left = approvals_db.session_expires_in_s(sess)
-            st.markdown(f"**{md(sess.principal)}** · {md(sess.role)} · may decide {md(routes)}" + (f" · expires in {max(0, int(left // 60))} min" if left is not None else ""))
+            st.markdown(f"**{md(sess.principal)}** · {md(approvals_db.ROLE_LABELS.get(sess.role, sess.role))}"
+                        + (f" · expires in {max(0, int(left // 60))} min" if left is not None else ""))
+            perms = sorted(approvals_db.ROLE_PERMISSIONS.get(sess.role, frozenset()), key=list(approvals_db.PERMISSIONS).index)
+            st.caption("May " + md("; ".join(approvals_db.PERMISSIONS[p] for p in perms) or "nothing beyond viewing"))
             if st.button("Sign out", key="identity-signout", icon=":material/logout:"):
                 st.session_state.pop("approver_session", None)
                 st.rerun()
@@ -3120,7 +3135,10 @@ def identity_popover() -> None:
             st.markdown("**Approvers: 0 — nobody can approve (fail closed)**")
             if status["error"]:
                 st.caption(md(f"{rel(status['path'])} unreadable: {status['error']}"))
-            st.caption("An administrator adds principals on the server:")
+            st.caption("An administrator adds principals on the server: one demo principal per role (admin, fraud manager, team "
+                       "lead, analyst), their passphrases written to a private local file,")
+            st.code(SEED_DEMO_CMD, language=None, wrap_lines=True)
+            st.caption("or one at a time:")
             st.code(ADD_PRINCIPAL_CMD, language=None, wrap_lines=True)
         else:
             with st.form("identity-signin", border=False):
@@ -3365,11 +3383,9 @@ def launch_run(cases: list[str], backend: str, run_id: str, resume: bool = False
     out: dict = {"ok": False, "error": "", "pid": None, "cmd": [], "log": "", "lock": ""}
     if read_only():
         return {**out, "error": "read-only deployment (DEPLOY_READONLY=1): runs are never started here"}
-    if backend != "mock" and runs_need_approver():
-        try:
-            approvals_db.verify_session(session)
-        except PermissionError:
-            return {**out, "error": "live runs on this deployment need a signed-in approver (Sign in, top right)"}
+    if backend != "mock" and runs_need_approver() and not approvals_db.has_permission(session, "run_live"):
+        who = ", ".join(approvals_db.ROLE_LABELS[r] for r in approvals_db.roles_with("run_live"))
+        return {**out, "error": f"live runs on this deployment need a signed-in approver ({who}; Sign in, top right)"}
     if not _safe_id(run_id) or not cases or not all(_safe_id(c) for c in cases):
         return {**out, "error": "a run id and at least one case id are needed"}
     target = run_target() if target is None else target
@@ -3498,16 +3514,14 @@ def run_target() -> dict:
     return {**out, "live": True, "reason": f"the .env workspace: {_hostname(host)}", "host": host, "graph": _env("TG_GRAPHNAME", "FraudGraph")}
 
 
-def approver_gate(session: object) -> str:
-    """'' when this caller may connect another workspace, upload data or run data steps here, else why not: a deployment
-    with RUNS_NEED_APPROVER (a public URL that can run the agent) lets only a verified approver session do them."""
-    if not runs_need_approver():
+def approver_gate(session: object, permission: str = "own_data") -> str:
+    """'' when this caller may do what `permission` covers here ('workspace': connect another workspace, 'own_data':
+    uploads and data steps), else why not: a deployment with RUNS_NEED_APPROVER (a public URL that can run the agent)
+    lets only a verified session whose role holds the permission do it (approvals_db.ROLE_PERMISSIONS; the admin)."""
+    if not runs_need_approver() or approvals_db.has_permission(session, permission):
         return ""
-    try:
-        approvals_db.verify_session(session)
-    except PermissionError:
-        return "on this deployment only a signed-in approver can do this (Sign in, top right)"
-    return ""
+    who = ", ".join(approvals_db.ROLE_LABELS[r] for r in approvals_db.roles_with(permission))
+    return f"on this deployment only a signed-in {who} can do this (Sign in, top right)"
 
 
 def _workspace_conn(host: str, graph: str, secret: str, wait_s: float = 30) -> Any:
@@ -3529,7 +3543,7 @@ def check_workspace(host: str, graph: str, secret: str, wait_s: float = 30, sess
     host, graph = str(host or "").strip().rstrip("/"), str(graph or "").strip() or "FraudGraph"
     out = {"ok": False, "error": "", "host": host, "graph": graph, "counts": {}, "missing": [], "queries": None, "latency_s": None,
            "at": _now(), "sig": _ws_sig(host, graph, secret or ""), "live_workspace": is_live_workspace(host)}
-    blocked = "read-only deployment (DEPLOY_READONLY=1): no other workspace is connected here" if read_only() else approver_gate(session)
+    blocked = "read-only deployment (DEPLOY_READONLY=1): no other workspace is connected here" if read_only() else approver_gate(session, "workspace")
     if blocked:
         return {**out, "error": blocked}
     if not host.lower().startswith("https://") or not _hostname(host):

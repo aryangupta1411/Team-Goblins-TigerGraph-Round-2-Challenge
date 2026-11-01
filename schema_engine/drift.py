@@ -213,11 +213,11 @@ def approve_schema_migration(
     The approver is identified only by an authenticated session (ui.approvals_db.authenticate); the role comes from the
     server-side directory, and only a team lead or fraud manager may approve. A decision is final.
     """
-    from ui.approvals_db import verify_session
+    from ui.approvals_db import roles_with, verify_session
 
     who = verify_session(session)
-    if who.role not in ("team_lead", "fraud_manager"):
-        raise PermissionError(f"{who.principal} ({who.role}) is not authorized to approve schema migrations (team_lead or fraud_manager)")
+    if who.role not in roles_with("approve_migration"):
+        raise PermissionError(f"{who.principal} ({who.role}) is not authorized to approve schema migrations ({' or '.join(roles_with('approve_migration'))})")
     data = _load_approvals()
     existing = data.get(migration_id, {})
     if existing.get("status") in ("approved", "rejected"):

@@ -16,7 +16,7 @@ import re
 
 import streamlit as st
 
-from ui import common
+from ui import common, design
 
 md, badge = common.md, common.badge
 RUN_KEY, CASE_KEY, STEP_KEY, PLAY_KEY, SPEED_KEY, STAGE_KEY = (
@@ -24,20 +24,6 @@ RUN_KEY, CASE_KEY, STEP_KEY, PLAY_KEY, SPEED_KEY, STAGE_KEY = (
 SPEEDS = {"slow": 1.2, "normal": 0.6, "fast": 0.25}  # seconds per step
 CONSOLE_LINES = 22
 _PHASE_RE = re.compile(r"^(P\d+)")
-_CSS = """
-<style>
-[class*="st-key-replay-node-active"] { border-color: var(--st-primary-color, #0b3d91) !important;
-  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.25); animation: replay-pulse 1.1s ease-in-out infinite; }
-@keyframes replay-pulse { 0%, 100% { box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.15); }
-  50% { box-shadow: 0 0 0 5px rgba(37, 99, 235, 0.35); } }
-@media (prefers-reduced-motion: reduce) { [class*="st-key-replay-node-active"] { animation: none; } }
-[class*="st-key-replay-node-"] { padding: 0.4rem 0.55rem !important; gap: 0.1rem !important; }
-[class*="st-key-replay-node-"] [data-testid="stCaptionContainer"] p { line-height: 1.25; margin: 0; }
-[class*="st-key-replay-arrow-"] p { margin: 0; opacity: 0.55; }
-</style>
-"""
-
-
 def _cut(text: object, n: int) -> str:
     text = " ".join(str(text or "").split())
     return text if len(text) <= n else text[: n - 1].rstrip() + "…"
@@ -88,26 +74,20 @@ def _flow(stages: list[dict], step: dict | None, finished: bool) -> None:
     reached (grey), and stages the case never wrote (skipped). S0 is the offline schema and data-quality gate."""
     done = set(step["done"]) if step else set()
     active = None if finished or step is None else step["stage"]
-    with st.container(horizontal=True, gap="small", vertical_alignment="center", key="replay-flow"):
-        for i, s in enumerate(stages):
-            if s["code"] == "S0":
-                state = "offline"
-            elif s["state"] == "skipped":
-                state = "skipped"
-            elif s["code"] == active and s["code"] not in done:
-                state = "active"
-            elif s["code"] in done or finished:
-                state = "done"
-            else:
-                state = "pending"
-            color, icon = common.STAGE_STYLE.get(state, ("gray", None))
-            key = f"replay-node-active-{s['code'].lower()}" if state == "active" else f"replay-node-{s['code'].lower()}"
-            with st.container(border=True, width=112, gap=None, key=key):
-                st.markdown(badge(s["code"], color, icon=icon))
-                st.caption(md(f"{s['label']} · {common.STAGE_LABELS.get(state, state)}"))
-            if i < len(stages) - 1:
-                with st.container(width=14, key=f"replay-arrow-{i}"):
-                    st.markdown("→")
+    items = []
+    for s in stages:
+        if s["code"] == "S0":
+            state = "offline"
+        elif s["state"] == "skipped":
+            state = "skipped"
+        elif s["code"] == active and s["code"] not in done:
+            state = "active"
+        elif s["code"] in done or finished:
+            state = "done"
+        else:
+            state = "pending"
+        items.append({"code": s["code"], "label": s["label"], "state": state})
+    design.html_block(common.stage_flow_html(items))
 
 
 def _inspector(view: common.CaseView, stages: list[dict]) -> None:
@@ -121,7 +101,7 @@ def _inspector(view: common.CaseView, stages: list[dict]) -> None:
         color, icon = common.STAGE_STYLE.get(s["state"], ("gray", ":material/remove:"))
         return f":{color}[{icon}] {code} · {s['label']}"
 
-    pick = st.pills("Inspect a stage", list(common.PIPELINE_CODES), default="P3", key=STAGE_KEY, format_func=label, width="stretch",
+    pick = st.pills("Inspect a stage", list(common.PIPELINE_CODES), default="P3", key=STAGE_KEY, format_func=label,
                     help="Click a stage to see the result it recorded in this case's trace.")
     if pick is None:
         return
@@ -220,7 +200,6 @@ def _frame(view: common.CaseView, stages: list[dict], evs: list[dict]) -> None:
 
 def render(default_run: str | None = None, default_case: str | None = None) -> None:
     """The 'Replay a recorded case' section: run and case pickers, the flow with its controls and console, the inspector."""
-    st.html(_CSS)
     runs = [s for s in common.sources() if s.kind == "run" and s.cases]
     if not runs:
         st.caption("No recorded run under runs/ to replay.")

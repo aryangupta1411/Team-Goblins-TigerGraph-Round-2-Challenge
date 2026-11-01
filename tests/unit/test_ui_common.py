@@ -681,9 +681,9 @@ def test_data_steps_run_in_order_and_never_load_into_the_env_workspace(tree, mon
     assert "s3cret" not in (common.data_job_dir("feb") / common.DATA_LOCK).read_text()
     assert common.data_job_state("feb")["steps"] == {"build": "done", "export": "done", "load": "running", "install": "not run", "algos": "not run"}
     monkeypatch.setenv("RUNS_NEED_APPROVER", "1")  # a public deployment that runs the agent: an approver session only
-    assert "signed-in approver" in common.launch_data_step("feb", "install", target=mine)["error"]
-    assert "signed-in approver" in common.save_month_upload("mar", files)["error"]
-    assert "signed-in approver" in common.check_workspace("https://mine.i.tgcloud.io", "FraudGraph", "s3cret")["error"]
+    assert "only a signed-in server admin" in common.launch_data_step("feb", "install", target=mine)["error"]
+    assert "only a signed-in server admin" in common.save_month_upload("mar", files)["error"]
+    assert "only a signed-in server admin" in common.check_workspace("https://mine.i.tgcloud.io", "FraudGraph", "s3cret")["error"]
     monkeypatch.setenv("RUNS_NEED_APPROVER", "")
     monkeypatch.setenv("DEPLOY_READONLY", "1")
     assert "read-only" in common.launch_data_step("feb", "install", target=mine)["error"]
@@ -755,6 +755,41 @@ def test_read_lock_reaps_a_finished_child_of_this_server(tmp_path):
     assert common._read_lock(lock) is None
     lock.write_text(json.dumps({"pid": os.getpid()}))  # alive and not our child: still held
     assert common._read_lock(lock) is not None
+
+
+def test_role_gates_for_live_runs_workspaces_and_data(tree, monkeypatch, tmp_path):
+    monkeypatch.setattr(subprocess, "Popen", lambda *a, **k: (_ for _ in ()).throw(AssertionError("Popen called")))
+    monkeypatch.setenv("RUNS_NEED_APPROVER", "1")
+    d = tmp_path / "principals.json"
+    for who, role in (("ana@bank", "analyst"), ("lead@bank", "team_lead"), ("boss@bank", "admin")):
+        approvals_db.add_principal(who, role, f"{role} passphrase 1", d)
+    ana, lead, boss = (approvals_db.authenticate(w, f"{r} passphrase 1", d)
+                       for w, r in (("ana@bank", "analyst"), ("lead@bank", "team_lead"), ("boss@bank", "admin")))
+    assert "signed-in approver" in common.launch_run(["HHF-001"], "gemini", "ui-test", session=ana)["error"]  # analysts never run live
+    assert "signed-in approver" not in common.launch_run(["HHF-001"], "gemini", "ui-test", session=lead)["error"]
+    for perm in ("workspace", "own_data"):
+        assert "server admin" in common.approver_gate(lead, perm) and common.approver_gate(boss, perm) == ""
+    monkeypatch.setenv("RUNS_NEED_APPROVER", "")
+    assert common.approver_gate(None, "own_data") == ""  # local development: open
+    assert not (tree["runs"] / "ui-test").exists()
+
+
+def test_admin_sees_principals_and_everything_it_may_do(mock_run, monkeypatch, tmp_path):
+    d = tmp_path / "principals.json"
+    monkeypatch.setenv("APPROVER_DIRECTORY", str(d))
+    monkeypatch.delenv("APPROVER_DIRECTORY_JSON", raising=False)
+    approvals_db.add_principal("boss@bank", "admin", "admin passphrase 1", d)
+    approvals_db.add_principal("lead@bank", "team_lead", "lead passphrase 1", d)
+    for who, secret, sees in (("boss@bank", "admin passphrase 1", True), ("lead@bank", "lead passphrase 1", False)):
+        at = _apptest("ui/pages/3_approvals.py")
+        at.session_state["approver_session"] = approvals_db.authenticate(who, secret, d)
+        at.session_state["approvals_tab"] = "Enforcement & audit"  # the tabs render lazily
+        at.run()
+        assert not at.exception, [e.value for e in at.exception]
+        html = " ".join(str(h.proto.body) for h in at.get("html"))
+        assert ("Principals" in html and "boss@bank" in html and "lead@bank" in html) is sees, who
+        assert "scrypt" not in html and "salt" not in html
+        assert "Server admin" in html  # the matrix row, for everyone
 
 
 def test_table_height_and_text_width():
@@ -967,8 +1002,8 @@ def test_case_inspector_and_console_pipeline_render(tree, monkeypatch):
     assert done_at < next(i for i, ln in enumerate(lines) if ln.startswith("HHF-004 t+")) and lines[-1].endswith("(inferred)")
     status = next(str(m.value) for m in at.markdown if "LLM call in flight" in str(m.value))
     assert "model model-from-trace (from another case's calls.jsonl in this run)" in status and "gemini" not in status.lower(), status
-    labels = {s["label"] for s in common.PIPELINE}
-    assert len([c for c in at.caption if str(c.value).split(" · ")[0] in labels]) == 24  # the live S0-P10 strip and the replay's
+    flows = [str(h.proto.body) for h in at.get("html") if 'class="tc tc-flow"' in str(h.proto.body)]
+    assert len(flows) == 2 and sum(f.count("<li ") for f in flows) == 24  # the live S0-P10 strip and the replay's, 12 stages each
     arch = AppTest.from_file(str(common.ROOT / "ui" / "pages" / "7_architecture.py"), default_timeout=60)
     arch.session_state["run_id"] = "r-ui"
     arch.run()

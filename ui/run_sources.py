@@ -109,8 +109,8 @@ def mode_panel() -> dict:
                               f'{esc(common._env("TG_GRAPHNAME", "FraudGraph"))} · {esc(why)}</p>')
         elif common.read_only():
             st.info("Another workspace cannot be connected on a read-only deployment.", icon=":material/lock:")
-        elif common.approver_gate(common.approver_session()):
-            st.info(md(f"Another workspace: {common.approver_gate(common.approver_session())}."), icon=":material/lock:")
+        elif common.approver_gate(common.approver_session(), "workspace"):
+            st.info(md(f"Another workspace: {common.approver_gate(common.approver_session(), 'workspace')}."), icon=":material/lock:")
         else:
             other = st.session_state.get(common.SESSION_OTHER_KEY) or {}
             with st.form("rc_ws_form", border=False, enter_to_submit=False):

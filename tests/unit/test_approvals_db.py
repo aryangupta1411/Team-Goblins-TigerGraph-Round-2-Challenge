@@ -138,3 +138,42 @@ def test_directory_from_env_variable(monkeypatch, directory):
     assert adb.authenticate("lead@bank", "lead passphrase 1").role == "team_lead"
     with pytest.raises(PermissionError):
         adb.authenticate("lead@bank", "wrong")
+
+
+def test_roles_permissions_and_the_admin(tmp_path):
+    assert adb.ROLE_PERMISSIONS["admin"] == frozenset(adb.PERMISSIONS)  # the server admin holds every permission
+    assert adb.ROLE_ALLOWED_ROUTES == {"admin": {"L1", "L2"}, "fraud_manager": {"L1", "L2"}, "team_lead": {"L1"}, "analyst": set(), "unauthorized": set()}
+    assert adb.roles_with("approve_detector") == ["admin", "fraud_manager"] and "analyst" not in adb.roles_with("run_live")
+    d = tmp_path / "principals.json"
+    adb.add_principal("boss@bank", "admin", "admin passphrase 1", d)
+    boss = adb.authenticate("boss@bank", "admin passphrase 1", d)
+    assert all(adb.has_permission(boss, p) for p in adb.PERMISSIONS)
+    forged = adb.ApproverSession("boss@bank", "admin", boss.issued_at, "0" * 64)
+    assert not adb.has_permission(forged, "approve_L2") and not adb.has_permission(None, "feedback")
+    assert not adb.has_permission({"principal": "boss@bank", "role": "admin"}, "users_view")  # a dict from the page is nobody
+
+
+def test_admin_decides_l2_and_the_analyst_is_refused(db, tmp_path):
+    d = tmp_path / "principals.json"
+    adb.add_principal("boss@bank", "admin", "admin passphrase 1", d)
+    adb.add_principal("ana@bank", "analyst", "analyst passphrase", d)
+    l2 = adb.enqueue("HHF-001", "FILE_REPORT", "L2", "test", path=db)
+    with pytest.raises(PermissionError):
+        adb.decide(l2, "approved", adb.authenticate("ana@bank", "analyst passphrase", d), db)
+    assert adb.decide(l2, "approved", adb.authenticate("boss@bank", "admin passphrase 1", d), db)["status"] == "approved"
+
+
+def test_seed_demo_writes_one_principal_per_role_and_a_private_sheet(tmp_path, capsys):
+    d, sheet = tmp_path / "principals.json", tmp_path / "demo_accounts.local.txt"
+    assert adb.main(["seed-demo", "--directory", str(d), "--sheet", str(sheet)]) == 0
+    printed = capsys.readouterr().out
+    assert oct(sheet.stat().st_mode & 0o777) == "0o600"
+    found = {}
+    for line in sheet.read_text().splitlines():
+        if "passphrase:" in line:
+            who, secret = line.split()[0], line.split("passphrase:")[1].split()[0]
+            assert secret not in printed  # the CLI never prints a passphrase
+            found[who] = adb.authenticate(who, secret, d).role
+    assert found == adb.DEMO_PRINCIPALS
+    assert [r["principal"] for r in adb.directory_rows(d)] == sorted(adb.DEMO_PRINCIPALS)
+    assert all("scrypt" not in r and "salt" not in r for r in adb.directory_rows(d))

@@ -720,12 +720,12 @@ def _gate_reasons() -> list[str]:
         out.append(f"no approver directory ({common.rel(dirst['path'])})")
     elif dirst["error"]:
         out.append(f"approver directory unreadable: {dirst['error']}")
-    elif not dirst["roles"].get("fraud_manager"):
-        out.append("no fraud manager in the approver directory")
+    elif not any(dirst["roles"].get(r) for r in approvals_db.roles_with("approve_detector")):
+        out.append("no fraud manager or server admin in the approver directory")
     if session is None:
-        out.append("not signed in as a fraud manager")
-    elif session.role != "fraud_manager":
-        out.append(f"fraud_manager only; signed in as {session.principal} ({session.role})")
+        out.append("not signed in as a fraud manager or the server admin")
+    elif session.role not in approvals_db.roles_with("approve_detector"):
+        out.append(f"fraud manager or server admin only; signed in as {session.principal} ({session.role})")
     return out
 
 

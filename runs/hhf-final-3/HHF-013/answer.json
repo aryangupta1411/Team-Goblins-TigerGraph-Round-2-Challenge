@@ -1,0 +1,173 @@
+{
+  "case_id": "HHF-013",
+  "case": {
+    "status": "escalated",
+    "verdict": "fraud",
+    "fraud_probability": 0.92,
+    "pattern": "undocumented",
+    "pattern_description": "Coordinated recipient-email mule ring across 17 cards paying R_emaildomain='sc.rr.com' with no shared device: card C06115-K1 has 2 online ProductCD='C' payments (3660311, 3660312) totaling $321.75 to sc.rr.com, connected to 16 other cards paying the same recipient domain in the 30 days before the case opened. The flagged transaction 3626720 is not one of these payments: the alert surfaced a card already in the ring.",
+    "affected_txn_ids": [
+      "3660311",
+      "3660312"
+    ],
+    "first_suspicious_txn_id": "3660311",
+    "connected_card_ids": [
+      "C00534-K2",
+      "C01357-K1",
+      "C01507-K1",
+      "C01594-K1",
+      "C01727-K2",
+      "C02167-K2",
+      "C03060-K1",
+      "C04146-K1",
+      "C04668-K1",
+      "C05610-K1",
+      "C06639-K1",
+      "C08384-K1",
+      "C10350-K1",
+      "C11617-K1",
+      "C11743-K2",
+      "C11940-K1"
+    ],
+    "connected_device_profiles": [],
+    "exposure_usd": 321.75,
+    "evidence": [
+      {
+        "claim": "Coordinated recipient-email mule ring across 17 cards paying R_emaildomain='sc.rr.com' with no shared device: card C06115-K1 has 2 online ProductCD='C' payments (3660311, 3660312) totaling $321.75 to sc.rr.com, connected to 16 other cards paying the same recipient domain in the 30 days before the case opened.",
+        "source": "graph",
+        "ref": "query:shared_origin_scan(card=C06115-K1)",
+        "entity_ids": [
+          "3660311",
+          "3660312",
+          "C06115-K1"
+        ]
+      },
+      {
+        "claim": "Cross-card telemetry links online transactions 3660311 and 3660312 on C06115-K1 to recipient domain sc.rr.com shared across peer cards including C00534-K2, C01357-K1, C01507-K1, and C01594-K1.",
+        "source": "graph",
+        "ref": "query:typology_scan(c=C06115-K1, t=3626720, as_of=2017-01-26 20:40:00)",
+        "entity_ids": [
+          "3660311",
+          "3660312",
+          "C06115-K1",
+          "C00534-K2",
+          "C01357-K1",
+          "C01507-K1",
+          "C01594-K1"
+        ]
+      },
+      {
+        "claim": "Flagged transaction 3626720 ($409.30) occurred in person in billing region 203.0 on 2017-01-26 16:40:00 on card C06115-K1.",
+        "source": "graph",
+        "ref": "query:case_context(t=3626720, as_of=2017-01-26 20:40:00)",
+        "entity_ids": [
+          "3626720",
+          "C06115-K1"
+        ]
+      },
+      {
+        "claim": "Billing region 203.0 is known to card C06115-K1 with 5 prior purchases on 4 days since 2016-08-27, while modal region is 123.0 across 16 total regions used.",
+        "source": "graph",
+        "ref": "query:region_history(c=C06115-K1, addr1=203.0)",
+        "entity_ids": [
+          "C06115-K1",
+          "3626720"
+        ]
+      },
+      {
+        "claim": "Flagged transaction 3626720 amount of $409.30 is within historical spending baseline (prior median $140.59, prior max $2,945.01 across 83 prior transactions).",
+        "source": "graph",
+        "ref": "query:case_context(t=3626720)",
+        "entity_ids": [
+          "3626720",
+          "C06115-K1"
+        ]
+      }
+    ],
+    "similar_prior_cases": [
+      "CC-4574",
+      "CC-5195",
+      "CC-5323",
+      "CC-5443"
+    ],
+    "summary": "Case AC-HHF-013 is assessed as fraud with a probability of 0.92, identifying an undocumented coordinated recipient-email mule ring. Card C06115-K1 made two online payments (3660311, 3660312) totaling $321.75 exposure to sc.rr.com, linking it to 16 peer cards despite no shared device profile. Auto actions CREATE_CASE, MONITOR_CONNECTED_CARDS, and ESCALATE_TO_ANALYST were executed; BLOCK_CARD (L1) and FILE_REPORT (L2) are recommended and await approval.",
+    "written_to_graph": true,
+    "graph_case_id": "AC-HHF-013"
+  },
+  "evidence_requests": [],
+  "next_best_actions": {
+    "initial": [
+      {
+        "action": "CREATE_CASE",
+        "route": "auto",
+        "reason": "R9: coordinated recipient-email mule ring pattern identified across 17 cards with fraud probability 0.92."
+      },
+      {
+        "action": "MONITOR_CONNECTED_CARDS",
+        "route": "auto",
+        "reason": "R6: shared recipient email domain sc.rr.com connects 16 other cards in the 30 days before opening."
+      },
+      {
+        "action": "BLOCK_CARD",
+        "route": "L1",
+        "reason": "§3b: high probability fraud episode (0.92) with total exposure of $321.75 ≤ $2,500."
+      },
+      {
+        "action": "FILE_REPORT",
+        "route": "L2",
+        "reason": "3a: confirmed undocumented recipient-email mule ring pattern across multiple cards."
+      },
+      {
+        "action": "ESCALATE_TO_ANALYST",
+        "route": "auto",
+        "reason": "R9: fits an undocumented coordinated pattern across cards requiring analyst review."
+      }
+    ],
+    "final": [
+      {
+        "action": "CREATE_CASE",
+        "route": "auto",
+        "reason": "R9: coordinated recipient-email mule ring pattern identified across 17 cards with fraud probability 0.92."
+      },
+      {
+        "action": "MONITOR_CONNECTED_CARDS",
+        "route": "auto",
+        "reason": "R6: shared recipient email domain sc.rr.com connects 16 other cards in the 30 days before opening."
+      },
+      {
+        "action": "BLOCK_CARD",
+        "route": "L1",
+        "reason": "§3b: high probability fraud episode (0.92) with total exposure of $321.75 ≤ $2,500."
+      },
+      {
+        "action": "FILE_REPORT",
+        "route": "L2",
+        "reason": "3a: confirmed undocumented recipient-email mule ring pattern across multiple cards."
+      },
+      {
+        "action": "ESCALATE_TO_ANALYST",
+        "route": "auto",
+        "reason": "R9: fits an undocumented coordinated pattern across cards requiring analyst review."
+      }
+    ],
+    "what_changed": "nothing"
+  },
+  "sar": {
+    "file": true,
+    "reason": "3a / R9: undocumented coordinated pattern (Coordinated recipient-email mule ring across 17 cards paying R_emaildomain='sc.rr.com' with no shared device)",
+    "narrative": "This Suspicious Activity Report is filed regarding an undocumented coordinated fraud pattern identified under internal case AC-HHF-013. The investigation involves customer C06115 and credit card C06115-K1, which is linked via cross-card telemetry to 16 other cards paying a common recipient email domain. On 2017-01-05 at 16:51, an online transaction (id 3660311) for $181.16 was conducted under product code C in billing region 203.0 with recipient domain sc.rr.com. On 2017-01-22 at 19:57, a second online transaction (id 3660312) for $140.59 was conducted under product code C in billing region 191.0 to the same recipient domain sc.rr.com. These transactions form part of a coordinated recipient-email mule ring across 17 total cards with no shared device profile. This activity represents unusual online product code C transfers to an external recipient domain, departing from the cardholder's baseline as of opening of 83 prior transactions predominantly in person in modal region 123.0. No prior suspicious activity report has been filed on this card, and OFAC screening of the customer and card identifiers against the SDN list returned no match. Case AC-HHF-013 was opened, connected card monitoring was initiated, and analyst escalation was performed; a block of card C06115-K1 is recommended and awaits team-lead approval, and this report filing is recommended and awaits fraud-manager approval, covering a total suspicious amount of $321.75.",
+    "subjects": [
+      "C06115",
+      "C06115-K1"
+    ],
+    "total_amount_usd": 321.75,
+    "activity_dates": [
+      "2017-01-05",
+      "2017-01-22"
+    ]
+  },
+  "stop_reason": "Policy §6 test 1: fraud probability 0.92 is at or above 0.85 with 2 independent evidence families (device, history); no evidence request could change the action set, so the decision is final.",
+  "tool_calls": 20,
+  "tokens": 160329,
+  "latency_s": 47.9
+}

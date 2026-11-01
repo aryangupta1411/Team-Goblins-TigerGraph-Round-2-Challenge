@@ -1,23 +1,23 @@
 {
-  "run": "runs/hhf-final-2",
+  "run": "runs/hhf-final-3",
   "n_cases": 18,
   "latency_s": {
     "n": 18,
-    "p50": 67.8,
-    "p95": 105.1,
-    "min": 52.2,
-    "max": 105.1,
-    "mean": 71.8
+    "p50": 62.7,
+    "p95": 84.2,
+    "min": 47.9,
+    "max": 84.2,
+    "mean": 64.0
   },
   "cost_usd_per_case": {
     "n": 18,
-    "p50": 0.10298,
-    "p95": 0.17675,
-    "min": 0.07362,
-    "max": 0.17675,
-    "mean": 0.11506
+    "p50": 0.10355,
+    "p95": 0.17739,
+    "min": 0.07899,
+    "max": 0.17739,
+    "mean": 0.10904
   },
-  "cost_usd_total": 2.0711,
+  "cost_usd_total": 1.9627,
   "price_source": "https://ai.google.dev/gemini-api/docs/pricing (paid tier, read 2026-11-01)",
   "prices_usd_per_1m_tokens": {
     "gemini-2.5-flash": {
@@ -37,254 +37,254 @@
   "cases": [
     {
       "case_id": "HHF-001",
-      "latency_s": 105.1,
-      "tokens": 271576,
+      "latency_s": 84.2,
+      "tokens": 224458,
       "models": [
         "gemini-3.6-flash"
       ],
-      "usd": 0.171805,
-      "input_tokens": 140294,
-      "output_tokens": 15439,
-      "cache_read_tokens": 115843,
-      "llm_calls": 9,
-      "unpriced_calls": 0
-    },
-    {
-      "case_id": "HHF-002",
-      "latency_s": 82.8,
-      "tokens": 350878,
-      "models": [
-        "gemini-3.6-flash"
-      ],
-      "usd": 0.176753,
-      "input_tokens": 166041,
-      "output_tokens": 10438,
-      "cache_read_tokens": 174399,
-      "llm_calls": 11,
-      "unpriced_calls": 0
-    },
-    {
-      "case_id": "HHF-003",
-      "latency_s": 101.7,
-      "tokens": 222567,
-      "models": [
-        "gemini-3.6-flash"
-      ],
-      "usd": 0.155638,
-      "input_tokens": 119948,
-      "output_tokens": 15777,
-      "cache_read_tokens": 86842,
+      "usd": 0.125201,
+      "input_tokens": 93495,
+      "output_tokens": 12315,
+      "cache_read_tokens": 118648,
       "llm_calls": 8,
       "unpriced_calls": 0
     },
     {
-      "case_id": "HHF-004",
-      "latency_s": 63.1,
-      "tokens": 229349,
+      "case_id": "HHF-002",
+      "latency_s": 77.5,
+      "tokens": 310385,
       "models": [
         "gemini-3.6-flash"
       ],
-      "usd": 0.102337,
-      "input_tokens": 88321,
-      "output_tokens": 6944,
-      "cache_read_tokens": 134084,
-      "llm_calls": 10,
+      "usd": 0.177387,
+      "input_tokens": 164342,
+      "output_tokens": 11749,
+      "cache_read_tokens": 134294,
+      "llm_calls": 9,
+      "unpriced_calls": 0
+    },
+    {
+      "case_id": "HHF-003",
+      "latency_s": 84.0,
+      "tokens": 255680,
+      "models": [
+        "gemini-3.6-flash"
+      ],
+      "usd": 0.125313,
+      "input_tokens": 91073,
+      "output_tokens": 12153,
+      "cache_read_tokens": 152454,
+      "llm_calls": 11,
+      "unpriced_calls": 0
+    },
+    {
+      "case_id": "HHF-004",
+      "latency_s": 63.7,
+      "tokens": 214517,
+      "models": [
+        "gemini-3.6-flash"
+      ],
+      "usd": 0.106263,
+      "input_tokens": 85854,
+      "output_tokens": 8768,
+      "cache_read_tokens": 119895,
+      "llm_calls": 9,
       "unpriced_calls": 0
     },
     {
       "case_id": "HHF-005",
-      "latency_s": 78.4,
-      "tokens": 227510,
+      "latency_s": 64.4,
+      "tokens": 229012,
       "models": [
         "gemini-3.6-flash"
       ],
-      "usd": 0.111249,
-      "input_tokens": 85661,
-      "output_tokens": 9895,
-      "cache_read_tokens": 131954,
+      "usd": 0.108469,
+      "input_tokens": 87349,
+      "output_tokens": 8798,
+      "cache_read_tokens": 132865,
       "llm_calls": 10,
       "unpriced_calls": 0
     },
     {
       "case_id": "HHF-006",
-      "latency_s": 93.2,
-      "tokens": 254832,
+      "latency_s": 76.0,
+      "tokens": 281939,
       "models": [
         "gemini-3.6-flash"
       ],
-      "usd": 0.130265,
-      "input_tokens": 94247,
-      "output_tokens": 12935,
-      "cache_read_tokens": 147650,
+      "usd": 0.13367,
+      "input_tokens": 97395,
+      "output_tokens": 12730,
+      "cache_read_tokens": 171814,
       "llm_calls": 10,
       "unpriced_calls": 0
     },
     {
       "case_id": "HHF-007",
-      "latency_s": 52.2,
-      "tokens": 158123,
+      "latency_s": 64.8,
+      "tokens": 161842,
       "models": [
         "gemini-3.6-flash"
       ],
-      "usd": 0.096181,
-      "input_tokens": 89554,
-      "output_tokens": 6496,
-      "cache_read_tokens": 62073,
+      "usd": 0.100832,
+      "input_tokens": 91442,
+      "output_tokens": 7339,
+      "cache_read_tokens": 63061,
       "llm_calls": 5,
       "unpriced_calls": 0
     },
     {
       "case_id": "HHF-008",
-      "latency_s": 72.5,
-      "tokens": 193441,
+      "latency_s": 55.2,
+      "tokens": 188420,
       "models": [
         "gemini-3.6-flash"
       ],
-      "usd": 0.103625,
-      "input_tokens": 79427,
-      "output_tokens": 9661,
-      "cache_read_tokens": 104353,
+      "usd": 0.092404,
+      "input_tokens": 79677,
+      "output_tokens": 6664,
+      "cache_read_tokens": 102079,
       "llm_calls": 7,
       "unpriced_calls": 0
     },
     {
       "case_id": "HHF-009",
-      "latency_s": 56.3,
-      "tokens": 158933,
+      "latency_s": 58.6,
+      "tokens": 164150,
       "models": [
         "gemini-3.6-flash"
       ],
-      "usd": 0.088339,
-      "input_tokens": 71481,
-      "output_tokens": 7665,
-      "cache_read_tokens": 79787,
+      "usd": 0.091685,
+      "input_tokens": 73758,
+      "output_tokens": 8051,
+      "cache_read_tokens": 82341,
       "llm_calls": 6,
       "unpriced_calls": 0
     },
     {
       "case_id": "HHF-010",
-      "latency_s": 57.3,
-      "tokens": 191960,
+      "latency_s": 50.6,
+      "tokens": 190023,
       "models": [
         "gemini-3.6-flash"
       ],
-      "usd": 0.095306,
-      "input_tokens": 81389,
-      "output_tokens": 7067,
-      "cache_read_tokens": 103504,
+      "usd": 0.089081,
+      "input_tokens": 79221,
+      "output_tokens": 5811,
+      "cache_read_tokens": 104991,
       "llm_calls": 7,
       "unpriced_calls": 0
     },
     {
       "case_id": "HHF-011",
-      "latency_s": 82.0,
-      "tokens": 267005,
+      "latency_s": 69.5,
+      "tokens": 267731,
       "models": [
         "gemini-3.6-flash"
       ],
-      "usd": 0.13708,
-      "input_tokens": 116661,
-      "output_tokens": 10424,
-      "cache_read_tokens": 139920,
+      "usd": 0.13712,
+      "input_tokens": 117517,
+      "output_tokens": 10263,
+      "cache_read_tokens": 139951,
       "llm_calls": 7,
       "unpriced_calls": 0
     },
     {
       "case_id": "HHF-012",
-      "latency_s": 55.1,
-      "tokens": 159324,
+      "latency_s": 57.3,
+      "tokens": 160694,
       "models": [
         "gemini-3.6-flash"
       ],
-      "usd": 0.07956,
-      "input_tokens": 64568,
-      "output_tokens": 6538,
-      "cache_read_tokens": 88218,
+      "usd": 0.081188,
+      "input_tokens": 65135,
+      "output_tokens": 6849,
+      "cache_read_tokens": 88710,
       "llm_calls": 7,
       "unpriced_calls": 0
     },
     {
       "case_id": "HHF-013",
-      "latency_s": 95.7,
-      "tokens": 205155,
+      "latency_s": 47.9,
+      "tokens": 160329,
       "models": [
         "gemini-3.6-flash"
       ],
-      "usd": 0.121043,
-      "input_tokens": 75711,
-      "output_tokens": 14844,
-      "cache_read_tokens": 114600,
-      "llm_calls": 8,
+      "usd": 0.080991,
+      "input_tokens": 71329,
+      "output_tokens": 5665,
+      "cache_read_tokens": 83335,
+      "llm_calls": 7,
       "unpriced_calls": 0
     },
     {
       "case_id": "HHF-014",
-      "latency_s": 53.7,
-      "tokens": 185542,
+      "latency_s": 61.7,
+      "tokens": 186882,
       "models": [
         "gemini-3.6-flash"
       ],
-      "usd": 0.089337,
-      "input_tokens": 77179,
-      "output_tokens": 6347,
-      "cache_read_tokens": 102016,
+      "usd": 0.095408,
+      "input_tokens": 76944,
+      "output_tokens": 8015,
+      "cache_read_tokens": 101923,
       "llm_calls": 7,
       "unpriced_calls": 0
     },
     {
       "case_id": "HHF-015",
-      "latency_s": 52.5,
-      "tokens": 148577,
+      "latency_s": 54.2,
+      "tokens": 150773,
       "models": [
         "gemini-3.6-flash"
       ],
-      "usd": 0.073625,
-      "input_tokens": 60689,
-      "output_tokens": 5855,
-      "cache_read_tokens": 82033,
+      "usd": 0.078995,
+      "input_tokens": 61077,
+      "output_tokens": 7200,
+      "cache_read_tokens": 82496,
       "llm_calls": 7,
       "unpriced_calls": 0
     },
     {
       "case_id": "HHF-016",
-      "latency_s": 57.8,
-      "tokens": 322107,
+      "latency_s": 50.8,
+      "tokens": 318654,
       "models": [
         "gemini-3.6-flash"
       ],
-      "usd": 0.149257,
-      "input_tokens": 149529,
-      "output_tokens": 6576,
-      "cache_read_tokens": 166002,
+      "usd": 0.143517,
+      "input_tokens": 148492,
+      "output_tokens": 5275,
+      "cache_read_tokens": 164887,
       "llm_calls": 7,
       "unpriced_calls": 0
     },
     {
       "case_id": "HHF-017",
-      "latency_s": 75.6,
-      "tokens": 174657,
+      "latency_s": 75.8,
+      "tokens": 275869,
       "models": [
         "gemini-3.6-flash"
       ],
-      "usd": 0.094296,
-      "input_tokens": 79028,
-      "output_tokens": 7579,
-      "cache_read_tokens": 88050,
-      "llm_calls": 6,
+      "usd": 0.106998,
+      "input_tokens": 98997,
+      "output_tokens": 5302,
+      "cache_read_tokens": 171570,
+      "llm_calls": 12,
       "unpriced_calls": 0
     },
     {
       "case_id": "HHF-018",
-      "latency_s": 57.9,
-      "tokens": 250837,
+      "latency_s": 55.5,
+      "tokens": 166372,
       "models": [
         "gemini-3.6-flash"
       ],
-      "usd": 0.095441,
-      "input_tokens": 84635,
-      "output_tokens": 5306,
-      "cache_read_tokens": 160896,
-      "llm_calls": 11,
+      "usd": 0.088149,
+      "input_tokens": 75420,
+      "output_tokens": 6738,
+      "cache_read_tokens": 84214,
+      "llm_calls": 6,
       "unpriced_calls": 0
     }
   ]

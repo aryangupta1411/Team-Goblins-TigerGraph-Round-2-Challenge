@@ -4,7 +4,7 @@
 # automatically; see "Deploy on Railway" in README.md.
 #
 # It still starts in mock mode and read-only (RUN_MODE=mock, DEPLOY_READONLY=1): it replays the canonical runs'
-# traces (runs/${CANONICAL_RUN}, default hhf-final-2, plus the superseded hhf-final; runs/live-final-2 for Round 1) and touches no graph and no model.
+# traces (runs/${CANONICAL_RUN}, default hhf-final-3, plus the superseded hhf-final; runs/live-final-2 for Round 1) and touches no graph and no model.
 # Live runs need Railway variables: RUN_MODE=live, DEPLOY_READONLY=0, LLM_BACKEND=gemini, the secrets TG_HOST,
 # TG_SECRET and GEMINI_API_KEY, an approver directory (APPROVER_DIRECTORY_JSON) because RUNS_NEED_APPROVER=1 lets only
 # a signed-in approver start a run, and AGENT_CASE_NAMESPACE so the deployment's write-backs (AC-<ns>-<case>) never
@@ -14,7 +14,7 @@ FROM python:3.12-slim
 
 # The Final Round run promoted into cases/. Changing it also needs its !runs/<name>/ line in .dockerignore and its
 # watch pattern in railway.json.
-ARG CANONICAL_RUN=hhf-final-2
+ARG CANONICAL_RUN=hhf-final-3
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \

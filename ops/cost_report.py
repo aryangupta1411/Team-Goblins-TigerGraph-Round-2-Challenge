@@ -1,6 +1,6 @@
 """Latency and cost per case for one run folder (Challenge 9).
 
-    python -m ops.cost_report                       # runs/hhf-final-2 (the submitted run) -> engine/out/cost_latency.json
+    python -m ops.cost_report                       # runs/hhf-final-3 (the submitted run) -> engine/out/cost_latency.json
     python -m ops.cost_report --run runs/other --out /tmp/x.json
 
 Latency is answer.json `latency_s` (wall clock per case). Cost is every `kind == "llm"` row of calls.jsonl priced by
@@ -20,7 +20,7 @@ sys.path.insert(0, str(ROOT))
 
 from agent import pricing  # noqa: E402
 
-DEFAULT_RUN = ROOT / "runs" / "hhf-final-2"
+DEFAULT_RUN = ROOT / "runs" / "hhf-final-3"
 DEFAULT_OUT = ROOT / "engine" / "out" / "cost_latency.json"
 
 

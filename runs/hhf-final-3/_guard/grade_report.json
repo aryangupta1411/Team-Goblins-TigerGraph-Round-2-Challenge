@@ -1,0 +1,75 @@
+{
+ "case_pack": "case_pack_final.csv",
+ "n_cases": 18,
+ "teams": {
+  "goblins": {
+   "cases_answered": 18,
+   "hard": 0,
+   "policy": 0,
+   "warning": 1,
+   "clean": 18,
+   "cases": {
+    "HHF-001": {
+     "findings": []
+    },
+    "HHF-002": {
+     "findings": []
+    },
+    "HHF-003": {
+     "findings": []
+    },
+    "HHF-004": {
+     "findings": []
+    },
+    "HHF-005": {
+     "findings": []
+    },
+    "HHF-006": {
+     "findings": []
+    },
+    "HHF-007": {
+     "findings": []
+    },
+    "HHF-008": {
+     "findings": []
+    },
+    "HHF-009": {
+     "findings": []
+    },
+    "HHF-010": {
+     "findings": []
+    },
+    "HHF-011": {
+     "findings": []
+    },
+    "HHF-012": {
+     "findings": []
+    },
+    "HHF-013": {
+     "findings": [
+      [
+       "warning",
+       "flagged_not_affected",
+       "flagged txn 3626720 is not among affected_txn_ids"
+      ]
+     ]
+    },
+    "HHF-014": {
+     "findings": []
+    },
+    "HHF-015": {
+     "findings": []
+    },
+    "HHF-016": {
+     "findings": []
+    },
+    "HHF-017": {
+     "findings": []
+    },
+    "HHF-018": {
+     "findings": []
+    }
+   }
+  }
+ }
+}

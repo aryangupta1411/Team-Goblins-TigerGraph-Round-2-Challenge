@@ -1,0 +1,179 @@
+{
+  "case_id": "HHF-004",
+  "case": {
+    "status": "escalated",
+    "verdict": "fraud",
+    "fraud_probability": 0.92,
+    "pattern": "undocumented",
+    "pattern_description": "Coordinated low-and-slow micro-charge skimming ring across 17 cards: card C12975-K2 has 6 sub-$6 online ProductCD='C' charges (3660255, 3660256, 3660257, 3660258, 3660259, 3660260) spaced across multiple days totaling $23.99, connected to 16 other cards targeted in the same January 2017 micro-skimming wave.",
+    "affected_txn_ids": [
+      "3660255",
+      "3660256",
+      "3660257",
+      "3660258",
+      "3660259",
+      "3660260"
+    ],
+    "first_suspicious_txn_id": "3660255",
+    "connected_card_ids": [
+      "C00129-K1",
+      "C00348-K1",
+      "C01326-K2",
+      "C03427-K2",
+      "C03488-K1",
+      "C03611-K2",
+      "C04274-K1",
+      "C04528-K1",
+      "C05083-K1",
+      "C05263-K2",
+      "C06198-K1",
+      "C09471-K2",
+      "C10035-K2",
+      "C10654-K1",
+      "C11332-K1",
+      "C13290-K1"
+    ],
+    "connected_device_profiles": [],
+    "exposure_usd": 23.99,
+    "evidence": [
+      {
+        "claim": "Customer C12975 reports they did not make the $2.90 purchase 3660260.",
+        "source": "customer",
+        "ref": "trigger",
+        "entity_ids": [
+          "3660260",
+          "C12975"
+        ]
+      },
+      {
+        "claim": "Coordinated low-and-slow micro-charge skimming ring across 17 cards: card C12975-K2 has 6 sub-$6 online ProductCD='C' charges (3660255, 3660256, 3660257, 3660258, 3660259, 3660260) spaced across multiple days totaling $23.99, connected to 16 other cards targeted in the same January 2017 micro-skimming wave.",
+        "source": "graph",
+        "ref": "query:episode_candidates(as_of=2017-01-26 21:09:37, gap_h=48, t=3660260)",
+        "entity_ids": [
+          "3660255",
+          "3660256",
+          "3660257",
+          "3660258",
+          "3660259",
+          "3660260",
+          "C12975-K2"
+        ]
+      },
+      {
+        "claim": "Prior closed case CC-4890 confirmed card_not_present_fraud on card C12975-K2 with exposure $800.03.",
+        "source": "graph",
+        "ref": "query:prior_cases_for_customer(cu=C12975, as_of=2017-01-26 21:09:37)",
+        "entity_ids": [
+          "CC-4890",
+          "C12975-K2"
+        ]
+      },
+      {
+        "claim": "Amount $2.90 sits inside the card's baseline with prior median $57.99 and maximum $822.54 over 198 prior transactions.",
+        "source": "graph",
+        "ref": "query:case_context(t=3660260, as_of=2017-01-26 21:09:37)",
+        "entity_ids": [
+          "3660260",
+          "C12975-K2"
+        ]
+      },
+      {
+        "claim": "Billing region 337.0 on online purchase 3660260 is a known region for card C12975-K2 with 28 prior purchases across 25 days.",
+        "source": "graph",
+        "ref": "query:region_history(c=C12975-K2, addr1=337.0, as_of=2017-01-26 15:09:36)",
+        "entity_ids": [
+          "3660260",
+          "C12975-K2"
+        ]
+      }
+    ],
+    "similar_prior_cases": [
+      "CC-5173",
+      "CC-4172",
+      "CC-4762",
+      "CC-5055"
+    ],
+    "summary": "Case AC-HHF-004 is assessed as fraud with 0.92 probability under an undocumented multi-day low-and-slow micro-charge skimming pattern across 17 connected cards. The candidate episode comprises 6 online transactions totaling $23.99 in exposure, anchored by the customer's direct denial of transaction 3660260 and prior CNP fraud precedent CC-4890. Auto-actions CREATE_CASE, MONITOR_CONNECTED_CARDS, and ESCALATE_TO_ANALYST were executed, while BLOCK_CARD (L1) and FILE_REPORT (L2) are recommended pending human approval.",
+    "written_to_graph": true,
+    "graph_case_id": "AC-HHF-004"
+  },
+  "evidence_requests": [],
+  "next_best_actions": {
+    "initial": [
+      {
+        "action": "CREATE_CASE",
+        "route": "auto",
+        "reason": "R2: customer denied transaction 3660260; probability 0.92 ≥ 0.30."
+      },
+      {
+        "action": "MONITOR_CONNECTED_CARDS",
+        "route": "auto",
+        "reason": "R6: 16 connected cards targeted in the same undocumented multi-day micro-skimming wave."
+      },
+      {
+        "action": "BLOCK_CARD",
+        "route": "L1",
+        "reason": "R2: customer denied transaction 3660260; recommended card block for exposure $23.99 ≤ $2,500."
+      },
+      {
+        "action": "FILE_REPORT",
+        "route": "L2",
+        "reason": "3a: suspicious activity report recommended for an undocumented micro-skimming pattern across 17 connected cards."
+      },
+      {
+        "action": "ESCALATE_TO_ANALYST",
+        "route": "auto",
+        "reason": "R9: coordinated undocumented micro-charge skimming pattern requires escalation to analyst for cross-card review."
+      }
+    ],
+    "final": [
+      {
+        "action": "CREATE_CASE",
+        "route": "auto",
+        "reason": "R2: customer denied transaction 3660260; probability 0.92 ≥ 0.30."
+      },
+      {
+        "action": "MONITOR_CONNECTED_CARDS",
+        "route": "auto",
+        "reason": "R6: 16 connected cards targeted in the same undocumented multi-day micro-skimming wave."
+      },
+      {
+        "action": "BLOCK_CARD",
+        "route": "L1",
+        "reason": "R2: customer denied transaction 3660260; recommended card block for exposure $23.99 ≤ $2,500."
+      },
+      {
+        "action": "FILE_REPORT",
+        "route": "L2",
+        "reason": "3a: suspicious activity report recommended for an undocumented micro-skimming pattern across 17 connected cards."
+      },
+      {
+        "action": "ESCALATE_TO_ANALYST",
+        "route": "auto",
+        "reason": "R9: coordinated undocumented micro-charge skimming pattern requires escalation to analyst for cross-card review."
+      }
+    ],
+    "what_changed": "nothing"
+  },
+  "sar": {
+    "file": true,
+    "reason": "3a / R9: undocumented coordinated pattern (Coordinated low-and-slow micro-charge skimming ring across 17 cards)",
+    "narrative": "This Suspicious Activity Report is filed regarding an undocumented coordinated fraud pattern identified under case AC-HHF-004. The activity involves customer C12975 and debit card C12975-K2, linked to a coordinated low-and-slow micro-charge skimming wave targeting 16 connected cards including C00129-K1 and C00348-K1. On 2017-01-05 at 11:33, transaction 3660255 for $3.51 was conducted online in region 191.0, followed on 2017-01-07 at 10:03 by online transaction 3660256 for $5.18 in region 191.0. Online transaction 3660257 for $2.66 occurred on 2017-01-14 at 14:57 in region 191.0, followed on 2017-01-18 at 14:42 by online transaction 3660258 for $4.75 in region 191.0. On 2017-01-22 at 13:22, online transaction 3660259 for $4.99 was executed in region 191.0 using device profile rv:11.0 | NULL | ie 11.0 for desktop | NULL, and on 2017-01-26 at 15:09, online transaction 3660260 for $2.90 occurred in region 337.0. This pattern of repeated low-value online micro-charges is inconsistent with the cardholder's prior baseline of 198 transactions as of opening, which had a median amount of $57.99 and maximum amount of $822.54. No prior suspicious activity report has been filed on this card (1 earlier closed case(s), none reported), and OFAC screening of the customer and card identifiers against the SDN list returned no match. Case AC-HHF-004 was opened on 2017-01-26, connected cards were placed on monitoring, the case was escalated to an analyst, a block of card C12975-K2 is recommended and awaits team-lead approval, and this report filing is recommended and awaits fraud-manager approval for total suspicious exposure of $23.99.",
+    "subjects": [
+      "C12975",
+      "C12975-K2",
+      "C00129-K1",
+      "C00348-K1",
+      "rv:11.0 | NULL | ie 11.0 for desktop | NULL"
+    ],
+    "total_amount_usd": 23.99,
+    "activity_dates": [
+      "2017-01-05",
+      "2017-01-26"
+    ]
+  },
+  "stop_reason": "Policy §6 test 1 is met: fraud probability 0.92 is at or above 0.85 with 3 independent evidence families (customer, device, history); no further evidence request could change the action set, so the initial decision is final.",
+  "tool_calls": 22,
+  "tokens": 214517,
+  "latency_s": 63.7
+}

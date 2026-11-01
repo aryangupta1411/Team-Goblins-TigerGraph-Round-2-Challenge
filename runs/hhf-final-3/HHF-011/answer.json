@@ -1,0 +1,128 @@
+{
+  "case_id": "HHF-011",
+  "case": {
+    "status": "closed_legitimate",
+    "verdict": "legitimate",
+    "fraud_probability": 0.1,
+    "pattern": "none",
+    "pattern_description": "",
+    "affected_txn_ids": [],
+    "first_suspicious_txn_id": "",
+    "connected_card_ids": [],
+    "connected_device_profiles": [],
+    "exposure_usd": 0.0,
+    "evidence": [
+      {
+        "claim": "Transaction 3640919 ($881.55) occurred in-person in billing region 494.0 on card C09241-K2 at 2017-01-20 05:06:19.",
+        "source": "graph",
+        "ref": "query:case_context(t=3640919, as_of=2017-01-20 09:06:19)",
+        "entity_ids": [
+          "3640919",
+          "C09241-K2"
+        ]
+      },
+      {
+        "claim": "Billing region 494.0 is a known, regular region for card C09241-K2 with 491 prior transactions across 177 distinct days prior to this transaction.",
+        "source": "graph",
+        "ref": "query:region_history(c=C09241-K2, addr1=494.0, as_of=2017-01-20 05:06:18)",
+        "entity_ids": [
+          "3640919",
+          "C09241-K2"
+        ]
+      },
+      {
+        "claim": "The transaction amount of $881.55 is well within card C09241-K2's prior maximum transaction amount of $2,592.31.",
+        "source": "graph",
+        "ref": "query:card_profile(c=C09241-K2, as_of=2017-01-20 09:06:19)",
+        "entity_ids": [
+          "3640919",
+          "C09241-K2"
+        ]
+      },
+      {
+        "claim": "The calibrated memory score cms_p for transaction 3640919 is 0.0157, indicating an extremely low likelihood of fraud.",
+        "source": "graph",
+        "ref": "query:case_context(t=3640919, as_of=2017-01-20 09:06:19)",
+        "entity_ids": [
+          "3640919"
+        ]
+      },
+      {
+        "claim": "Card C09241-K2 has a prior cleared case CC-1257 under cleared travel confirmation, supporting cardholder multi-region activity patterns.",
+        "source": "graph",
+        "ref": "query:prior_cases_for_customer(cu=C09241, as_of=2017-01-20 09:06:19)",
+        "entity_ids": [
+          "CC-1257",
+          "C09241-K2"
+        ]
+      },
+      {
+        "claim": "Assumed reply: customer confirmed travel to billing region 494.0 and recognises the $881.55 purchase",
+        "source": "customer",
+        "ref": "evidence_request:1",
+        "entity_ids": [
+          "3640919"
+        ]
+      }
+    ],
+    "similar_prior_cases": [
+      "CC-4469",
+      "CC-4762",
+      "CC-5190"
+    ],
+    "summary": "The investigation concludes with a legitimate verdict (fraud probability 0.10) under pattern none. Transaction 3640919 ($881.55) occurred in billing region 494.0, a regular region for card C09241-K2 with 491 prior purchases. Customer validation was requested, and the customer confirmed travel and recognized the transaction. The recommended auto actions are ALLOW_TRANSACTION and CLOSE_NO_FRAUD.",
+    "written_to_graph": true,
+    "graph_case_id": "AC-HHF-011"
+  },
+  "evidence_requests": [
+    {
+      "type": "customer_validation",
+      "asked_after_step": 17,
+      "assumed_response": "ASSUMED (simulated): customer confirmed travel to billing region 494.0 and recognises the $881.55 purchase"
+    }
+  ],
+  "next_best_actions": {
+    "initial": [
+      {
+        "action": "CREATE_CASE",
+        "route": "auto",
+        "reason": "3a/§6: Open a case to document the risk score alert review and record customer verification for card C09241-K2."
+      },
+      {
+        "action": "VERIFY_WITH_CUSTOMER",
+        "route": "auto",
+        "reason": "R1/§6: Verify transaction 3640919 ($881.55) with the cardholder before taking blocking action, as fraud probability is 0.10 under single-signal review."
+      }
+    ],
+    "final": [
+      {
+        "action": "CREATE_CASE",
+        "route": "auto",
+        "reason": "3a: Open case to record customer verification and transaction details for card C09241-K2."
+      },
+      {
+        "action": "ALLOW_TRANSACTION",
+        "route": "auto",
+        "reason": "R3: Customer confirmed travel to region 494.0 and recognized transaction 3640919 ($881.55)."
+      },
+      {
+        "action": "CLOSE_NO_FRAUD",
+        "route": "auto",
+        "reason": "R3/§6: Customer confirmed the activity and fraud probability is 0.10 (legitimate), satisfying §6 stop criteria to close the case without fraud."
+      }
+    ],
+    "what_changed": "The assumed customer validation reply (confirm) left the probability at 0.10 and kept the verdict legitimate, adding ALLOW_TRANSACTION, CLOSE_NO_FRAUD, removing VERIFY_WITH_CUSTOMER. Counterfactual: had the customer denied the purchase, R2 would have applied: BLOCK_CARD (L1) and CREATE_CASE."
+  },
+  "sar": {
+    "file": false,
+    "reason": "3a not met: verdict legitimate (fraud not confirmed or strongly suspected), exposure $0.00; no report",
+    "narrative": "",
+    "subjects": [],
+    "total_amount_usd": 0,
+    "activity_dates": []
+  },
+  "stop_reason": "Policy §6 test 2: the assumed customer confirmation settled the question. Probability 0.10 with 3 evidence families also meets §6 test 1.",
+  "tool_calls": 17,
+  "tokens": 267731,
+  "latency_s": 69.5
+}

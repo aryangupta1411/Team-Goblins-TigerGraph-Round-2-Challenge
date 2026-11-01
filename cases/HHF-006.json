@@ -34,7 +34,7 @@
     "exposure_usd": 967.68,
     "evidence": [
       {
-        "claim": "Analyst request asked to review flagged transaction 3660263 on card C01727-K2 and identify what affected cards showing losses without a shared device profile have in common.",
+        "claim": "Analyst requested review of transaction 3660263 on card C01727-K2 to identify commonalities among several cards showing losses this month without a shared device.",
         "source": "external",
         "ref": "trigger",
         "entity_ids": [
@@ -43,72 +43,75 @@
         ]
       },
       {
-        "claim": "Shared origin scan identified recipient email domain sc.rr.com paid by 16 other cards in the 30 days prior to case opening.",
+        "claim": "Recipient email domain sc.rr.com was paid by 16 other cards (including C00534-K2, C01357-K1, C01507-K1, C01594-K1, C02167-K2, C03060-K1, C04146-K1, C04668-K1) in the 30 days prior to case opening, linking them in a coordinated pattern.",
         "source": "graph",
-        "ref": "query:shared_origin_scan(c=C01727-K2, as_of=2017-01-28 10:59:42, days=30)",
+        "ref": "query:email_neighbors(from_ts=2016-12-29 10:59:42, c=C01727-K2, e=sc.rr.com, to_ts=2017-01-28 10:59:42)",
         "entity_ids": [
-          "C01727-K2",
+          "C01594-K1",
+          "C03060-K1",
+          "C05610-K1",
+          "C10350-K1",
           "C00534-K2",
           "C01357-K1",
           "C01507-K1",
-          "C01594-K1",
           "C02167-K2",
-          "C03060-K1",
           "C04146-K1",
           "C04668-K1",
-          "C05610-K1",
           "C06115-K1",
           "C06639-K1",
           "C08384-K1",
-          "C10350-K1",
           "C11617-K1",
-          "C11743-K2",
-          "C11940-K1"
+          "C11940-K1",
+          "C11743-K2"
         ]
       },
       {
-        "claim": "Querying email neighbors for domain sc.rr.com revealed 16 connected cards and multiple confirmed fraud closed cases on those cards including CC-3907, CC-2888, and CC-5117.",
+        "claim": "Card C01727-K2 has three online product C transactions (3660261 for $305.41, 3660262 for $366.35, and 3660263 for $295.92) totaling $967.68 delivered to recipient domain sc.rr.com with missing device identity telemetry.",
         "source": "graph",
-        "ref": "query:email_neighbors(e=sc.rr.com, from_ts=2016-12-29 10:59:42, c=C01727-K2, to_ts=2017-01-28 10:59:42)",
+        "ref": "query:card_window(c=C01727-K2, to_ts=2017-01-28 10:59:42, from_ts=2017-01-01 00:00:00, max_rows=60)",
         "entity_ids": [
-          "C01727-K2",
-          "C03060-K1",
-          "C04146-K1",
-          "C11743-K2",
-          "CC-3907",
-          "CC-2888",
-          "CC-5117"
-        ]
-      },
-      {
-        "claim": "Card window showed 3 online payments of product code C to recipient domain sc.rr.com on card C01727-K2: 3660261 ($305.41), 3660262 ($366.35), and 3660263 ($295.92), totaling $967.68 in exposure.",
-        "source": "graph",
-        "ref": "query:card_window(c=C01727-K2, max_rows=60, from_ts=2017-01-14 10:59:42, to_ts=2017-01-28 10:59:42)",
-        "entity_ids": [
-          "C01727-K2",
           "3660261",
           "3660262",
-          "3660263"
+          "3660263",
+          "C01727-K2"
         ]
       },
       {
-        "claim": "Customer C01727 on card C01727-K2 has 5 prior closed cases of confirmed fraud, including CC-4908, CC-1975, CC-1833, CC-1501, and CC-0723.",
+        "claim": "Card C01727-K2 has 5 prior closed confirmed fraud cases (CC-0723, CC-1501, CC-1833, CC-1975, CC-4908), including recent CNP fraud case CC-4908 opened on 2016-10-16.",
         "source": "graph",
         "ref": "query:prior_cases_for_customer(cu=C01727, as_of=2017-01-28 10:59:42)",
         "entity_ids": [
-          "C01727",
-          "C01727-K2",
           "CC-4908",
           "CC-1975",
           "CC-1833",
           "CC-1501",
-          "CC-0723"
+          "CC-0723",
+          "C01727-K2"
         ]
       },
       {
-        "claim": "The flagged transaction 3660263 amount of $295.92 is within the card baseline with prior median amount $107.86 and prior maximum amount $1,419.28 over 121 prior transactions.",
+        "claim": "Closed cases on neighboring cards paying sc.rr.com include confirmed fraud cases CC-2888, CC-5117 (card_not_present_fraud), and CC-3907 (undocumented).",
+        "source": "graph",
+        "ref": "query:email_neighbors(from_ts=2016-12-29 10:59:42, c=C01727-K2, e=sc.rr.com, to_ts=2017-01-28 10:59:42)",
+        "entity_ids": [
+          "CC-2888",
+          "CC-5117",
+          "CC-3907"
+        ]
+      },
+      {
+        "claim": "Flagged transaction 3660263 ($295.92) sits within the cardholder's historical spend baseline prior to opening (prior median amount $107.86, prior maximum amount $1,419.28 over 121 prior transactions).",
         "source": "graph",
         "ref": "query:case_context(t=3660263, as_of=2017-01-28 10:59:42)",
+        "entity_ids": [
+          "3660263",
+          "C01727-K2"
+        ]
+      },
+      {
+        "claim": "Billing region 231.0 on transaction 3660263 is the card's modal region, representing 119 prior transactions across 90 active days.",
+        "source": "graph",
+        "ref": "query:region_history(c=C01727-K2, addr1=231.0, as_of=2017-01-28 07:59:41)",
         "entity_ids": [
           "3660263",
           "C01727-K2"
@@ -118,10 +121,10 @@
     "similar_prior_cases": [
       "CC-4908",
       "CC-4309",
-      "CC-4872",
+      "CC-4502",
       "CC-5483"
     ],
-    "summary": "Verdict is fraud with 0.92 probability under an undocumented pattern involving a coordinated recipient-email mule ring. The episode comprises online transactions 3660261, 3660262, and 3660263 on card C01727-K2 paying sc.rr.com, with total exposure of $967.68. Decisive evidence shows recipient domain sc.rr.com connects 17 cards in 30 days without a shared device profile, alongside 5 prior confirmed fraud cases on card C01727-K2. A block of card C01727-K2 (L1 route) and filing of a report (L2 route) are recommended pending approval.",
+    "summary": "Card C01727-K2 is assessed as fraud (probability 0.92) under an undocumented coordinated recipient-email fraud pattern across 17 cards paying sc.rr.com with no shared device. The episode comprises online transactions 3660261, 3660262, and 3660263 with total exposure of $967.68. The verdict is driven by cross-card recipient email sharing and the card's history of prior confirmed fraud (CC-4908). Recommended actions include blocking card C01727-K2 (L1 route) and filing a SAR (L2 route).",
     "written_to_graph": true,
     "graph_case_id": "AC-HHF-006"
   },
@@ -131,54 +134,54 @@
       {
         "action": "CREATE_CASE",
         "route": "auto",
-        "reason": "3a: fraud probability 0.92 with exposure of $967.68 under undocumented pattern."
+        "reason": "3a: open a case for suspected undocumented coordinated fraud on card C01727-K2."
       },
       {
         "action": "MONITOR_CONNECTED_CARDS",
         "route": "auto",
-        "reason": "R6: recipient email domain sc.rr.com is shared across 16 connected cards."
+        "reason": "R6: monitor connected cards sharing recipient email domain sc.rr.com."
       },
       {
         "action": "BLOCK_CARD",
         "route": "L1",
-        "reason": "§3b: probability 0.92 exceeds stop threshold with exposure $967.68 ≤ $2,500."
+        "reason": "§3b: recommend blocking card C01727-K2 with exposure $967.68 ≤ $2,500."
       },
       {
         "action": "FILE_REPORT",
         "route": "L2",
-        "reason": "R9: coordinated undocumented recipient email domain pattern across 17 cards."
+        "reason": "3a: file a SAR for coordinated undocumented recipient-email fraud across 17 cards."
       },
       {
         "action": "ESCALATE_TO_ANALYST",
         "route": "auto",
-        "reason": "R9: undocumented pattern fits no standard template and involves coordinated abuse across multiple cards."
+        "reason": "R9: escalate to analyst for an undocumented coordinated fraud pattern across multiple cardholders."
       }
     ],
     "final": [
       {
         "action": "CREATE_CASE",
         "route": "auto",
-        "reason": "3a: fraud probability 0.92 with exposure of $967.68 under undocumented pattern."
+        "reason": "3a: open a case for suspected undocumented coordinated fraud on card C01727-K2."
       },
       {
         "action": "MONITOR_CONNECTED_CARDS",
         "route": "auto",
-        "reason": "R6: recipient email domain sc.rr.com is shared across 16 connected cards."
+        "reason": "R6: monitor connected cards sharing recipient email domain sc.rr.com."
       },
       {
         "action": "BLOCK_CARD",
         "route": "L1",
-        "reason": "§3b: probability 0.92 exceeds stop threshold with exposure $967.68 ≤ $2,500."
+        "reason": "§3b: recommend blocking card C01727-K2 with exposure $967.68 ≤ $2,500."
       },
       {
         "action": "FILE_REPORT",
         "route": "L2",
-        "reason": "R9: coordinated undocumented recipient email domain pattern across 17 cards."
+        "reason": "3a: file a SAR for coordinated undocumented recipient-email fraud across 17 cards."
       },
       {
         "action": "ESCALATE_TO_ANALYST",
         "route": "auto",
-        "reason": "R9: undocumented pattern fits no standard template and involves coordinated abuse across multiple cards."
+        "reason": "R9: escalate to analyst for an undocumented coordinated fraud pattern across multiple cardholders."
       }
     ],
     "what_changed": "nothing"
@@ -186,26 +189,10 @@
   "sar": {
     "file": true,
     "reason": "3a / R9: undocumented coordinated pattern (Coordinated recipient-email mule ring across 17 cards paying R_emaildomain='sc.rr.com' with no shared device)",
-    "narrative": "This suspicious activity report is filed under internal case ID AC-HHF-006 to document an undocumented coordinated fraud pattern. The activity involves customer C01727, debit card C01727-K2, and 16 connected cards including C00534-K2, C01357-K1, C01507-K1, C01594-K1, C02167-K2, C03060-K1, C04146-K1, C04668-K1, C05610-K1, C06115-K1, C06639-K1, C08384-K1, C10350-K1, C11617-K1, C11743-K2, and C11940-K1. On 2017-01-17 at 15:29, online transaction 3660261 for $305.41 was executed under product code C in billing region 231.0, followed on 2017-01-18 at 19:40 by online transaction 3660262 for $366.35 in billing region 231.0. On 2017-01-28 at 07:59, online transaction 3660263 for $295.92 occurred in billing region 231.0, all three transactions paying recipient email domain sc.rr.com. The shared recipient email domain sc.rr.com connects card C01727-K2 to 16 peer cards active within 30 days of case opening. Prior to the flagged transaction, card C01727-K2 had 121 transactions with a median amount of $107.86 and maximum amount of $1,419.28, making the sudden sequence of online payments to an unverified recipient email domain unusual. A prior suspicious activity report was filed on this card under closed case CC-1975, CC-1833, CC-1501, and OFAC screening of the customer and card identifiers against the SDN list returned no match. Internal case AC-HHF-006 was opened, connected cards were placed on monitoring, and the case was escalated to an analyst; a block of card C01727-K2 is recommended and awaits team-lead approval, and this filing of a report is recommended and awaits fraud-manager approval for total suspicious activity of $967.68.",
+    "narrative": "This Suspicious Activity Report is filed to document an undocumented coordinated fraud pattern under internal case AC-HHF-006. The activity involves customer C01727 using Visa debit card C01727-K2, which is connected to 16 other cards through a shared recipient email domain with no shared device profile. On 2017-01-17 at 15:29, online transaction 3660261 for $305.41 with product code C was conducted in billing region 231.0 and delivered to recipient email domain sc.rr.com. On 2017-01-18 at 19:40, online transaction 3660262 for $366.35 with product code C was conducted in billing region 231.0 and delivered to sc.rr.com. On 2017-01-28 at 07:59, online transaction 3660263 for $295.92 with product code C was conducted in billing region 231.0 and delivered to sc.rr.com. These transactions lack device identity telemetry and form a coordinated recipient-email mule ring across 17 cards paying sc.rr.com. Prior to transaction 3660263, the card's baseline as of opening consisted of 121 prior transactions with a median amount of $107.86 and a maximum amount of $1,419.28. A prior suspicious activity report was filed on this card under closed case CC-1975, CC-1833, CC-1501. OFAC screening of the customer and card identifiers against the SDN list returned no match. Under case opened 2017-01-28, case creation, monitoring of connected cards, and analyst escalation were completed, while a block of card C01727-K2 is recommended and awaits team-lead approval and this report filing is recommended and awaits fraud-manager approval, covering a total suspicious amount of $967.68.",
     "subjects": [
       "C01727",
-      "C01727-K2",
-      "C00534-K2",
-      "C01357-K1",
-      "C01507-K1",
-      "C01594-K1",
-      "C02167-K2",
-      "C03060-K1",
-      "C04146-K1",
-      "C04668-K1",
-      "C05610-K1",
-      "C06115-K1",
-      "C06639-K1",
-      "C08384-K1",
-      "C10350-K1",
-      "C11617-K1",
-      "C11743-K2",
-      "C11940-K1"
+      "C01727-K2"
     ],
     "total_amount_usd": 967.68,
     "activity_dates": [
@@ -214,7 +201,7 @@
     ]
   },
   "stop_reason": "Policy §6 test 1: fraud probability 0.92 is at or above 0.85 with 3 independent evidence families (device, history, memory); no request could change the action set, so the initial recommendation is final.",
-  "tool_calls": 23,
-  "tokens": 254832,
-  "latency_s": 93.2
+  "tool_calls": 22,
+  "tokens": 281939,
+  "latency_s": 76.0
 }

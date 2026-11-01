@@ -71,14 +71,19 @@ Deploy instructions and every variable: [`README.md`](README.md#deploy-on-railwa
 
 ## What changed after the frozen commit
 
-The answers were produced at `b397c2c`; the commits after it add the dashboard, the deployment and documentation. On
-the answer path (`agent/`, `engine/`, `graph/`, `mcp/`, `rag/`, `policy/`, prompts) they change only:
+The answers were produced at `8dc9e07` (tag `hhf-final-2-run`). The commits after it add challenge work, the dashboard,
+the deployment and documentation. On the answer path (`agent/`, `engine/`, `graph/`, `mcp/`, `rag/`, `policy/`, `etl/`,
+`schema_engine/`) they add or change only:
 
-- `agent/case_ids.py` and two lines of `agent/phase_machine.py`: the write-back namespace. With `AGENT_CASE_NAMESPACE`
-  unset, as in the submitted run, the ids are `AC-<case>` exactly as before.
-- `agent/bench.py`: a Round 1 case pack on disk no longer hides the Final Round cases.
-- `engine/detectors.py`: who may admit a new detector is read from the role permissions. The scan and its decisions
-  are unchanged.
+- `agent/sar_doc.py` and `agent/phase_machine.py` (`_write_sar_md`): `sar.md` is written as a fileable document (cited
+  narrative, timeline, evidence graph, attestation). The answer's `sar` object is unchanged.
+- `engine/containment.py`: the containment planner ranks wave cards by exposure stopped (Challenge 7).
+- `engine/policy_compiler.py`, `engine/discovery.py` and two entry points in `engine/detectors.py`: policy prose to
+  detector (Challenge 3) and a mined detector proposal (Challenge 2). Neither is called by a case investigation.
+- `etl/delta*.py`: the January build refuses to run before the schema migration is signed (Challenge 12).
+- `schema_engine/mapper.py` and `profiler.py`: the variant mapper (Challenge 13).
+- regenerated outputs under `engine/out/`.
 
-`git diff b397c2c HEAD -- agent/ engine/ graph/ mcp/ rag/ policy/` shows exactly these, plus the regenerated
-`engine/out/proof_snapshot.json` and `engine/out/typology_parity.json`.
+Checked on the pushed head: `engine.run_cases` gives the same verdict, pattern, SAR decision and final actions with
+routes as `cases/HHF-*.json` on all 18 cases, with probability within 0.10. `git diff 8dc9e07 HEAD -- agent/ engine/
+graph/ mcp/ rag/ policy/ etl/ schema_engine/` shows every change.

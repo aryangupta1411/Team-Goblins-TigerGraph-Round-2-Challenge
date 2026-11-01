@@ -470,9 +470,25 @@ def decide(
                 (approval_id, row_d["case_id"], row_d["action"], row_d["route"], status, who.principal, who.role, "ok", f"Decided {status} under role {who.role}", when),
             )
         r = con.execute("SELECT * FROM approvals WHERE id = ?", (approval_id,)).fetchone()
-        return dict(r)
     finally:
         con.close()
+    decided = dict(r)
+    _lifecycle_after_decision(decided, path)
+    return decided
+
+
+def _lifecycle_after_decision(row: dict, path: str | os.PathLike | None) -> None:
+    """Record the decision as a case state change and close the case once nothing is pending (agent/lifecycle.py).
+    The decision itself is already committed; a lifecycle failure is logged to the audit log, never raised."""
+    try:
+        from agent import lifecycle
+        lifecycle.on_approval_decided(row, path=path)
+    except Exception as exc:  # noqa: BLE001
+        con = connect(path)
+        try:
+            _audit(con, row["id"], row, row["status"], row.get("decided_by") or "", "system", "lifecycle_error", f"{type(exc).__name__}: {exc}"[:500], _now())
+        finally:
+            con.close()
 
 
 def reopen(approval_id: int, path: str | os.PathLike | None = None, **_: object) -> None:

@@ -2829,6 +2829,7 @@ PAGES: dict[str, dict[str, str]] = {
     "case": {"file": "pages/2_case.py", "title": "Case file", "icon": ":material/folder_open:", "url_path": "case", "section": ""},
     "graph": {"file": "pages/4_graph.py", "title": "Graph", "icon": ":material/hub:", "url_path": "graph", "section": ""},
     "approvals": {"file": "pages/3_approvals.py", "title": "Approvals", "icon": ":material/gavel:", "url_path": "approvals", "section": ""},
+    "handover": {"file": "pages/11_handover.py", "title": "Hand-over", "icon": ":material/swap_horiz:", "url_path": "handover", "section": ""},
     "detectors": {"file": "pages/8_detectors.py", "title": "Detectors & containment", "icon": ":material/radar:", "url_path": "detectors", "section": "Proof"},
     "security": {"file": "pages/9_security.py", "title": "Security & drills", "icon": ":material/shield:", "url_path": "security", "section": "Proof"},
     "data": {"file": "pages/6_schema.py", "title": "Data quality & schema", "icon": ":material/rule:", "url_path": "data", "section": "Proof"},
@@ -2837,7 +2838,7 @@ PAGES: dict[str, dict[str, str]] = {
     "system": {"file": "pages/7_architecture.py", "title": "How it works", "icon": ":material/account_tree:", "url_path": "system", "section": "System"},
     "live_architecture": {"file": "pages/10_live_architecture.py", "title": "Live architecture", "icon": ":material/animation:", "url_path": "live-architecture", "section": "System"},
 }
-CASE_PAGES = {"case", "graph", "live_architecture"}  # the pages that show the Case picker
+CASE_PAGES = {"case", "graph", "live_architecture", "handover"}  # the pages that show the Case picker
 PAGE_ICONS = {k: v["icon"] for k, v in PAGES.items()} | {
     "app": ":material/verified_user:", "queue": PAGES["console"]["icon"], "schema": PAGES["data"]["icon"], "architecture": PAGES["system"]["icon"]}
 

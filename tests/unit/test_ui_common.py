@@ -935,6 +935,27 @@ def test_pipeline_state_done_case_and_the_p8_timeline_entry(tree):
     assert next(e for e in tl if e["code"] == "P10")["start"] == 15.0  # after the P9 closing call (t 15), which follows P8's draft (t 12)
 
 
+def test_skipped_stages_say_why(tree):
+    """P6/P7 skipped because P5 settled the case (or no reply could change the actions) and P8 skipped because no SAR was
+    owed carry the trace's reason (state_label, skip_reason), and the strip shows it instead of a bare 'no row'."""
+    def run(case: str, voi: dict, sar: bool) -> dict:
+        rows = [_p0(case) | {"t": 0.0}, _ph("P1", 1.0), _ph("P2", 2.0), _ph("P3", 3.0), _ph("P4", 4.0), _ph("P5-voi", 4.1, voi),
+                _ph("P5", 5.0, {"actions": []}), _ph("P10", 20.0, {"written_to_graph": True}), _ph("P9", 21.0, {"validation": []})]
+        _write_run(tree["runs"], f"r-{case}", {case: _answer(case, sar=sar)}, phases={case: rows}, calls={case: [_llm("P9", 15.0, "m-x")]})
+        return {s["code"]: s for s in common.pipeline_state(common.case_view(f"r-{case}", case))["stages"]}
+
+    settled = run("HHF-004", {"ask": False, "settled_pre": True}, sar=False)
+    assert settled["P6"]["state"] == settled["P7"]["state"] == "skipped"
+    assert settled["P6"]["state_label"] == settled["P7"]["state_label"] == "skipped: settled at P5"
+    assert "initial actions are final" in settled["P7"]["skip_reason"]
+    assert settled["P8"]["state_label"] == "skipped: no SAR owed"
+    html = common.stage_flow_html(list(settled.values()))
+    assert "skipped: settled at P5" in html and "no row" not in html
+
+    no_change = run("HHF-012", {"ask": False, "settled_pre": False, "voi_zero": True}, sar=False)
+    assert no_change["P6"]["state_label"] == "skipped: no request" and "no reply would change" in no_change["P6"]["skip_reason"]
+
+
 def test_call_lines_never_rewrite_the_model_and_compact_vectors():
     line = common.call_line(_llm("P4", 7.5, "claude-sonnet-4-5"), "HHF-009")
     assert "claude-sonnet-4-5" in line and "gemini" not in line and "[P4]" in line and line.startswith("HHF-009")

@@ -496,8 +496,9 @@ def _tab_decision_path(view: common.CaseView) -> None:
                     format_func=lambda c: _stage_option(c, stages),
                     help="Pick a stage to see what it recorded: its calls with their params, its model calls, its notes and its payload. "
                          "S0 is the offline schema and data-quality gate.")
-    st.caption(md("Stage states come from this case's phases.jsonl and calls.jsonl; 'no row' means the stage wrote nothing "
-                  "(P6 and P7 without an evidence request, P8 without a SAR to draft)."))
+    st.caption(md("Stage states come from this case's phases.jsonl and calls.jsonl. 'Skipped' means the stage did not run "
+                  "because P5 decided it was not needed: P6 and P7 when the case was settled before any evidence or no reply "
+                  "could change the actions, P8 when no SAR was owed."))
     n_att = common.trace_attempts(view)
     if n_att > 1:
         shown = ("the attempt that wrote answer.json (it has the P9 row)" if "P9" in by_code
@@ -532,7 +533,7 @@ def _phase_block(e: dict, voi: dict, p6: dict, taken: str, *, stage: dict | None
     with st.container(border=True, key=f"phase-{e['code']}"):
         timing = " · ".join(x for x in (f"t {e['t']:.2f} s" if e["t"] is not None else "", f"{e['duration']:.2f} s" if e["duration"] is not None else "") if x)
         sim = f"{badge('SIMULATED', 'gray')} " if _simulated(e["sentence"]) else ""
-        state = badge(common.STAGE_LABELS.get(stage["state"], stage["state"]), common.STAGE_STYLE.get(stage["state"], ("gray", ""))[0]) + " " if stage else ""
+        state = badge(stage.get("state_label") or common.STAGE_LABELS.get(stage["state"], stage["state"]), common.STAGE_STYLE.get(stage["state"], ("gray", ""))[0]) + " " if stage else ""
         st.markdown(f"**{md(e['code'])} · {md(e['name'])}** {state}" + (badge(timing, "gray") if timing else "") + f"  \n{sim}{md(e['sentence'])}")
         if stage is not None:
             st.caption(md(f"Code: {stage['module']}"))
@@ -625,15 +626,12 @@ def _stage_s0(view: common.CaseView, *, detail: bool) -> None:
 
 def _stage_missing(view: common.CaseView, s: dict) -> None:
     """A stage with no row in the case's trace files: say so, with the reason the trace itself gives when it gives one."""
-    hint = ""
-    voi = common.phase_payload(view, "P5-voi")
-    if s["code"] in ("P6", "P7") and voi and not voi.get("ask"):
-        hint = "; P5-voi recorded ask = false, so no evidence request was made"
-    sar = (view.answer or {}).get("sar") or {}
-    if s["code"] == "P8" and sar.get("file") is False:
-        hint = "; the answer's sar.file is false, so there was no SAR to draft"
-    what = "not reached yet" if s["state"] == "pending" else "no row"
-    st.info(md(f"{s['code']} · {s['label']}: {what} in this case's phases.jsonl or calls.jsonl{hint}"), icon=":material/info:")
+    if s["state"] == "pending":
+        st.info(md(f"{s['code']} · {s['label']}: not reached yet in this case's phases.jsonl or calls.jsonl"), icon=":material/info:")
+    elif s.get("skip_reason"):
+        st.info(md(f"{s['code']} · {s['label']}: skipped. {s['skip_reason'][0].upper()}{s['skip_reason'][1:]}."), icon=":material/info:")
+    else:
+        st.info(md(f"{s['code']} · {s['label']}: no row in this case's phases.jsonl or calls.jsonl"), icon=":material/info:")
     st.caption(md(f"Code: {s['module']}"))
 
 

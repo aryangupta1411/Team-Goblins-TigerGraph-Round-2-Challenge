@@ -86,7 +86,7 @@ def _flow(stages: list[dict], step: dict | None, finished: bool) -> None:
             state = "done"
         else:
             state = "pending"
-        items.append({"code": s["code"], "label": s["label"], "state": state})
+        items.append({"code": s["code"], "label": s["label"], "state": state} | ({"state_label": s["state_label"]} if state == "skipped" and s.get("state_label") else {}))
     design.html_block(common.stage_flow_html(items))
 
 
@@ -107,7 +107,7 @@ def _inspector(view: common.CaseView, stages: list[dict]) -> None:
         return
     s = states[pick]
     with st.container(border=True, key="replay-inspector"):
-        st.markdown(f"**{md(pick)} · {md(s['label'])}** " + badge(common.STAGE_LABELS.get(s["state"], s["state"]), common.STAGE_STYLE.get(s["state"], ("gray", ""))[0])
+        st.markdown(f"**{md(pick)} · {md(s['label'])}** " + badge(s.get("state_label") or common.STAGE_LABELS.get(s["state"], s["state"]), common.STAGE_STYLE.get(s["state"], ("gray", ""))[0])
                     + (" " + badge("calls the LLM", "violet") if s.get("llm") else ""))
         st.caption(md(f"Code: {s['module']}"))
         if pick == "S0":
@@ -132,7 +132,8 @@ def _inspector(view: common.CaseView, stages: list[dict]) -> None:
             if s.get("rows"):
                 st.caption(md(f"This stage has {s['rows']} call(s) in calls.jsonl but no phase row yet: the case is still in it, or stopped in it."))
                 return
-            st.caption(md("This stage wrote no row in this case's trace: " + (
+            st.caption(md("This stage did not run in this case: " + (
+                s["skip_reason"] if skipped and s.get("skip_reason") else
                 "no evidence request was made, so there was no assumed reply and no final re-decision" if skipped and pick in ("P6", "P7") else
                 "no SAR was owed, so none was drafted" if skipped and pick == "P8" else "the case has not reached it")))
             return
@@ -242,5 +243,5 @@ def render(default_run: str | None = None, default_case: str | None = None) -> N
         else:
             _frame(view, stages, evs)
         st.caption(md("Played back from phases.jsonl and calls.jsonl: each call where it finished, then the stage's own row. "
-                      "A skipped stage wrote no row in this case. The model names are the ones calls.jsonl records."))
+                      "A skipped stage did not run in this case; its inspector says why. The model names are the ones calls.jsonl records."))
     _inspector(view, stages)

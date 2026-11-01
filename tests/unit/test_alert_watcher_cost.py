@@ -22,7 +22,8 @@ def test_sweep_starts_each_alert_once(tmp_path, monkeypatch):
     monkeypatch.setattr(alert_watcher, "start_case", lambda row, run_id, mock, work: started.append(row["case_id"]) or
                         {"case_id": row["case_id"], "answer_ready": False, "exit_code": 0})
     inbox, log = tmp_path / "in", tmp_path / "run" / "watcher.jsonl"
-    inbox.mkdir(); log.parent.mkdir()
+    inbox.mkdir()
+    log.parent.mkdir()
     (inbox / "a.csv").write_text(HEADER + ROW.format(cid="W-1"))
     alert_watcher.sweep(inbox, "r", True, log, {})
     (inbox / "b.csv").write_text(HEADER + ROW.format(cid="W-2") + ROW.format(cid="W-1"))

@@ -80,10 +80,16 @@ the deployment and documentation. On the answer path (`agent/`, `engine/`, `grap
 - `engine/containment.py`: the containment planner ranks wave cards by exposure stopped (Challenge 7).
 - `engine/policy_compiler.py`, `engine/discovery.py` and two entry points in `engine/detectors.py`: policy prose to
   detector (Challenge 3) and a mined detector proposal (Challenge 2). Neither is called by a case investigation.
+- `engine/scorecard.py`, `engine/feedback.py`, `policy/fraud_policy.yaml` (`3c56196`): an uncertain case's L1 decline
+  waits on verification (R4), graph-neighbourhood evidence, and analyst feedback (Challenge 8).
+- `agent/` lifecycle (`427bc8f`): a final approval or customer reply closes the case (`close_case` and a `CaseEvent`);
+  an alert watcher and cost per case (Challenge 9 and 14).
 - `etl/delta*.py`: the January build refuses to run before the schema migration is signed (Challenge 12).
 - `schema_engine/mapper.py` and `profiler.py`: the variant mapper (Challenge 13).
 - regenerated outputs under `engine/out/`.
 
-Checked on the pushed head: `engine.run_cases` gives the same verdict, pattern, SAR decision and final actions with
-routes as `cases/HHF-*.json` on all 18 cases, with probability within 0.10. `git diff 8dc9e07 HEAD -- agent/ engine/
-graph/ mcp/ rag/ policy/ etl/ schema_engine/` shows every change.
+Checked on the pushed head (`engine.run_cases`, offline): the same verdict, pattern and SAR decision as `cases/HHF-*.json`
+on all 18 cases, probability within 0.10, and the same final actions with routes on 17. The exception is HHF-008
+(uncertain): from `3c56196` its final set has `VERIFY_WITH_CUSTOMER` instead of the L1 `DECLINE_TRANSACTION` the
+submitted answer carries. At the frozen commit `8dc9e07` the engine matches the submitted answers on all 18. `git diff
+8dc9e07 HEAD -- agent/ engine/ graph/ mcp/ rag/ policy/ etl/ schema_engine/` shows every change.

@@ -389,6 +389,31 @@ def rehearse(variant_dir: str | Path, out_dir: str | Path | None = None, case_id
     return report
 
 
+SUMMARY = ROOT / "engine" / "out" / "variant_rehearsal.json"
+
+
+def write_summary(root: Path = OUT, dest: Path = SUMMARY) -> dict[str, Any]:
+    """The checked-in headline of every rehearsal under `root` (its rehearsal DBs stay local): per variant the mapping
+    accuracy against the variant's ground truth, unmapped / low-confidence columns, rows translated, and same decisions."""
+    out: dict[str, Any] = {"what": "Challenge 13: map, translate and decide each variant's cases next to the canonical schema (offline)",
+                           "how": "python -m ops.variant_rehearsal <variant> [--make-fresh DIR [--flat]]; python -m ops.variant_rehearsal --summary",
+                           "variants": {}}
+    for p in sorted(Path(root).glob("*/rehearsal.json")):
+        r = json.loads(p.read_text(encoding="utf-8"))
+        acc = r.get("accuracy") or {}
+        rows = r.get("row_comparison") or {}
+        out["variants"][p.parent.name] = {
+            "variant_dir": r.get("variant_dir"), "generated_at": r.get("generated_at"), "table_roles": r.get("table_roles"),
+            "n_mapped_columns": r.get("n_mapped_columns"), "unmapped_columns": r.get("unmapped_columns") or [],
+            "low_confidence": r.get("low_confidence") or [],
+            "precision": acc.get("precision"), "recall": acc.get("recall"), "wrong": acc.get("wrong") or [], "missed": acc.get("missed") or [],
+            "rows_translated": rows.get("n_translated"), "rows_all_equal": rows.get("all_equal"),
+            "n_cases": r.get("n_cases"), "n_same_decision": r.get("n_same_decision"),
+        }
+    dest.write_text(json.dumps(out, indent=1, default=str) + "\n", encoding="utf-8")
+    return out
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("variant_dir", nargs="?", default=str(ROOT / "data" / "variant_bank_b"))
@@ -397,7 +422,12 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--cases", nargs="*", help="case ids to translate and decide (default: every case in the variant)")
     ap.add_argument("--out", help=f"where mapping.json, rehearsal.json and the rehearsal DB go (default {OUT}/<variant>)")
     ap.add_argument("--facts", default=str(FACTS))
+    ap.add_argument("--summary", action="store_true", help=f"only rewrite {SUMMARY.relative_to(ROOT)} from the rehearsals already under {OUT.relative_to(ROOT)}")
     a = ap.parse_args(argv)
+    if a.summary:
+        s = write_summary()
+        ok(f"{len(s['variants'])} rehearsal(s) -> {SUMMARY.relative_to(ROOT)}")
+        return 0 if s["variants"] else 1
     vdir = make_fresh_variant(a.make_fresh) if a.make_fresh else Path(a.variant_dir)
     if a.make_fresh and a.flat:
         vdir = flatten_variant(vdir, Path(a.make_fresh).with_name(Path(a.make_fresh).name + "_flat"))
@@ -413,6 +443,8 @@ def main(argv: list[str] | None = None) -> int:
     # a row difference the variant itself caused (a value its export dropped) is reported above; the rehearsal passes when
     # every case gets the canonical decision
     good = rep["n_same_decision"] == rep["n_cases"]
+    if not a.out:
+        write_summary()
     summary("variant rehearsal " + ("matches the canonical schema" if good else "differs from the canonical schema"),
             {"columns mapped": rep["n_mapped_columns"], "rows equal": rep["row_comparison"]["all_equal"],
              "same decision": f"{rep['n_same_decision']} of {rep['n_cases']}"}, status="ok" if good else "fail")

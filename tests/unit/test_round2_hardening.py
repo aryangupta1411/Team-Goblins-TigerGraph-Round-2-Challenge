@@ -5,6 +5,8 @@
 """
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from agent.security import check_tipoff, run_attack_ablation, sanitize_evidence_requests, sanitize_trigger_text
@@ -114,6 +116,14 @@ def test_server_side_rbac_and_immutable_approvals(tmp_path):
     assert len(adb.list_feedback("C05061-K1", db)) == 1
 
 
+# the variant fixture is built from the raw Round 2 pack, which is not checked in (data/raw/ is git-ignored)
+_ROUND2_RAW = Path(__file__).resolve().parents[2] / "data" / "raw" / "round2"
+
+
+@pytest.mark.skipif(
+    not (_ROUND2_RAW / "case_pack_final.csv").exists() or not (_ROUND2_RAW / "transactions_2017q1.csv").exists(),
+    reason="needs the raw Round 2 pack in data/raw/round2/",
+)
 def test_variant_schema_mapper_and_attestations(tmp_path):
     vdir = tmp_path / "variant_bank"
     rep = build_variant_fixture(vdir, max_tx_rows=100)

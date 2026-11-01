@@ -819,19 +819,17 @@ _show_rerun(ctx, view)
 _tg_panel(view, stats)
 
 design.html_block('<span id="case-tabs" class="tc-anchor"></span>')  # the checks line's jump link lands here
-tabs = st.tabs(TABS, key="case_tab", on_change="rerun", default=TABS[0] if view.phases else TABS[1])
-if tabs[0].open:
-    with tabs[0]:
-        _tab_decision_path(view)
-if tabs[1].open:
-    with tabs[1]:
-        _tab_evidence(view, claims)
-if tabs[2].open:
-    with tabs[2]:
-        _tab_sar(view)
-if tabs[3].open:
-    with tabs[3]:
-        _tab_approvals(view, inbox, inbox_notice)
-if tabs[4].open:
-    with tabs[4]:
-        _tab_raw(view)
+# Every tab is drawn on each run and switched in the browser (no rerun): a rerun per switch cleared the old panel and
+# re-focused the clicked tab, and the browser scrolled the page under the reader. The five together take a fraction of
+# a second to build.
+tabs = st.tabs(TABS, key="case_tab", default=TABS[0] if view.phases else TABS[1])
+with tabs[0]:
+    _tab_decision_path(view)
+with tabs[1]:
+    _tab_evidence(view, claims)
+with tabs[2]:
+    _tab_sar(view)
+with tabs[3]:
+    _tab_approvals(view, inbox, inbox_notice)
+with tabs[4]:
+    _tab_raw(view)

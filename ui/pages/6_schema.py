@@ -408,7 +408,7 @@ if view == "dq":
         st.toggle(f"Show all {len(rows)} cases", key="data_dq_all")
         if shown:
             st.dataframe(
-                shown, hide_index=True, width="stretch", height=min(35 * len(shown) + 38, 35 * 20 + 38), key="data_join",
+                shown, hide_index=True, width="stretch", height=common.table_height(len(shown)), key="data_join",
                 column_config={
                     "Case": st.column_config.ButtonColumn("Case", type="tertiary", pinned=True, key="data_case_open", help="Open the Case file"),
                     "Defects": st.column_config.MultiselectColumn("Defects", options=codes or None, color=[SEVERITY.get(sev_of.get(c, ""), "gray") for c in codes] or None,
@@ -538,7 +538,7 @@ if view == "drift":
                     st.markdown(f"**Breaks if unhandled:** {md(dr.get('what_breaks'))}")
                     st.markdown(f"**Recovery:** {md(dr.get('remapping_action'))}")
                     shape = _shape_rows(dr.get("before_shape") or {}, dr.get("after_shape") or {})
-                    st.dataframe(shape, hide_index=True, width="stretch", height=35 * len(shape) + 38,
+                    st.dataframe(shape, hide_index=True, width="stretch", height=common.table_height(len(shape)),
                                  column_config={"Before": st.column_config.TextColumn("Before", width="large"),
                                                 "After": st.column_config.TextColumn("After", width="large")})
                     with st.popover("Attestation", key=f"drift-att-{dr.get('drift_id')}"):
@@ -628,7 +628,7 @@ if view == "map":
                   "Confidence": "—" if m.get("status") == "unmapped" else f"{float(m.get('confidence') or 0):.2f}",
                   "Not found in the DDL": ", ".join(bad), "Rationale": m.get("rationale")}
                  for m, (state, bad) in zip(maps, checks, strict=True)],
-                hide_index=True, width="stretch", height=min(35 * len(maps) + 38, 35 * 20 + 38), key="data_mapping",
+                hide_index=True, width="stretch", height=common.table_height(len(maps)), key="data_mapping",
                 column_config={
                     "Canonical target": st.column_config.TextColumn("Canonical target", pinned=True),
                     "Verified in DDL": st.column_config.MultiselectColumn("Verified in DDL", options=list(VERIFIED_COLORS), color=list(VERIFIED_COLORS.values()),
@@ -662,7 +662,7 @@ if view == "map":
             st.dataframe(
                 [{"Source column": f"{m.get('source_file')} / {m.get('source_column')}", "Canonical target": f"{m.get('table_role')}.{m.get('canonical_column')}",
                   "Transform": [str(m.get("transform"))], "Confidence": float(m.get("confidence") or 0), "Raw → canonical sample": _sample(m)} for m in vm],
-                hide_index=True, width="stretch", height=min(35 * len(vm) + 38, 35 * 20 + 38), key="data_variant",
+                hide_index=True, width="stretch", height=common.table_height(len(vm)), key="data_variant",
                 column_config={
                     "Transform": st.column_config.MultiselectColumn("Transform", options=tr_opts, color=["gray"] * len(tr_opts)),
                     "Confidence": st.column_config.ProgressColumn("Confidence", min_value=0.0, max_value=1.0, format="%.2f"),

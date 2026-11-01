@@ -665,7 +665,7 @@ if wave:
                                "Cleared customer": "yes" if r.get("is_legitimate_customer_harmed") else "no",
                                "Final Round case": card_case.get(str(r.get("card_id")), ""),
                                "Transaction ids": ", ".join(str(t) for t in r.get("txn_ids") or [])} for r in per_card]),
-                hide_index=True, key="det_per_card", height=35 * min(len(per_card), 12) + 38,
+                hide_index=True, key="det_per_card", height=common.table_height(len(per_card), 12),
                 column_config={
                     "Proposed action": st.column_config.TextColumn("Proposed action · route",
                                                                    help="proposal — awaiting approval: BLOCK_CARD for a card with a wave transaction at or before the alert, else watched by rule"),

@@ -2320,6 +2320,21 @@ def badge(text: object, color: str, icon: str | None = None) -> str:
     return f":{color}-badge[{(icon + ' ') if icon else ''}{md(text)}]"
 
 
+TABLE_ROW_PX = 33  # st.dataframe's row and header height at the theme's 15 px base font
+
+
+def table_height(n: int, cap: int = 20) -> int | str:
+    """st.dataframe height: "content" (every row, no blank band under the last) up to `cap` rows, else `cap` rows and a
+    scrollbar."""
+    return "content" if n <= cap else TABLE_ROW_PX * (cap + 1) + 2
+
+
+def text_width(values: Any, floor: int = 120, cap: int = 480) -> int:
+    """A st.dataframe column width in px that fits the longest value in the grid's 13 px face, between floor and cap."""
+    longest = max((len(str(v)) for v in values), default=0)
+    return int(min(cap, max(floor, longest * 7.6 + 24)))
+
+
 def chip(text: object, color: str = "gray", *, icon: str | None = None, help: str | None = None, where: Any = None) -> None:
     """st.badge with data-safe text (st.badge escapes the brackets itself, so only the rest is escaped here)."""
     body = md(text).replace("\\[", "[").replace("\\]", "]")
@@ -2787,7 +2802,8 @@ def _pending_final_round() -> int:
 
 def nav_pages() -> dict[str, list]:
     """{'': [overview, case, graph, approvals], 'Proof': [...], 'System': [...]} as st.Page objects. A page file that is
-    not on disk is left out. Run console is hidden on a read-only deployment; Approvals shows its Final Round pending count."""
+    not on disk is left out. Run console stays listed on a read-only deployment, where it replays recorded cases and starts
+    nothing; Approvals shows its Final Round pending count."""
     st = _st()
     default_key = _default_page_key()
     pending = _pending_final_round()
@@ -2797,8 +2813,7 @@ def nav_pages() -> dict[str, list]:
         if not path.is_file():
             continue
         title = f"{meta['title']} ({pending})" if key == "approvals" and pending else meta["title"]
-        extra = {"visibility": "hidden"} if key == "console" and read_only() else {}
-        sections[meta["section"]].append(st.Page(path, title=title, icon=meta["icon"], url_path=meta["url_path"], default=key == default_key, **extra))
+        sections[meta["section"]].append(st.Page(path, title=title, icon=meta["icon"], url_path=meta["url_path"], default=key == default_key))
     return {k: v for k, v in sections.items() if v}
 
 

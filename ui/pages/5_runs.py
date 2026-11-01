@@ -462,7 +462,7 @@ if others:
             va, vb = (r["a"].get("case") or {}).get("verdict"), (r["b"].get("case") or {}).get("verdict")
             agree.append({"Open": r["case"], "class": [r["cls"]], "verdict": f"{va} → {vb}" if va != vb else str(va),
                           "differences": "; ".join(r["diffs"]) or "none", "likely cause": "; ".join(r["cause"]) or "—"})
-        st.dataframe(pd.DataFrame(agree), key="runs_agree", hide_index=True, width="stretch", height=min(35 * k + 38, 35 * 20 + 38),
+        st.dataframe(pd.DataFrame(agree), key="runs_agree", hide_index=True, width="stretch", height=common.table_height(k),
                      column_config={"Open": st.column_config.ButtonColumn("Open", type="tertiary", pinned=True, key="runs_agree_open", help="Open the Case file in the selected source"),
                                     "class": st.column_config.MultiselectColumn("class", options=list(common.AGREEMENT_COLORS), color=list(common.AGREEMENT_COLORS.values())),
                                     "differences": st.column_config.TextColumn("differences", width="large")})
@@ -494,7 +494,7 @@ if round_peers and ORDER:
     n_any = sum(1 for d, _ in grid if d)
     design.html_block(design.section("", "Same case across sources", note=f"each {ROUND} source against {sid}: the same decision, or differs",
                                      aside=esc(f"{n_any} of {len(grid)} cases differ in at least one source")))
-    st.dataframe(pd.DataFrame([r for _, r in grid]), key="runs_grid", hide_index=True, width="stretch", height=min(35 * len(grid) + 38, 35 * 20 + 38),
+    st.dataframe(pd.DataFrame([r for _, r in grid]), key="runs_grid", hide_index=True, width="stretch", height=common.table_height(len(grid)),
                  column_config={"case": st.column_config.TextColumn("case", pinned=True)})
 
 if IS_RUN and done:
@@ -543,7 +543,7 @@ for cid, v in views.items():
         "LLM calls": s["llm_calls"] if s else None, "tokens": s["tokens_total"] if s else None, "seconds": s["latency_s"] if s else None,
         "guardrails": sum(1 for e in common.guardrail_events(v) if e["type"] not in INFO_NOTES) if v.has_trace else 0, "write-back": wb, "error": v.error,
     })
-st.dataframe(pd.DataFrame(table), key="runs_table", hide_index=True, width="stretch", height=min(35 * len(table) + 38, 35 * 20 + 38),
+st.dataframe(pd.DataFrame(table), key="runs_table", hide_index=True, width="stretch", height=common.table_height(len(table)),
              column_config={"Open trace": st.column_config.ButtonColumn("Open trace", type="tertiary", pinned=True, key="runs_open", help="Open the Case file"),
                             "p": st.column_config.NumberColumn("p", format="%.2f"), "tokens": st.column_config.NumberColumn("tokens", format="localized"),
                             "SAR": st.column_config.TextColumn("SAR", help="sar.file in the answer: a SAR drafted; filing waits for its L2 approval")})

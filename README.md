@@ -143,7 +143,7 @@ out (`nav_pages()`).
 | Proof | **Security & drills** | The 23-attack ablation (`agent.security.run_attack_ablation()`), a hostile-input sandbox and the drills ledger |
 | Proof | **Data quality & schema** | Data quality (C11), schema drift (C12) and mapping another bank's schema (C13; mapping only, no investigation run on a variant), from `engine/out/proof_snapshot.json` and `data/schema_approvals.json` |
 | Proof | **Runs & consistency** | p50 / p95 per case, numbers to quote, same-case agreement across runs |
-| System | **Run console** | Starts agent runs only after a confirm dialog; live backends are disabled in mock mode; hidden when `DEPLOY_READONLY=1` |
+| System | **Run console** | Starts agent runs only after a confirm dialog; live backends are disabled in mock mode; with `DEPLOY_READONLY=1` it replays recorded cases and starts no runs |
 | System | **How it works** | The TigerGraph-use checklist, known limits and the system map |
 
 The Run console's live pipeline view and a clickable phase inspector are being ported into the new pages; until that

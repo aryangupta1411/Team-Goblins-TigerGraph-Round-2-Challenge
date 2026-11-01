@@ -51,8 +51,9 @@ def _simulated(text: object) -> bool:
     return bool(re.search(r"\bassumed\b|\(simulated\)", str(text or ""), re.I))
 
 
-def _height(n: int, cap: int = 420) -> int:
-    return min(cap, 35 * max(n, 1) + 38)
+def _height(n: int, cap: int = 420) -> int | str:
+    """Every row while they fit in about `cap` px, else that many rows and a scrollbar."""
+    return common.table_height(n, cap=(cap - 2) // common.TABLE_ROW_PX - 1)
 
 
 def _collapse(value):

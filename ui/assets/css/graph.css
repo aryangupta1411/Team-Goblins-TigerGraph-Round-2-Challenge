@@ -1,5 +1,5 @@
 /* Graph (ui/pages/4_graph.py). Every class is .gr-*, every keyed container st-key-gr-* or st-key-graph*, so nothing here
- * reaches another page. Colours are --tc-* tokens only; the per-type glyph colours of the legend chips come from the
+ * reaches another page. Colours are --tc-* tokens only; the per-type shape colours of the legend chips come from the
  * page's vertex palette as light-dark() pairs. */
 
 /* ------------------------------------------------------------------ the head: title, verdict and p, provenance */
@@ -18,10 +18,12 @@
 /* ------------------------------------------------------------------ the canvas panel and its toolbar on the top edge */
 .st-key-graph_panel { gap: 0 !important; padding: 0 !important; overflow: hidden; }
 .st-key-graph-legend { padding: .4rem .6rem; border-bottom: 1px solid var(--tc-rule); gap: .4rem .9rem !important; flex-wrap: wrap; }
+[data-testid="stLayoutWrapper"]:has(> .st-key-graph-tools) { margin-left: auto; }  /* the tools sit at the right, together */
+.st-key-graph-tools { gap: .2rem !important; }
 .st-key-gr-canvas { padding: 0 .25rem; }
 .gr-count { font-size: .8rem; color: var(--tc-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
 
-/* legend chips double as the type filter: each pill carries its type's glyph, dimmed when the type is filtered out */
+/* legend chips double as the type filter: each pill carries its type's canvas shape, dimmed when the type is filtered out */
 [class*="st-key-graph_types_"] button { gap: 0; }
 [class*="st-key-graph_types_"] button::before {
   content: ""; display: inline-block; flex: none; width: 14px; height: 14px; margin-right: .35rem;
@@ -77,3 +79,45 @@
   .gr-row { grid-template-columns: 5.6rem minmax(0, 1fr); }
   .gr-prov .gr-note { white-space: normal; }
 }
+
+/* ------------------------------------------------------------------ the reading above the canvas and the edge key under it */
+.gr-read { margin: 0; padding: .5rem .75rem .1rem; font-size: .88rem; line-height: 1.5; color: var(--tc-ink-2); }
+.st-key-graph_panel .gr-key { padding: .55rem .75rem .65rem; border-top: 1px solid var(--tc-rule); }
+.gr-edgekey { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr)); gap: .3rem 1.2rem; }
+.gr-edgekey li { display: grid; grid-template-columns: 1.6rem auto auto minmax(0, 1fr); align-items: center; gap: .45rem; margin: 0;
+  font-size: .8rem; line-height: 1.35; color: var(--tc-ink-2); }
+.gr-ln { display: block; width: 1.6rem; border-top: 2px solid var(--tc-muted); }
+.gr-ln.dash { border-top-style: dashed; }
+.gr-edgekey code { font-family: "Roboto Mono", ui-monospace, monospace; font-size: .74rem; padding: 0 .3rem; border-radius: 3px;
+  background: var(--tc-chip); color: var(--tc-ink-2); }
+.gr-edgekey .n { color: var(--tc-ink); font-weight: 600; font-variant-numeric: tabular-nums; }
+.gr-edgekey .m { color: var(--tc-muted); min-width: 0; }
+.gr-how { margin: .5rem 0 0; font-size: .78rem; color: var(--tc-muted); }
+
+/* ------------------------------------------------------------------ Expand: the dialog widened to the window, canvas and node panel */
+[data-testid="stDialog"] > div:has(.st-key-gr-dlg) { width: min(96vw, 1840px) !important; max-width: none !important; }
+[data-testid="stDialog"] [role="dialog"]:has(.st-key-gr-dlg) { width: 100% !important; max-width: none !important; }
+.st-key-gr-dlg { gap: .5rem !important; }
+.st-key-gr-dlg-tools { gap: .9rem !important; }
+.st-key-gr-dlg-canvas { border: 1px solid var(--tc-rule); border-radius: 4px; overflow: hidden; }
+.st-key-gr-dlg-side { gap: .2rem !important; max-height: 700px; overflow-y: auto; }
+
+/* ------------------------------------------------------------------ the agent's notes: model-written text, in ink, its source under it */
+.st-key-gr-notes { margin-top: 1.25rem; gap: .5rem !important; }
+.gr-notes { display: grid; gap: 1rem; }
+.gr-note-block h3 { margin: 0 0 .3rem; padding: 0; font-size: .9rem; font-weight: 650; color: var(--tc-ink); font-variant-numeric: tabular-nums; }
+.gr-note-block > p { margin: 0; max-width: 72ch; font-size: .9rem; line-height: 1.55; color: var(--tc-ink); overflow-wrap: anywhere; }
+.gr-note-src { margin-top: .35rem; font-size: .78rem; line-height: 1.4; color: var(--tc-muted); }
+.gr-note-src .mono { font-family: "Roboto Mono", ui-monospace, monospace; font-size: .76rem; color: var(--tc-ink-2); overflow-wrap: anywhere; }
+
+/* the model's claims, each with the ids it cites: drawn ids as chips, ids not on the canvas dashed, the selected node in petrol */
+.gr-claims { list-style: none; margin: .25rem 0 0; padding: 0; border-top: 1px solid var(--tc-rule); }
+.gr-claims li { margin: 0; padding: .5rem 0; border-bottom: 1px solid var(--tc-rule); }
+.gr-claims p { margin: 0; font-size: .86rem; line-height: 1.45; color: var(--tc-ink); overflow-wrap: anywhere; }
+.gr-claims .ids { display: flex; flex-wrap: wrap; align-items: center; gap: .25rem; margin-top: .3rem; }
+.gr-claims code { font-family: "Roboto Mono", ui-monospace, monospace; font-size: .74rem; padding: 0 .3rem; border: 1px solid transparent;
+  border-radius: 3px; background: var(--tc-chip); color: var(--tc-ink-2); }
+.gr-claims code.off { background: transparent; border: 1px dashed var(--tc-rule-strong); color: var(--tc-muted); }
+.gr-claims code.sel { background: var(--tc-gate-bg); border-color: var(--tc-gate-line); color: var(--tc-gate); font-weight: 500; }
+.gr-claims .src { margin-left: .15rem; font-size: .74rem; color: var(--tc-muted); }
+.gr-insp .gr-claims { margin-top: .25rem; max-height: 26rem; overflow-y: auto; }

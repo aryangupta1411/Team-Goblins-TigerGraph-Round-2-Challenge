@@ -31,9 +31,10 @@ RUN pip install --only-binary=:all: --index-url https://download.pytorch.org/whl
 COPY requirements-live.txt ./
 RUN pip install --only-binary=:all: -r requirements-live.txt && pip check
 
-# The embedding model (rag/embed.py, EMBED_BACKEND=local), downloaded at build time so a run never waits on it.
+# The embedding model (rag/embed.py, EMBED_BACKEND=local), downloaded at build time so a run never waits on it. Only
+# the safetensors weights and the sentence-transformers config: no ONNX/OpenVINO copies, and no torch at build time.
 ENV HF_HOME=/opt/hf
-RUN python -c "from sentence_transformers import SentenceTransformer as S; S('BAAI/bge-large-en-v1.5')" \
+RUN python -c "from huggingface_hub import snapshot_download as d; d('BAAI/bge-large-en-v1.5', ignore_patterns=['onnx/*', 'openvino/*', '*.onnx', '*.bin', '*.h5', '*.ot', '*.msgpack'])" \
     && chmod -R a+rX /opt/hf
 
 # .dockerignore keeps everything else out of the build context (.env, data/raw/, the work DBs, tests/, docs/).

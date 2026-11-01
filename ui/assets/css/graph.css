@@ -94,13 +94,16 @@
 .gr-edgekey .m { color: var(--tc-muted); min-width: 0; }
 .gr-how { margin: .5rem 0 0; font-size: .78rem; color: var(--tc-muted); }
 
-/* ------------------------------------------------------------------ Expand: the dialog widened to the window, canvas and node panel */
-[data-testid="stDialog"] > div:has(.st-key-gr-dlg) { width: min(96vw, 1840px) !important; max-width: none !important; }
-[data-testid="stDialog"] [role="dialog"]:has(.st-key-gr-dlg) { width: 100% !important; max-width: none !important; }
+/* ------------------------------------------------------------------ Expand: full screen. The dialog fills the window; the
+ * canvas is the window's height less the dialog's head, in px (vis-network does not take vh), from the tc_vh cookie. */
+[data-testid="stDialog"] > div:has(.st-key-gr-dlg) { width: 100vw !important; max-width: none !important; height: 100vh !important;
+  max-height: none !important; margin: 0 !important; padding: 0 !important; }
+[data-testid="stDialog"] [role="dialog"]:has(.st-key-gr-dlg) { width: 100vw !important; max-width: none !important; height: 100vh !important;
+  max-height: none !important; margin: 0 !important; border-radius: 0 !important; padding: .9rem 1.2rem .8rem !important; }
 .st-key-gr-dlg { gap: .5rem !important; }
 .st-key-gr-dlg-tools { gap: .9rem !important; }
-.st-key-gr-dlg-canvas { border: 1px solid var(--tc-rule); border-radius: 4px; overflow: hidden; }
-.st-key-gr-dlg-side { gap: .2rem !important; max-height: 700px; overflow-y: auto; }
+.st-key-gr-dlg-canvas { border: 1px solid var(--tc-rule); border-radius: 4px; overflow: hidden; background: var(--tc-ground); }
+.st-key-gr-dlg-side { gap: .2rem !important; max-height: calc(100vh - 8.6rem); overflow-y: auto; }
 
 /* ------------------------------------------------------------------ the agent's notes: model-written text, in ink, its source under it */
 .st-key-gr-notes { margin-top: 1.25rem; gap: .5rem !important; }

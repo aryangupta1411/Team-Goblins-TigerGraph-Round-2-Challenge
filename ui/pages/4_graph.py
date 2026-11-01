@@ -210,8 +210,19 @@ if live and card and as_of:
     elif (res["sub"] or {}).get("nodes"):
         sub = res["sub"]
 from_graph = sub is not None
+layer_n = 0  # vertices drawn from the agent's case layer on top of the live subgraph
 if sub is None and answer is not None:
     sub = common.subgraph_from_answer(answer, {**meta, "card_id": card}, written=written)
+elif from_graph and answer is not None:
+    # case_subgraph walks the card's own neighbourhood; the agent's case, the ring cards it tied to the case and its case
+    # memory are the layer it wrote back, drawn from the answer file and marked as such
+    layer = common.subgraph_from_answer(answer, {**meta, "card_id": card}, written=written)
+    have = {str(n["id"]) for n in sub["nodes"]}
+    seen_e = {(str(e.get("src")), str(e.get("dst")), common.etype(e)) for e in sub.get("edges") or []}
+    extra_n = [{**n, "layer": "answer"} for n in layer["nodes"] if str(n["id"]) not in have]
+    extra_e = [{**e, "layer": "answer"} for e in layer["edges"] if (str(e["src"]), str(e["dst"]), common.etype(e)) not in seen_e]
+    layer_n = len(extra_n)
+    sub = {**sub, "nodes": list(sub["nodes"]) + extra_n, "edges": list(sub.get("edges") or []) + extra_e}
 
 
 def _mono(text: object) -> str:
@@ -225,7 +236,9 @@ VERDICT_WORD = {"fraud": "Fraud", "uncertain": "Uncertain", "legitimate": "Legit
 if from_graph:
     lat = res["latency_s"]
     prov = (f"Drawn from TigerGraph {_mono(f'case_subgraph(c={card}, as_of={as_of}, hours={hours})')}"
-            + (f" · {lat:.2f} s" if isinstance(lat, int | float) else "") + f" · queried at {design.esc(res['at'])}")
+            + (f" · {lat:.2f} s" if isinstance(lat, int | float) else "") + f" · queried at {design.esc(res['at'])}"
+            + (f", plus the case layer the agent wrote back ({layer_n} vertices: its case, the cards it tied to it and its case "
+               f"memory) from {_mono(answer_path)}" if layer_n else ""))
 elif sub is not None:
     why = ("TigerGraph not queried (mock)" if not live else "TigerGraph unreachable" if graph_down
            else f"case_subgraph returned no nodes for card {card}" if res else "no card or opened_at to query TigerGraph with")
@@ -265,30 +278,52 @@ try:
     DARK = st.context.theme.type == "dark"
 except Exception:  # noqa: BLE001 - no theme context in bare mode
     DARK = False
-# The typology vertex palette: the petrol family and calm neutrals, never the state red / ochre / green, so colour on the
-# canvas only tells vertex types apart (the shape repeats the cue). Belongs in common beside NODE_COLORS.
+# Vertex colours tell the types apart; state colours say what the case concluded: the agent's case takes its verdict's
+# colour (red fraud, ochre uncertain, green legitimate), the transactions the case covers are red, a ring card has a red
+# ring, and a closed case takes its real outcome (red confirmed fraud, green cleared). Every node carries its type's icon,
+# so the legend reads without colour.
 VERTEX_PALETTE = {
-    "light": {"AgentCase": "#0f3b57", "Card": "#2b7bb0", "DeviceProfile": "#1d5f7a", "Customer": "#5b6670",
-              "Transaction": "#8fb3cc", "EmailDomain": "#6f7c88", "BillingRegion": "#8a95a0", "ClosedCase": "#a3afb9"},
-    "dark": {"AgentCase": "#8cc3e0", "Card": "#4fa3d9", "DeviceProfile": "#6fb0c9", "Customer": "#9aa6b1",
-             "Transaction": "#3d6b8a", "EmailDomain": "#7b8a97", "BillingRegion": "#5d6b77", "ClosedCase": "#4a5b68"},
+    "light": {"AgentCase": "#0f3b57", "Card": "#1f5a80", "DeviceProfile": "#6b5ca5", "Customer": "#55687a",
+              "Transaction": "#2c7a7b", "EmailDomain": "#4c5fa8", "BillingRegion": "#7a8a96", "ClosedCase": "#8795a1"},
+    "dark": {"AgentCase": "#8cc3e0", "Card": "#4fa3d9", "DeviceProfile": "#a99be0", "Customer": "#93a7b6",
+             "Transaction": "#4fb3b0", "EmailDomain": "#8d9ce0", "BillingRegion": "#8fa1ad", "ClosedCase": "#7f909c"},
+}
+STATE_PALETTE = {
+    "light": {"fraud": "#c8102e", "uncertain": "#b7791f", "legitimate": "#1d7a4e", "confirmed_fraud": "#a3293b", "cleared": "#2f7a55"},
+    "dark": {"fraud": "#f2606f", "uncertain": "#e2a94f", "legitimate": "#4fbf86", "confirmed_fraud": "#e08a96", "cleared": "#6fc39a"},
 }
 COLORS = VERTEX_PALETTE["dark" if DARK else "light"]
+STATE = STATE_PALETTE["dark" if DARK else "light"]
 FONT = "'Public Sans', -apple-system, Helvetica, Arial, sans-serif"
 # ink, paper, muted and petrol from ui/design.py TOKENS; the selection ring is petrol, the console's focus colour
 INK, PAPER, SUBTLE, SELECT = ("#e3eaef", "#0c1a23", "#93a7b6", "#8cc3e0") if DARK else ("#14212b", "#ffffff", "#55687a", "#0f3b57")
+GLYPH_INK = "#0c1a23" if DARK else "#ffffff"  # the icon on its disc: dark on the light dark-theme fills, white on the light theme's
+LINE = "#4a6070" if DARK else "#9aaebd"  # a plain link
 MUTED = SUBTLE
-NODE_STYLE = {  # (vis shape, size); the shape repeats the colour cue so the legend reads without colour
-    "AgentCase": ("diamond", 28), "Card": ("dot", 24), "DeviceProfile": ("square", 20), "Customer": ("dot", 20),
-    "EmailDomain": ("triangle", 17), "BillingRegion": ("triangle", 17), "ClosedCase": ("dot", 14), "Transaction": ("dot", 14),
+NODE_STYLE = {  # (legend shape, base size): the AgentCase is a diamond, every other vertex a disc with its icon
+    "AgentCase": ("diamond", 34), "Card": ("dot", 22), "DeviceProfile": ("dot", 20), "Customer": ("dot", 20),
+    "EmailDomain": ("dot", 17), "BillingRegion": ("dot", 17), "ClosedCase": ("dot", 16), "Transaction": ("dot", 17),
+}
+# 24x24 stroke icons drawn on the node's disc (fixed markup, never data)
+ICON = {
+    "Card": "<rect x='5.5' y='8' width='13' height='9' rx='1.6'/><path d='M5.5 11.2h13M8 14.4h3'/>",
+    "Transaction": "<path d='M7 9.6h9.5l-2.3-2.3M17 14.4H7.5l2.3 2.3'/>",
+    "Customer": "<circle cx='12' cy='9.4' r='2.7'/><path d='M6.8 17.6c.8-2.7 2.8-3.9 5.2-3.9s4.4 1.2 5.2 3.9'/>",
+    "DeviceProfile": "<rect x='8.8' y='5.8' width='6.4' height='12.4' rx='1.3'/><path d='M11.3 15.7h1.4'/>",
+    "EmailDomain": "<rect x='5.8' y='7.8' width='12.4' height='8.8' rx='1.3'/><path d='M6.4 8.6 12 12.8l5.6-4.2'/>",
+    "BillingRegion": "<path d='M12 18.2s-4.3-4.4-4.3-7.6a4.3 4.3 0 0 1 8.6 0c0 3.2-4.3 7.6-4.3 7.6z'/><circle cx='12' cy='10.6' r='1.4'/>",
+    "ClosedCase": "<path d='M6 9v7.4a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-6.2a1 1 0 0 0-1-1h-5.1L10.3 7.4H7a1 1 0 0 0-1 1z'/>",
+    "AgentCase": "<circle cx='11.2' cy='11.2' r='3.1'/><path d='M13.5 13.5l2.7 2.7'/>",
 }
 TYPE_GLYPH = {"AgentCase": "agent_case", "Card": "card", "Transaction": "transaction", "DeviceProfile": "device", "Customer": "customer",
               "ClosedCase": "closed_case", "EmailDomain": "email", "BillingRegion": "region"}
-LABEL_SIZE = 14  # one label size on the canvas, nodes and edges alike
-EDGE_COLORS = {  # memory links dashed
-    "MADE": COLORS["Transaction"], "FROM_DEVICE": COLORS["DeviceProfile"], "SHARES_DEVICE": COLORS["DeviceProfile"],
-    "PURCHASER_EMAIL": COLORS["EmailDomain"], "BILLED_IN": COLORS["BillingRegion"], "CASE_ON_CARD": COLORS["AgentCase"],
-    "CASE_INVOLVES": COLORS["AgentCase"], "CASE_CONNECTED_TO": COLORS["AgentCase"],
+LABEL_SIZE = 14  # one label size on the canvas; the second line is smaller and muted
+CASE_EDGES = {"CASE_ON_CARD", "CASE_INVOLVES", "CASE_DEVICE"}  # the agent's own links, drawn heavier in its verdict colour
+EDGE_COLORS = {
+    "MADE": COLORS["Transaction"], "NEXT": COLORS["Transaction"], "FROM_DEVICE": COLORS["DeviceProfile"],
+    "SHARES_DEVICE": COLORS["DeviceProfile"], "PURCHASER_EMAIL": COLORS["EmailDomain"], "RECIPIENT_EMAIL": COLORS["EmailDomain"],
+    "BILLED_IN": COLORS["BillingRegion"], "OWNS": COLORS["Customer"], "CASE_CONNECTED_TO": STATE["fraud"],
+    "CASE_SIMILAR_TO": MUTED, "ON_CARD": MUTED, "INVOLVES": MUTED, "CONNECTED_TO": MUTED,
 }
 DASHED_EDGES = {"CASE_SIMILAR_TO", "ON_CARD"}
 EDGE_MEANING = {  # each edge type in a few words, from graph/schema.gsql (SHARES_DEVICE only exists in the answer-built drawing)
@@ -308,15 +343,96 @@ def _short(s: str, n: int) -> str:
     return s if len(s) <= n else s[: n - 1] + "…"
 
 
-def _node_label(n: dict, detailed: bool) -> str:
-    """Two short lines on the canvas: the id, then what it is (canvas text, never parsed as markdown or HTML)."""
+def _canvas_text(s: object) -> str:
+    """Text for a multi-font (html) vis label: only <b> and <i> are tags there, so escape the three characters."""
+    return str(s).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
+@st.cache_data(max_entries=64, show_spinner=False)
+def _facts(txn_ids: tuple[str, ...], cc_ids: tuple[str, ...], card_ids: tuple[str, ...]) -> dict[str, dict]:
+    """What the engine facts DB knows about the drawn vertices, read-only: a transaction's amount, product, channel and
+    time; a closed case's outcome, pattern and exposure; a card's type. {} when the DB or duckdb is not here."""
+    try:
+        import duckdb
+
+        path = common._facts_db_path()
+        if not path.exists():
+            return {}
+        con = duckdb.connect(str(path), read_only=True)
+    except Exception:  # noqa: BLE001 - labels fall back to the ids
+        return {}
+    out: dict[str, dict] = {}
+    try:
+        if txn_ids:
+            for tid, amt, prod, ch, ts in con.execute(
+                    "SELECT TransactionID::VARCHAR, amt, product_cd, channel, ts_str FROM txc WHERE TransactionID::VARCHAR IN "
+                    "(SELECT unnest(?::VARCHAR[]))", [list(txn_ids)]).fetchall():
+                out[tid] = {"amt": amt, "product": prod, "channel": ch, "ts": ts}
+        if cc_ids:
+            for cid, outcome, pattern, exp in con.execute(
+                    "SELECT case_id, outcome, pattern, exposure_usd FROM cc WHERE case_id IN (SELECT unnest(?::VARCHAR[]))", [list(cc_ids)]).fetchall():
+                out[cid] = {"outcome": outcome, "pattern": pattern, "exposure": exp}
+    except Exception:  # noqa: BLE001
+        return out
+    finally:
+        con.close()
+    return out
+
+
+def _subline(n: dict, t: str, fact: dict) -> str:
+    """The second label line: what the vertex is, in a few words, from the live label or the facts DB."""
     nid, desc = str(n["id"]), str(n.get("label") or "")
-    if " | " in nid:  # device profiles are keyed by the full "model | os | browser | screen" string
-        head, rest = nid.split(" | ", 1)
-        tail = " · ".join(rest.split(" | ")[:2])
+    if t == "Transaction":
+        if fact.get("amt") is not None:
+            ts = str(fact.get("ts") or "")[5:16]
+            return " · ".join(x for x in (f"${float(fact['amt']):,.2f}", str(fact.get("product") or ""), ts) if x)
+        if desc.startswith("$"):  # live: "$409.3 W 2017-01-26 15:40:00"
+            parts = desc.split()
+            return " · ".join(x for x in (parts[0], parts[1] if len(parts) > 1 else "", (parts[2][5:] + " " + parts[3][:5]) if len(parts) > 3 else "") if x)
+        return "flagged" if "flagged" in desc else ""
+    if t == "ClosedCase":
+        if fact.get("outcome"):
+            word = {"confirmed_fraud": "fraud", "cleared": "cleared"}.get(str(fact["outcome"]), str(fact["outcome"]))
+            pat = str(fact.get("pattern") or "").replace("_", " ")
+            return " · ".join(x for x in (word, pat if pat and pat != "none" else "") if x)
+        return "closed case"
+    if t == "AgentCase":
+        v = str(case.get("verdict") or "")
+        return f"{v} · p {common.prob(case.get('fraud_probability'))}" if v else "agent case"
+    if t == "DeviceProfile":
+        bits = nid.split(" | ")
+        return " · ".join(bits[1:3]) if len(bits) > 1 else "device"
+    if t == "Card":
+        return desc[len(nid):].strip(" ()") if desc.startswith(nid) and desc != nid else (desc if desc != nid else "")
+    return {"Customer": "customer", "EmailDomain": "email domain", "BillingRegion": "billing region"}.get(t, "")
+
+
+def _node_label(n: dict, detailed: bool, t: str = "", fact: dict | None = None) -> str:
+    """Two lines on the canvas: the id in bold, then what it is, muted (multi-font html; every piece escaped)."""
+    nid = str(n["id"])
+    head = nid.split(" | ")[0] if " | " in nid else nid
+    tail = _subline(n, t or common.vtype(n), fact or {}) if detailed else ""
+    return f"<b>{_canvas_text(_short(head, 22))}</b>" + (f"\n<i>{_canvas_text(_short(tail, 30))}</i>" if tail else "")
+
+
+def _icon_uri(t: str, fill: str, ring: str = "", dashed: bool = False) -> str:
+    """The node's picture: its type's icon on a disc (a diamond for the agent's case) in `fill`, with an outer ring in
+    `ring` when it is a focus; a dashed outline only when the agent's case is not in FraudGraph (fixed markup)."""
+    glyph = ICON.get(t, "")
+    if t == "AgentCase":
+        body = (f"<path d='M12 1.6 22.4 12 12 22.4 1.6 12Z' fill='{PAPER}' stroke='{fill}' stroke-width='1.4' stroke-dasharray='2.2 1.6'/>" if dashed
+                else f"<path d='M12 1.6 22.4 12 12 22.4 1.6 12Z' fill='{fill}'/>")
+        ink = fill if dashed else GLYPH_INK
     else:
-        head, tail = nid, (desc[len(nid):].strip(" ()") if desc.startswith(nid) else desc)
-    return f"{_short(head, 22)}\n{_short(tail, 26)}" if detailed and tail else _short(head, 22)
+        r = 9.2 if ring else 11
+        body = (f"<circle cx='12' cy='12' r='11.2' fill='none' stroke='{ring}' stroke-width='1.5'/>" if ring else "") + \
+            f"<circle cx='12' cy='12' r='{r}' fill='{fill}'/>"
+        ink = GLYPH_INK
+    scale = 0.78 if t == "AgentCase" else (0.82 if ring else 0.92)
+    svg = (f"<svg xmlns='http://www.w3.org/2000/svg' width='96' height='96' viewBox='0 0 24 24'>{body}"
+           f"<g fill='none' stroke='{ink}' stroke-width='1.55' stroke-linecap='round' stroke-linejoin='round' "
+           f"transform='translate(12 12) scale({scale}) translate(-12 -12)'>{glyph}</g></svg>")
+    return "data:image/svg+xml," + quote(svg, safe="")
 
 
 def _swatch_uri(t: str) -> str:
@@ -341,7 +457,7 @@ def _legend_css(types: list[str]) -> str:
 
 
 RING_ORDER = ("CASE_ON_CARD", "CASE_INVOLVES", "CASE_DEVICE", "CASE_SIMILAR_TO", "CASE_CONNECTED_TO")  # the case's links, clockwise
-NODE_GAP, RING_GAP = 84, 125  # world px between neighbours on a ring, and between rings
+NODE_GAP, RING_GAP = 104, 150  # world px between neighbours on a ring, and between rings
 
 
 @st.cache_data(max_entries=64, show_spinner=False)
@@ -426,13 +542,24 @@ def _reading(edge_list: list[dict], drawn: dict, sel: str | None) -> str:
             parts.append(f"{_plural(n[et], word)} {tail}")
     if gid in drawn:
         not_in = drawn[gid].get("written") is False or (not written and "written" not in drawn[gid])
-        s = f"The diamond is {gid}, the agent's case" + (", a dashed outline because it is not in FraudGraph" if not_in else "")
+        vword = {"fraud": "red: fraud", "uncertain": "ochre: uncertain", "legitimate": "green: legitimate"}.get(str(case.get("verdict") or ""), "")
+        s = (f"The diamond is {gid}, the agent's case" + (f" ({vword})" if vword and not not_in else "")
+             + (", a dashed outline because it is not in FraudGraph" if not_in else ""))
         s += (". Arrows run from it to " + (", ".join(parts[:-1]) + " and " + parts[-1] if len(parts) > 1 else parts[0]) + ".") if parts else "."
     else:
         s = f"{gid}, the agent's case, is hidden by the type filter."
     ringed = [x for x in (card, flagged) if x and x in drawn]
     if ringed:
-        s += " A bold ring marks " + " and ".join(("the investigated card" if x == card else "the flagged transaction") for x in ringed) + "."
+        s += " A petrol ring marks " + " and ".join(("the investigated card" if x == card else "the flagged transaction") for x in ringed) + "."
+    marks = []
+    if any(str(t) in drawn for t in case.get("affected_txn_ids") or []):
+        marks.append("red discs are the transactions the case covers")
+    if n["CASE_CONNECTED_TO"]:
+        marks.append("a red ring marks a card the agent tied to the case")
+    if n["CASE_SIMILAR_TO"]:
+        marks.append("closed cases take their real outcome (red confirmed fraud, green cleared)")
+    if marks:
+        s += " " + "; ".join(marks).capitalize() + "."
     if sel:
         k = sum(1 for e in edge_list if sel in (e.get("src"), e.get("dst")))
         s += (f" {_short(sel.split(' | ')[0], 28)} is selected: its {_plural(k, 'link')} are named on the canvas." if 0 < k <= EDGE_LABEL_MAX
@@ -484,10 +611,11 @@ def _node_html(sel: str, by_id: dict, edge_list: list[dict], claim_list: list[di
             f'<div class="gr-insp-n">What the model said about it · {len(about)}</div>{said}</div>')
 
 
-def _draw(vnodes: list[dict], vedges: list[dict], options: dict, h: int, types: dict, key: str) -> str | None:
+def _draw(vnodes: list[dict], vedges: list[dict], options: dict, h: int | str, types: dict, key: str) -> str | None:
     """The canvas: streamlit-agraph (vis-network), which returns the clicked node's id and keeps it under `key` in
     st.session_state; a new key draws it afresh (Reset layout). pyvis when agraph is not installed, whose clicks reach
-    nothing. `types` maps a node id to its vertex type for pyvis's hover titles."""
+    nothing. `types` maps a node id to its vertex type for pyvis's hover titles. `h` is pixels, or a CSS length such as
+    "100vh" for a canvas that fills a frame the stylesheet sizes (Expand)."""
     try:
         from streamlit_agraph import Config, Edge, Node, _agraph
     except ImportError:
@@ -500,34 +628,36 @@ def _draw(vnodes: list[dict], vedges: list[dict], options: dict, h: int, types: 
             gnodes.append(gn)
         gedges = [Edge(**{k: v for k, v in ve.items() if k != "color"}, color=ve["color"]) for ve in vedges]
         cfg = Config(directed=True, physics=False, hierarchical=False)
-        cfg.__dict__.update(options, width="100%", height=f"{h}px")  # Config appends "px" to width, so set it directly
+        cfg.__dict__.update(options, width="100%", height=h if isinstance(h, str) else f"{h}px")  # Config appends "px", so set it directly
         cfg.__dict__.pop("groups", None)  # Config defaults groups=None, which vis rejects on every redraw
         # agraph() itself, with a key: the clicked node lands in st.session_state[key] and a new key starts a fresh canvas
         data = json.dumps({"nodes": [n.to_dict() for n in gnodes], "edges": [e.to_dict() for e in gedges]})
         return _agraph(data=data, config=json.dumps(cfg.__dict__), key=key)
     from pyvis.network import Network  # automatic fallback only: streamlit-agraph is not installed here
 
-    net = Network(height=f"{h}px", width="100%", directed=True, notebook=False, cdn_resources="in_line", bgcolor=PAPER, font_color=INK)
+    hpx = h if isinstance(h, int) else 820
+    net = Network(height=f"{hpx}px", width="100%", directed=True, notebook=False, cdn_resources="in_line", bgcolor=PAPER, font_color=INK)
     for vn in vnodes:
         net.add_node(vn["id"], label=vn["label"], shape=vn["shape"], size=vn["size"], color=vn["color"], borderWidth=vn["borderWidth"],
-                     shapeProperties=vn.get("shapeProperties", {}), title=f"{types.get(vn['id'], '')}: {vn['id']}",
+                     shapeProperties=vn.get("shapeProperties", {}), title=f"{types.get(vn['id'], '')}: {vn['id']}", image=vn.get("image", ""),
                      **({"x": vn["x"], "y": vn["y"]} if "x" in vn else {}))
     for ve in vedges:
         net.add_edge(ve["source"], ve["target"], title=ve["title"], dashes=ve["dashes"], color=ve["color"], **({"label": ve["label"]} if "label" in ve else {}))
     net.set_options(json.dumps(options))
     st.caption("streamlit-agraph is not installed here: drawn with pyvis, so node clicks do not reach the inspector.")
-    st.iframe(net.generate_html().replace("border: 1px solid lightgray;", "border: none;"), height=h + 20)
+    st.iframe(net.generate_html().replace("border: 1px solid lightgray;", "border: none;"), height=hpx + 20)
     return None
 
 
-EXPANDED_HEIGHT = 700  # the dialog's canvas: tall enough to spread the subgraph, short enough for a laptop screen
+EXPANDED_HEIGHT = 700  # the node panel's scroll budget in the full-screen view
 
 
 @st.dialog(f"Graph · {case_id}", width="large")
 def _expanded(vnodes: list[dict], vedges: list[dict], options: dict, by_id: dict, edge_list: list[dict], claim_list: list[dict], legend: str) -> None:
-    """The same drawing in a wide dialog (the stylesheet widens it to the window), laid out for its larger box, with zoom
-    on, its own Reset layout and node panel. A click reruns the dialog only, so it stays open; Esc or the close button
-    returns to the page."""
+    """The same drawing full screen: the stylesheet makes the dialog fill the window, and the canvas is the window's
+    height (design.viewport_height) less the dialog's head, with zoom and pan on, its own Reset layout and node panel. A
+    click reruns the dialog only, so it stays open; Esc or the close button returns to the page."""
+    full_h = design.viewport_height() - 200  # the window less the dialog's title, tools and padding: vis takes px, not vh
     with st.container(key="gr-dlg"):
         dkey = f"gr_dlg_{case_id}_{st.session_state.get(DLG_LAYOUT_KEY, 0)}"
         with st.container(horizontal=True, vertical_alignment="center", gap="small", key="gr-dlg-tools"):
@@ -541,7 +671,7 @@ def _expanded(vnodes: list[dict], vedges: list[dict], options: dict, by_id: dict
         with canvas, st.container(key="gr-dlg-canvas"):
             pos = _layout(tuple(vn["id"] for vn in vnodes), tuple((ve["source"], ve["target"], ve["title"]) for ve in vedges), gid)
             picked = _draw(_placed(vnodes, pos), _labelled(vedges, prev if prev in by_id else None),
-                           {**options, "interaction": {**options["interaction"], "zoomView": True}}, EXPANDED_HEIGHT,
+                           {**options, "interaction": {**options["interaction"], "zoomView": True, "navigationButtons": False}}, full_h,
                            {i: common.vtype(n) for i, n in by_id.items()}, dkey)
         with side, st.container(key="gr-dlg-side"):
             if picked in by_id:
@@ -555,7 +685,7 @@ def _expanded(vnodes: list[dict], vedges: list[dict], options: dict, by_id: dict
 wave = _wave()
 n_total = len(sub["nodes"]) if sub is not None else 0
 detailed, dense = n_total <= 60, n_total > 14
-height = 600 if dense else 460
+height = 640 if dense else 480
 canvas_col, rail_col = st.columns([2, 1], gap="medium")
 clicked = None
 open_full = False
@@ -595,41 +725,69 @@ if sub is not None:
                           on_click=lambda: st.session_state.update({LAYOUT_KEY: st.session_state.get(LAYOUT_KEY, 0) + 1}),
                           help="Every node back to its place and the whole graph back in view")
                 open_full = st.button("Expand", key="graph_full_btn", type="tertiary", icon=":material/open_in_full:",
-                                      help="The graph in a wide view, taller and with zoom, beside its own node panel; Esc closes it")
-    focus = {card, flagged} - {""}  # focus borders: the investigated card and the flagged transaction only
+                                      help="The graph full screen, with zoom and pan, beside its own node panel; Esc closes it")
+    focus = {card, flagged} - {""}  # focus rings: the investigated card and the flagged transaction only
+    affected = {str(x) for x in case.get("affected_txn_ids") or []}
+    ring_cards = {str(e["dst"]) for e in edges if common.etype(e) == "CASE_CONNECTED_TO"} | \
+        {str(e["src"]) for e in edges if common.etype(e) == "SHARES_DEVICE"}
+    facts = _facts(tuple(sorted(str(n["id"]) for n in nodes if common.vtype(n) == "Transaction")),
+                   tuple(sorted(str(n["id"]) for n in nodes if common.vtype(n) == "ClosedCase")), ())
+    verdict_c = STATE.get(str(case.get("verdict") or ""), COLORS["AgentCase"])
 
     vis_nodes = []
     for n in nodes:
-        t = common.vtype(n)
-        shape, size = NODE_STYLE.get(t, ("dot", 16))
-        c = COLORS.get(t, MUTED)
-        vn = {"id": n["id"], "label": _node_label(n, detailed), "shape": shape, "size": 16 if dense and t == "Card" and n["id"] != card else size,
-              "borderWidth": 4 if n["id"] in focus else 2,
-              "color": {"background": c, "border": SELECT if n["id"] in focus else PAPER,
-                        "highlight": {"background": c, "border": SELECT}, "hover": {"background": c, "border": SELECT}}}
-        if t == "AgentCase" and not (n.get("written") if "written" in n else written):
-            # not in FraudGraph: an outline only, dashed, so it never reads as a written vertex
-            vn["color"] = {"background": PAPER, "border": c, "highlight": {"background": PAPER, "border": SELECT}, "hover": {"background": PAPER, "border": SELECT}}
-            vn["shapeProperties"] = {"borderDashes": [6, 4]}
-            vn["borderWidth"] = 3
+        t, nid = common.vtype(n), str(n["id"])
+        fact = facts.get(nid, {})
+        fill = COLORS.get(t, MUTED)
+        ring = SELECT if nid in focus else ""
+        size = NODE_STYLE.get(t, ("dot", 16))[1]
+        if t == "AgentCase":
+            fill = verdict_c
+        elif t == "Transaction" and nid in affected:
+            fill = STATE["fraud"]  # the transactions the case covers
+        elif t == "Card" and nid in ring_cards and nid != card:
+            ring = STATE["fraud"]  # a card the agent tied to the case
+        elif t == "ClosedCase" and fact.get("outcome") in STATE:
+            fill = STATE[str(fact["outcome"])]
+        if nid == card:
+            size = 30
+        elif nid == flagged:
+            size = 22
+        elif dense and t == "Card":
+            size = 18
+        unwritten = t == "AgentCase" and not (n.get("written") if "written" in n else written)
+        vn = {"id": nid, "label": _node_label(n, detailed, t, fact), "shape": "image" if t == "AgentCase" else "circularImage",
+              "image": _icon_uri(t, fill, ring, dashed=unwritten), "size": size, "borderWidth": 0, "borderWidthSelected": 3,
+              "color": {"background": PAPER, "border": PAPER, "highlight": {"background": PAPER, "border": SELECT},
+                        "hover": {"background": PAPER, "border": SELECT}},
+              "shapeProperties": {"useBorderWithImage": False, "interpolation": True}}
+        if n.get("layer") == "answer" and t != "AgentCase":
+            vn["opacity"] = 0.92  # drawn from the agent's case layer, not returned by the live query
         vis_nodes.append(vn)
     vis_edges = []
     for e in edges:
         t = common.etype(e)
-        vis_edges.append({"source": e["src"], "target": e["dst"], "title": t, "dashes": t in DASHED_EDGES,
-                          "color": {"color": EDGE_COLORS.get(t, MUTED), "highlight": SELECT, "hover": EDGE_COLORS.get(t, MUTED), "opacity": 0.9}})
+        mine = t in CASE_EDGES
+        col = verdict_c if mine else EDGE_COLORS.get(t, LINE)
+        vis_edges.append({"source": e["src"], "target": e["dst"], "title": t, "dashes": [5, 5] if t in DASHED_EDGES else False,
+                          "width": 2.4 if mine else (1.1 if t == "CASE_CONNECTED_TO" else 1.3),
+                          "color": {"color": col, "highlight": SELECT, "hover": col,
+                                    "opacity": 0.95 if mine else (0.4 if t == "CASE_CONNECTED_TO" else 0.7)}})
     vis_options = {
         "autoResize": True,
-        "nodes": {"font": {"face": FONT, "size": LABEL_SIZE, "color": INK, "strokeWidth": 4, "strokeColor": PAPER}, "borderWidthSelected": 3},
-        "edges": {"width": 1.4, "selectionWidth": 1.5, "hoverWidth": 0.8, "arrows": {"to": {"enabled": True, "scaleFactor": 0.45}},
-                  "smooth": {"enabled": False},  # straight lines: the layout already spreads the links around their node
+        "nodes": {"font": {"face": FONT, "size": LABEL_SIZE, "color": INK, "strokeWidth": 5, "strokeColor": PAPER, "vadjust": 2, "multi": "html",
+                           "bold": {"face": FONT, "size": LABEL_SIZE, "color": INK, "mod": "bold"},
+                           "ital": {"face": FONT, "size": LABEL_SIZE - 2, "color": SUBTLE, "mod": ""}},
+                  "borderWidthSelected": 3, "shapeProperties": {"interpolation": True}},
+        "edges": {"selectionWidth": 1.4, "hoverWidth": 0.6, "arrows": {"to": {"enabled": True, "scaleFactor": 0.4, "type": "arrow"}},
+                  "arrowStrikethrough": False,
+                  "smooth": {"enabled": True, "type": "continuous", "roundness": 0.2},  # gentle curves; the layout already spreads the links
                   "font": {"face": FONT, "size": LABEL_SIZE - 2, "color": INK, "strokeWidth": 0, "background": PAPER, "align": "horizontal"}},
         # positions come from _layout and physics is off, so a dragged node stays where it is dropped and the drawing never drifts
         "physics": {"enabled": False},
         "layout": {"randomSeed": 7, "improvedLayout": False, "hierarchical": {"enabled": False}},
-        # zoomView off on the page: the mouse wheel scrolls the page; the layout is fitted to the canvas (the Expand dialog
-        # turns zoom on). vis's navigation buttons are bitmaps inside the component's frame that the console's theme cannot
-        # reach, so they are off.
+        # zoomView off on the page: the mouse wheel scrolls the page (Expand turns zoom on). vis's navigation buttons are
+        # bitmaps inside the component's frame that the console's theme cannot reach, so they are off.
         "interaction": {"hover": True, "tooltipDelay": 120, "zoomView": False, "dragView": True, "dragNodes": True, "navigationButtons": False,
                         "keyboard": False},
     }

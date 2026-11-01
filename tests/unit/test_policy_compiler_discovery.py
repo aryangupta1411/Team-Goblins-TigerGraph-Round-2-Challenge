@@ -5,7 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from engine import config, policy_compiler as pc
+from engine import config
+from engine import policy_compiler as pc
 
 needs_db = pytest.mark.skipif(not Path(config.FACTS_DB).exists(), reason=f"needs the facts DB ({config.FACTS_DB})")
 

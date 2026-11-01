@@ -21,7 +21,7 @@ def test_every_sentence_cited_and_sections_present():
     md, st = sar_doc.render(_answer(), "HHF-001", config.FACTS_DB)
     assert st["sentences"] and st["cited"] == st["sentences"]
     nar = md.split("## Narrative")[1].split("## Timeline")[0].strip().splitlines()
-    assert len(nar) == st["sentences"] and all(l.rstrip().endswith("]") and "[" in l for l in nar)
+    assert len(nar) == st["sentences"] and all(line.rstrip().endswith("]") and "[" in line for line in nar)
     for h in ("## Subjects", "## Timeline", "## Evidence graph", "```mermaid", "## Attestation", "Filing reason (3a)"):
         assert h in md
     assert "| 3660106 | C05061-K1 | $850.28 | online |" in md

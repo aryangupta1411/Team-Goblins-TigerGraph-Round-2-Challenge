@@ -464,6 +464,20 @@ def test_launch_run_refuses_live_backends_in_mock_mode(tree, monkeypatch):
     assert not (tree["runs"] / "ui-test").exists()
 
 
+def test_launch_run_needs_a_signed_in_approver_when_required(tree, monkeypatch, tmp_path):
+    monkeypatch.setattr(subprocess, "Popen", lambda *a, **k: (_ for _ in ()).throw(AssertionError("Popen called")))
+    monkeypatch.setenv("RUNS_NEED_APPROVER", "1")
+    for session in (None, "lead@bank", {"principal": "lead@bank", "role": "team_lead"}):
+        res = common.launch_run(["HHF-001"], "gemini", "ui-test", session=session)
+        assert res["ok"] is False and "signed-in approver" in res["error"], (session, res)
+    d = tmp_path / "principals.json"
+    approvals_db.add_principal("lead@bank", "team_lead", "lead passphrase 1", d)
+    lead = approvals_db.authenticate("lead@bank", "lead passphrase 1", d)
+    res = common.launch_run(["HHF-001"], "gemini", "ui-test", session=lead)
+    assert res["ok"] is False and "signed-in approver" not in res["error"] and "mock" in res["error"]  # past the gate
+    assert not (tree["runs"] / "ui-test").exists()
+
+
 # --------------------------------------------------------------------------- #
 # Pages (AppTest)                                                             #
 # --------------------------------------------------------------------------- #

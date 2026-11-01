@@ -2,9 +2,9 @@
 
 The test reads the Dockerfile's COPY lines, copies those sources (minus what .dockerignore always drops) into tmp_path,
 and AppTest-renders ui/app.py and every page in a separate interpreter started with -I from that copy, with
-DEPLOY_READONLY=1, RUN_MODE=mock, a tmp APPROVALS_DB, RUNS_DIR=<copy>/runs, and duckdb and pydantic blocked
-(neither is in requirements-ui.txt). No engine/ code, no data/ and no schema_engine/ beyond what the Dockerfile copies
-exist in the copy, so a page that imports them must degrade (snapshot or 'not available in this deployment'), not crash.
+DEPLOY_READONLY=1, RUN_MODE=mock, a tmp APPROVALS_DB and RUNS_DIR=<copy>/runs, as the image starts. The image holds
+the whole app (agent, engine, MCP launcher), but of data/ only the checked-in files: the two DuckDB files a live run
+reads, no raw CSVs, no work DBs, no .env, no approvals database and no approver directory.
 """
 from __future__ import annotations
 
@@ -33,8 +33,11 @@ PAGES = [
     "ui/pages/8_detectors.py",
     "ui/pages/9_security.py",
 ]
-# .dockerignore's "never, even inside the paths let in" block
-_NEVER = ("*.env", ".env", ".env.*", "*.sqlite", "*.sqlite-journal", "*.duckdb", "__pycache__", "*.pyc", ".DS_Store")
+# .dockerignore's "never, even inside the paths let in" block, and the two DuckDB files it lets back in
+_NEVER = ("*.env", ".env", ".env.*", "*.sqlite", "*.sqlite-journal", "*.duckdb", "*.wal", "__pycache__", "*.pyc", ".DS_Store",
+          "principals.json")
+_NEVER_DIRS = ("data/raw", "data/out", "data/out_delta", "data/backup", "data/corpus/raw")
+_DUCKDB_KEPT = ("data/hhgoa_engine.duckdb", "data/ids.duckdb")
 # generated or gitignored inputs: a clean clone may not have them, and the image then simply lacks them
 _OPTIONAL_PREFIXES = ("runs/", "engine/out/")
 
@@ -71,14 +74,17 @@ def _dockerfile_copies() -> list[tuple[str, str]]:
     return out
 
 
-def _ignored(name: str) -> bool:
-    return any(fnmatch.fnmatch(name, pat) for pat in _NEVER)
+def _ignored(path: Path) -> bool:
+    rel = path.relative_to(ROOT).as_posix()
+    if rel in _DUCKDB_KEPT:
+        return False
+    return any(fnmatch.fnmatch(path.name, pat) for pat in _NEVER) or any(rel == d or rel.startswith(d + "/") for d in _NEVER_DIRS)
 
 
 def _copy_one(src: Path, dest: Path) -> None:
     if src.is_dir():
-        shutil.copytree(src, dest, dirs_exist_ok=True, ignore=lambda _d, names: [n for n in names if _ignored(n)])
-    elif not _ignored(src.name):
+        shutil.copytree(src, dest, dirs_exist_ok=True, ignore=lambda d, names: [n for n in names if _ignored(Path(d) / n)])
+    elif not _ignored(src):
         dest.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(src, dest)
 
@@ -107,8 +113,6 @@ def _build_image_tree(copy: Path) -> dict:
 RUNNER = r'''
 import json, os, sys, subprocess
 copy, pages = sys.argv[1], json.loads(sys.argv[2])
-sys.modules["duckdb"] = None      # not in requirements-ui.txt: `import duckdb` raises ImportError, as in the image
-sys.modules["pydantic"] = None
 sys.path.insert(0, copy)          # -I keeps the cwd and the script folder off sys.path
 
 _Popen = subprocess.Popen
@@ -150,7 +154,7 @@ print("RESULT " + json.dumps({
     "failures": failures, "rendered": rendered, "leaks": leaks, "proofs": proofs,
     "approvals_db_created": os.path.exists(os.environ["APPROVALS_DB"]),
     "runs_changed": runs_before != runs_after, "default_source": common.default_source(),
-    "sources": [s.id for s in common.sources()], "duckdb_blocked": sys.modules.get("duckdb", 0) is None,
+    "sources": [s.id for s in common.sources()],
 }))
 '''
 
@@ -161,14 +165,12 @@ def test_ui_renders_from_the_dockerfile_file_set(tmp_path):
     copy.mkdir()
     built = _build_image_tree(copy)
 
-    # the image holds no engine code, no data/ and no schema_engine beyond the attestation module
-    assert not (copy / "data").exists(), "the image must not hold data/"
-    assert not list((copy / "engine").rglob("*.py")), "the image must not hold engine/ code"
-    if (copy / "schema_engine").exists():
-        assert {p.name for p in (copy / "schema_engine").rglob("*.py")} <= {"__init__.py", "attestation.py"}
-    assert not (copy / ".env").exists() and not list(copy.rglob("*.duckdb")) and not list(copy.rglob("*.sqlite"))
-    assert (copy / "ui" / "app.py").is_file() and (copy / "cases").is_dir()
-    assert not (copy / "ui" / "principals.json").exists()
+    # the whole app, and of data/ only the checked-in files: no raw CSVs, no work DBs, no secrets, no local state
+    for need in ("ui/app.py", "agent/bench.py", "agent/case_ids.py", "engine/facts_duckdb.py", "mcp/tg_mcp_launcher.py", *_DUCKDB_KEPT):
+        assert (copy / need).is_file(), f"the image must hold {need}"
+    assert sorted(p.relative_to(copy).as_posix() for p in copy.rglob("*.duckdb")) == sorted(_DUCKDB_KEPT)
+    assert not (copy / "data" / "raw").exists() and not list(copy.rglob(".env")) and not list(copy.rglob("*.sqlite"))
+    assert not list(copy.rglob("principals.json")) and (copy / "cases").is_dir()
 
     scripts = tmp_path / "runner"  # outside the copy, so nothing in the copy shadows the runner's imports
     scripts.mkdir()
@@ -189,7 +191,6 @@ def test_ui_renders_from_the_dockerfile_file_set(tmp_path):
     assert proc.returncode == 0 and line, f"runner failed (rc {proc.returncode})\nstdout:\n{proc.stdout[-4000:]}\nstderr:\n{proc.stderr[-4000:]}"
     res = json.loads(line[len("RESULT "):])
 
-    assert res["duckdb_blocked"]
     assert res["leaks"] == {}, f"modules resolved outside the image copy: {res['leaks']}"
     assert res["failures"] == {}, json.dumps(res["failures"], indent=1)
     assert res["rendered"] == PAGES

@@ -122,7 +122,7 @@ def _confirm_rerun(case_id: str, default_backend: str, last: common.CaseView | N
         st.error(md(problem))
     st.markdown("**Side effects**")
     st.markdown("\n".join(f"- {md(x)}" for x in (
-        f"writes AgentCase AC-{case_id}, its CaseEvents and an Approval per L1/L2 action to the shared FraudGraph",
+        f"writes AgentCase {approvals_db.graph_case_id(case_id)}, its CaseEvents and an Approval per L1/L2 action to the shared FraudGraph",
         "adds pending rows to the local approvals inbox for L1/L2 actions",
         f"spends LLM tokens on {backend}" + (f" (last time {last.answer.get('tokens', 0):,} tokens)" if last and last.ok else ""),
         f"writes runs/{run_id}/ (answer.json, phases.jsonl, calls.jsonl, sar.md, bench.log)",
@@ -131,7 +131,7 @@ def _confirm_rerun(case_id: str, default_backend: str, last: common.CaseView | N
         st.caption(md(f"last time {common.secs(last.answer.get('latency_s'))} for this case in {last.source_id}"))
     ack = st.checkbox("I understand this writes to the shared graph and spends LLM tokens")
     if st.button("Start the run", type="primary", disabled=bool(problem) or not ack or not bs["ok"], icon=":material/play_arrow:"):
-        res = common.launch_run([case_id], backend, run_id)
+        res = common.launch_run([case_id], backend, run_id, session=common.approver_session())
         if not res["ok"]:
             st.error(md(res["error"]))
             return

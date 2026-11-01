@@ -630,3 +630,28 @@ def discover_unlabelled_patterns(con: Any) -> list[dict[str, Any]]:
             "approved_at": ap.get("at"),
         })
     return out
+
+
+def compile_policy_rule_detector(rule_id: str, con: Any = None, write: bool = True) -> dict[str, Any]:
+    """Challenge 3: compile a Fraud Policy rule's prose (policy/fraud_policy.md) into a parameterised SQL detector, backtest
+    it over the closed cases and compare it with the agent's verdicts on HHF-001..018 / HHG-001..020. R5 and R7 have a data
+    shape; see engine/policy_compiler.py for the parse, the query and the output (engine/out/policy_detector_<rule>.json)."""
+    from engine.policy_compiler import compile_and_backtest
+
+    return compile_and_backtest(rule_id, con=con, write=write)
+
+
+def mined_detector_proposals() -> list[dict[str, Any]]:
+    """Challenge 2: the proposal engine/discovery.py mined from uncovered January activity (engine/out/discovery_jan2017.json),
+    with its approval status read live from data/detector_approvals.json; admitted only through `approve_detector`."""
+    import json
+    from pathlib import Path
+
+    path = Path(__file__).resolve().parent / "out" / "discovery_jan2017.json"
+    if not path.exists():
+        return []
+    p = json.loads(path.read_text(encoding="utf-8")).get("proposal")
+    if not p:
+        return []
+    ap = _approvals().get(p["proposal_id"], {})
+    return [{**p, "approval_status": ap.get("status", "pending"), "approved_by": ap.get("by"), "approved_at": ap.get("at")}]

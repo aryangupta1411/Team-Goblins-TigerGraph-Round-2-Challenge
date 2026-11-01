@@ -1,0 +1,1459 @@
+{
+  "detector_id": "POLICY-R5",
+  "policy": {
+    "file": "policy/fraud_policy.md",
+    "version": "1.0",
+    "sha256": "58c4cc3b5fe9200b85d947d2d467d076ac039eb6009736c0735a5e47e5fd7513"
+  },
+  "compiler": "deterministic regex parse (engine/policy_compiler.py); no LLM call",
+  "rule_id": "R5",
+  "rule_text": "Card testing. Three or more small online authorizations on one card within an hour, followed by a larger purchase: recommend `DECLINE_TRANSACTION` and `STEP_UP_AUTH`. If a purchase over $100 has already cleared, recommend `BLOCK_CARD`.",
+  "parse": [
+    {
+      "param": "min_small",
+      "value": 3,
+      "source": "policy_text",
+      "matched_text": "Three or more",
+      "span": [
+        14,
+        27
+      ]
+    },
+    {
+      "param": "channel",
+      "value": "online",
+      "source": "policy_text",
+      "matched_text": "small online authorizations",
+      "span": [
+        28,
+        55
+      ]
+    },
+    {
+      "param": "window_min",
+      "value": 60,
+      "source": "policy_text",
+      "matched_text": "within an hour",
+      "span": [
+        68,
+        82
+      ]
+    },
+    {
+      "param": "requires_larger_purchase",
+      "value": true,
+      "source": "policy_text",
+      "matched_text": "followed by a larger purchase",
+      "span": [
+        84,
+        113
+      ],
+      "note": "the first later online purchase at or above the small cap"
+    },
+    {
+      "param": "block_over",
+      "value": 100.0,
+      "source": "policy_text",
+      "matched_text": "over $100 has already cleared",
+      "span": [
+        181,
+        210
+      ]
+    },
+    {
+      "param": "small_max",
+      "value": 5.0,
+      "source": "operational_default",
+      "why_not_in_text": "the rule says 'small' without a number",
+      "ref": "engine.config.CARD_TESTING_SMALL (pattern catalogue: 'often < $5')"
+    },
+    {
+      "param": "lookahead_h",
+      "value": 48,
+      "source": "operational_default",
+      "why_not_in_text": "the rule says 'followed by' without a time limit",
+      "ref": "engine.config.CARD_TESTING_LOOKAHEAD_H"
+    }
+  ],
+  "params": {
+    "min_small": 3,
+    "channel": "online",
+    "window_min": 60,
+    "requires_larger_purchase": true,
+    "block_over": 100.0,
+    "small_max": 5.0,
+    "lookahead_h": 48
+  },
+  "sql_params": {
+    "min_small": 3,
+    "channel": "online",
+    "window_min": 60,
+    "block_over": 100.0,
+    "small_max": 5.0,
+    "lookahead_h": 48
+  },
+  "sql_template": "WITH small AS ( SELECT id, TransactionID, card_id, customer_id, ts, amt FROM txc WHERE channel = '{channel}' AND amt < {small_max} AND ts <= '{as_of}' {card_filter} ), win AS ( SELECT *, count(*) OVER (PARTITION BY card_id ORDER BY ts RANGE BETWEEN INTERVAL {window_min} MINUTE PRECEDING AND CURRENT ROW) AS n_in_window FROM small ), run_end AS (SELECT card_id, ts AS end_ts FROM win WHERE n_in_window >= {min_small}), followed AS ( SELECT DISTINCT r.card_id, r.end_ts FROM run_end r JOIN txc b ON b.card_id = r.card_id AND b.channel = '{channel}' AND b.amt >= {small_max} AND b.ts > r.end_ts AND b.ts <= least(r.end_ts + INTERVAL {lookahead_h} HOUR, TIMESTAMP '{as_of}') ), members AS ( SELECT s.id, s.card_id, s.customer_id, s.ts, s.amt, 'small_auth' AS role FROM followed f JOIN small s ON s.card_id = f.card_id AND s.ts BETWEEN f.end_ts - INTERVAL {window_min} MINUTE AND f.end_ts UNION SELECT id, card_id, customer_id, ts, amt, 'larger_purchase' FROM ( SELECT b.id, b.card_id, b.customer_id, b.ts, b.amt FROM followed f JOIN txc b ON b.card_id = f.card_id AND b.channel = '{channel}' AND b.amt >= {small_max} AND b.ts > f.end_ts AND b.ts <= least(f.end_ts + INTERVAL {lookahead_h} HOUR, TIMESTAMP '{as_of}') QUALIFY row_number() OVER (PARTITION BY f.card_id, f.end_ts ORDER BY b.ts, b.TransactionID) = 1 ) ) SELECT id, card_id, customer_id, ts::VARCHAR, amt, role, (role = 'larger_purchase' AND amt > {block_over}) AS cleared_over_block FROM members ORDER BY card_id, ts, id",
+  "compile_ms": 0.58,
+  "timing_ms": {
+    "prose_to_detector": 0.58,
+    "backtest": 252.4,
+    "comparison": 190.3
+  },
+  "backtest": {
+    "query": "WITH small AS ( SELECT id, TransactionID, card_id, customer_id, ts, amt FROM txc WHERE channel = 'online' AND amt < 5.0 AND ts <= '2017-01-31 23:59:59' ), win AS ( SELECT *, count(*) OVER (PARTITION BY card_id ORDER BY ts RANGE BETWEEN INTERVAL 60 MINUTE PRECEDING AND CURRENT ROW) AS n_in_window FROM small ), run_end AS (SELECT card_id, ts AS end_ts FROM win WHERE n_in_window >= 3), followed AS ( SELECT DISTINCT r.card_id, r.end_ts FROM run_end r JOIN txc b ON b.card_id = r.card_id AND b.channel = 'online' AND b.amt >= 5.0 AND b.ts > r.end_ts AND b.ts <= least(r.end_ts + INTERVAL 48 HOUR, TIMESTAMP '2017-01-31 23:59:59') ), members AS ( SELECT s.id, s.card_id, s.customer_id, s.ts, s.amt, 'small_auth' AS role FROM followed f JOIN small s ON s.card_id = f.card_id AND s.ts BETWEEN f.end_ts - INTERVAL 60 MINUTE AND f.end_ts UNION SELECT id, card_id, customer_id, ts, amt, 'larger_purchase' FROM ( SELECT b.id, b.card_id, b.customer_id, b.ts, b.amt FROM followed f JOIN txc b ON b.card_id = f.card_id AND b.channel = 'online' AND b.amt >= 5.0 AND b.ts > f.end_ts AND b.ts <= least(f.end_ts + INTERVAL 48 HOUR, TIMESTAMP '2017-01-31 23:59:59') QUALIFY row_number() OVER (PARTITION BY f.card_id, f.end_ts ORDER BY b.ts, b.TransactionID) = 1 ) ) SELECT id, card_id, customer_id, ts::VARCHAR, amt, role, (role = 'larger_purchase' AND amt > 100.0) AS cleared_over_block FROM members ORDER BY card_id, ts, id",
+    "params": {
+      "min_small": 3,
+      "channel": "online",
+      "window_min": 60,
+      "block_over": 100.0,
+      "small_max": 5.0,
+      "lookahead_h": 48
+    },
+    "as_of": "2017-01-31 23:59:59",
+    "txns_matched": 370,
+    "cards_matched": 22,
+    "closed_cases_total": 5585,
+    "card_testing_cases_total": 18,
+    "caught_card_testing": [
+      "CC-0370",
+      "CC-2247",
+      "CC-2673",
+      "CC-5187"
+    ],
+    "missed_card_testing": [
+      {
+        "case_id": "CC-0137",
+        "customer_id": "C12982",
+        "card_id": "C12982-K1"
+      },
+      {
+        "case_id": "CC-0290",
+        "customer_id": "C11923",
+        "card_id": "C11923-K2"
+      },
+      {
+        "case_id": "CC-1235",
+        "customer_id": "C08962",
+        "card_id": "C08962-K2"
+      },
+      {
+        "case_id": "CC-1242",
+        "customer_id": "C11847",
+        "card_id": "C11847-K2"
+      },
+      {
+        "case_id": "CC-2248",
+        "customer_id": "C07562",
+        "card_id": "C07562-K2"
+      },
+      {
+        "case_id": "CC-2394",
+        "customer_id": "C08962",
+        "card_id": "C08962-K2"
+      },
+      {
+        "case_id": "CC-2643",
+        "customer_id": "C05307",
+        "card_id": "C05307-K2"
+      },
+      {
+        "case_id": "CC-3653",
+        "customer_id": "C05381",
+        "card_id": "C05381-K2"
+      },
+      {
+        "case_id": "CC-4058",
+        "customer_id": "C04597",
+        "card_id": "C04597-K2"
+      },
+      {
+        "case_id": "CC-4225",
+        "customer_id": "C05381",
+        "card_id": "C05381-K2"
+      },
+      {
+        "case_id": "CC-4501",
+        "customer_id": "C11923",
+        "card_id": "C11923-K2"
+      },
+      {
+        "case_id": "CC-4940",
+        "customer_id": "C03738",
+        "card_id": "C03738-K2"
+      },
+      {
+        "case_id": "CC-5573",
+        "customer_id": "C13171",
+        "card_id": "C13171-K2"
+      },
+      {
+        "case_id": "CC-5576",
+        "customer_id": "C11923",
+        "card_id": "C11923-K2"
+      }
+    ],
+    "caught_other_fraud": [
+      {
+        "case_id": "CC-4167",
+        "pattern": "card_not_present_fraud",
+        "customer_id": "C06464",
+        "card_id": "C06464-K1"
+      },
+      {
+        "case_id": "CC-4274",
+        "pattern": "card_not_present_new_device",
+        "customer_id": "C05423",
+        "card_id": "C05423-K1"
+      },
+      {
+        "case_id": "CC-4800",
+        "pattern": "card_not_present_new_device",
+        "customer_id": "C04597",
+        "card_id": "C04597-K2"
+      }
+    ],
+    "legitimate_customers_acted_against": [],
+    "legitimate_customers_blocked": [],
+    "cards_with_no_closed_case": [
+      "C00583-K1",
+      "C04034-K2",
+      "C05031-K2",
+      "C05381-K2",
+      "C05996-K1",
+      "C06458-K1",
+      "C06663-K2",
+      "C06744-K2",
+      "C07562-K2",
+      "C08391-K2",
+      "C09582-K1",
+      "C09657-K2",
+      "C09997-K1",
+      "C11444-K1",
+      "C11597-K2",
+      "C12028-K2"
+    ],
+    "action_note": "R5 acts with DECLINE_TRANSACTION + STEP_UP_AUTH (low impact); BLOCK_CARD only where a purchase over the block amount cleared"
+  },
+  "comparison": {
+    "n": 38,
+    "agree": 38,
+    "disagree": 0,
+    "agree_ids": [
+      "HHF-001",
+      "HHF-002",
+      "HHF-003",
+      "HHF-004",
+      "HHF-005",
+      "HHF-006",
+      "HHF-007",
+      "HHF-008",
+      "HHF-009",
+      "HHF-010",
+      "HHF-011",
+      "HHF-012",
+      "HHF-013",
+      "HHF-014",
+      "HHF-015",
+      "HHF-016",
+      "HHF-017",
+      "HHF-018",
+      "HHG-001",
+      "HHG-002",
+      "HHG-003",
+      "HHG-004",
+      "HHG-005",
+      "HHG-006",
+      "HHG-007",
+      "HHG-008",
+      "HHG-009",
+      "HHG-010",
+      "HHG-011",
+      "HHG-012",
+      "HHG-013",
+      "HHG-014",
+      "HHG-015",
+      "HHG-016",
+      "HHG-017",
+      "HHG-018",
+      "HHG-019",
+      "HHG-020"
+    ],
+    "disagree_ids": [],
+    "rule_fires_ids": [
+      "HHF-007"
+    ],
+    "cases": [
+      {
+        "case_id": "HHF-001",
+        "agree": true,
+        "kind": "agree: neither sees card testing",
+        "rule_fires": false,
+        "rule_actions": [],
+        "run_txn_ids": [],
+        "flagged_txn_id": "3660108",
+        "card_id": "C05061-K1",
+        "agent_verdict": "fraud",
+        "agent_pattern": "undocumented",
+        "agent_final_actions": [
+          "CREATE_CASE",
+          "MONITOR_CONNECTED_CARDS",
+          "BLOCK_CARD",
+          "FILE_REPORT",
+          "ESCALATE_TO_ANALYST"
+        ],
+        "as_of": "2017-01-15 01:25:19",
+        "query": "WITH small AS ( SELECT id, TransactionID, card_id, customer_id, ts, amt FROM txc WHERE channel = 'online' AND amt < 5.0 AND ts <= '2017-01-15 01:25:19' AND card_id = 'C05061-K1' ), win AS ( SELECT *, count(*) OVER (PARTITION BY card_id ORDER BY ts RANGE BETWEEN INTERVAL 60 MINUTE PRECEDING AND CURRENT ROW) AS n_in_window FROM small ), run_end AS (SELECT card_id, ts AS end_ts FROM win WHERE n_in_window >= 3), followed AS ( SELECT DISTINCT r.card_id, r.end_ts FROM run_end r JOIN txc b ON b.card_id = r.card_id AND b.channel = 'online' AND b.amt >= 5.0 AND b.ts > r.end_ts AND b.ts <= least(r.end_ts + INTERVAL 48 HOUR, TIMESTAMP '2017-01-15 01:25:19') ), members AS ( SELECT s.id, s.card_id, s.customer_id, s.ts, s.amt, 'small_auth' AS role FROM followed f JOIN small s ON s.card_id = f.card_id AND s.ts BETWEEN f.end_ts - INTERVAL 60 MINUTE AND f.end_ts UNION SELECT id, card_id, customer_id, ts, amt, 'larger_purchase' FROM ( SELECT b.id, b.card_id, b.customer_id, b.ts, b.amt FROM followed f JOIN txc b ON b.card_id = f.card_id AND b.channel = 'online' AND b.amt >= 5.0 AND b.ts > f.end_ts AND b.ts <= least(f.end_ts + INTERVAL 48 HOUR, TIMESTAMP '2017-01-15 01:25:19') QUALIFY row_number() OVER (PARTITION BY f.card_id, f.end_ts ORDER BY b.ts, b.TransactionID) = 1 ) ) SELECT id, card_id, customer_id, ts::VARCHAR, amt, role, (role = 'larger_purchase' AND amt > 100.0) AS cleared_over_block FROM members ORDER BY card_id, ts, id",
+        "params": {
+          "min_small": 3,
+          "channel": "online",
+          "window_min": 60,
+          "block_over": 100.0,
+          "small_max": 5.0,
+          "lookahead_h": 48,
+          "card_id": "C05061-K1"
+        }
+      },
+      {
+        "case_id": "HHF-002",
+        "agree": true,
+        "kind": "agree: neither sees card testing",
+        "rule_fires": false,
+        "rule_actions": [],
+        "run_txn_ids": [],
+        "flagged_txn_id": "3660127",
+        "card_id": "C06220-K1",
+        "agent_verdict": "fraud",
+        "agent_pattern": "undocumented",
+        "agent_final_actions": [
+          "CREATE_CASE",
+          "MONITOR_CONNECTED_CARDS",
+          "BLOCK_CARD",
+          "FILE_REPORT",
+          "ESCALATE_TO_ANALYST"
+        ],
+        "as_of": "2017-01-19 23:18:58",
+        "query": "WITH small AS ( SELECT id, TransactionID, card_id, customer_id, ts, amt FROM txc WHERE channel = 'online' AND amt < 5.0 AND ts <= '2017-01-19 23:18:58' AND card_id = 'C06220-K1' ), win AS ( SELECT *, count(*) OVER (PARTITION BY card_id ORDER BY ts RANGE BETWEEN INTERVAL 60 MINUTE PRECEDING AND CURRENT ROW) AS n_in_window FROM small ), run_end AS (SELECT card_id, ts AS end_ts FROM win WHERE n_in_window >= 3), followed AS ( SELECT DISTINCT r.card_id, r.end_ts FROM run_end r JOIN txc b ON b.card_id = r.card_id AND b.channel = 'online' AND b.amt >= 5.0 AND b.ts > r.end_ts AND b.ts <= least(r.end_ts + INTERVAL 48 HOUR, TIMESTAMP '2017-01-19 23:18:58') ), members AS ( SELECT s.id, s.card_id, s.customer_id, s.ts, s.amt, 'small_auth' AS role FROM followed f JOIN small s ON s.card_id = f.card_id AND s.ts BETWEEN f.end_ts - INTERVAL 60 MINUTE AND f.end_ts UNION SELECT id, card_id, customer_id, ts, amt, 'larger_purchase' FROM ( SELECT b.id, b.card_id, b.customer_id, b.ts, b.amt FROM followed f JOIN txc b ON b.card_id = f.card_id AND b.channel = 'online' AND b.amt >= 5.0 AND b.ts > f.end_ts AND b.ts <= least(f.end_ts + INTERVAL 48 HOUR, TIMESTAMP '2017-01-19 23:18:58') QUALIFY row_number() OVER (PARTITION BY f.card_id, f.end_ts ORDER BY b.ts, b.TransactionID) = 1 ) ) SELECT id, card_id, customer_id, ts::VARCHAR, amt, role, (role = 'larger_purchase' AND amt > 100.0) AS cleared_over_block FROM members ORDER BY card_id, ts, id",
+        "params": {
+          "min_small": 3,
+          "channel": "online",
+          "window_min": 60,
+          "block_over": 100.0,
+          "small_max": 5.0,
+          "lookahead_h": 48,
+          "card_id": "C06220-K1"
+        }
+      },
+      {
+        "case_id": "HHF-003",
+        "agree": true,
+        "kind": "agree: neither sees card testing",
+        "rule_fires": false,
+        "rule_actions": [],
+        "run_txn_ids": [],
+        "flagged_txn_id": "3660153",
+        "card_id": "C11663-K1",
+        "agent_verdict": "fraud",
+        "agent_pattern": "undocumented",
+        "agent_final_actions": [
+          "CREATE_CASE",
+          "MONITOR_CONNECTED_CARDS",
+          "BLOCK_CARD",
+          "FILE_REPORT",
+          "ESCALATE_TO_ANALYST"
+        ],
+        "as_of": "2017-01-31 20:31:28",
+        "query": "WITH small AS ( SELECT id, TransactionID, card_id, customer_id, ts, amt FROM txc WHERE channel = 'online' AND amt < 5.0 AND ts <= '2017-01-31 20:31:28' AND card_id = 'C11663-K1' ), win AS ( SELECT *, count(*) OVER (PARTITION BY card_id ORDER BY ts RANGE BETWEEN INTERVAL 60 MINUTE PRECEDING AND CURRENT ROW) AS n_in_window FROM small ), run_end AS (SELECT card_id, ts AS end_ts FROM win WHERE n_in_window >= 3), followed AS ( SELECT DISTINCT r.card_id, r.end_ts FROM run_end r JOIN txc b ON b.card_id = r.card_id AND b.channel = 'online' AND b.amt >= 5.0 AND b.ts > r.end_ts AND b.ts <= least(r.end_ts + INTERVAL 48 HOUR, TIMESTAMP '2017-01-31 20:31:28') ), members AS ( SELECT s.id, s.card_id, s.customer_id, s.ts, s.amt, 'small_auth' AS role FROM followed f JOIN small s ON s.card_id = f.card_id AND s.ts BETWEEN f.end_ts - INTERVAL 60 MINUTE AND f.end_ts UNION SELECT id, card_id, customer_id, ts, amt, 'larger_purchase' FROM ( SELECT b.id, b.card_id, b.customer_id, b.ts, b.amt FROM followed f JOIN txc b ON b.card_id = f.card_id AND b.channel = 'online' AND b.amt >= 5.0 AND b.ts > f.end_ts AND b.ts <= least(f.end_ts + INTERVAL 48 HOUR, TIMESTAMP '2017-01-31 20:31:28') QUALIFY row_number() OVER (PARTITION BY f.card_id, f.end_ts ORDER BY b.ts, b.TransactionID) = 1 ) ) SELECT id, card_id, customer_id, ts::VARCHAR, amt, role, (role = 'larger_purchase' AND amt > 100.0) AS cleared_over_block FROM members ORDER BY card_id, ts, id",
+        "params": {
+          "min_small": 3,
+          "channel": "online",
+          "window_min": 60,
+          "block_over": 100.0,
+          "small_max": 5.0,
+          "lookahead_h": 48,
+          "card_id": "C11663-K1"
+        }
+      },
+      {
+        "case_id": "HHF-004",
+        "agree": true,
+        "kind": "agree: neither sees card testing",
+        "rule_fires": false,
+        "rule_actions": [],
+        "run_txn_ids": [],
+        "flagged_txn_id": "3660260",
+        "card_id": "C12975-K2",
+        "agent_verdict": "fraud",
+        "agent_pattern": "undocumented",
+        "agent_final_actions": [
+          "CREATE_CASE",
+          "MONITOR_CONNECTED_CARDS",
+          "BLOCK_CARD",
+          "FILE_REPORT",
+          "ESCALATE_TO_ANALYST"
+        ],
+        "as_of": "2017-01-26 21:09:37",
+        "query": "WITH small AS ( SELECT id, TransactionID, card_id, customer_id, ts, amt FROM txc WHERE channel = 'online' AND amt < 5.0 AND ts <= '2017-01-26 21:09:37' AND card_id = 'C12975-K2' ), win AS ( SELECT *, count(*) OVER (PARTITION BY card_id ORDER BY ts RANGE BETWEEN INTERVAL 60 MINUTE PRECEDING AND CURRENT ROW) AS n_in_window FROM small ), run_end AS (SELECT card_id, ts AS end_ts FROM win WHERE n_in_window >= 3), followed AS ( SELECT DISTINCT r.card_id, r.end_ts FROM run_end r JOIN txc b ON b.card_id = r.card_id AND b.channel = 'online' AND b.amt >= 5.0 AND b.ts > r.end_ts AND b.ts <= least(r.end_ts + INTERVAL 48 HOUR, TIMESTAMP '2017-01-26 21:09:37') ), members AS ( SELECT s.id, s.card_id, s.customer_id, s.ts, s.amt, 'small_auth' AS role FROM followed f JOIN small s ON s.card_id = f.card_id AND s.ts BETWEEN f.end_ts - INTERVAL 60 MINUTE AND f.end_ts UNION SELECT id, card_id, customer_id, ts, amt, 'larger_purchase' FROM ( SELECT b.id, b.card_id, b.customer_id, b.ts, b.amt FROM followed f JOIN txc b ON b.card_id = f.card_id AND b.channel = 'online' AND b.amt >= 5.0 AND b.ts > f.end_ts AND b.ts <= least(f.end_ts + INTERVAL 48 HOUR, TIMESTAMP '2017-01-26 21:09:37') QUALIFY row_number() OVER (PARTITION BY f.card_id, f.end_ts ORDER BY b.ts, b.TransactionID) = 1 ) ) SELECT id, card_id, customer_id, ts::VARCHAR, amt, role, (role = 'larger_purchase' AND amt > 100.0) AS cleared_over_block FROM members ORDER BY card_id, ts, id",
+        "params": {
+          "min_small": 3,
+          "channel": "online",
+          "window_min": 60,
+          "block_over": 100.0,
+          "small_max": 5.0,
+          "lookahead_h": 48,
+          "card_id": "C12975-K2"
+        }
+      },
+      {
+        "case_id": "HHF-005",
+        "agree": true,
+        "kind": "agree: neither sees card testing",
+        "rule_fires": false,
+        "rule_actions": [],
+        "run_txn_ids": [],
+        "flagged_txn_id": "3660250",
+        "card_id": "C00348-K1",
+        "agent_verdict": "fraud",
+        "agent_pattern": "undocumented",
+        "agent_final_actions": [
+          "CREATE_CASE",
+          "MONITOR_CONNECTED_CARDS",
+          "BLOCK_CARD",
+          "FILE_REPORT",
+          "ESCALATE_TO_ANALYST"
+        ],
+        "as_of": "2017-01-28 23:45:16",
+        "query": "WITH small AS ( SELECT id, TransactionID, card_id, customer_id, ts, amt FROM txc WHERE channel = 'online' AND amt < 5.0 AND ts <= '2017-01-28 23:45:16' AND card_id = 'C00348-K1' ), win AS ( SELECT *, count(*) OVER (PARTITION BY card_id ORDER BY ts RANGE BETWEEN INTERVAL 60 MINUTE PRECEDING AND CURRENT ROW) AS n_in_window FROM small ), run_end AS (SELECT card_id, ts AS end_ts FROM win WHERE n_in_window >= 3), followed AS ( SELECT DISTINCT r.card_id, r.end_ts FROM run_end r JOIN txc b ON b.card_id = r.card_id AND b.channel = 'online' AND b.amt >= 5.0 AND b.ts > r.end_ts AND b.ts <= least(r.end_ts + INTERVAL 48 HOUR, TIMESTAMP '2017-01-28 23:45:16') ), members AS ( SELECT s.id, s.card_id, s.customer_id, s.ts, s.amt, 'small_auth' AS role FROM followed f JOIN small s ON s.card_id = f.card_id AND s.ts BETWEEN f.end_ts - INTERVAL 60 MINUTE AND f.end_ts UNION SELECT id, card_id, customer_id, ts, amt, 'larger_purchase' FROM ( SELECT b.id, b.card_id, b.customer_id, b.ts, b.amt FROM followed f JOIN txc b ON b.card_id = f.card_id AND b.channel = 'online' AND b.amt >= 5.0 AND b.ts > f.end_ts AND b.ts <= least(f.end_ts + INTERVAL 48 HOUR, TIMESTAMP '2017-01-28 23:45:16') QUALIFY row_number() OVER (PARTITION BY f.card_id, f.end_ts ORDER BY b.ts, b.TransactionID) = 1 ) ) SELECT id, card_id, customer_id, ts::VARCHAR, amt, role, (role = 'larger_purchase' AND amt > 100.0) AS cleared_over_block FROM members ORDER BY card_id, ts, id",
+        "params": {
+          "min_small": 3,
+          "channel": "online",
+          "window_min": 60,
+          "block_over": 100.0,
+          "small_max": 5.0,
+          "lookahead_h": 48,
+          "card_id": "C00348-K1"
+        }
+      },
+      {
+        "case_id": "HHF-006",
+        "agree": true,
+        "kind": "agree: neither sees card testing",
+        "rule_fires": false,
+        "rule_actions": [],
+        "run_txn_ids": [],
+        "flagged_txn_id": "3660263",
+        "card_id": "C01727-K2",
+        "agent_verdict": "fraud",
+        "agent_pattern": "undocumented",
+        "agent_final_actions": [
+          "CREATE_CASE",
+          "MONITOR_CONNECTED_CARDS",
+          "BLOCK_CARD",
+          "FILE_REPORT",
+          "ESCALATE_TO_ANALYST"
+        ],
+        "as_of": "2017-01-28 10:59:42",
+        "query": "WITH small AS ( SELECT id, TransactionID, card_id, customer_id, ts, amt FROM txc WHERE channel = 'online' AND amt < 5.0 AND ts <= '2017-01-28 10:59:42' AND card_id = 'C01727-K2' ), win AS ( SELECT *, count(*) OVER (PARTITION BY card_id ORDER BY ts RANGE BETWEEN INTERVAL 60 MINUTE PRECEDING AND CURRENT ROW) AS n_in_window FROM small ), run_end AS (SELECT card_id, ts AS end_ts FROM win WHERE n_in_window >= 3), followed AS ( SELECT DISTINCT r.card_id, r.end_ts FROM run_end r JOIN txc b ON b.card_id = r.card_id AND b.channel = 'online' AND b.amt >= 5.0 AND b.ts > r.end_ts AND b.ts <= least(r.end_ts + INTERVAL 48 HOUR, TIMESTAMP '2017-01-28 10:59:42') ), members AS ( SELECT s.id, s.card_id, s.customer_id, s.ts, s.amt, 'small_auth' AS role FROM followed f JOIN small s ON s.card_id = f.card_id AND s.ts BETWEEN f.end_ts - INTERVAL 60 MINUTE AND f.end_ts UNION SELECT id, card_id, customer_id, ts, amt, 'larger_purchase' FROM ( SELECT b.id, b.card_id, b.customer_id, b.ts, b.amt FROM followed f JOIN txc b ON b.card_id = f.card_id AND b.channel = 'online' AND b.amt >= 5.0 AND b.ts > f.end_ts AND b.ts <= least(f.end_ts + INTERVAL 48 HOUR, TIMESTAMP '2017-01-28 10:59:42') QUALIFY row_number() OVER (PARTITION BY f.card_id, f.end_ts ORDER BY b.ts, b.TransactionID) = 1 ) ) SELECT id, card_id, customer_id, ts::VARCHAR, amt, role, (role = 'larger_purchase' AND amt > 100.0) AS cleared_over_block FROM members ORDER BY card_id, ts, id",
+        "params": {
+          "min_small": 3,
+          "channel": "online",
+          "window_min": 60,
+          "block_over": 100.0,
+          "small_max": 5.0,
+          "lookahead_h": 48,
+          "card_id": "C01727-K2"
+        }
+      },
+      {
+        "case_id": "HHF-007",
+        "agree": true,
+        "kind": "agree: both card testing",
+        "rule_fires": true,
+        "rule_actions": [
+          "DECLINE_TRANSACTION",
+          "STEP_UP_AUTH",
+          "BLOCK_CARD"
+        ],
+        "run_txn_ids": [
+          "3660346",
+          "3660347",
+          "3660348",
+          "3660349",
+          "3660350"
+        ],
+        "flagged_txn_id": "3660350",
+        "card_id": "C09582-K1",
+        "agent_verdict": "fraud",
+        "agent_pattern": "card_testing",
+        "agent_final_actions": [
+          "CREATE_CASE",
+          "STEP_UP_AUTH",
+          "DECLINE_TRANSACTION",
+          "BLOCK_CARD"
+        ],
+        "as_of": "2017-01-14 15:57:30",
+        "query": "WITH small AS ( SELECT id, TransactionID, card_id, customer_id, ts, amt FROM txc WHERE channel = 'online' AND amt < 5.0 AND ts <= '2017-01-14 15:57:30' AND card_id = 'C09582-K1' ), win AS ( SELECT *, count(*) OVER (PARTITION BY card_id ORDER BY ts RANGE BETWEEN INTERVAL 60 MINUTE PRECEDING AND CURRENT ROW) AS n_in_window FROM small ), run_end AS (SELECT card_id, ts AS end_ts FROM win WHERE n_in_window >= 3), followed AS ( SELECT DISTINCT r.card_id, r.end_ts FROM run_end r JOIN txc b ON b.card_id = r.card_id AND b.channel = 'online' AND b.amt >= 5.0 AND b.ts > r.end_ts AND b.ts <= least(r.end_ts + INTERVAL 48 HOUR, TIMESTAMP '2017-01-14 15:57:30') ), members AS ( SELECT s.id, s.card_id, s.customer_id, s.ts, s.amt, 'small_auth' AS role FROM followed f JOIN small s ON s.card_id = f.card_id AND s.ts BETWEEN f.end_ts - INTERVAL 60 MINUTE AND f.end_ts UNION SELECT id, card_id, customer_id, ts, amt, 'larger_purchase' FROM ( SELECT b.id, b.card_id, b.customer_id, b.ts, b.amt FROM followed f JOIN txc b ON b.card_id = f.card_id AND b.channel = 'online' AND b.amt >= 5.0 AND b.ts > f.end_ts AND b.ts <= least(f.end_ts + INTERVAL 48 HOUR, TIMESTAMP '2017-01-14 15:57:30') QUALIFY row_number() OVER (PARTITION BY f.card_id, f.end_ts ORDER BY b.ts, b.TransactionID) = 1 ) ) SELECT id, card_id, customer_id, ts::VARCHAR, amt, role, (role = 'larger_purchase' AND amt > 100.0) AS cleared_over_block FROM members ORDER BY card_id, ts, id",
+        "params": {
+          "min_small": 3,
+          "channel": "online",
+          "window_min": 60,
+          "block_over": 100.0,
+          "small_max": 5.0,
+          "lookahead_h": 48,
+          "card_id": "C09582-K1"
+        }
+      },
+      {
+        "case_id": "HHF-008",
+        "agree": true,
+        "kind": "agree: neither sees card testing",
+        "rule_fires": false,
+        "rule_actions": [],
+        "run_txn_ids": [],
+        "flagged_txn_id": "3660353",
+        "card_id": "C07871-K1",
+        "agent_verdict": "legitimate",
+        "agent_pattern": "none",
+        "agent_final_actions": [
+          "CREATE_CASE",
+          "ALLOW_TRANSACTION",
+          "CLOSE_NO_FRAUD"
+        ],
+        "as_of": "2017-01-21 13:23:58",
+        "query": "WITH small AS ( SELECT id, TransactionID, card_id, customer_id, ts, amt FROM txc WHERE channel = 'online' AND amt < 5.0 AND ts <= '2017-01-21 13:23:58' AND card_id = 'C07871-K1' ), win AS ( SELECT *, count(*) OVER (PARTITION BY card_id ORDER BY ts RANGE BETWEEN INTERVAL 60 MINUTE PRECEDING AND CURRENT ROW) AS n_in_window FROM small ), run_end AS (SELECT card_id, ts AS end_ts FROM win WHERE n_in_window >= 3), followed AS ( SELECT DISTINCT r.card_id, r.end_ts FROM run_end r JOIN txc b ON b.card_id = r.card_id AND b.channel = 'online' AND b.amt >= 5.0 AND b.ts > r.end_ts AND b.ts <= least(r.end_ts + INTERVAL 48 HOUR, TIMESTAMP '2017-01-21 13:23:58') ), members AS ( SELECT s.id, s.card_id, s.customer_id, s.ts, s.amt, 'small_auth' AS role FROM followed f JOIN small s ON s.card_id = f.card_id AND s.ts BETWEEN f.end_ts - INTERVAL 60 MINUTE AND f.end_ts UNION SELECT id, card_id, customer_id, ts, amt, 'larger_purchase' FROM ( SELECT b.id, b.card_id, b.customer_id, b.ts, b.amt FROM followed f JOIN txc b ON b.card_id = f.card_id AND b.channel = 'online' AND b.amt >= 5.0 AND b.ts > f.end_ts AND b.ts <= least(f.end_ts + INTERVAL 48 HOUR, TIMESTAMP '2017-01-21 13:23:58') QUALIFY row_number() OVER (PARTITION BY f.card_id, f.end_ts ORDER BY b.ts, b.TransactionID) = 1 ) ) SELECT id, card_id, customer_id, ts::VARCHAR, amt, role, (role = 'larger_purchase' AND amt > 100.0) AS cleared_over_block FROM members ORDER BY card_id, ts, id",
+        "params": {
+          "min_small": 3,
+          "channel": "online",
+          "window_min": 60,
+          "block_over": 100.0,
+          "small_max": 5.0,
+          "lookahead_h": 48,
+          "card_id": "C07871-K1"
+        }
+      },
+      {
+        "case_id": "HHF-009",
+        "agree": true,
+        "kind": "agree: neither sees card testing",
+        "rule_fires": false,
+        "rule_actions": [],
+        "run_txn_ids": [],
+        "flagged_txn_id": "3660355",
+        "card_id": "C09177-K1",
+        "agent_verdict": "legitimate",
+        "agent_pattern": "none",
+        "agent_final_actions": [
+          "CREATE_CASE",
+          "ALLOW_TRANSACTION",
+          "CLOSE_NO_FRAUD"
+        ],
+        "as_of": "2017-01-27 18:08:36",
+        "query": "WITH small AS ( SELECT id, TransactionID, card_id, customer_id, ts, amt FROM txc WHERE channel = 'online' AND amt < 5.0 AND ts <= '2017-01-27 18:08:36' AND card_id = 'C09177-K1' ), win AS ( SELECT *, count(*) OVER (PARTITION BY card_id ORDER BY ts RANGE BETWEEN INTERVAL 60 MINUTE PRECEDING AND CURRENT ROW) AS n_in_window FROM small ), run_end AS (SELECT card_id, ts AS end_ts FROM win WHERE n_in_window >= 3), followed AS ( SELECT DISTINCT r.card_id, r.end_ts FROM run_end r JOIN txc b ON b.card_id = r.card_id AND b.channel = 'online' AND b.amt >= 5.0 AND b.ts > r.end_ts AND b.ts <= least(r.end_ts + INTERVAL 48 HOUR, TIMESTAMP '2017-01-27 18:08:36') ), members AS ( SELECT s.id, s.card_id, s.customer_id, s.ts, s.amt, 'small_auth' AS role FROM followed f JOIN small s ON s.card_id = f.card_id AND s.ts BETWEEN f.end_ts - INTERVAL 60 MINUTE AND f.end_ts UNION SELECT id, card_id, customer_id, ts, amt, 'larger_purchase' FROM ( SELECT b.id, b.card_id, b.customer_id, b.ts, b.amt FROM followed f JOIN txc b ON b.card_id = f.card_id AND b.channel = 'online' AND b.amt >= 5.0 AND b.ts > f.end_ts AND b.ts <= least(f.end_ts + INTERVAL 48 HOUR, TIMESTAMP '2017-01-27 18:08:36') QUALIFY row_number() OVER (PARTITION BY f.card_id, f.end_ts ORDER BY b.ts, b.TransactionID) = 1 ) ) SELECT id, card_id, customer_id, ts::VARCHAR, amt, role, (role = 'larger_purchase' AND amt > 100.0) AS cleared_over_block FROM members ORDER BY card_id, ts, id",
+        "params": {
+          "min_small": 3,
+          "channel": "online",
+          "window_min": 60,
+          "block_over": 100.0,
+          "small_max": 5.0,
+          "lookahead_h": 48,
+          "card_id": "C09177-K1"
+        }
+      },
+      {
+        "case_id": "HHF-010",
+        "agree": true,
+        "kind": "agree: neither sees card testing",
+        "rule_fires": false,
+        "rule_actions": [],
+        "run_txn_ids": [],
+        "flagged_txn_id": "3631383",
+        "card_id": "C07196-K2",
+        "agent_verdict": "uncertain",
+        "agent_pattern": "out_of_region_use",
+        "agent_final_actions": [
+          "CREATE_CASE",
+          "MONITOR_CARD",
+          "DECLINE_TRANSACTION",
+          "ESCALATE_TO_ANALYST"
+        ],
+        "as_of": "2017-01-08 16:13:05",
+        "query": "WITH small AS ( SELECT id, TransactionID, card_id, customer_id, ts, amt FROM txc WHERE channel = 'online' AND amt < 5.0 AND ts <= '2017-01-08 16:13:05' AND card_id = 'C07196-K2' ), win AS ( SELECT *, count(*) OVER (PARTITION BY card_id ORDER BY ts RANGE BETWEEN INTERVAL 60 MINUTE PRECEDING AND CURRENT ROW) AS n_in_window FROM small ), run_end AS (SELECT card_id, ts AS end_ts FROM win WHERE n_in_window >= 3), followed AS ( SELECT DISTINCT r.card_id, r.end_ts FROM run_end r JOIN txc b ON b.card_id = r.card_id AND b.channel = 'online' AND b.amt >= 5.0 AND b.ts > r.end_ts AND b.ts <= least(r.end_ts + INTERVAL 48 HOUR, TIMESTAMP '2017-01-08 16:13:05') ), members AS ( SELECT s.id, s.card_id, s.customer_id, s.ts, s.amt, 'small_auth' AS role FROM followed f JOIN small s ON s.card_id = f.card_id AND s.ts BETWEEN f.end_ts - INTERVAL 60 MINUTE AND f.end_ts UNION SELECT id, card_id, customer_id, ts, amt, 'larger_purchase' FROM ( SELECT b.id, b.card_id, b.customer_id, b.ts, b.amt FROM followed f JOIN txc b ON b.card_id = f.card_id AND b.channel = 'online' AND b.amt >= 5.0 AND b.ts > f.end_ts AND b.ts <= least(f.end_ts + INTERVAL 48 HOUR, TIMESTAMP '2017-01-08 16:13:05') QUALIFY row_number() OVER (PARTITION BY f.card_id, f.end_ts ORDER BY b.ts, b.TransactionID) = 1 ) ) SELECT id, card_id, customer_id, ts::VARCHAR, amt, role, (role = 'larger_purchase' AND amt > 100.0) AS cleared_over_block FROM members ORDER BY card_id, ts, id",
+        "params": {
+          "min_small": 3,
+          "channel": "online",
+          "window_min": 60,
+          "block_over": 100.0,
+          "small_max": 5.0,
+          "lookahead_h": 48,
+          "card_id": "C07196-K2"
+        }
+      },
+      {
+        "case_id": "HHF-011",
+        "agree": true,
+        "kind": "agree: neither sees card testing",
+        "rule_fires": false,
+        "rule_actions": [],
+        "run_txn_ids": [],
+        "flagged_txn_id": "3640919",
+        "card_id": "C09241-K1",
+        "agent_verdict": "legitimate",
+        "agent_pattern": "none",
+        "agent_final_actions": [
+          "CREATE_CASE",
+          "ALLOW_TRANSACTION",
+          "CLOSE_NO_FRAUD"
+        ],
+        "as_of": "2017-01-20 09:06:19",
+        "query": "WITH small AS ( SELECT id, TransactionID, card_id, customer_id, ts, amt FROM txc WHERE channel = 'online' AND amt < 5.0 AND ts <= '2017-01-20 09:06:19' AND card_id = 'C09241-K1' ), win AS ( SELECT *, count(*) OVER (PARTITION BY card_id ORDER BY ts RANGE BETWEEN INTERVAL 60 MINUTE PRECEDING AND CURRENT ROW) AS n_in_window FROM small ), run_end AS (SELECT card_id, ts AS end_ts FROM win WHERE n_in_window >= 3), followed AS ( SELECT DISTINCT r.card_id, r.end_ts FROM run_end r JOIN txc b ON b.card_id = r.card_id AND b.channel = 'online' AND b.amt >= 5.0 AND b.ts > r.end_ts AND b.ts <= least(r.end_ts + INTERVAL 48 HOUR, TIMESTAMP '2017-01-20 09:06:19') ), members AS ( SELECT s.id, s.card_id, s.customer_id, s.ts, s.amt, 'small_auth' AS role FROM followed f JOIN small s ON s.card_id = f.card_id AND s.ts BETWEEN f.end_ts - INTERVAL 60 MINUTE AND f.end_ts UNION SELECT id, card_id, customer_id, ts, amt, 'larger_purchase' FROM ( SELECT b.id, b.card_id, b.customer_id, b.ts, b.amt FROM followed f JOIN txc b ON b.card_id = f.card_id AND b.channel = 'online' AND b.amt >= 5.0 AND b.ts > f.end_ts AND b.ts <= least(f.end_ts + INTERVAL 48 HOUR, TIMESTAMP '2017-01-20 09:06:19') QUALIFY row_number() OVER (PARTITION BY f.card_id, f.end_ts ORDER BY b.ts, b.TransactionID) = 1 ) ) SELECT id, card_id, customer_id, ts::VARCHAR, amt, role, (role = 'larger_purchase' AND amt > 100.0) AS cleared_over_block FROM members ORDER BY card_id, ts, id",
+        "params": {
+          "min_small": 3,
+          "channel": "online",
+          "window_min": 60,
+          "block_over": 100.0,
+          "small_max": 5.0,
+          "lookahead_h": 48,
+          "card_id": "C09241-K1"
+        }
+      },
+      {
+        "case_id": "HHF-012",
+        "agree": true,
+        "kind": "agree: neither sees card testing",
+        "rule_fires": false,
+        "rule_actions": [],
+        "run_txn_ids": [],
+        "flagged_txn_id": "3655457",
+        "card_id": "C12223-K1",
+        "agent_verdict": "legitimate",
+        "agent_pattern": "none",
+        "agent_final_actions": [
+          "CREATE_CASE",
+          "ALLOW_TRANSACTION",
+          "CLOSE_NO_FRAUD"
+        ],
+        "as_of": "2017-01-09 04:34:19",
+        "query": "WITH small AS ( SELECT id, TransactionID, card_id, customer_id, ts, amt FROM txc WHERE channel = 'online' AND amt < 5.0 AND ts <= '2017-01-09 04:34:19' AND card_id = 'C12223-K1' ), win AS ( SELECT *, count(*) OVER (PARTITION BY card_id ORDER BY ts RANGE BETWEEN INTERVAL 60 MINUTE PRECEDING AND CURRENT ROW) AS n_in_window FROM small ), run_end AS (SELECT card_id, ts AS end_ts FROM win WHERE n_in_window >= 3), followed AS ( SELECT DISTINCT r.card_id, r.end_ts FROM run_end r JOIN txc b ON b.card_id = r.card_id AND b.channel = 'online' AND b.amt >= 5.0 AND b.ts > r.end_ts AND b.ts <= least(r.end_ts + INTERVAL 48 HOUR, TIMESTAMP '2017-01-09 04:34:19') ), members AS ( SELECT s.id, s.card_id, s.customer_id, s.ts, s.amt, 'small_auth' AS role FROM followed f JOIN small s ON s.card_id = f.card_id AND s.ts BETWEEN f.end_ts - INTERVAL 60 MINUTE AND f.end_ts UNION SELECT id, card_id, customer_id, ts, amt, 'larger_purchase' FROM ( SELECT b.id, b.card_id, b.customer_id, b.ts, b.amt FROM followed f JOIN txc b ON b.card_id = f.card_id AND b.channel = 'online' AND b.amt >= 5.0 AND b.ts > f.end_ts AND b.ts <= least(f.end_ts + INTERVAL 48 HOUR, TIMESTAMP '2017-01-09 04:34:19') QUALIFY row_number() OVER (PARTITION BY f.card_id, f.end_ts ORDER BY b.ts, b.TransactionID) = 1 ) ) SELECT id, card_id, customer_id, ts::VARCHAR, amt, role, (role = 'larger_purchase' AND amt > 100.0) AS cleared_over_block FROM members ORDER BY card_id, ts, id",
+        "params": {
+          "min_small": 3,
+          "channel": "online",
+          "window_min": 60,
+          "block_over": 100.0,
+          "small_max": 5.0,
+          "lookahead_h": 48,
+          "card_id": "C12223-K1"
+        }
+      },
+      {
+        "case_id": "HHF-013",
+        "agree": true,
+        "kind": "agree: neither sees card testing",
+        "rule_fires": false,
+        "rule_actions": [],
+        "run_txn_ids": [],
+        "flagged_txn_id": "3626720",
+        "card_id": "C06115-K1",
+        "agent_verdict": "uncertain",
+        "agent_pattern": "out_of_region_use",
+        "agent_final_actions": [
+          "CREATE_CASE",
+          "MONITOR_CARD",
+          "MONITOR_CONNECTED_CARDS",
+          "DECLINE_TRANSACTION",
+          "ESCALATE_TO_ANALYST"
+        ],
+        "as_of": "2017-01-26 20:40:00",
+        "query": "WITH small AS ( SELECT id, TransactionID, card_id, customer_id, ts, amt FROM txc WHERE channel = 'online' AND amt < 5.0 AND ts <= '2017-01-26 20:40:00' AND card_id = 'C06115-K1' ), win AS ( SELECT *, count(*) OVER (PARTITION BY card_id ORDER BY ts RANGE BETWEEN INTERVAL 60 MINUTE PRECEDING AND CURRENT ROW) AS n_in_window FROM small ), run_end AS (SELECT card_id, ts AS end_ts FROM win WHERE n_in_window >= 3), followed AS ( SELECT DISTINCT r.card_id, r.end_ts FROM run_end r JOIN txc b ON b.card_id = r.card_id AND b.channel = 'online' AND b.amt >= 5.0 AND b.ts > r.end_ts AND b.ts <= least(r.end_ts + INTERVAL 48 HOUR, TIMESTAMP '2017-01-26 20:40:00') ), members AS ( SELECT s.id, s.card_id, s.customer_id, s.ts, s.amt, 'small_auth' AS role FROM followed f JOIN small s ON s.card_id = f.card_id AND s.ts BETWEEN f.end_ts - INTERVAL 60 MINUTE AND f.end_ts UNION SELECT id, card_id, customer_id, ts, amt, 'larger_purchase' FROM ( SELECT b.id, b.card_id, b.customer_id, b.ts, b.amt FROM followed f JOIN txc b ON b.card_id = f.card_id AND b.channel = 'online' AND b.amt >= 5.0 AND b.ts > f.end_ts AND b.ts <= least(f.end_ts + INTERVAL 48 HOUR, TIMESTAMP '2017-01-26 20:40:00') QUALIFY row_number() OVER (PARTITION BY f.card_id, f.end_ts ORDER BY b.ts, b.TransactionID) = 1 ) ) SELECT id, card_id, customer_id, ts::VARCHAR, amt, role, (role = 'larger_purchase' AND amt > 100.0) AS cleared_over_block FROM members ORDER BY card_id, ts, id",
+        "params": {
+          "min_small": 3,
+          "channel": "online",
+          "window_min": 60,
+          "block_over": 100.0,
+          "small_max": 5.0,
+          "lookahead_h": 48,
+          "card_id": "C06115-K1"
+        }
+      },
+      {
+        "case_id": "HHF-014",
+        "agree": true,
+        "kind": "agree: neither sees card testing",
+        "rule_fires": false,
+        "rule_actions": [],
+        "run_txn_ids": [],
+        "flagged_txn_id": "3602445",
+        "card_id": "C00750-K2",
+        "agent_verdict": "uncertain",
+        "agent_pattern": "out_of_region_use",
+        "agent_final_actions": [
+          "CREATE_CASE",
+          "MONITOR_CARD",
+          "DECLINE_TRANSACTION",
+          "ESCALATE_TO_ANALYST"
+        ],
+        "as_of": "2017-01-01 05:00:25",
+        "query": "WITH small AS ( SELECT id, TransactionID, card_id, customer_id, ts, amt FROM txc WHERE channel = 'online' AND amt < 5.0 AND ts <= '2017-01-01 05:00:25' AND card_id = 'C00750-K2' ), win AS ( SELECT *, count(*) OVER (PARTITION BY card_id ORDER BY ts RANGE BETWEEN INTERVAL 60 MINUTE PRECEDING AND CURRENT ROW) AS n_in_window FROM small ), run_end AS (SELECT card_id, ts AS end_ts FROM win WHERE n_in_window >= 3), followed AS ( SELECT DISTINCT r.card_id, r.end_ts FROM run_end r JOIN txc b ON b.card_id = r.card_id AND b.channel = 'online' AND b.amt >= 5.0 AND b.ts > r.end_ts AND b.ts <= least(r.end_ts + INTERVAL 48 HOUR, TIMESTAMP '2017-01-01 05:00:25') ), members AS ( SELECT s.id, s.card_id, s.customer_id, s.ts, s.amt, 'small_auth' AS role FROM followed f JOIN small s ON s.card_id = f.card_id AND s.ts BETWEEN f.end_ts - INTERVAL 60 MINUTE AND f.end_ts UNION SELECT id, card_id, customer_id, ts, amt, 'larger_purchase' FROM ( SELECT b.id, b.card_id, b.customer_id, b.ts, b.amt FROM followed f JOIN txc b ON b.card_id = f.card_id AND b.channel = 'online' AND b.amt >= 5.0 AND b.ts > f.end_ts AND b.ts <= least(f.end_ts + INTERVAL 48 HOUR, TIMESTAMP '2017-01-01 05:00:25') QUALIFY row_number() OVER (PARTITION BY f.card_id, f.end_ts ORDER BY b.ts, b.TransactionID) = 1 ) ) SELECT id, card_id, customer_id, ts::VARCHAR, amt, role, (role = 'larger_purchase' AND amt > 100.0) AS cleared_over_block FROM members ORDER BY card_id, ts, id",
+        "params": {
+          "min_small": 3,
+          "channel": "online",
+          "window_min": 60,
+          "block_over": 100.0,
+          "small_max": 5.0,
+          "lookahead_h": 48,
+          "card_id": "C00750-K2"
+        }
+      },
+      {
+        "case_id": "HHF-015",
+        "agree": true,
+        "kind": "agree: neither sees card testing",
+        "rule_fires": false,
+        "rule_actions": [],
+        "run_txn_ids": [],
+        "flagged_txn_id": "3601725",
+        "card_id": "C00543-K1",
+        "agent_verdict": "legitimate",
+        "agent_pattern": "none",
+        "agent_final_actions": [
+          "CREATE_CASE",
+          "ALLOW_TRANSACTION",
+          "CLOSE_NO_FRAUD"
+        ],
+        "as_of": "2017-01-22 12:21:48",
+        "query": "WITH small AS ( SELECT id, TransactionID, card_id, customer_id, ts, amt FROM txc WHERE channel = 'online' AND amt < 5.0 AND ts <= '2017-01-22 12:21:48' AND card_id = 'C00543-K1' ), win AS ( SELECT *, count(*) OVER (PARTITION BY card_id ORDER BY ts RANGE BETWEEN INTERVAL 60 MINUTE PRECEDING AND CURRENT ROW) AS n_in_window FROM small ), run_end AS (SELECT card_id, ts AS end_ts FROM win WHERE n_in_window >= 3), followed AS ( SELECT DISTINCT r.card_id, r.end_ts FROM run_end r JOIN txc b ON b.card_id = r.card_id AND b.channel = 'online' AND b.amt >= 5.0 AND b.ts > r.end_ts AND b.ts <= least(r.end_ts + INTERVAL 48 HOUR, TIMESTAMP '2017-01-22 12:21:48') ), members AS ( SELECT s.id, s.card_id, s.customer_id, s.ts, s.amt, 'small_auth' AS role FROM followed f JOIN small s ON s.card_id = f.card_id AND s.ts BETWEEN f.end_ts - INTERVAL 60 MINUTE AND f.end_ts UNION SELECT id, card_id, customer_id, ts, amt, 'larger_purchase' FROM ( SELECT b.id, b.card_id, b.customer_id, b.ts, b.amt FROM followed f JOIN txc b ON b.card_id = f.card_id AND b.channel = 'online' AND b.amt >= 5.0 AND b.ts > f.end_ts AND b.ts <= least(f.end_ts + INTERVAL 48 HOUR, TIMESTAMP '2017-01-22 12:21:48') QUALIFY row_number() OVER (PARTITION BY f.card_id, f.end_ts ORDER BY b.ts, b.TransactionID) = 1 ) ) SELECT id, card_id, customer_id, ts::VARCHAR, amt, role, (role = 'larger_purchase' AND amt > 100.0) AS cleared_over_block FROM members ORDER BY card_id, ts, id",
+        "params": {
+          "min_small": 3,
+          "channel": "online",
+          "window_min": 60,
+          "block_over": 100.0,
+          "small_max": 5.0,
+          "lookahead_h": 48,
+          "card_id": "C00543-K1"
+        }
+      },
+      {
+        "case_id": "HHF-016",
+        "agree": true,
+        "kind": "agree: neither sees card testing",
+        "rule_fires": false,
+        "rule_actions": [],
+        "run_txn_ids": [],
+        "flagged_txn_id": "3611043",
+        "card_id": "C02502-K2",
+        "agent_verdict": "legitimate",
+        "agent_pattern": "none",
+        "agent_final_actions": [
+          "CREATE_CASE",
+          "ALLOW_TRANSACTION",
+          "CLOSE_NO_FRAUD"
+        ],
+        "as_of": "2017-01-01 03:07:47",
+        "query": "WITH small AS ( SELECT id, TransactionID, card_id, customer_id, ts, amt FROM txc WHERE channel = 'online' AND amt < 5.0 AND ts <= '2017-01-01 03:07:47' AND card_id = 'C02502-K2' ), win AS ( SELECT *, count(*) OVER (PARTITION BY card_id ORDER BY ts RANGE BETWEEN INTERVAL 60 MINUTE PRECEDING AND CURRENT ROW) AS n_in_window FROM small ), run_end AS (SELECT card_id, ts AS end_ts FROM win WHERE n_in_window >= 3), followed AS ( SELECT DISTINCT r.card_id, r.end_ts FROM run_end r JOIN txc b ON b.card_id = r.card_id AND b.channel = 'online' AND b.amt >= 5.0 AND b.ts > r.end_ts AND b.ts <= least(r.end_ts + INTERVAL 48 HOUR, TIMESTAMP '2017-01-01 03:07:47') ), members AS ( SELECT s.id, s.card_id, s.customer_id, s.ts, s.amt, 'small_auth' AS role FROM followed f JOIN small s ON s.card_id = f.card_id AND s.ts BETWEEN f.end_ts - INTERVAL 60 MINUTE AND f.end_ts UNION SELECT id, card_id, customer_id, ts, amt, 'larger_purchase' FROM ( SELECT b.id, b.card_id, b.customer_id, b.ts, b.amt FROM followed f JOIN txc b ON b.card_id = f.card_id AND b.channel = 'online' AND b.amt >= 5.0 AND b.ts > f.end_ts AND b.ts <= least(f.end_ts + INTERVAL 48 HOUR, TIMESTAMP '2017-01-01 03:07:47') QUALIFY row_number() OVER (PARTITION BY f.card_id, f.end_ts ORDER BY b.ts, b.TransactionID) = 1 ) ) SELECT id, card_id, customer_id, ts::VARCHAR, amt, role, (role = 'larger_purchase' AND amt > 100.0) AS cleared_over_block FROM members ORDER BY card_id, ts, id",
+        "params": {
+          "min_small": 3,
+          "channel": "online",
+          "window_min": 60,
+          "block_over": 100.0,
+          "small_max": 5.0,
+          "lookahead_h": 48,
+          "card_id": "C02502-K2"
+        }
+      },
+      {
+        "case_id": "HHF-017",
+        "agree": true,
+        "kind": "agree: neither sees card testing",
+        "rule_fires": false,
+        "rule_actions": [],
+        "run_txn_ids": [],
+        "flagged_txn_id": "3638829",
+        "card_id": "C08842-K2",
+        "agent_verdict": "legitimate",
+        "agent_pattern": "none",
+        "agent_final_actions": [
+          "CREATE_CASE",
+          "ALLOW_TRANSACTION",
+          "CLOSE_NO_FRAUD"
+        ],
+        "as_of": "2017-01-01 02:02:06",
+        "query": "WITH small AS ( SELECT id, TransactionID, card_id, customer_id, ts, amt FROM txc WHERE channel = 'online' AND amt < 5.0 AND ts <= '2017-01-01 02:02:06' AND card_id = 'C08842-K2' ), win AS ( SELECT *, count(*) OVER (PARTITION BY card_id ORDER BY ts RANGE BETWEEN INTERVAL 60 MINUTE PRECEDING AND CURRENT ROW) AS n_in_window FROM small ), run_end AS (SELECT card_id, ts AS end_ts FROM win WHERE n_in_window >= 3), followed AS ( SELECT DISTINCT r.card_id, r.end_ts FROM run_end r JOIN txc b ON b.card_id = r.card_id AND b.channel = 'online' AND b.amt >= 5.0 AND b.ts > r.end_ts AND b.ts <= least(r.end_ts + INTERVAL 48 HOUR, TIMESTAMP '2017-01-01 02:02:06') ), members AS ( SELECT s.id, s.card_id, s.customer_id, s.ts, s.amt, 'small_auth' AS role FROM followed f JOIN small s ON s.card_id = f.card_id AND s.ts BETWEEN f.end_ts - INTERVAL 60 MINUTE AND f.end_ts UNION SELECT id, card_id, customer_id, ts, amt, 'larger_purchase' FROM ( SELECT b.id, b.card_id, b.customer_id, b.ts, b.amt FROM followed f JOIN txc b ON b.card_id = f.card_id AND b.channel = 'online' AND b.amt >= 5.0 AND b.ts > f.end_ts AND b.ts <= least(f.end_ts + INTERVAL 48 HOUR, TIMESTAMP '2017-01-01 02:02:06') QUALIFY row_number() OVER (PARTITION BY f.card_id, f.end_ts ORDER BY b.ts, b.TransactionID) = 1 ) ) SELECT id, card_id, customer_id, ts::VARCHAR, amt, role, (role = 'larger_purchase' AND amt > 100.0) AS cleared_over_block FROM members ORDER BY card_id, ts, id",
+        "params": {
+          "min_small": 3,
+          "channel": "online",
+          "window_min": 60,
+          "block_over": 100.0,
+          "small_max": 5.0,
+          "lookahead_h": 48,
+          "card_id": "C08842-K2"
+        }
+      },
+      {
+        "case_id": "HHF-018",
+        "agree": true,
+        "kind": "agree: neither sees card testing",
+        "rule_fires": false,
+        "rule_actions": [],
+        "run_txn_ids": [],
+        "flagged_txn_id": "3612011",
+        "card_id": "C02753-K1",
+        "agent_verdict": "legitimate",
+        "agent_pattern": "none",
+        "agent_final_actions": [
+          "CREATE_CASE",
+          "ALLOW_TRANSACTION",
+          "CLOSE_NO_FRAUD"
+        ],
+        "as_of": "2017-01-01 18:29:48",
+        "query": "WITH small AS ( SELECT id, TransactionID, card_id, customer_id, ts, amt FROM txc WHERE channel = 'online' AND amt < 5.0 AND ts <= '2017-01-01 18:29:48' AND card_id = 'C02753-K1' ), win AS ( SELECT *, count(*) OVER (PARTITION BY card_id ORDER BY ts RANGE BETWEEN INTERVAL 60 MINUTE PRECEDING AND CURRENT ROW) AS n_in_window FROM small ), run_end AS (SELECT card_id, ts AS end_ts FROM win WHERE n_in_window >= 3), followed AS ( SELECT DISTINCT r.card_id, r.end_ts FROM run_end r JOIN txc b ON b.card_id = r.card_id AND b.channel = 'online' AND b.amt >= 5.0 AND b.ts > r.end_ts AND b.ts <= least(r.end_ts + INTERVAL 48 HOUR, TIMESTAMP '2017-01-01 18:29:48') ), members AS ( SELECT s.id, s.card_id, s.customer_id, s.ts, s.amt, 'small_auth' AS role FROM followed f JOIN small s ON s.card_id = f.card_id AND s.ts BETWEEN f.end_ts - INTERVAL 60 MINUTE AND f.end_ts UNION SELECT id, card_id, customer_id, ts, amt, 'larger_purchase' FROM ( SELECT b.id, b.card_id, b.customer_id, b.ts, b.amt FROM followed f JOIN txc b ON b.card_id = f.card_id AND b.channel = 'online' AND b.amt >= 5.0 AND b.ts > f.end_ts AND b.ts <= least(f.end_ts + INTERVAL 48 HOUR, TIMESTAMP '2017-01-01 18:29:48') QUALIFY row_number() OVER (PARTITION BY f.card_id, f.end_ts ORDER BY b.ts, b.TransactionID) = 1 ) ) SELECT id, card_id, customer_id, ts::VARCHAR, amt, role, (role = 'larger_purchase' AND amt > 100.0) AS cleared_over_block FROM members ORDER BY card_id, ts, id",
+        "params": {
+          "min_small": 3,
+          "channel": "online",
+          "window_min": 60,
+          "block_over": 100.0,
+          "small_max": 5.0,
+          "lookahead_h": 48,
+          "card_id": "C02753-K1"
+        }
+      },
+      {
+        "case_id": "HHG-001",
+        "agree": true,
+        "kind": "agree: neither sees card testing",
+        "rule_fires": false,
+        "rule_actions": [],
+        "run_txn_ids": [],
+        "flagged_txn_id": "3514030",
+        "card_id": "C12382-K1",
+        "agent_verdict": "legitimate",
+        "agent_pattern": "none",
+        "agent_final_actions": [
+          "CREATE_CASE",
+          "ALLOW_TRANSACTION",
+          "CLOSE_NO_FRAUD"
+        ],
+        "as_of": "2016-12-05 01:55:28",
+        "query": "WITH small AS ( SELECT id, TransactionID, card_id, customer_id, ts, amt FROM txc WHERE channel = 'online' AND amt < 5.0 AND ts <= '2016-12-05 01:55:28' AND card_id = 'C12382-K1' ), win AS ( SELECT *, count(*) OVER (PARTITION BY card_id ORDER BY ts RANGE BETWEEN INTERVAL 60 MINUTE PRECEDING AND CURRENT ROW) AS n_in_window FROM small ), run_end AS (SELECT card_id, ts AS end_ts FROM win WHERE n_in_window >= 3), followed AS ( SELECT DISTINCT r.card_id, r.end_ts FROM run_end r JOIN txc b ON b.card_id = r.card_id AND b.channel = 'online' AND b.amt >= 5.0 AND b.ts > r.end_ts AND b.ts <= least(r.end_ts + INTERVAL 48 HOUR, TIMESTAMP '2016-12-05 01:55:28') ), members AS ( SELECT s.id, s.card_id, s.customer_id, s.ts, s.amt, 'small_auth' AS role FROM followed f JOIN small s ON s.card_id = f.card_id AND s.ts BETWEEN f.end_ts - INTERVAL 60 MINUTE AND f.end_ts UNION SELECT id, card_id, customer_id, ts, amt, 'larger_purchase' FROM ( SELECT b.id, b.card_id, b.customer_id, b.ts, b.amt FROM followed f JOIN txc b ON b.card_id = f.card_id AND b.channel = 'online' AND b.amt >= 5.0 AND b.ts > f.end_ts AND b.ts <= least(f.end_ts + INTERVAL 48 HOUR, TIMESTAMP '2016-12-05 01:55:28') QUALIFY row_number() OVER (PARTITION BY f.card_id, f.end_ts ORDER BY b.ts, b.TransactionID) = 1 ) ) SELECT id, card_id, customer_id, ts::VARCHAR, amt, role, (role = 'larger_purchase' AND amt > 100.0) AS cleared_over_block FROM members ORDER BY card_id, ts, id",
+        "params": {
+          "min_small": 3,
+          "channel": "online",
+          "window_min": 60,
+          "block_over": 100.0,
+          "small_max": 5.0,
+          "lookahead_h": 48,
+          "card_id": "C12382-K1"
+        }
+      },
+      {
+        "case_id": "HHG-002",
+        "agree": true,
+        "kind": "agree: neither sees card testing",
+        "rule_fires": false,
+        "rule_actions": [],
+        "run_txn_ids": [],
+        "flagged_txn_id": "3478782",
+        "card_id": "C11891-K1",
+        "agent_verdict": "fraud",
+        "agent_pattern": "card_not_present_fraud",
+        "agent_final_actions": [
+          "CREATE_CASE",
+          "BLOCK_CARD"
+        ],
+        "as_of": "2016-11-22 23:27:07",
+        "query": "WITH small AS ( SELECT id, TransactionID, card_id, customer_id, ts, amt FROM txc WHERE channel = 'online' AND amt < 5.0 AND ts <= '2016-11-22 23:27:07' AND card_id = 'C11891-K1' ), win AS ( SELECT *, count(*) OVER (PARTITION BY card_id ORDER BY ts RANGE BETWEEN INTERVAL 60 MINUTE PRECEDING AND CURRENT ROW) AS n_in_window FROM small ), run_end AS (SELECT card_id, ts AS end_ts FROM win WHERE n_in_window >= 3), followed AS ( SELECT DISTINCT r.card_id, r.end_ts FROM run_end r JOIN txc b ON b.card_id = r.card_id AND b.channel = 'online' AND b.amt >= 5.0 AND b.ts > r.end_ts AND b.ts <= least(r.end_ts + INTERVAL 48 HOUR, TIMESTAMP '2016-11-22 23:27:07') ), members AS ( SELECT s.id, s.card_id, s.customer_id, s.ts, s.amt, 'small_auth' AS role FROM followed f JOIN small s ON s.card_id = f.card_id AND s.ts BETWEEN f.end_ts - INTERVAL 60 MINUTE AND f.end_ts UNION SELECT id, card_id, customer_id, ts, amt, 'larger_purchase' FROM ( SELECT b.id, b.card_id, b.customer_id, b.ts, b.amt FROM followed f JOIN txc b ON b.card_id = f.card_id AND b.channel = 'online' AND b.amt >= 5.0 AND b.ts > f.end_ts AND b.ts <= least(f.end_ts + INTERVAL 48 HOUR, TIMESTAMP '2016-11-22 23:27:07') QUALIFY row_number() OVER (PARTITION BY f.card_id, f.end_ts ORDER BY b.ts, b.TransactionID) = 1 ) ) SELECT id, card_id, customer_id, ts::VARCHAR, amt, role, (role = 'larger_purchase' AND amt > 100.0) AS cleared_over_block FROM members ORDER BY card_id, ts, id",
+        "params": {
+          "min_small": 3,
+          "channel": "online",
+          "window_min": 60,
+          "block_over": 100.0,
+          "small_max": 5.0,
+          "lookahead_h": 48,
+          "card_id": "C11891-K1"
+        }
+      },
+      {
+        "case_id": "HHG-003",
+        "agree": true,
+        "kind": "agree: neither sees card testing",
+        "rule_fires": false,
+        "rule_actions": [],
+        "run_txn_ids": [],
+        "flagged_txn_id": "3530164",
+        "card_id": "C08623-K2",
+        "agent_verdict": "uncertain",
+        "agent_pattern": "out_of_region_use",
+        "agent_final_actions": [
+          "CREATE_CASE",
+          "BLOCK_CARD"
+        ],
+        "as_of": "2016-12-10 15:01:21",
+        "query": "WITH small AS ( SELECT id, TransactionID, card_id, customer_id, ts, amt FROM txc WHERE channel = 'online' AND amt < 5.0 AND ts <= '2016-12-10 15:01:21' AND card_id = 'C08623-K2' ), win AS ( SELECT *, count(*) OVER (PARTITION BY card_id ORDER BY ts RANGE BETWEEN INTERVAL 60 MINUTE PRECEDING AND CURRENT ROW) AS n_in_window FROM small ), run_end AS (SELECT card_id, ts AS end_ts FROM win WHERE n_in_window >= 3), followed AS ( SELECT DISTINCT r.card_id, r.end_ts FROM run_end r JOIN txc b ON b.card_id = r.card_id AND b.channel = 'online' AND b.amt >= 5.0 AND b.ts > r.end_ts AND b.ts <= least(r.end_ts + INTERVAL 48 HOUR, TIMESTAMP '2016-12-10 15:01:21') ), members AS ( SELECT s.id, s.card_id, s.customer_id, s.ts, s.amt, 'small_auth' AS role FROM followed f JOIN small s ON s.card_id = f.card_id AND s.ts BETWEEN f.end_ts - INTERVAL 60 MINUTE AND f.end_ts UNION SELECT id, card_id, customer_id, ts, amt, 'larger_purchase' FROM ( SELECT b.id, b.card_id, b.customer_id, b.ts, b.amt FROM followed f JOIN txc b ON b.card_id = f.card_id AND b.channel = 'online' AND b.amt >= 5.0 AND b.ts > f.end_ts AND b.ts <= least(f.end_ts + INTERVAL 48 HOUR, TIMESTAMP '2016-12-10 15:01:21') QUALIFY row_number() OVER (PARTITION BY f.card_id, f.end_ts ORDER BY b.ts, b.TransactionID) = 1 ) ) SELECT id, card_id, customer_id, ts::VARCHAR, amt, role, (role = 'larger_purchase' AND amt > 100.0) AS cleared_over_block FROM members ORDER BY card_id, ts, id",
+        "params": {
+          "min_small": 3,
+          "channel": "online",
+          "window_min": 60,
+          "block_over": 100.0,
+          "small_max": 5.0,
+          "lookahead_h": 48,
+          "card_id": "C08623-K2"
+        }
+      },
+      {
+        "case_id": "HHG-004",
+        "agree": true,
+        "kind": "agree: neither sees card testing",
+        "rule_fires": false,
+        "rule_actions": [],
+        "run_txn_ids": [],
+        "flagged_txn_id": "3583227",
+        "card_id": "C08106-K1",
+        "agent_verdict": "uncertain",
+        "agent_pattern": "card_not_present_new_device",
+        "agent_final_actions": [
+          "CREATE_CASE",
+          "MONITOR_CARD",
+          "DECLINE_TRANSACTION",
+          "BLOCK_CARD"
+        ],
+        "as_of": "2016-12-29 07:53:54",
+        "query": "WITH small AS ( SELECT id, TransactionID, card_id, customer_id, ts, amt FROM txc WHERE channel = 'online' AND amt < 5.0 AND ts <= '2016-12-29 07:53:54' AND card_id = 'C08106-K1' ), win AS ( SELECT *, count(*) OVER (PARTITION BY card_id ORDER BY ts RANGE BETWEEN INTERVAL 60 MINUTE PRECEDING AND CURRENT ROW) AS n_in_window FROM small ), run_end AS (SELECT card_id, ts AS end_ts FROM win WHERE n_in_window >= 3), followed AS ( SELECT DISTINCT r.card_id, r.end_ts FROM run_end r JOIN txc b ON b.card_id = r.card_id AND b.channel = 'online' AND b.amt >= 5.0 AND b.ts > r.end_ts AND b.ts <= least(r.end_ts + INTERVAL 48 HOUR, TIMESTAMP '2016-12-29 07:53:54') ), members AS ( SELECT s.id, s.card_id, s.customer_id, s.ts, s.amt, 'small_auth' AS role FROM followed f JOIN small s ON s.card_id = f.card_id AND s.ts BETWEEN f.end_ts - INTERVAL 60 MINUTE AND f.end_ts UNION SELECT id, card_id, customer_id, ts, amt, 'larger_purchase' FROM ( SELECT b.id, b.card_id, b.customer_id, b.ts, b.amt FROM followed f JOIN txc b ON b.card_id = f.card_id AND b.channel = 'online' AND b.amt >= 5.0 AND b.ts > f.end_ts AND b.ts <= least(f.end_ts + INTERVAL 48 HOUR, TIMESTAMP '2016-12-29 07:53:54') QUALIFY row_number() OVER (PARTITION BY f.card_id, f.end_ts ORDER BY b.ts, b.TransactionID) = 1 ) ) SELECT id, card_id, customer_id, ts::VARCHAR, amt, role, (role = 'larger_purchase' AND amt > 100.0) AS cleared_over_block FROM members ORDER BY card_id, ts, id",
+        "params": {
+          "min_small": 3,
+          "channel": "online",
+          "window_min": 60,
+          "block_over": 100.0,
+          "small_max": 5.0,
+          "lookahead_h": 48,
+          "card_id": "C08106-K1"
+        }
+      },
+      {
+        "case_id": "HHG-005",
+        "agree": true,
+        "kind": "agree: neither sees card testing",
+        "rule_fires": false,
+        "rule_actions": [],
+        "run_txn_ids": [],
+        "flagged_txn_id": "3523199",
+        "card_id": "C02923-K1",
+        "agent_verdict": "legitimate",
+        "agent_pattern": "none",
+        "agent_final_actions": [
+          "CREATE_CASE",
+          "ALLOW_TRANSACTION",
+          "CLOSE_NO_FRAUD"
+        ],
+        "as_of": "2016-12-08 03:38:37",
+        "query": "WITH small AS ( SELECT id, TransactionID, card_id, customer_id, ts, amt FROM txc WHERE channel = 'online' AND amt < 5.0 AND ts <= '2016-12-08 03:38:37' AND card_id = 'C02923-K1' ), win AS ( SELECT *, count(*) OVER (PARTITION BY card_id ORDER BY ts RANGE BETWEEN INTERVAL 60 MINUTE PRECEDING AND CURRENT ROW) AS n_in_window FROM small ), run_end AS (SELECT card_id, ts AS end_ts FROM win WHERE n_in_window >= 3), followed AS ( SELECT DISTINCT r.card_id, r.end_ts FROM run_end r JOIN txc b ON b.card_id = r.card_id AND b.channel = 'online' AND b.amt >= 5.0 AND b.ts > r.end_ts AND b.ts <= least(r.end_ts + INTERVAL 48 HOUR, TIMESTAMP '2016-12-08 03:38:37') ), members AS ( SELECT s.id, s.card_id, s.customer_id, s.ts, s.amt, 'small_auth' AS role FROM followed f JOIN small s ON s.card_id = f.card_id AND s.ts BETWEEN f.end_ts - INTERVAL 60 MINUTE AND f.end_ts UNION SELECT id, card_id, customer_id, ts, amt, 'larger_purchase' FROM ( SELECT b.id, b.card_id, b.customer_id, b.ts, b.amt FROM followed f JOIN txc b ON b.card_id = f.card_id AND b.channel = 'online' AND b.amt >= 5.0 AND b.ts > f.end_ts AND b.ts <= least(f.end_ts + INTERVAL 48 HOUR, TIMESTAMP '2016-12-08 03:38:37') QUALIFY row_number() OVER (PARTITION BY f.card_id, f.end_ts ORDER BY b.ts, b.TransactionID) = 1 ) ) SELECT id, card_id, customer_id, ts::VARCHAR, amt, role, (role = 'larger_purchase' AND amt > 100.0) AS cleared_over_block FROM members ORDER BY card_id, ts, id",
+        "params": {
+          "min_small": 3,
+          "channel": "online",
+          "window_min": 60,
+          "block_over": 100.0,
+          "small_max": 5.0,
+          "lookahead_h": 48,
+          "card_id": "C02923-K1"
+        }
+      },
+      {
+        "case_id": "HHG-006",
+        "agree": true,
+        "kind": "agree: neither sees card testing",
+        "rule_fires": false,
+        "rule_actions": [],
+        "run_txn_ids": [],
+        "flagged_txn_id": "3476682",
+        "card_id": "C07297-K1",
+        "agent_verdict": "fraud",
+        "agent_pattern": "undocumented",
+        "agent_final_actions": [
+          "CREATE_CASE",
+          "BLOCK_CARD",
+          "FILE_REPORT",
+          "ESCALATE_TO_ANALYST"
+        ],
+        "as_of": "2016-11-22 02:30:00",
+        "query": "WITH small AS ( SELECT id, TransactionID, card_id, customer_id, ts, amt FROM txc WHERE channel = 'online' AND amt < 5.0 AND ts <= '2016-11-22 02:30:00' AND card_id = 'C07297-K1' ), win AS ( SELECT *, count(*) OVER (PARTITION BY card_id ORDER BY ts RANGE BETWEEN INTERVAL 60 MINUTE PRECEDING AND CURRENT ROW) AS n_in_window FROM small ), run_end AS (SELECT card_id, ts AS end_ts FROM win WHERE n_in_window >= 3), followed AS ( SELECT DISTINCT r.card_id, r.end_ts FROM run_end r JOIN txc b ON b.card_id = r.card_id AND b.channel = 'online' AND b.amt >= 5.0 AND b.ts > r.end_ts AND b.ts <= least(r.end_ts + INTERVAL 48 HOUR, TIMESTAMP '2016-11-22 02:30:00') ), members AS ( SELECT s.id, s.card_id, s.customer_id, s.ts, s.amt, 'small_auth' AS role FROM followed f JOIN small s ON s.card_id = f.card_id AND s.ts BETWEEN f.end_ts - INTERVAL 60 MINUTE AND f.end_ts UNION SELECT id, card_id, customer_id, ts, amt, 'larger_purchase' FROM ( SELECT b.id, b.card_id, b.customer_id, b.ts, b.amt FROM followed f JOIN txc b ON b.card_id = f.card_id AND b.channel = 'online' AND b.amt >= 5.0 AND b.ts > f.end_ts AND b.ts <= least(f.end_ts + INTERVAL 48 HOUR, TIMESTAMP '2016-11-22 02:30:00') QUALIFY row_number() OVER (PARTITION BY f.card_id, f.end_ts ORDER BY b.ts, b.TransactionID) = 1 ) ) SELECT id, card_id, customer_id, ts::VARCHAR, amt, role, (role = 'larger_purchase' AND amt > 100.0) AS cleared_over_block FROM members ORDER BY card_id, ts, id",
+        "params": {
+          "min_small": 3,
+          "channel": "online",
+          "window_min": 60,
+          "block_over": 100.0,
+          "small_max": 5.0,
+          "lookahead_h": 48,
+          "card_id": "C07297-K1"
+        }
+      },
+      {
+        "case_id": "HHG-007",
+        "agree": true,
+        "kind": "agree: neither sees card testing",
+        "rule_fires": false,
+        "rule_actions": [],
+        "run_txn_ids": [],
+        "flagged_txn_id": "3514948",
+        "card_id": "C09933-K2",
+        "agent_verdict": "fraud",
+        "agent_pattern": "account_takeover",
+        "agent_final_actions": [
+          "CREATE_CASE",
+          "MONITOR_CARD",
+          "DECLINE_TRANSACTION",
+          "BLOCK_CARD"
+        ],
+        "as_of": "2016-12-05 03:46:14",
+        "query": "WITH small AS ( SELECT id, TransactionID, card_id, customer_id, ts, amt FROM txc WHERE channel = 'online' AND amt < 5.0 AND ts <= '2016-12-05 03:46:14' AND card_id = 'C09933-K2' ), win AS ( SELECT *, count(*) OVER (PARTITION BY card_id ORDER BY ts RANGE BETWEEN INTERVAL 60 MINUTE PRECEDING AND CURRENT ROW) AS n_in_window FROM small ), run_end AS (SELECT card_id, ts AS end_ts FROM win WHERE n_in_window >= 3), followed AS ( SELECT DISTINCT r.card_id, r.end_ts FROM run_end r JOIN txc b ON b.card_id = r.card_id AND b.channel = 'online' AND b.amt >= 5.0 AND b.ts > r.end_ts AND b.ts <= least(r.end_ts + INTERVAL 48 HOUR, TIMESTAMP '2016-12-05 03:46:14') ), members AS ( SELECT s.id, s.card_id, s.customer_id, s.ts, s.amt, 'small_auth' AS role FROM followed f JOIN small s ON s.card_id = f.card_id AND s.ts BETWEEN f.end_ts - INTERVAL 60 MINUTE AND f.end_ts UNION SELECT id, card_id, customer_id, ts, amt, 'larger_purchase' FROM ( SELECT b.id, b.card_id, b.customer_id, b.ts, b.amt FROM followed f JOIN txc b ON b.card_id = f.card_id AND b.channel = 'online' AND b.amt >= 5.0 AND b.ts > f.end_ts AND b.ts <= least(f.end_ts + INTERVAL 48 HOUR, TIMESTAMP '2016-12-05 03:46:14') QUALIFY row_number() OVER (PARTITION BY f.card_id, f.end_ts ORDER BY b.ts, b.TransactionID) = 1 ) ) SELECT id, card_id, customer_id, ts::VARCHAR, amt, role, (role = 'larger_purchase' AND amt > 100.0) AS cleared_over_block FROM members ORDER BY card_id, ts, id",
+        "params": {
+          "min_small": 3,
+          "channel": "online",
+          "window_min": 60,
+          "block_over": 100.0,
+          "small_max": 5.0,
+          "lookahead_h": 48,
+          "card_id": "C09933-K2"
+        }
+      },
+      {
+        "case_id": "HHG-008",
+        "agree": true,
+        "kind": "agree: neither sees card testing",
+        "rule_fires": false,
+        "rule_actions": [],
+        "run_txn_ids": [],
+        "flagged_txn_id": "3558054",
+        "card_id": "C13171-K2",
+        "agent_verdict": "fraud",
+        "agent_pattern": "card_not_present_new_device",
+        "agent_final_actions": [
+          "CREATE_CASE",
+          "BLOCK_CARD"
+        ],
+        "as_of": "2016-12-20 03:08:56",
+        "query": "WITH small AS ( SELECT id, TransactionID, card_id, customer_id, ts, amt FROM txc WHERE channel = 'online' AND amt < 5.0 AND ts <= '2016-12-20 03:08:56' AND card_id = 'C13171-K2' ), win AS ( SELECT *, count(*) OVER (PARTITION BY card_id ORDER BY ts RANGE BETWEEN INTERVAL 60 MINUTE PRECEDING AND CURRENT ROW) AS n_in_window FROM small ), run_end AS (SELECT card_id, ts AS end_ts FROM win WHERE n_in_window >= 3), followed AS ( SELECT DISTINCT r.card_id, r.end_ts FROM run_end r JOIN txc b ON b.card_id = r.card_id AND b.channel = 'online' AND b.amt >= 5.0 AND b.ts > r.end_ts AND b.ts <= least(r.end_ts + INTERVAL 48 HOUR, TIMESTAMP '2016-12-20 03:08:56') ), members AS ( SELECT s.id, s.card_id, s.customer_id, s.ts, s.amt, 'small_auth' AS role FROM followed f JOIN small s ON s.card_id = f.card_id AND s.ts BETWEEN f.end_ts - INTERVAL 60 MINUTE AND f.end_ts UNION SELECT id, card_id, customer_id, ts, amt, 'larger_purchase' FROM ( SELECT b.id, b.card_id, b.customer_id, b.ts, b.amt FROM followed f JOIN txc b ON b.card_id = f.card_id AND b.channel = 'online' AND b.amt >= 5.0 AND b.ts > f.end_ts AND b.ts <= least(f.end_ts + INTERVAL 48 HOUR, TIMESTAMP '2016-12-20 03:08:56') QUALIFY row_number() OVER (PARTITION BY f.card_id, f.end_ts ORDER BY b.ts, b.TransactionID) = 1 ) ) SELECT id, card_id, customer_id, ts::VARCHAR, amt, role, (role = 'larger_purchase' AND amt > 100.0) AS cleared_over_block FROM members ORDER BY card_id, ts, id",
+        "params": {
+          "min_small": 3,
+          "channel": "online",
+          "window_min": 60,
+          "block_over": 100.0,
+          "small_max": 5.0,
+          "lookahead_h": 48,
+          "card_id": "C13171-K2"
+        }
+      },
+      {
+        "case_id": "HHG-009",
+        "agree": true,
+        "kind": "agree: neither sees card testing",
+        "rule_fires": false,
+        "rule_actions": [],
+        "run_txn_ids": [],
+        "flagged_txn_id": "3581141",
+        "card_id": "C08299-K1",
+        "agent_verdict": "fraud",
+        "agent_pattern": "card_not_present_fraud",
+        "agent_final_actions": [
+          "CREATE_CASE",
+          "BLOCK_CARD"
+        ],
+        "as_of": "2016-12-28 17:10:53",
+        "query": "WITH small AS ( SELECT id, TransactionID, card_id, customer_id, ts, amt FROM txc WHERE channel = 'online' AND amt < 5.0 AND ts <= '2016-12-28 17:10:53' AND card_id = 'C08299-K1' ), win AS ( SELECT *, count(*) OVER (PARTITION BY card_id ORDER BY ts RANGE BETWEEN INTERVAL 60 MINUTE PRECEDING AND CURRENT ROW) AS n_in_window FROM small ), run_end AS (SELECT card_id, ts AS end_ts FROM win WHERE n_in_window >= 3), followed AS ( SELECT DISTINCT r.card_id, r.end_ts FROM run_end r JOIN txc b ON b.card_id = r.card_id AND b.channel = 'online' AND b.amt >= 5.0 AND b.ts > r.end_ts AND b.ts <= least(r.end_ts + INTERVAL 48 HOUR, TIMESTAMP '2016-12-28 17:10:53') ), members AS ( SELECT s.id, s.card_id, s.customer_id, s.ts, s.amt, 'small_auth' AS role FROM followed f JOIN small s ON s.card_id = f.card_id AND s.ts BETWEEN f.end_ts - INTERVAL 60 MINUTE AND f.end_ts UNION SELECT id, card_id, customer_id, ts, amt, 'larger_purchase' FROM ( SELECT b.id, b.card_id, b.customer_id, b.ts, b.amt FROM followed f JOIN txc b ON b.card_id = f.card_id AND b.channel = 'online' AND b.amt >= 5.0 AND b.ts > f.end_ts AND b.ts <= least(f.end_ts + INTERVAL 48 HOUR, TIMESTAMP '2016-12-28 17:10:53') QUALIFY row_number() OVER (PARTITION BY f.card_id, f.end_ts ORDER BY b.ts, b.TransactionID) = 1 ) ) SELECT id, card_id, customer_id, ts::VARCHAR, amt, role, (role = 'larger_purchase' AND amt > 100.0) AS cleared_over_block FROM members ORDER BY card_id, ts, id",
+        "params": {
+          "min_small": 3,
+          "channel": "online",
+          "window_min": 60,
+          "block_over": 100.0,
+          "small_max": 5.0,
+          "lookahead_h": 48,
+          "card_id": "C08299-K1"
+        }
+      },
+      {
+        "case_id": "HHG-010",
+        "agree": true,
+        "kind": "agree: neither sees card testing",
+        "rule_fires": false,
+        "rule_actions": [],
+        "run_txn_ids": [],
+        "flagged_txn_id": "3506725",
+        "card_id": "C10434-K1",
+        "agent_verdict": "legitimate",
+        "agent_pattern": "none",
+        "agent_final_actions": [
+          "CREATE_CASE",
+          "ALLOW_TRANSACTION",
+          "CLOSE_NO_FRAUD"
+        ],
+        "as_of": "2016-12-02 18:18:27",
+        "query": "WITH small AS ( SELECT id, TransactionID, card_id, customer_id, ts, amt FROM txc WHERE channel = 'online' AND amt < 5.0 AND ts <= '2016-12-02 18:18:27' AND card_id = 'C10434-K1' ), win AS ( SELECT *, count(*) OVER (PARTITION BY card_id ORDER BY ts RANGE BETWEEN INTERVAL 60 MINUTE PRECEDING AND CURRENT ROW) AS n_in_window FROM small ), run_end AS (SELECT card_id, ts AS end_ts FROM win WHERE n_in_window >= 3), followed AS ( SELECT DISTINCT r.card_id, r.end_ts FROM run_end r JOIN txc b ON b.card_id = r.card_id AND b.channel = 'online' AND b.amt >= 5.0 AND b.ts > r.end_ts AND b.ts <= least(r.end_ts + INTERVAL 48 HOUR, TIMESTAMP '2016-12-02 18:18:27') ), members AS ( SELECT s.id, s.card_id, s.customer_id, s.ts, s.amt, 'small_auth' AS role FROM followed f JOIN small s ON s.card_id = f.card_id AND s.ts BETWEEN f.end_ts - INTERVAL 60 MINUTE AND f.end_ts UNION SELECT id, card_id, customer_id, ts, amt, 'larger_purchase' FROM ( SELECT b.id, b.card_id, b.customer_id, b.ts, b.amt FROM followed f JOIN txc b ON b.card_id = f.card_id AND b.channel = 'online' AND b.amt >= 5.0 AND b.ts > f.end_ts AND b.ts <= least(f.end_ts + INTERVAL 48 HOUR, TIMESTAMP '2016-12-02 18:18:27') QUALIFY row_number() OVER (PARTITION BY f.card_id, f.end_ts ORDER BY b.ts, b.TransactionID) = 1 ) ) SELECT id, card_id, customer_id, ts::VARCHAR, amt, role, (role = 'larger_purchase' AND amt > 100.0) AS cleared_over_block FROM members ORDER BY card_id, ts, id",
+        "params": {
+          "min_small": 3,
+          "channel": "online",
+          "window_min": 60,
+          "block_over": 100.0,
+          "small_max": 5.0,
+          "lookahead_h": 48,
+          "card_id": "C10434-K1"
+        }
+      },
+      {
+        "case_id": "HHG-011",
+        "agree": true,
+        "kind": "agree: neither sees card testing",
+        "rule_fires": false,
+        "rule_actions": [],
+        "run_txn_ids": [
+          "3152170",
+          "3152171",
+          "3152184",
+          "3152187",
+          "3152198",
+          "3152231",
+          "3152296",
+          "3152397",
+          "3152607",
+          "3199813",
+          "3199827",
+          "3199856",
+          "3200009",
+          "3398128",
+          "3398198",
+          "3398201",
+          "3398216",
+          "3398222",
+          "3398262",
+          "3398340",
+          "3437327",
+          "3437330",
+          "3437333",
+          "3437344",
+          "3443143",
+          "3443145",
+          "3443147",
+          "3443159",
+          "3443177",
+          "3443207",
+          "3443242",
+          "3457865",
+          "3457908",
+          "3457917",
+          "3457931",
+          "3511613",
+          "3511626",
+          "3511662",
+          "3511709",
+          "3515231",
+          "3515258",
+          "3515275",
+          "3515321",
+          "3515338",
+          "3515340",
+          "3515348",
+          "3515352",
+          "3526796",
+          "3526801",
+          "3526838",
+          "3526841",
+          "3526864",
+          "3526866",
+          "3526878",
+          "3526880",
+          "3526888",
+          "3526890",
+          "3526892",
+          "3526924",
+          "3526949",
+          "3529656",
+          "3529657",
+          "3529761",
+          "3529779",
+          "3529797",
+          "3529812",
+          "3535250",
+          "3535273",
+          "3535277",
+          "3535279",
+          "3535292",
+          "3535293",
+          "3535294"
+        ],
+        "flagged_txn_id": "3583368",
+        "card_id": "C11923-K2",
+        "agent_verdict": "uncertain",
+        "agent_pattern": "card_not_present_new_device",
+        "agent_final_actions": [
+          "CREATE_CASE",
+          "MONITOR_CARD",
+          "DECLINE_TRANSACTION",
+          "BLOCK_CARD",
+          "ESCALATE_TO_ANALYST"
+        ],
+        "as_of": "2016-12-29 06:27:44",
+        "query": "WITH small AS ( SELECT id, TransactionID, card_id, customer_id, ts, amt FROM txc WHERE channel = 'online' AND amt < 5.0 AND ts <= '2016-12-29 06:27:44' AND card_id = 'C11923-K2' ), win AS ( SELECT *, count(*) OVER (PARTITION BY card_id ORDER BY ts RANGE BETWEEN INTERVAL 60 MINUTE PRECEDING AND CURRENT ROW) AS n_in_window FROM small ), run_end AS (SELECT card_id, ts AS end_ts FROM win WHERE n_in_window >= 3), followed AS ( SELECT DISTINCT r.card_id, r.end_ts FROM run_end r JOIN txc b ON b.card_id = r.card_id AND b.channel = 'online' AND b.amt >= 5.0 AND b.ts > r.end_ts AND b.ts <= least(r.end_ts + INTERVAL 48 HOUR, TIMESTAMP '2016-12-29 06:27:44') ), members AS ( SELECT s.id, s.card_id, s.customer_id, s.ts, s.amt, 'small_auth' AS role FROM followed f JOIN small s ON s.card_id = f.card_id AND s.ts BETWEEN f.end_ts - INTERVAL 60 MINUTE AND f.end_ts UNION SELECT id, card_id, customer_id, ts, amt, 'larger_purchase' FROM ( SELECT b.id, b.card_id, b.customer_id, b.ts, b.amt FROM followed f JOIN txc b ON b.card_id = f.card_id AND b.channel = 'online' AND b.amt >= 5.0 AND b.ts > f.end_ts AND b.ts <= least(f.end_ts + INTERVAL 48 HOUR, TIMESTAMP '2016-12-29 06:27:44') QUALIFY row_number() OVER (PARTITION BY f.card_id, f.end_ts ORDER BY b.ts, b.TransactionID) = 1 ) ) SELECT id, card_id, customer_id, ts::VARCHAR, amt, role, (role = 'larger_purchase' AND amt > 100.0) AS cleared_over_block FROM members ORDER BY card_id, ts, id",
+        "params": {
+          "min_small": 3,
+          "channel": "online",
+          "window_min": 60,
+          "block_over": 100.0,
+          "small_max": 5.0,
+          "lookahead_h": 48,
+          "card_id": "C11923-K2"
+        }
+      },
+      {
+        "case_id": "HHG-012",
+        "agree": true,
+        "kind": "agree: neither sees card testing",
+        "rule_fires": false,
+        "rule_actions": [],
+        "run_txn_ids": [],
+        "flagged_txn_id": "3553342",
+        "card_id": "C05876-K2",
+        "agent_verdict": "legitimate",
+        "agent_pattern": "none",
+        "agent_final_actions": [
+          "CREATE_CASE",
+          "ALLOW_TRANSACTION",
+          "CLOSE_NO_FRAUD"
+        ],
+        "as_of": "2016-12-18 05:00:31",
+        "query": "WITH small AS ( SELECT id, TransactionID, card_id, customer_id, ts, amt FROM txc WHERE channel = 'online' AND amt < 5.0 AND ts <= '2016-12-18 05:00:31' AND card_id = 'C05876-K2' ), win AS ( SELECT *, count(*) OVER (PARTITION BY card_id ORDER BY ts RANGE BETWEEN INTERVAL 60 MINUTE PRECEDING AND CURRENT ROW) AS n_in_window FROM small ), run_end AS (SELECT card_id, ts AS end_ts FROM win WHERE n_in_window >= 3), followed AS ( SELECT DISTINCT r.card_id, r.end_ts FROM run_end r JOIN txc b ON b.card_id = r.card_id AND b.channel = 'online' AND b.amt >= 5.0 AND b.ts > r.end_ts AND b.ts <= least(r.end_ts + INTERVAL 48 HOUR, TIMESTAMP '2016-12-18 05:00:31') ), members AS ( SELECT s.id, s.card_id, s.customer_id, s.ts, s.amt, 'small_auth' AS role FROM followed f JOIN small s ON s.card_id = f.card_id AND s.ts BETWEEN f.end_ts - INTERVAL 60 MINUTE AND f.end_ts UNION SELECT id, card_id, customer_id, ts, amt, 'larger_purchase' FROM ( SELECT b.id, b.card_id, b.customer_id, b.ts, b.amt FROM followed f JOIN txc b ON b.card_id = f.card_id AND b.channel = 'online' AND b.amt >= 5.0 AND b.ts > f.end_ts AND b.ts <= least(f.end_ts + INTERVAL 48 HOUR, TIMESTAMP '2016-12-18 05:00:31') QUALIFY row_number() OVER (PARTITION BY f.card_id, f.end_ts ORDER BY b.ts, b.TransactionID) = 1 ) ) SELECT id, card_id, customer_id, ts::VARCHAR, amt, role, (role = 'larger_purchase' AND amt > 100.0) AS cleared_over_block FROM members ORDER BY card_id, ts, id",
+        "params": {
+          "min_small": 3,
+          "channel": "online",
+          "window_min": 60,
+          "block_over": 100.0,
+          "small_max": 5.0,
+          "lookahead_h": 48,
+          "card_id": "C05876-K2"
+        }
+      },
+      {
+        "case_id": "HHG-013",
+        "agree": true,
+        "kind": "agree: neither sees card testing",
+        "rule_fires": false,
+        "rule_actions": [],
+        "run_txn_ids": [],
+        "flagged_txn_id": "3526826",
+        "card_id": "C07671-K2",
+        "agent_verdict": "legitimate",
+        "agent_pattern": "none",
+        "agent_final_actions": [
+          "CREATE_CASE",
+          "ALLOW_TRANSACTION",
+          "CLOSE_NO_FRAUD"
+        ],
+        "as_of": "2016-12-09 05:39:29",
+        "query": "WITH small AS ( SELECT id, TransactionID, card_id, customer_id, ts, amt FROM txc WHERE channel = 'online' AND amt < 5.0 AND ts <= '2016-12-09 05:39:29' AND card_id = 'C07671-K2' ), win AS ( SELECT *, count(*) OVER (PARTITION BY card_id ORDER BY ts RANGE BETWEEN INTERVAL 60 MINUTE PRECEDING AND CURRENT ROW) AS n_in_window FROM small ), run_end AS (SELECT card_id, ts AS end_ts FROM win WHERE n_in_window >= 3), followed AS ( SELECT DISTINCT r.card_id, r.end_ts FROM run_end r JOIN txc b ON b.card_id = r.card_id AND b.channel = 'online' AND b.amt >= 5.0 AND b.ts > r.end_ts AND b.ts <= least(r.end_ts + INTERVAL 48 HOUR, TIMESTAMP '2016-12-09 05:39:29') ), members AS ( SELECT s.id, s.card_id, s.customer_id, s.ts, s.amt, 'small_auth' AS role FROM followed f JOIN small s ON s.card_id = f.card_id AND s.ts BETWEEN f.end_ts - INTERVAL 60 MINUTE AND f.end_ts UNION SELECT id, card_id, customer_id, ts, amt, 'larger_purchase' FROM ( SELECT b.id, b.card_id, b.customer_id, b.ts, b.amt FROM followed f JOIN txc b ON b.card_id = f.card_id AND b.channel = 'online' AND b.amt >= 5.0 AND b.ts > f.end_ts AND b.ts <= least(f.end_ts + INTERVAL 48 HOUR, TIMESTAMP '2016-12-09 05:39:29') QUALIFY row_number() OVER (PARTITION BY f.card_id, f.end_ts ORDER BY b.ts, b.TransactionID) = 1 ) ) SELECT id, card_id, customer_id, ts::VARCHAR, amt, role, (role = 'larger_purchase' AND amt > 100.0) AS cleared_over_block FROM members ORDER BY card_id, ts, id",
+        "params": {
+          "min_small": 3,
+          "channel": "online",
+          "window_min": 60,
+          "block_over": 100.0,
+          "small_max": 5.0,
+          "lookahead_h": 48,
+          "card_id": "C07671-K2"
+        }
+      },
+      {
+        "case_id": "HHG-014",
+        "agree": true,
+        "kind": "agree: neither sees card testing",
+        "rule_fires": false,
+        "rule_actions": [],
+        "run_txn_ids": [],
+        "flagged_txn_id": "3478561",
+        "card_id": "C13487-K1",
+        "agent_verdict": "fraud",
+        "agent_pattern": "undocumented",
+        "agent_final_actions": [
+          "CREATE_CASE",
+          "MONITOR_CONNECTED_CARDS",
+          "BLOCK_CARD",
+          "FILE_REPORT",
+          "ESCALATE_TO_ANALYST"
+        ],
+        "as_of": "2016-11-22 20:11:00",
+        "query": "WITH small AS ( SELECT id, TransactionID, card_id, customer_id, ts, amt FROM txc WHERE channel = 'online' AND amt < 5.0 AND ts <= '2016-11-22 20:11:00' AND card_id = 'C13487-K1' ), win AS ( SELECT *, count(*) OVER (PARTITION BY card_id ORDER BY ts RANGE BETWEEN INTERVAL 60 MINUTE PRECEDING AND CURRENT ROW) AS n_in_window FROM small ), run_end AS (SELECT card_id, ts AS end_ts FROM win WHERE n_in_window >= 3), followed AS ( SELECT DISTINCT r.card_id, r.end_ts FROM run_end r JOIN txc b ON b.card_id = r.card_id AND b.channel = 'online' AND b.amt >= 5.0 AND b.ts > r.end_ts AND b.ts <= least(r.end_ts + INTERVAL 48 HOUR, TIMESTAMP '2016-11-22 20:11:00') ), members AS ( SELECT s.id, s.card_id, s.customer_id, s.ts, s.amt, 'small_auth' AS role FROM followed f JOIN small s ON s.card_id = f.card_id AND s.ts BETWEEN f.end_ts - INTERVAL 60 MINUTE AND f.end_ts UNION SELECT id, card_id, customer_id, ts, amt, 'larger_purchase' FROM ( SELECT b.id, b.card_id, b.customer_id, b.ts, b.amt FROM followed f JOIN txc b ON b.card_id = f.card_id AND b.channel = 'online' AND b.amt >= 5.0 AND b.ts > f.end_ts AND b.ts <= least(f.end_ts + INTERVAL 48 HOUR, TIMESTAMP '2016-11-22 20:11:00') QUALIFY row_number() OVER (PARTITION BY f.card_id, f.end_ts ORDER BY b.ts, b.TransactionID) = 1 ) ) SELECT id, card_id, customer_id, ts::VARCHAR, amt, role, (role = 'larger_purchase' AND amt > 100.0) AS cleared_over_block FROM members ORDER BY card_id, ts, id",
+        "params": {
+          "min_small": 3,
+          "channel": "online",
+          "window_min": 60,
+          "block_over": 100.0,
+          "small_max": 5.0,
+          "lookahead_h": 48,
+          "card_id": "C13487-K1"
+        }
+      },
+      {
+        "case_id": "HHG-015",
+        "agree": true,
+        "kind": "agree: neither sees card testing",
+        "rule_fires": false,
+        "rule_actions": [],
+        "run_txn_ids": [],
+        "flagged_txn_id": "3464869",
+        "card_id": "C03042-K1",
+        "agent_verdict": "uncertain",
+        "agent_pattern": "account_takeover",
+        "agent_final_actions": [
+          "CREATE_CASE",
+          "MONITOR_CARD",
+          "DECLINE_TRANSACTION",
+          "ESCALATE_TO_ANALYST"
+        ],
+        "as_of": "2016-11-17 19:03:36",
+        "query": "WITH small AS ( SELECT id, TransactionID, card_id, customer_id, ts, amt FROM txc WHERE channel = 'online' AND amt < 5.0 AND ts <= '2016-11-17 19:03:36' AND card_id = 'C03042-K1' ), win AS ( SELECT *, count(*) OVER (PARTITION BY card_id ORDER BY ts RANGE BETWEEN INTERVAL 60 MINUTE PRECEDING AND CURRENT ROW) AS n_in_window FROM small ), run_end AS (SELECT card_id, ts AS end_ts FROM win WHERE n_in_window >= 3), followed AS ( SELECT DISTINCT r.card_id, r.end_ts FROM run_end r JOIN txc b ON b.card_id = r.card_id AND b.channel = 'online' AND b.amt >= 5.0 AND b.ts > r.end_ts AND b.ts <= least(r.end_ts + INTERVAL 48 HOUR, TIMESTAMP '2016-11-17 19:03:36') ), members AS ( SELECT s.id, s.card_id, s.customer_id, s.ts, s.amt, 'small_auth' AS role FROM followed f JOIN small s ON s.card_id = f.card_id AND s.ts BETWEEN f.end_ts - INTERVAL 60 MINUTE AND f.end_ts UNION SELECT id, card_id, customer_id, ts, amt, 'larger_purchase' FROM ( SELECT b.id, b.card_id, b.customer_id, b.ts, b.amt FROM followed f JOIN txc b ON b.card_id = f.card_id AND b.channel = 'online' AND b.amt >= 5.0 AND b.ts > f.end_ts AND b.ts <= least(f.end_ts + INTERVAL 48 HOUR, TIMESTAMP '2016-11-17 19:03:36') QUALIFY row_number() OVER (PARTITION BY f.card_id, f.end_ts ORDER BY b.ts, b.TransactionID) = 1 ) ) SELECT id, card_id, customer_id, ts::VARCHAR, amt, role, (role = 'larger_purchase' AND amt > 100.0) AS cleared_over_block FROM members ORDER BY card_id, ts, id",
+        "params": {
+          "min_small": 3,
+          "channel": "online",
+          "window_min": 60,
+          "block_over": 100.0,
+          "small_max": 5.0,
+          "lookahead_h": 48,
+          "card_id": "C03042-K1"
+        }
+      },
+      {
+        "case_id": "HHG-016",
+        "agree": true,
+        "kind": "agree: neither sees card testing",
+        "rule_fires": false,
+        "rule_actions": [],
+        "run_txn_ids": [],
+        "flagged_txn_id": "3534820",
+        "card_id": "C09988-K1",
+        "agent_verdict": "fraud",
+        "agent_pattern": "card_not_present_new_device",
+        "agent_final_actions": [
+          "CREATE_CASE",
+          "MONITOR_CARD",
+          "DECLINE_TRANSACTION",
+          "BLOCK_CARD"
+        ],
+        "as_of": "2016-12-12 01:39:08",
+        "query": "WITH small AS ( SELECT id, TransactionID, card_id, customer_id, ts, amt FROM txc WHERE channel = 'online' AND amt < 5.0 AND ts <= '2016-12-12 01:39:08' AND card_id = 'C09988-K1' ), win AS ( SELECT *, count(*) OVER (PARTITION BY card_id ORDER BY ts RANGE BETWEEN INTERVAL 60 MINUTE PRECEDING AND CURRENT ROW) AS n_in_window FROM small ), run_end AS (SELECT card_id, ts AS end_ts FROM win WHERE n_in_window >= 3), followed AS ( SELECT DISTINCT r.card_id, r.end_ts FROM run_end r JOIN txc b ON b.card_id = r.card_id AND b.channel = 'online' AND b.amt >= 5.0 AND b.ts > r.end_ts AND b.ts <= least(r.end_ts + INTERVAL 48 HOUR, TIMESTAMP '2016-12-12 01:39:08') ), members AS ( SELECT s.id, s.card_id, s.customer_id, s.ts, s.amt, 'small_auth' AS role FROM followed f JOIN small s ON s.card_id = f.card_id AND s.ts BETWEEN f.end_ts - INTERVAL 60 MINUTE AND f.end_ts UNION SELECT id, card_id, customer_id, ts, amt, 'larger_purchase' FROM ( SELECT b.id, b.card_id, b.customer_id, b.ts, b.amt FROM followed f JOIN txc b ON b.card_id = f.card_id AND b.channel = 'online' AND b.amt >= 5.0 AND b.ts > f.end_ts AND b.ts <= least(f.end_ts + INTERVAL 48 HOUR, TIMESTAMP '2016-12-12 01:39:08') QUALIFY row_number() OVER (PARTITION BY f.card_id, f.end_ts ORDER BY b.ts, b.TransactionID) = 1 ) ) SELECT id, card_id, customer_id, ts::VARCHAR, amt, role, (role = 'larger_purchase' AND amt > 100.0) AS cleared_over_block FROM members ORDER BY card_id, ts, id",
+        "params": {
+          "min_small": 3,
+          "channel": "online",
+          "window_min": 60,
+          "block_over": 100.0,
+          "small_max": 5.0,
+          "lookahead_h": 48,
+          "card_id": "C09988-K1"
+        }
+      },
+      {
+        "case_id": "HHG-017",
+        "agree": true,
+        "kind": "agree: neither sees card testing",
+        "rule_fires": false,
+        "rule_actions": [],
+        "run_txn_ids": [],
+        "flagged_txn_id": "3450629",
+        "card_id": "C04570-K1",
+        "agent_verdict": "legitimate",
+        "agent_pattern": "none",
+        "agent_final_actions": [
+          "CREATE_CASE",
+          "ALLOW_TRANSACTION",
+          "CLOSE_NO_FRAUD"
+        ],
+        "as_of": "2016-11-12 00:46:24",
+        "query": "WITH small AS ( SELECT id, TransactionID, card_id, customer_id, ts, amt FROM txc WHERE channel = 'online' AND amt < 5.0 AND ts <= '2016-11-12 00:46:24' AND card_id = 'C04570-K1' ), win AS ( SELECT *, count(*) OVER (PARTITION BY card_id ORDER BY ts RANGE BETWEEN INTERVAL 60 MINUTE PRECEDING AND CURRENT ROW) AS n_in_window FROM small ), run_end AS (SELECT card_id, ts AS end_ts FROM win WHERE n_in_window >= 3), followed AS ( SELECT DISTINCT r.card_id, r.end_ts FROM run_end r JOIN txc b ON b.card_id = r.card_id AND b.channel = 'online' AND b.amt >= 5.0 AND b.ts > r.end_ts AND b.ts <= least(r.end_ts + INTERVAL 48 HOUR, TIMESTAMP '2016-11-12 00:46:24') ), members AS ( SELECT s.id, s.card_id, s.customer_id, s.ts, s.amt, 'small_auth' AS role FROM followed f JOIN small s ON s.card_id = f.card_id AND s.ts BETWEEN f.end_ts - INTERVAL 60 MINUTE AND f.end_ts UNION SELECT id, card_id, customer_id, ts, amt, 'larger_purchase' FROM ( SELECT b.id, b.card_id, b.customer_id, b.ts, b.amt FROM followed f JOIN txc b ON b.card_id = f.card_id AND b.channel = 'online' AND b.amt >= 5.0 AND b.ts > f.end_ts AND b.ts <= least(f.end_ts + INTERVAL 48 HOUR, TIMESTAMP '2016-11-12 00:46:24') QUALIFY row_number() OVER (PARTITION BY f.card_id, f.end_ts ORDER BY b.ts, b.TransactionID) = 1 ) ) SELECT id, card_id, customer_id, ts::VARCHAR, amt, role, (role = 'larger_purchase' AND amt > 100.0) AS cleared_over_block FROM members ORDER BY card_id, ts, id",
+        "params": {
+          "min_small": 3,
+          "channel": "online",
+          "window_min": 60,
+          "block_over": 100.0,
+          "small_max": 5.0,
+          "lookahead_h": 48,
+          "card_id": "C04570-K1"
+        }
+      },
+      {
+        "case_id": "HHG-018",
+        "agree": true,
+        "kind": "agree: neither sees card testing",
+        "rule_fires": false,
+        "rule_actions": [],
+        "run_txn_ids": [],
+        "flagged_txn_id": "3491361",
+        "card_id": "C02354-K2",
+        "agent_verdict": "uncertain",
+        "agent_pattern": "out_of_region_use",
+        "agent_final_actions": [
+          "CREATE_CASE",
+          "BLOCK_CARD",
+          "ESCALATE_TO_ANALYST"
+        ],
+        "as_of": "2016-11-27 14:41:26",
+        "query": "WITH small AS ( SELECT id, TransactionID, card_id, customer_id, ts, amt FROM txc WHERE channel = 'online' AND amt < 5.0 AND ts <= '2016-11-27 14:41:26' AND card_id = 'C02354-K2' ), win AS ( SELECT *, count(*) OVER (PARTITION BY card_id ORDER BY ts RANGE BETWEEN INTERVAL 60 MINUTE PRECEDING AND CURRENT ROW) AS n_in_window FROM small ), run_end AS (SELECT card_id, ts AS end_ts FROM win WHERE n_in_window >= 3), followed AS ( SELECT DISTINCT r.card_id, r.end_ts FROM run_end r JOIN txc b ON b.card_id = r.card_id AND b.channel = 'online' AND b.amt >= 5.0 AND b.ts > r.end_ts AND b.ts <= least(r.end_ts + INTERVAL 48 HOUR, TIMESTAMP '2016-11-27 14:41:26') ), members AS ( SELECT s.id, s.card_id, s.customer_id, s.ts, s.amt, 'small_auth' AS role FROM followed f JOIN small s ON s.card_id = f.card_id AND s.ts BETWEEN f.end_ts - INTERVAL 60 MINUTE AND f.end_ts UNION SELECT id, card_id, customer_id, ts, amt, 'larger_purchase' FROM ( SELECT b.id, b.card_id, b.customer_id, b.ts, b.amt FROM followed f JOIN txc b ON b.card_id = f.card_id AND b.channel = 'online' AND b.amt >= 5.0 AND b.ts > f.end_ts AND b.ts <= least(f.end_ts + INTERVAL 48 HOUR, TIMESTAMP '2016-11-27 14:41:26') QUALIFY row_number() OVER (PARTITION BY f.card_id, f.end_ts ORDER BY b.ts, b.TransactionID) = 1 ) ) SELECT id, card_id, customer_id, ts::VARCHAR, amt, role, (role = 'larger_purchase' AND amt > 100.0) AS cleared_over_block FROM members ORDER BY card_id, ts, id",
+        "params": {
+          "min_small": 3,
+          "channel": "online",
+          "window_min": 60,
+          "block_over": 100.0,
+          "small_max": 5.0,
+          "lookahead_h": 48,
+          "card_id": "C02354-K2"
+        }
+      },
+      {
+        "case_id": "HHG-019",
+        "agree": true,
+        "kind": "agree: neither sees card testing",
+        "rule_fires": false,
+        "rule_actions": [],
+        "run_txn_ids": [],
+        "flagged_txn_id": "3503878",
+        "card_id": "C07987-K2",
+        "agent_verdict": "fraud",
+        "agent_pattern": "card_not_present_new_device",
+        "agent_final_actions": [
+          "CREATE_CASE",
+          "MONITOR_CARD",
+          "DECLINE_TRANSACTION",
+          "BLOCK_CARD"
+        ],
+        "as_of": "2016-12-01 22:28:53",
+        "query": "WITH small AS ( SELECT id, TransactionID, card_id, customer_id, ts, amt FROM txc WHERE channel = 'online' AND amt < 5.0 AND ts <= '2016-12-01 22:28:53' AND card_id = 'C07987-K2' ), win AS ( SELECT *, count(*) OVER (PARTITION BY card_id ORDER BY ts RANGE BETWEEN INTERVAL 60 MINUTE PRECEDING AND CURRENT ROW) AS n_in_window FROM small ), run_end AS (SELECT card_id, ts AS end_ts FROM win WHERE n_in_window >= 3), followed AS ( SELECT DISTINCT r.card_id, r.end_ts FROM run_end r JOIN txc b ON b.card_id = r.card_id AND b.channel = 'online' AND b.amt >= 5.0 AND b.ts > r.end_ts AND b.ts <= least(r.end_ts + INTERVAL 48 HOUR, TIMESTAMP '2016-12-01 22:28:53') ), members AS ( SELECT s.id, s.card_id, s.customer_id, s.ts, s.amt, 'small_auth' AS role FROM followed f JOIN small s ON s.card_id = f.card_id AND s.ts BETWEEN f.end_ts - INTERVAL 60 MINUTE AND f.end_ts UNION SELECT id, card_id, customer_id, ts, amt, 'larger_purchase' FROM ( SELECT b.id, b.card_id, b.customer_id, b.ts, b.amt FROM followed f JOIN txc b ON b.card_id = f.card_id AND b.channel = 'online' AND b.amt >= 5.0 AND b.ts > f.end_ts AND b.ts <= least(f.end_ts + INTERVAL 48 HOUR, TIMESTAMP '2016-12-01 22:28:53') QUALIFY row_number() OVER (PARTITION BY f.card_id, f.end_ts ORDER BY b.ts, b.TransactionID) = 1 ) ) SELECT id, card_id, customer_id, ts::VARCHAR, amt, role, (role = 'larger_purchase' AND amt > 100.0) AS cleared_over_block FROM members ORDER BY card_id, ts, id",
+        "params": {
+          "min_small": 3,
+          "channel": "online",
+          "window_min": 60,
+          "block_over": 100.0,
+          "small_max": 5.0,
+          "lookahead_h": 48,
+          "card_id": "C07987-K2"
+        }
+      },
+      {
+        "case_id": "HHG-020",
+        "agree": true,
+        "kind": "agree: neither sees card testing",
+        "rule_fires": false,
+        "rule_actions": [],
+        "run_txn_ids": [],
+        "flagged_txn_id": "3509359",
+        "card_id": "C12265-K2",
+        "agent_verdict": "legitimate",
+        "agent_pattern": "none",
+        "agent_final_actions": [
+          "CREATE_CASE",
+          "ALLOW_TRANSACTION",
+          "CLOSE_NO_FRAUD"
+        ],
+        "as_of": "2016-12-03 12:04:26",
+        "query": "WITH small AS ( SELECT id, TransactionID, card_id, customer_id, ts, amt FROM txc WHERE channel = 'online' AND amt < 5.0 AND ts <= '2016-12-03 12:04:26' AND card_id = 'C12265-K2' ), win AS ( SELECT *, count(*) OVER (PARTITION BY card_id ORDER BY ts RANGE BETWEEN INTERVAL 60 MINUTE PRECEDING AND CURRENT ROW) AS n_in_window FROM small ), run_end AS (SELECT card_id, ts AS end_ts FROM win WHERE n_in_window >= 3), followed AS ( SELECT DISTINCT r.card_id, r.end_ts FROM run_end r JOIN txc b ON b.card_id = r.card_id AND b.channel = 'online' AND b.amt >= 5.0 AND b.ts > r.end_ts AND b.ts <= least(r.end_ts + INTERVAL 48 HOUR, TIMESTAMP '2016-12-03 12:04:26') ), members AS ( SELECT s.id, s.card_id, s.customer_id, s.ts, s.amt, 'small_auth' AS role FROM followed f JOIN small s ON s.card_id = f.card_id AND s.ts BETWEEN f.end_ts - INTERVAL 60 MINUTE AND f.end_ts UNION SELECT id, card_id, customer_id, ts, amt, 'larger_purchase' FROM ( SELECT b.id, b.card_id, b.customer_id, b.ts, b.amt FROM followed f JOIN txc b ON b.card_id = f.card_id AND b.channel = 'online' AND b.amt >= 5.0 AND b.ts > f.end_ts AND b.ts <= least(f.end_ts + INTERVAL 48 HOUR, TIMESTAMP '2016-12-03 12:04:26') QUALIFY row_number() OVER (PARTITION BY f.card_id, f.end_ts ORDER BY b.ts, b.TransactionID) = 1 ) ) SELECT id, card_id, customer_id, ts::VARCHAR, amt, role, (role = 'larger_purchase' AND amt > 100.0) AS cleared_over_block FROM members ORDER BY card_id, ts, id",
+        "params": {
+          "min_small": 3,
+          "channel": "online",
+          "window_min": 60,
+          "block_over": 100.0,
+          "small_max": 5.0,
+          "lookahead_h": 48,
+          "card_id": "C12265-K2"
+        }
+      }
+    ]
+  }
+}

@@ -569,6 +569,194 @@ def test_console_mock_mode(mock_run, monkeypatch):
     assert sorted(p.name for p in mock_run.iterdir()) == ["t1"]
 
 
+class _Popen:
+    """subprocess.Popen stand-in that records the argv and environment instead of starting anything."""
+    calls: list = []
+
+    def __init__(self, cmd, **kw):
+        _Popen.calls.append({"cmd": cmd, "env": kw.get("env") or {}})
+        self.pid = os.getpid()  # alive, so a lock written for it reads as held
+
+
+ALERTS_CSV = (",".join(common.CASE_PACK_COLUMNS) + "\n"
+              "MY-002,2017-02-03 10:00:00,customer_report,9000002,C1-K1,C1,,Not me\n"
+              "MY-001,2017-02-01 09:00:00,risk_score,9000001,C2-K1,C2,0.8,score alert\n")
+
+
+def test_validate_case_pack_accepts_good_alerts_and_names_each_problem():
+    res = common.validate_case_pack(ALERTS_CSV.encode())
+    assert res["problems"] == [] and [r["case_id"] for r in res["rows"]] == ["MY-001", "MY-002"]  # opened_at order
+    assert res["rows"][0]["risk_score"] == "0.80" and res["rows"][1]["risk_score"] == ""
+    assert common.validate_case_pack(common.case_pack_csv(res["rows"]))["rows"] == res["rows"]  # round trip
+    assert "missing column" in common.validate_case_pack("case_id,card_id\nX,Y\n")["problems"][0]
+    bad = ALERTS_CSV.replace("MY-001", "../x").replace("risk_score,9000001", "phishing,9000001").replace("2017-02-03 10:00:00", "3 Feb")
+    problems = " ".join(common.validate_case_pack(bad)["problems"])
+    assert "case_id must be" in problems and "trigger_type must be one of" in problems and "opened_at must look like" in problems
+    assert "appears twice" in " ".join(common.validate_case_pack(ALERTS_CSV.replace("MY-001", "MY-002"))["problems"])
+    assert "at most" in common.validate_case_pack(b"x" * (common.UPLOAD_MAX_BYTES + 1))["problems"][0]
+
+
+def test_run_target_follows_the_session_switch_and_checks_the_other_workspace(tree, monkeypatch):
+    ss: dict = {}
+    monkeypatch.setattr(common, "_session_state", lambda: ss)
+    monkeypatch.setenv("TG_HOST", "https://live.i.tgcloud.io")
+    monkeypatch.setenv("TG_SECRET", "env-secret")
+    assert common.run_target()["live"] is False  # RUN_MODE=mock and no choice in the session
+    ss[common.SESSION_MODE_KEY] = "live"
+    t = common.run_target()
+    assert t["live"] and t["workspace"] == "env" and t["child_env"] == {}
+    assert common.mode_status()[0] == "live"  # the pages read the .env workspace too
+    ss[common.SESSION_WS_KEY] = "other"
+    ss[common.SESSION_OTHER_KEY] = {"host": "https://mine.i.tgcloud.io", "graph": "FraudGraph", "secret": "s3cret"}
+    assert common.run_target()["live"] is False and "check" in common.run_target()["reason"]  # typed but not checked
+    assert common.mode_status()[0] == "mock"  # pages stay on the recorded files for another workspace
+    ss[common.SESSION_CHECK_KEY] = {"ok": True, "sig": common._ws_sig("https://mine.i.tgcloud.io", "FraudGraph", "s3cret")}
+    t = common.run_target()
+    assert t["live"] and t["child_env"] == {"TG_HOST": "https://mine.i.tgcloud.io", "TG_GRAPHNAME": "FraudGraph", "TG_SECRET": "s3cret"}
+    ss[common.SESSION_OTHER_KEY] = {**ss[common.SESSION_OTHER_KEY], "secret": "changed"}
+    assert common.run_target()["live"] is False  # a changed secret needs a new check
+    monkeypatch.setenv("DEPLOY_READONLY", "1")
+    assert "read-only" in common.run_target()["reason"]
+
+
+def test_launch_run_with_alerts_and_another_workspace(tree, monkeypatch):
+    _Popen.calls = []
+    monkeypatch.setattr(subprocess, "Popen", _Popen)
+    rows = common.validate_case_pack(ALERTS_CSV)["rows"]
+    res = common.launch_run(["MY-001"], "mock", "ui-alerts", case_pack=rows)
+    assert res["ok"], res
+    pack = tree["runs"] / "ui-alerts" / "case_pack.csv"
+    assert pack.is_file() and "MY-002" in pack.read_text()
+    cmd = _Popen.calls[-1]["cmd"]
+    assert cmd[cmd.index("--case-pack") + 1] == str(pack) and "--mock" in cmd
+    assert common.launch_run(["NOT-IN-PACK"], "mock", "ui-alerts-2", case_pack=rows)["error"].startswith("every case")
+    other = {"live": True, "workspace": "other", "host": "https://mine.i.tgcloud.io", "graph": "FraudGraph", "reason": "",
+             "child_env": {"TG_HOST": "https://mine.i.tgcloud.io", "TG_GRAPHNAME": "FraudGraph", "TG_SECRET": "s3cret"}}
+    monkeypatch.setattr(common, "backend_status", lambda b: {"ok": True, "reason": "test"})
+    monkeypatch.setattr(common, "run_lock", lambda run_id=None: None)
+    res = common.launch_run(["MY-001"], "gemini", "ui-alerts-live", case_pack=rows, target=other)
+    assert res["ok"], res
+    env = _Popen.calls[-1]["env"]
+    assert env["RUN_MODE"] == "live" and env["TG_HOST"] == "https://mine.i.tgcloud.io" and env["TG_SECRET"] == "s3cret"
+    lock = (tree["runs"] / "ui-alerts-live" / common.LOCK_FILE).read_text()
+    assert "s3cret" not in lock and "mine.i.tgcloud.io" in lock
+    res = common.launch_run(["MY-001"], "gemini", "ui-alerts-mocked", case_pack=rows, target={**other, "live": False, "reason": "Mock is selected"})
+    assert not res["ok"] and "mock" in res["error"]
+
+
+def test_data_steps_run_in_order_and_never_load_into_the_env_workspace(tree, monkeypatch, tmp_path):
+    _Popen.calls = []
+    monkeypatch.setattr(subprocess, "Popen", _Popen)
+    monkeypatch.setenv("TG_HOST", "https://live.i.tgcloud.io")
+    monkeypatch.setattr(common, "BASE_SNAPSHOT_DB", tmp_path / "missing_base.duckdb")  # git-ignored, so absent in CI
+    assert any("make data/hhgoa_engine_base.duckdb" in m for m in common.data_pipeline_missing())
+    common.save_month_upload("probe", {slot: b"x" for slot in common.MONTH_SLOTS})
+    assert "lacks" in common.launch_data_step("probe", "build")["error"]
+    common.BASE_SNAPSHOT_DB.write_bytes(b"")
+    files = {slot: b"a,b\n1,2\n" for slot in common.MONTH_SLOTS}
+    assert "missing" in common.save_month_upload("feb", {**files, "identity": b""})["error"]
+    assert common.save_month_upload("feb", files)["ok"]
+    assert "already exists" in common.save_month_upload("feb", files)["error"]
+    month = common.data_job_dir("feb") / "month"
+    assert sorted(p.name for p in month.iterdir()) == sorted(common.MONTH_SLOTS.values())
+    assert sorted(common.data_jobs()) == ["feb", "probe"]
+    assert "runs after" in common.launch_data_step("feb", "export")["error"]  # build first
+    res = common.launch_data_step("feb", "build")
+    assert res["ok"], res
+    wrapped = _Popen.calls[-1]["cmd"]
+    assert wrapped[1] == "-c" and wrapped[wrapped.index("--base") + 1] == str(common.BASE_SNAPSHOT_DB) and "--work" in wrapped
+    assert "one data step at a time" in common.launch_data_step("feb", "build")["error"]  # the lock's pid is alive
+    (common.data_job_dir("feb") / common.DATA_LOCK).unlink()
+    for step in ("build", "export"):
+        (common.data_job_dir("feb") / f"{step}.exit").write_text("0")
+    live_env = {"live": True, "workspace": "env", "host": "https://live.i.tgcloud.io", "reason": "the .env workspace", "child_env": {}}
+    assert "another TigerGraph workspace" in common.launch_data_step("feb", "load", target=live_env)["error"]
+    disguised = {"live": True, "workspace": "other", "host": "https://LIVE.i.tgcloud.io/", "reason": "", "child_env": {"TG_HOST": "https://LIVE.i.tgcloud.io/"}}
+    assert "never loaded there" in common.launch_data_step("feb", "load", target=disguised)["error"]
+    mine = {"live": True, "workspace": "other", "host": "https://mine.i.tgcloud.io", "graph": "FraudGraph", "reason": "",
+            "child_env": {"TG_HOST": "https://mine.i.tgcloud.io", "TG_GRAPHNAME": "FraudGraph", "TG_SECRET": "s3cret"}}
+    res = common.launch_data_step("feb", "load", target=mine)
+    assert res["ok"], res
+    assert _Popen.calls[-1]["env"]["TG_HOST"] == "https://mine.i.tgcloud.io"
+    assert "s3cret" not in (common.data_job_dir("feb") / common.DATA_LOCK).read_text()
+    assert common.data_job_state("feb")["steps"] == {"build": "done", "export": "done", "load": "running", "install": "not run", "algos": "not run"}
+    monkeypatch.setenv("RUNS_NEED_APPROVER", "1")  # a public deployment that runs the agent: an approver session only
+    assert "signed-in approver" in common.launch_data_step("feb", "install", target=mine)["error"]
+    assert "signed-in approver" in common.save_month_upload("mar", files)["error"]
+    assert "signed-in approver" in common.check_workspace("https://mine.i.tgcloud.io", "FraudGraph", "s3cret")["error"]
+    monkeypatch.setenv("RUNS_NEED_APPROVER", "")
+    monkeypatch.setenv("DEPLOY_READONLY", "1")
+    assert "read-only" in common.launch_data_step("feb", "install", target=mine)["error"]
+    assert "read-only" in common.save_month_upload("mar", files)["error"]
+    assert "read-only" in common.check_workspace("https://mine.i.tgcloud.io", "FraudGraph", "s3cret")["error"]
+
+
+def test_check_workspace_reads_only_and_masks_the_secret(monkeypatch):
+    assert "https://" in common.check_workspace("http://x.tgcloud.io", "FraudGraph", "s")["error"]
+    assert "secret" in common.check_workspace("https://x.tgcloud.io", "FraudGraph", "")["error"]
+
+    def boom(host, graph, secret, wait_s=30):
+        raise RuntimeError(f"401 for token request with secret {secret}")
+
+    monkeypatch.setattr(common, "_workspace_conn", boom)
+    res = common.check_workspace("https://x.tgcloud.io", "FraudGraph", "hunter22")
+    assert not res["ok"] and "hunter22" not in res["error"] and "***" in res["error"]
+
+    class Conn:
+        def getVertexCount(self, _):
+            return {"Transaction": 5, "Card": 2}
+
+        def getInstalledQueries(self):
+            return {"GET /query/FraudGraph/card_window": {}}
+
+        def __getattr__(self, name):  # any write would land here
+            raise AssertionError(f"check_workspace called {name}")
+
+    monkeypatch.setattr(common, "_workspace_conn", lambda *a, **k: Conn())
+    res = common.check_workspace("https://x.tgcloud.io", "FraudGraph", "hunter22")
+    assert res["ok"] and res["counts"] == {"Transaction": 5, "Card": 2} and "card_window" not in res["missing"] and res["missing"]
+
+
+def test_console_page_mode_panel_upload_and_own_data(mock_run, monkeypatch):
+    monkeypatch.setattr(subprocess, "Popen", lambda *a, **k: (_ for _ in ()).throw(AssertionError("Popen at render")))
+    at = _apptest("ui/pages/1_queue.py")
+    at.run()
+    assert not at.exception, [e.value for e in at.exception]
+    labels = [str(w.label) for w in at.get("button_group")]
+    assert "Mode" in labels and "What to investigate" in labels, labels
+    html = " ".join(str(h.proto.body) for h in at.get("html"))
+    assert "Bring your own data" in html and "Mock: agent.bench --mock" in html
+    at.session_state[common.SESSION_MODE_KEY] = "live"
+    at.session_state[common.SESSION_WS_KEY] = "other"
+    at.session_state[run_sources_key("SOURCE_KEY")] = "upload"
+    at.session_state[run_sources_key("UPLOAD_ROWS_KEY")] = common.validate_case_pack(ALERTS_CSV)["rows"]
+    at.run()
+    assert not at.exception, [e.value for e in at.exception]
+    assert any(str(t.label) == "GSQL secret" for t in at.text_input)
+    assert any("Cases · 2 of 2 selected" in str(m.label) for m in at.multiselect), [str(m.label) for m in at.multiselect]
+
+
+def run_sources_key(name: str) -> str:
+    from ui import run_sources
+
+    return getattr(run_sources, name)
+
+
+def test_read_lock_reaps_a_finished_child_of_this_server(tmp_path):
+    """A finished agent.bench started by this server lingers as a zombie that os.kill still finds; the lock must read as
+    free, or the Run console shows the run in progress (and refuses the next one) until a restart."""
+    real_popen = getattr(subprocess.Popen, "__wrapped__", subprocess.Popen)
+    proc = real_popen([sys.executable, "-c", "pass"])
+    lock = tmp_path / ".bench.lock"
+    lock.write_text(json.dumps({"pid": proc.pid}))
+    deadline = time.time() + 10
+    while common._read_lock(lock) is not None and time.time() < deadline:
+        time.sleep(0.05)
+    assert common._read_lock(lock) is None
+    lock.write_text(json.dumps({"pid": os.getpid()}))  # alive and not our child: still held
+    assert common._read_lock(lock) is not None
+
+
 def test_table_height_and_text_width():
     assert common.table_height(3) == "content" and common.table_height(20) == "content"  # every row, no blank band
     assert common.table_height(21) == common.TABLE_ROW_PX * 21 + 2  # 20 rows and the header, then a scrollbar

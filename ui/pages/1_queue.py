@@ -25,7 +25,7 @@ import streamlit as st
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from ui import common, design, replay  # noqa: E402
+from ui import common, design, replay, run_sources  # noqa: E402
 
 md, badge, esc = common.md, common.badge, design.esc
 RUN_ID_RE = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
@@ -66,14 +66,15 @@ def _safe_id(value: object) -> bool:
     return bool(s) and "/" not in s and "\\" not in s and s[:1] not in "._"
 
 
-def _backend_rows(mode: str, mode_reason: str) -> dict[str, dict]:
-    """backend -> {ok, reason}. A live backend is disabled outside live mode with the mode's reason (e.g. 'RUN_MODE=mock')."""
+def _backend_rows(dest: dict) -> dict[str, dict]:
+    """backend -> {ok, reason}. A live backend is disabled while this session's runs are mock (common.run_target), with
+    the reason (e.g. 'RUN_MODE=mock', 'Mock is selected on the Run console')."""
     out = {}
     for b in BACKENDS:
         if b == "mock":
             out[b] = {"ok": True, "reason": "MOCK: --mock --llm-backend mock, " + common.backend_status("mock")["reason"]}
-        elif mode != "live":
-            out[b] = {"ok": False, "reason": mode_reason}
+        elif not dest["live"]:
+            out[b] = {"ok": False, "reason": dest["reason"]}
         else:
             out[b] = common.backend_status(b)
     return out
@@ -104,15 +105,15 @@ def _lock_text(lock: dict) -> str:
             f" · {len(cases)} case(s) · {lock.get('path')}")
 
 
-mode, mode_reason = common.mode_status()
-backends = _backend_rows(mode, mode_reason)
+dest = common.run_target()  # where a run started here goes: the session's Live switch and workspace (run_sources.mode_panel)
+backends = _backend_rows(dest)
 live_ready = [b for b in BACKENDS if b != "mock" and backends[b]["ok"]]  # live mode and the backend ready
 key_status = {b: common.backend_status(b) for b in BACKENDS if b != "mock"}  # key / CLI presence, whatever the mode
 bench_mod, bench_err = common.optional_import("agent.bench")
 held = common.run_lock()
 
 checks = [
-    ("Live graph", mode == "live", "RUN_MODE=live and TG_HOST set" if mode == "live" else mode_reason),
+    ("Live graph", dest["live"], dest["reason"]),
     ("LLM backend key", any(r["ok"] for r in key_status.values()), "; ".join(f"{b}: {r['reason']}" for b, r in key_status.items())),
     ("agent/ importable", bench_mod is not None, "agent.bench imports" if bench_mod is not None else str(bench_err)),
     ("No live run in progress", held is None, "no live .bench.lock under runs/" if held is None else _lock_text(held)),
@@ -136,7 +137,7 @@ def _readiness_html() -> str:
         return '<p class="tc tc-lead"><span class="red">No</span>: agent.bench cannot be imported here.</p>'
     if live_ready:
         return f'<p class="tc tc-lead"><span class="green">Yes</span>: a live run on <b>{esc(", ".join(live_ready))}</b>, or a mock run.</p>'
-    why = f"live backends are off ({mode_reason})" if mode != "live" else "no live backend has its key or CLI"
+    why = f"live backends are off ({dest['reason']})" if not dest["live"] else "no live backend has its key or CLI"
     return f'<p class="tc tc-lead"><span class="green">Yes, a mock run</span>: {esc(why)}.</p>'
 
 
@@ -151,10 +152,10 @@ def _readiness() -> None:
             for b in BACKENDS:
                 r = backends[b]
                 st.markdown(f"{common.badge(b, 'green' if r['ok'] else 'gray')} {md('available' if r['ok'] else 'disabled')} · {md(r['reason'])}")
-            if mode != "live":
+            if not dest["live"]:
                 # The reason verbatim (st.code does not interpret markdown), so it reads exactly as the setting to change.
-                st.caption("Why live backends are disabled")
-                st.code(mode_reason, language=None, wrap_lines=True)
+                st.caption("Why live backends are disabled (switch Mode to Live below)")
+                st.code(dest["reason"], language=None, wrap_lines=True)
 
 
 # --------------------------------------------------------------------------- #
@@ -183,14 +184,22 @@ def _shown(cmd: list) -> str:
     return shlex.join([_interp(cmd[0]), *(str(x) for x in cmd[1:])]) if cmd else ""
 
 
-def _command(cases: list[str], backend: str, run_id: str, resume: bool) -> list[str]:
+def _command(cases: list[str], backend: str, run_id: str, resume: bool, own_pack: bool = False) -> list[str]:
     """The argv common.launch_run builds, with the interpreter shown relative to the repo."""
     cmd = [_interp(sys.executable), "-m", "agent.bench", "--run-id", run_id, "--cases", ",".join(cases), "--llm-backend", backend]
     if backend == "mock":
         cmd.append("--mock")
     if resume:
         cmd.append("--resume")
+    if own_pack:
+        cmd += ["--case-pack", f"runs/{run_id}/case_pack.csv"]
     return cmd
+
+
+def _run_pack(run_id: str) -> list[dict]:
+    """The alerts a console run was started with (runs/<id>/case_pack.csv), [] for a run on a source's own pack."""
+    path = common.runs_root() / run_id / "case_pack.csv"
+    return common.validate_case_pack(path.read_bytes())["rows"] if run_id and path.is_file() else []
 
 
 def _latency_source(round_: str) -> common.Source | None:
@@ -230,13 +239,15 @@ def _close_dialog() -> None:
 
 
 @st.dialog("Start agent.bench", width="large", on_dismiss=_close_dialog)
-def _confirm_launch(cases: list[str], backend: str, run_id: str, resume: bool, continuing: bool) -> None:
+def _confirm_launch(cases: list[str], backend: str, run_id: str, resume: bool, continuing: bool, pack: list[dict] | None = None) -> None:
     live = backend != "mock"
+    now = common.run_target()  # re-read here: the workspace check may have changed since the dialog opened
+    own_pack = pack is not None or (continuing and bool(_run_pack(run_id)))
     problems = []
     lock = common.run_lock()  # re-checked here, not taken from the render that opened the dialog
     if lock is not None:
         problems.append(f"one run at a time: {_lock_text(lock)}")
-    status = _backend_rows(*common.mode_status())[backend]
+    status = _backend_rows(now)[backend]
     if not status["ok"]:
         problems.append(f"backend {backend} is disabled: {status['reason']}")
     target = _target_problem(run_id, continuing)
@@ -246,11 +257,17 @@ def _confirm_launch(cases: list[str], backend: str, run_id: str, resume: bool, c
         st.error(md(p), icon=":material/block:")
 
     shown = ", ".join(cases[:8]) + (f" and {len(cases) - 8} more" if len(cases) > 8 else "")
-    st.markdown(f"{common.badge('LIVE' if live else 'MOCK', 'green' if live else 'gray')} " + md(f"{len(cases)} case(s) into runs/{run_id}: {shown}"))
+    where = f" on {common._hostname(now['host'])} ({'another workspace' if now['workspace'] == 'other' else 'the .env workspace'})" if live else ""
+    st.markdown(f"{common.badge('LIVE' if live else 'MOCK', 'green' if live else 'gray')} " + md(f"{len(cases)} case(s) into runs/{run_id}{where}: {shown}"))
+    if pack is not None:
+        st.caption(md(f"Investigating {len(pack)} uploaded or typed alert(s), written to runs/{run_id}/case_pack.csv"))
     st.caption("Command (no secrets)")
-    st.code(shlex.join(_command(cases, backend, run_id, resume)), language=None, wrap_lines=True)
+    st.code(shlex.join(_command(cases, backend, run_id, resume, own_pack)), language=None, wrap_lines=True)
     st.caption("Environment set for the child process")
-    st.code(f"RUN_MODE={'live' if live else 'mock'}\nLLM_BACKEND={backend}", language=None)
+    extra = ""
+    if live and now["workspace"] == "other":
+        extra = f"\nTG_HOST={now['host']}\nTG_GRAPHNAME={now['graph']}\nTG_SECRET=*** (this session's, for this process only)"
+    st.code(f"RUN_MODE={'live' if live else 'mock'}\nLLM_BACKEND={backend}{extra}", language=None)
 
     effects = [
         "starts agent.bench detached in its own session; it keeps running after this page closes",
@@ -261,7 +278,8 @@ def _confirm_launch(cases: list[str], backend: str, run_id: str, resume: bool, c
         effects.append(f"--resume: cases that already have an answer in runs/{run_id} are skipped")
     if live:
         effects += [
-            "writes an AgentCase, its CaseEvents and an Approval per L1/L2 action to the shared FraudGraph for each case",
+            f"writes an AgentCase, its CaseEvents and an Approval per L1/L2 action to FraudGraph on {common._hostname(now['host'])} for each case"
+            + (" (the shared live workspace)" if now["workspace"] != "other" else ""),
             f"spends LLM tokens on {backend} (a paid API call per phase)",
         ]
     else:
@@ -286,7 +304,7 @@ def _confirm_launch(cases: list[str], backend: str, run_id: str, resume: bool, c
     ack = st.checkbox(ack_text, key="console_ack")
     if st.button("Confirm and start", type="primary", icon=":material/play_arrow:", disabled=bool(problems) or not ack, key="console_confirm"):
         try:
-            res = common.launch_run(cases, backend, run_id, resume=resume, session=common.approver_session())
+            res = common.launch_run(cases, backend, run_id, resume=resume, session=common.approver_session(), case_pack=pack, target=now)
         except OSError as exc:  # Popen itself failed (interpreter missing, folder not writable): shown, never swallowed
             res = {"ok": False, "error": f"agent.bench did not start: {type(exc).__name__}: {exc}"}
         if not res["ok"]:
@@ -304,35 +322,43 @@ CASES_KEY = f"console_cases-{_slug(pack_round)}"  # one key per pack, so the tri
 KINDS = ("New run", "Continue a run")
 
 
-def _trigger_label(t: str) -> str:
-    n = sum(1 for c in pack_ids if trigger_of.get(c) == t)
+def _trigger_label(t: str, ids: list[str], trig: dict[str, str]) -> str:
+    n = sum(1 for c in ids if trig.get(c) == t)
     return f"{t.replace('_', ' ').capitalize()} · {n}"
 
 
-def _pick(ids: list[str]) -> None:
-    st.session_state[CASES_KEY] = list(ids)
+def _pick(key: str, ids: list[str]) -> None:
+    st.session_state[key] = list(ids)
 
 
 def _start_form() -> None:
-    """Cases first (trigger chips, quick picks, the selection), then the New/Continue switch, then the backend and the run
-    id in st.form 'console_form'. Start only opens the confirm dialog."""
+    """What to investigate first (the source's case pack, uploaded or typed alerts), then the cases (trigger chips, quick
+    picks, the selection), the New/Continue switch, the backend and the run id in st.form 'console_form'. Start only opens
+    the confirm dialog."""
     if "console_target" not in st.session_state:  # seeded once, so typed text survives reruns
         st.session_state["console_target"] = f"r2-{'live' if live_ready else 'mock'}-{time.strftime('%Y%m%d-%H%M')}"
     if st.session_state.get("console_continue") not in console_runs:
         st.session_state.pop("console_continue", None)
-    if CASES_KEY not in st.session_state:
-        st.session_state[CASES_KEY] = list(pack_ids)
-    st.session_state[CASES_KEY] = [c for c in st.session_state[CASES_KEY] if c in trigger_of]
-    triggers = sorted({t for t in trigger_of.values() if t})
     with st.container(border=True, key="rc-start"):
+        src, custom = run_sources.case_rows(dest)
+        ids = [r["case_id"] for r in custom] if custom is not None else pack_ids
+        trig = {r["case_id"]: r.get("trigger_type", "") for r in custom} if custom is not None else trigger_of
+        cases_key = f"console_cases-{src}" if custom is not None else CASES_KEY
+        if cases_key not in st.session_state:
+            st.session_state[cases_key] = list(ids)
+        st.session_state[cases_key] = [c for c in st.session_state[cases_key] if c in trig]
+        if custom is not None and ids and not st.session_state[cases_key] and st.session_state.get(f"{cases_key}-seen") != ids:
+            st.session_state[cases_key] = list(ids)  # a new upload starts fully selected
+        st.session_state[f"{cases_key}-seen"] = list(ids)
+        triggers = sorted({t for t in trig.values() if t})
         with st.container(horizontal=True, vertical_alignment="bottom", gap="small", key="rc-picks"):
-            want = st.pills("Trigger", triggers, selection_mode="multi", key="console_trigger", format_func=_trigger_label)
-            listed = [c for c in pack_ids if not want or trigger_of.get(c) in want]
-            st.button(f"Only the {len(listed)} shown" if want else f"All {len(listed)}", key="console_pick_all", on_click=_pick, args=(listed,), type="tertiary")
-            st.button("Clear", key="console_pick_none", on_click=_pick, args=([],), type="tertiary")
-        picked = st.session_state[CASES_KEY]
-        options = [c for c in pack_ids if c in listed or c in picked]  # a selected case stays listed whatever the filter
-        st.multiselect(f"Cases · {len(picked)} of {len(pack_ids)} selected, in opened_at order", options, key=CASES_KEY, placeholder="Choose cases")
+            want = st.pills("Trigger", triggers, selection_mode="multi", key=f"console_trigger-{src}", format_func=lambda t: _trigger_label(t, ids, trig))
+            listed = [c for c in ids if not want or trig.get(c) in want]
+            st.button(f"Only the {len(listed)} shown" if want else f"All {len(listed)}", key="console_pick_all", on_click=_pick, args=(cases_key, listed), type="tertiary")
+            st.button("Clear", key="console_pick_none", on_click=_pick, args=(cases_key, []), type="tertiary")
+        picked = st.session_state[cases_key]
+        options = [c for c in ids if c in listed or c in picked]  # a selected case stays listed whatever the filter
+        st.multiselect(f"Cases · {len(picked)} of {len(ids)} selected, in opened_at order", options, key=cases_key, placeholder="Choose cases")
         kind = st.radio("Run", KINDS, horizontal=True, key="console_kind")
         continuing = kind == KINDS[1]
         with st.form("console_form", border=False, enter_to_submit=False):
@@ -354,21 +380,25 @@ def _start_form() -> None:
             else:
                 continue_run = None
                 target_text = st.text_input("New run id", key="console_target", help="A new folder runs/<id>/; letters, digits, '.', '_' and '-', at most 64")
-            start = st.form_submit_button("Start run", type="primary", icon=":material/play_arrow:", disabled=bool(form_blockers) or not pack_ids)
+            start = st.form_submit_button("Start run", type="primary", icon=":material/play_arrow:", disabled=bool(form_blockers) or not ids)
         for b in form_blockers:
             st.caption(md(b))
-        if not pack_ids:
+        if not ids and custom is None:
             st.info("This source has no case pack on this deployment.")
     if start:
         run_id = str(continue_run or "") if continuing else str(target_text or "").strip()
-        order = {c: i for i, c in enumerate(pack_ids)}
-        chosen = sorted((c for c in st.session_state.get(CASES_KEY) or [] if c in order), key=order.get)
+        order = {c: i for i, c in enumerate(ids)}
+        chosen = sorted((c for c in st.session_state.get(cases_key) or [] if c in order), key=order.get)
+        run_pack = _run_pack(run_id) if continuing else []
+        if run_pack:  # a run started on its own alerts continues on them: every case, the finished ones skipped by --resume
+            chosen, custom = [r["case_id"] for r in run_pack], None
         problem = ("choose at least one case" if not chosen else "" if backend in enabled else f"backend {backend} is disabled") or _target_problem(run_id, continuing)
         if problem:
             st.error(md(problem), icon=":material/block:")
         else:
             st.session_state.pop("console_ack", None)  # every launch is acknowledged afresh
-            st.session_state[DIALOG_KEY] = {"cases": chosen, "backend": backend, "run_id": run_id, "resume": bool(resume and continuing), "continuing": continuing}
+            st.session_state[DIALOG_KEY] = {"cases": chosen, "backend": backend, "run_id": run_id, "resume": bool(resume and continuing),
+                                            "continuing": continuing, "pack": [r for r in custom if r["case_id"] in chosen] if custom is not None else None}
 
 
 # --------------------------------------------------------------------------- #
@@ -626,9 +656,11 @@ _readiness()
 if active:
     _progress_live(target, why)
     with st.expander("Start a run"):
+        run_sources.mode_panel()
         _start_form()
 else:
-    design.html_block(design.section("", "Start a run", f"{len(pack_ids)} cases in opened_at order"))
+    design.html_block(design.section("", "Start a run", "mode and workspace, what to investigate, then the run"))
+    run_sources.mode_panel()
     _start_form()
     if target is not None:
         _progress(target, why, False)
@@ -637,6 +669,8 @@ if st.session_state.get(DIALOG_KEY):
 if target is None:
     st.caption("No run launched from this session and no live run in progress; run-level numbers are on Runs & consistency.")
     common.page_link("runs", "Open Runs & consistency", icon=common.PAGE_ICONS["runs"])
+
+run_sources.own_data_panel(dest, _scrub)
 
 design.html_block(design.section("", "Replay a recorded case", "read from the run folder; nothing runs"))
 replay.render(ctx.source_id, ctx.case_id)

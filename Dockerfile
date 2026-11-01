@@ -1,5 +1,6 @@
 # The Streamlit analyst dashboard (ui/) as a container, for Railway or any other host. Railway builds
 # this file automatically; see "Deploy on Railway" in README.md.
+# Railway deploys this repo's main branch with the DOCKERFILE builder (railway.json).
 #
 # The image holds the UI, the answer files, the canonical runs' traces (runs/${CANONICAL_RUN}, default hhf-final, for
 # the Final Round; runs/live-final-2 for Round 1), the engine's saved detector backtest and containment summary, and the

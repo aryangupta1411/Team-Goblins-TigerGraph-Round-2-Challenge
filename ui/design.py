@@ -145,21 +145,45 @@ def inject() -> None:
     st.markdown(f"<style>{tokens_css()}\n{dialog}\n{_stylesheet()}\n{glyph_css()}</style>", unsafe_allow_html=True)
     if not st.session_state.get("_tc_light_default"):
         st.session_state["_tc_light_default"] = True
-        st.html(LIGHT_DEFAULT_JS, unsafe_allow_javascript=True)
+        st.html(LIGHT_DEFAULT_JS + VIEWPORT_JS, unsafe_allow_javascript=True)
 
 
 # Open in light whatever the viewer's OS says. With both themes in config.toml Streamlit follows the OS and ignores
-# theme.base, so on a browser's first visit this writes "Light" to the key the app menu's theme switcher uses and
-# reloads once. The marker key makes it once per browser: a theme picked later in the menu (System or Dark) is kept.
+# theme.base. Streamlit keeps the theme per URL path (stActiveTheme-/case-v2, stActiveTheme-/graph-v2, ...), so on the
+# first load of each path in a browser this writes "Light" to that path's key and reloads once. A per-path marker makes it
+# once per path: a theme picked later in the menu (System or Dark) is kept. v2 also resets paths the v1 script, which
+# only wrote "/", left on System.
 LIGHT_DEFAULT_JS = """<script>
 try {
-  const ls = window.localStorage, key = "stActiveTheme-/-v2", mark = "tc-light-default-v1";
+  const w = window.parent && window.parent !== window ? window.parent : window;
+  const ls = w.localStorage, path = w.location.pathname.replace(/\\/+$/, "") || "/";
+  const key = "stActiveTheme-" + path + "-v2", mark = "tc-light-default-v2:" + path, light = JSON.stringify("Light");
   if (!ls.getItem(mark)) {
     ls.setItem(mark, "1");
-    if (ls.getItem(key) !== JSON.stringify("Light")) { ls.setItem(key, JSON.stringify("Light")); window.location.reload(); }
+    if (ls.getItem(key) !== light) { ls.setItem(key, light); w.location.reload(); }
   }
 } catch (e) {}
 </script>"""
+
+
+# The browser window's height, kept in a cookie the server reads (st.context.cookies, from the next page load on), so a
+# full-screen canvas can be given an exact pixel height: vis-network takes px, not vh. Updated on resize; nothing else.
+VIEWPORT_JS = """<script>
+try {
+  const w = window.parent && window.parent !== window ? window.parent : window;
+  const put = () => { w.document.cookie = "tc_vh=" + Math.round(w.innerHeight) + "; path=/; max-age=31536000; SameSite=Lax"; };
+  put(); w.addEventListener("resize", put);
+} catch (e) {}
+</script>"""
+
+
+def viewport_height(default: int = 900) -> int:
+    """The browser window's height in CSS px from the tc_vh cookie (VIEWPORT_JS); `default` before the first page load
+    that carried it."""
+    try:
+        return max(480, min(2400, int(st.context.cookies.get("tc_vh", default))))
+    except (TypeError, ValueError, AttributeError):
+        return default
 
 
 def html_block(markup: str) -> None:

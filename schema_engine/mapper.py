@@ -35,6 +35,9 @@ CARD6_SYNONYMS: dict[str, str] = {
     "credit": "credit",
     "cr": "credit",
     "credit_card": "credit",
+    "charge card": "charge card",
+    "charge_card": "charge card",
+    "chg": "charge card",
 }
 
 
@@ -54,15 +57,19 @@ def _score_tx_column(col_name: str, prof: dict[str, Any], all_cols: dict[str, di
         return "card_id", "identity", 0.99, "Matches pre-derived card_id regex (^C\\d{5}-K\\d$)"
     if rx.get("ts_iso", 0) >= 0.8:
         return "ts", "identity", 0.99, "Matches ISO timestamp regex (YYYY-MM-DD HH:MM:SS)"
+    if rx.get("date_only", 0) >= 0.8:
+        return "ts", "date_part", 0.95, "Calendar date (YYYY-MM-DD) without a time: one half of a split timestamp, joined with the time column"
+    if rx.get("time_only", 0) >= 0.8:
+        return "ts", "time_part", 0.95, "Clock time (HH:MM:SS) without a date: the other half of a split timestamp"
     if rx.get("ts_epoch", 0) >= 0.8 and ("ts" in low or "time" in low or "epoch" in low or "date" in low):
         return "ts", "epoch_to_iso", 0.96, f"Unix epoch in 2016-2017 range (p50={q.get('p50')}); reshaped via epoch_to_iso"
     if top and top <= {"w", "h", "c", "s", "r"}:
         return "ProductCD", "identity", 0.98, f"Categorical domain {sorted(top)} matches ProductCD {{W,H,C,S,R}}"
-    if top and top <= set(CHANNEL_SYNONYMS.keys()) and len(top) <= 3:
+    if top and top <= set(CHANNEL_SYNONYMS.keys()) and len(top) <= 3 and not top <= {"w", "h", "c", "s", "r"}:
         xform = "identity" if top <= {"online", "in_person"} else "channel_synonym"
         return "channel", xform, 0.97, f"Categorical domain {sorted(top)} maps to channel {{online, in_person}}"
     if top and top <= set(CARD6_SYNONYMS.keys()) and len(top) <= 3:
-        xform = "identity" if top <= {"debit", "credit"} else "card6_synonym"
+        xform = "identity" if top <= {"debit", "credit", "charge card"} else "card6_synonym"
         return "card6", xform, 0.96, f"Categorical domain {sorted(top)} maps to card6 {{debit, credit}}"
     if top and (top & {"visa", "mastercard", "discover", "american express"}):
         return "card4", "identity", 0.97, f"Categorical domain {sorted(top)} matches card4 network"
@@ -115,10 +122,13 @@ def _score_id_column(col_name: str, prof: dict[str, Any]) -> tuple[str | None, s
         return "DeviceType", "identity", 0.98, f"Categorical domain {sorted(top)} matches DeviceType {{mobile, desktop}}"
     if top and top <= {"new", "found", "unknown"}:
         return "id_15", "identity", 0.97, f"Categorical domain {sorted(top)} matches device_new (id_15)"
-    if any(any(os_tok in v for os_tok in ("windows", "ios", "mac os", "android", "linux")) for v in top):
-        return "id_30", "identity", 0.95, "Operating system string (Windows / iOS / Mac OS X / Android)"
-    if any(any(br_tok in v for br_tok in ("chrome", "safari", "firefox", "edge", "ie ")) for v in top):
-        return "id_31", "identity", 0.95, "Browser user-agent string (chrome / safari / firefox / ie / edge)"
+    # OS vs browser: 'android browser 4.0' names an OS too, so the column goes to whichever vocabulary most of its values use
+    os_rate = sum(any(t in v for t in ("windows", "ios", "mac os", "android", "linux")) for v in top) / max(len(top), 1)
+    br_rate = sum(any(t in v for t in ("chrome", "safari", "firefox", "edge", "ie ", "browser", "opera", "samsung")) for v in top) / max(len(top), 1)
+    if br_rate > os_rate and br_rate >= 0.3:
+        return "id_31", "identity", 0.95, f"Browser user-agent string ({br_rate:.0%} of values name a browser, {os_rate:.0%} an OS)"
+    if os_rate >= 0.3:
+        return "id_30", "identity", 0.95, f"Operating system string ({os_rate:.0%} of values name an OS, {br_rate:.0%} a browser)"
     if any("x" in v and v.replace("x", "").isdigit() for v in top):
         return "id_33", "identity", 0.96, "Screen resolution string (WxH)"
     if any(k in low for k in ("device", "hw", "model", "handset", "ua_dev")):
@@ -144,7 +154,8 @@ def _score_case_pack_column(col_name: str, prof: dict[str, Any]) -> tuple[str | 
     if top and top <= {"risk_score", "customer_report", "analyst_request", "model_alert", "dispute", "analyst"}:
         xform = "identity" if top <= {"risk_score", "customer_report", "analyst_request"} else "trigger_synonym"
         return "trigger_type", xform, 0.97, f"Trigger category {sorted(top)}"
-    if any(k in low for k in ("text", "note", "msg", "desc", "narrative", "prompt")):
+    if any(k in low for k in ("text", "note", "msg", "desc", "narrative", "prompt")) or (
+            prof.get("inferred_type") == "STRING" and top and sum(len(v.split()) >= 8 for v in top) >= 0.8 * len(top)):
         return "trigger_text", "identity", 0.95, "Free-text alert description / customer message"
     if any(k in low for k in ("risk", "score", "prob")):
         return "risk_score", "identity", 0.94, "Alert risk_score column"

@@ -494,6 +494,21 @@ sa = common.proof("schema_approval")
 gate = next((str(r.get("status")) for r in (sa["data"] or {}).values() if isinstance(r, dict)), None) if isinstance(sa["data"], dict) else None
 drift, gsql, variant = common.proof("drift"), common.proof("gsql"), common.proof("variant")
 detectors_py = common.ROOT / "engine" / "detectors.py"
+OUT_DIR = common.ROOT / "engine" / "out"
+
+
+def _out(name: str) -> tuple[dict | None, str, str]:
+    """A measured engine/out file: (data or None, source, as of)."""
+    p = OUT_DIR / name
+    data, _err = common._read_json(p) if p.exists() else (None, "")
+    return (data if isinstance(data, dict) else None), common.rel(p), common.as_of(p) if p.exists() else "missing"
+
+
+disc, disc_src, disc_at = _out("discovery_jan2017.json")
+c3_rules = {r: _out(f"policy_detector_{r}.json") for r in ("R5", "R7")}
+fb_demo, fb_src, fb_at = _out("feedback_before_after.json")
+cost, cost_src, cost_at = _out("cost_latency.json")
+rehearsal, reh_src, reh_at = _out("variant_rehearsal.json")
 try:
     feedback = approvals_db.feedback_rows_ro(path=db_path) if db_path.exists() else None
 except sqlite3.Error:
@@ -525,24 +540,55 @@ def _c1():
             + (f" ({', '.join(f'{d} → {c}' for d, c in hits)})" if hits else ""))
 
 
+def _c2_status() -> tuple[str, str]:
+    """(status, approval of the mined proposal): built only once a fraud manager approved what the miner found."""
+    pid = str(((disc or {}).get("proposal") or {}).get("proposal_id") or "")
+    rec, _err = common._read_json(common.ROOT / "data" / "detector_approvals.json")
+    status = str(((rec or {}).get(pid) or {}).get("status") or "pending") if pid and isinstance(rec, dict) else "pending"
+    return ("built" if status == "approved" else "partial"), status
+
+
 def _c2():
     props = bt_data.get("self_growing_proposals")
-    if props is None:
+    if disc is None and props is None:
         return None
-    approved = sum(1 for p in props if p.get("approval_status") == "approved")
-    return f"{len(props)} proposals · {approved} approved by a fraud manager"
+    parts = []
+    if disc is not None:
+        p = disc.get("proposal") or {}
+        parts.append(f"{int(disc.get('clusters_found') or 0)} clusters mined from uncovered January transactions · proposal {p.get('proposal_id', '?')} "
+                     f"({p.get('name', 'unnamed')}) {_c2_status()[1]}")
+    if props is not None:
+        parts.append(f"{len(props)} hand-written candidates, {sum(1 for x in props if x.get('approval_status') == 'approved')} approved")
+    return " · ".join(parts)
 
 
 def _c3() -> str | None:
-    try:
-        text = detectors_py.read_text(encoding="utf-8")
-    except OSError:
-        text = ""
-    if text:
-        return "compile_policy_rule_detector is defined in engine/detectors.py" if re.search(r"^def compile_policy_rule_detector\b", text, re.M) \
-            else "compile_policy_rule_detector does not exist in engine/detectors.py"
-    c3 = common.proof("c3_built")
-    return None if c3["data"] is None else ("snapshot: compile_policy_rule_detector present" if c3["data"] else "snapshot: compile_policy_rule_detector does not exist")
+    rules = {r: d for r, (d, _s, _a) in c3_rules.items() if d}
+    if not rules:
+        return None
+    ms = sum(float(d.get("compile_ms") or 0) for d in rules.values())
+    out = [f"{', '.join(rules)} compiled from policy prose in {ms:.1f} ms"]
+    def n(x):
+        return len(x) if isinstance(x, list | dict) else x
+
+    if (b := (rules.get("R5") or {}).get("backtest")):
+        out.append(f"R5 backtest over {int(b.get('closed_cases_total') or 0):,} closed cases: {n(b.get('caught_card_testing'))}/{n(b.get('card_testing_cases_total'))} "
+                   f"card-testing cases, {n(b.get('legitimate_customers_acted_against'))} legitimate customers acted against")
+    if (b := (rules.get("R7") or {}).get("backtest")):
+        out.append(f"R7: {b.get('matched')} matches, {b.get('cleared_cases_blocked_historically')} cleared cases blocked")
+    cmp = [d.get("comparison") or {} for d in rules.values()]
+    if cmp:
+        out.append(" / ".join(f"{r} vs agent {c.get('agree')}/{c.get('n')} agree" for r, c in zip(rules, cmp, strict=True)))
+    return " · ".join(out)
+
+
+def _c8() -> str | None:
+    live = None if feedback is None else f"{len(feedback)} feedback rows recorded here"
+    if fb_demo is None:
+        return live
+    before, after = fb_demo.get("wrongly_acted_against_before") or [], fb_demo.get("wrongly_acted_against_after") or []
+    demo = f"after {len(fb_demo.get('feedback_rows') or [])} demo feedback rows, wrongly acted-against cases {len(before)} → {len(after)}"
+    return " · ".join(x for x in (demo, live) if x)
 
 
 def _c5():
@@ -578,8 +624,12 @@ def _c9():
         return None
     p50, p95 = _nearest_rank(lat, 0.5), _nearest_rank(lat, 0.95)
     k50, k95 = _nearest_rank(tok, 0.5), _nearest_rank(tok, 0.95)
-    return (f"latency p50 {common.secs(p50)} / p95 {common.secs(p95)} · tokens p50 {int(k50 or 0):,} / p95 {int(k95 or 0):,} "
-            f"over {len(done_stats)} done cases · cost not computed")
+    out = (f"latency p50 {common.secs(p50)} / p95 {common.secs(p95)} · tokens p50 {int(k50 or 0):,} / p95 {int(k95 or 0):,} "
+           f"over {len(done_stats)} done cases")
+    c = (cost or {}).get("cost_usd_per_case") or {}
+    if cost and str(cost.get("run")) == f"runs/{sid}" and c:
+        return out + f" · cost/case p50 ${float(c['p50']):.3f} / p95 ${float(c['p95']):.3f}, ${float(cost.get('cost_usd_total') or 0):.2f} for the run"
+    return out + (f" · cost computed for {cost.get('run')}, not this source" if cost else " · cost not computed")
 
 
 def _c10():
@@ -603,11 +653,18 @@ def _c12():
 
 def _c13():
     g = gsql["data"]
-    if not isinstance(g, dict):
-        return None
-    v = variant["data"]
-    cols = v.get("column_mappings") or v.get("columns") or v.get("mappings") if isinstance(v, dict) else None
-    return f"{len(g)} bank schemas mapped (self-check)" + (f" · {len(cols)} variant columns" if isinstance(cols, list | dict) else " · no variant folder")
+    vs = (rehearsal or {}).get("variants") or {}
+    parts = []
+    if vs:
+        prec = min(float(v.get("precision") or 0) for v in vs.values())
+        rec = min(float(v.get("recall") or 0) for v in vs.values())
+        same = sum(int(v.get("n_same_decision") or 0) for v in vs.values())
+        n = sum(int(v.get("n_cases") or 0) for v in vs.values())
+        parts.append(f"{len(vs)} variants rehearsed · mapping precision {prec:.0%} / recall {rec:.0%} against their ground truth · "
+                     f"{same}/{n} cases decided as on the canonical schema")
+    if isinstance(g, dict):
+        parts.append(f"{len(g)} bank GSQL schemas mapped")
+    return " · ".join(parts) or None
 
 
 bt_src, bt_at = bt["source"] or bt["error"] or "missing", bt["as_of"] or "missing"
@@ -616,20 +673,25 @@ gate_txt = f"gate {gate}" if gate else "gate status not measured here"
 # (code, name, status, scope, measured headline, source, as of, page, case)
 challenges = [
     ("C1", "New typologies", "built", "", _c1(), bt_src, bt_at, "detectors", None),
-    ("C2", "Self-growing detectors", "partial", "candidate shapes written by the team, not discovered by the agent", _c2(), bt_src, bt_at, "detectors", None),
-    ("C3", "Policy text → detector", "not attempted", "compile_policy_rule_detector does not exist", _c3(), common.rel(detectors_py), common.as_of(detectors_py), "detectors", None),
+    ("C2", "Self-growing detectors", _c2_status()[0], "" if _c2_status()[0] == "built" else "the mined proposal waits for a fraud manager",
+     _c2(), disc_src if disc else bt_src, disc_at if disc else bt_at, "detectors", None),
+    ("C3", "Policy text → detector", "built" if _c3() else "not attempted", "" if _c3() else "no compiled rule in engine/out",
+     _c3(), c3_rules["R5"][1], c3_rules["R5"][2], "detectors", None),
     ("C4", "SAR with citations", "built", "", f"{len(sar_cases)} SAR drafts · {sum(1 for x in cites if x['status'] == 'cited')}/{len(cites)} sentences cited" if answers else None,
      ANSWERS_SRC, ANSWERS_AS_OF, "case", sar_cases[0] if sar_cases else ctx.case_id),
     ("C5", "Ring replay", "built", "", _c5(), cs_src, cs_at, "detectors", None),
     ("C6", "Audit replay", "built", "", _c6(), TRACE_SRC if src.kind != "submitted" else "no trace in this source", TRACE_AS_OF, "case", readback_case or ctx.case_id),
     ("C7", "Containment", "built", "", _c7(), cs_src, cs_at, "detectors", None),
-    ("C8", "Analyst feedback", "partial", "feedback recorded, never read back", None if feedback is None else f"{len(feedback)} feedback rows recorded",
-     common.rel(db_path) + ("" if db_path.exists() else " (absent)"), common.as_of(db_path), "approvals", None),
-    ("C9", "Speed, cost, autonomy", "partial", "no alert-triggered pipeline, cost not computed; latency measured", _c9(), ANSWERS_SRC, ANSWERS_AS_OF, "runs", None),
+    ("C8", "Analyst feedback", "built" if fb_demo else "partial", "before/after on demo labels" if fb_demo else "feedback recorded, never read back", _c8(),
+     fb_src if fb_demo else common.rel(db_path) + ("" if db_path.exists() else " (absent)"), fb_at if fb_demo else common.as_of(db_path), "approvals", None),
+    ("C9", "Speed, cost, autonomy", "built" if cost and (common.ROOT / "ops" / "alert_watcher.py").exists() else "partial",
+     "alert watcher: ops/alert_watcher.py" if (common.ROOT / "ops" / "alert_watcher.py").exists() else "no alert-triggered pipeline",
+     _c9(), cost_src if cost else ANSWERS_SRC, cost_at if cost else ANSWERS_AS_OF, "runs", None),
     ("C10", "Break the agent", "built", "", _c10(), *_p("attacks"), "security", None),
     ("C11", "Data quality", "built", "", _c11(), *_p("dq"), "data", None),
-    ("C12", "Schema drift", "partial", f"{gate_txt}, not enforced by etl.delta", _c12(), *_p("drift"), "data", None),
-    ("C13", "Someone else's schema", "partial", "mapping only, no investigation run on a variant", _c13(), *_p("gsql"), "data", None),
+    ("C12", "Schema drift", "built" if gate == "approved" else "partial", f"{gate_txt}; etl.delta refuses January until it is signed", _c12(), *_p("drift"), "data", None),
+    ("C13", "Someone else's schema", "built" if rehearsal else "partial", "" if rehearsal else "mapping only, no investigation run on a variant", _c13(),
+     *((reh_src, reh_at) if rehearsal else _p("gsql")), "data", None),
     ("C14", "Human gates", "built", "", f"{sum(gated.values())} gated actions ({gated.get('L1', 0)} L1 / {gated.get('L2', 0)} L2)" if answers else None,
      f"{ANSWERS_SRC} and {common.rel(db_path)}", ANSWERS_AS_OF, "approvals", None),
 ]

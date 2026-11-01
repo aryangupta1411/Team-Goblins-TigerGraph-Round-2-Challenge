@@ -3542,7 +3542,7 @@ def approver_gate(session: object, permission: str = "own_data") -> str:
     lets only a verified session whose role holds the permission do it (approvals_db.ROLE_PERMISSIONS; the admin)."""
     if not runs_need_approver() or approvals_db.has_permission(session, permission):
         return ""
-    who = ", ".join(approvals_db.ROLE_LABELS[r] for r in approvals_db.roles_with(permission))
+    who = " or ".join(approvals_db.ROLE_LABELS[r] for r in approvals_db.roles_with(permission))
     return f"on this deployment only a signed-in {who} can do this (Sign in, top right)"
 
 

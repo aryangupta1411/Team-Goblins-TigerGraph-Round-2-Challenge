@@ -6,12 +6,17 @@ its source and as-of: data quality (C11), drift and the migration gate (C12), sc
 action beside them. Data quality: the tainted cases (all 18 on a toggle) and the defect classes as rows, with ids,
 attestation and Replay SQL in each row's detail. Drift: one gate status line with its single Approve home, then the drifts
 as collapsible rows. Mapping: the schema picker, summary figures and the mapping table, custom DDL / AI refine / adapted
-GSQL folded, and the CSV variant mapper as a sub-view.
+GSQL folded, and the CSV variant as a sub-view: pick the checked-in Bank B or a variant brought in (uploaded CSVs, one
+flat file, or a test variant generated from the January files), see each mapped column with its five attested sample
+records and the unmapped / low-confidence columns for review, accept or reject the mapping, and run the offline engine
+on the variant (ops.variant_rehearsal) to compare its decisions with the canonical schema's.
 
 Everything shown comes from common.proof (engine/out/proof_snapshot.json sections and data/schema_approvals.json) unless
 the operator asks for a live recompute, or from schema_engine modules loaded through common.optional_import. Rendering
-writes nothing under data/ or runs/: the migration gate is decided only by an authenticated click, the variant mapper is a
-read-only viewer, and custom DDL is always analysed as text (never read as a server path).
+writes nothing under data/ or runs/: the migration gate is decided only by an authenticated click, a variant is brought in,
+decided or rehearsed only by a click and only under runs/_uploads/variant-<id>/ (ui/variant_jobs.py holds every guard:
+read-only deployments refused, the 'variant' permission where RUNS_NEED_APPROVER is set), and custom DDL is always
+analysed as text (never read as a server path).
 """
 from __future__ import annotations
 
@@ -32,7 +37,7 @@ import streamlit as st
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from ui import approvals_db, common, design  # noqa: E402
+from ui import approvals_db, common, design, variant_jobs  # noqa: E402
 
 md, esc = common.md, design.esc
 
@@ -356,8 +361,9 @@ HEADS = {
               "scope": f"{n_drifts} schema drifts from the Round 1 files to the January files, behind one migration gate" if drift else f"no drift report here: {drift_p['error'] or 'snapshot section missing'}",
               "line": f"{GATE_FILE} · as of {_when(appr_p['as_of'])}" if gate_here else f"{GATE_FILE} not in this deployment · drifts {drift_label}"},
     "map": {"label": "Bank schemas mapped", "value": str(len(ok_presets)) if ok_presets else None, "source": map_src, "as_of": map_as_of,
-            "how": "comment-blind AST mapping of each bank .gsql onto the canonical fraud ontology (mapping only, no investigation run on a variant)",
-            "scope": "Mapping only: no investigation run on a variant" + (f" · a CSV variant of {n_cols} columns" if n_cols is not None else ""),
+            "how": "comment-blind AST mapping of each bank .gsql onto the canonical fraud ontology; a CSV variant is mapped from value "
+                   "fingerprints and rehearsed on the offline engine in the CSV variant view",
+            "scope": "Bank schemas: mapping only" + (f" · a CSV variant of {n_cols} columns, rehearsable on the offline engine" if n_cols is not None else ""),
             "line": (f"{map_src} · " + ("computed on this page" if map_as_of == "computed on this page" else f"as of {_when(map_as_of)}"))
                     if ok_presets else f"not available: {analyst_err or gsql_p['error']}"},
 }
@@ -545,6 +551,273 @@ if view == "drift":
                         st.json(dr.get("attestation") or {}, expanded=True)
 
 # --------------------------------------------------------------------------- #
+# The CSV variant (C13): bring one in, review its mapping, rehearse on it     #
+# --------------------------------------------------------------------------- #
+CHECKED_IN_SRC = "@checked-in"  # the source key of data/variant_bank_b, viewed in place and copied into a job to rehearse
+SRC_KEY = "data_variant_src"
+
+
+def _folder(src: str) -> Path:
+    return VARIANT_DIR if src == CHECKED_IN_SRC else variant_jobs.input_dir(src)
+
+
+def _folder_sig(folder: Path) -> tuple:
+    return tuple((p.name, p.stat().st_size, p.stat().st_mtime_ns) for p in sorted(folder.glob("*.csv")))
+
+
+@st.cache_data(max_entries=16, show_spinner="Mapping the variant (value fingerprints)…")
+def _map_folder(folder: str, sig: tuple) -> dict | None:
+    mapper, _ = common.optional_import("schema_engine.mapper")
+    return mapper.infer_variant_mapping(folder) if mapper is not None else None
+
+
+def _save_variant(session) -> None:
+    files = {f.name: f.getvalue() for f in st.session_state.get("data_v_files") or []}
+    name = str(st.session_state.get("data_v_name") or "").strip()
+    res = variant_jobs.save_upload(name, files, session=session)
+    st.session_state["data_v_msg"] = res
+    if res["ok"]:
+        st.session_state[SRC_KEY] = res["job"]
+
+
+def _generate_variant(session) -> None:
+    flat = bool(st.session_state.get("data_v_flat"))
+    res = variant_jobs.make_test_variant(f"fresh-{time.strftime('%m%d-%H%M%S')}{'-flat' if flat else ''}", flat=flat, session=session)
+    st.session_state["data_v_msg"] = res
+    if res["ok"]:
+        st.session_state[SRC_KEY] = res["job"]
+
+
+def _run_variant(src: str, session) -> None:
+    job = src
+    if src == CHECKED_IN_SRC:
+        res = variant_jobs.copy_checked_in(session=session)
+        if not res["ok"]:
+            st.session_state["data_v_run"] = res
+            return
+        job = res["job"]
+        st.session_state[SRC_KEY] = job
+    st.session_state["data_v_run"] = {**variant_jobs.launch_rehearsal(job, session=session), "job": job}
+
+
+def _bring_variant(session, why: str) -> None:
+    """The ways a variant comes in: uploaded CSVs (several, or one flat file, with an optional ground_truth.json), or a
+    test variant generated from the January files."""
+    with st.expander("Bring a variant", expanded=not variant_jobs.jobs(), key="data-v-bring"):
+        if why:
+            st.info(md(why), icon=":material/lock:")
+            return
+        with st.form("data_v_form", border=False, enter_to_submit=False):
+            st.text_input("Name", key="data_v_name", placeholder="bank-c", help="A folder runs/_uploads/variant-<name>/; letters, digits, '.', '_' or '-'")
+            st.file_uploader("CSV files: several, or one flat file · optional ground_truth.json to score the mapping", type=["csv", "json"],
+                             accept_multiple_files=True, key="data_v_files", max_upload_size=variant_jobs.MAX_FILE_BYTES // 1_000_000)
+            st.form_submit_button("Save variant", icon=":material/upload:", on_click=_save_variant, args=(session,))
+        if variant_jobs.ROUND2.is_dir():
+            with st.container(horizontal=True, vertical_alignment="center", gap="small", key="data-v-gen"):
+                st.button("Generate a test variant", key="data_v_gen", icon=":material/shuffle:", type="tertiary", on_click=_generate_variant, args=(session,),
+                          help="ops.variant_rehearsal.make_fresh_variant: the January files with new file and column names and other units, "
+                               "plus the ground_truth.json that scores the mapping (the mapper never reads it)")
+                st.toggle("one flat file", key="data_v_flat", help="transactions and device sessions in a single CSV")
+        st.caption(md(f"At most {variant_jobs.MAX_FILES} files, {variant_jobs.MAX_FILE_BYTES // 1_000_000} MB each; nothing is written under data/."))
+    res = st.session_state.get("data_v_msg")
+    if res:
+        if res["ok"]:
+            st.caption(md(f"Saved as variant {res['job']}"))
+        else:
+            st.error(md(res["error"]), icon=":material/error:")
+
+
+def _samples(vm: list[dict]) -> None:
+    """One mapped column at a time with its five sample records (raw and translated) and the attestation behind it."""
+    labels = {i: f"{m.get('source_file')} / {m.get('source_column')} → {m.get('canonical_column')}" for i, m in enumerate(vm)}
+    pick = st.selectbox("Attested samples for", list(labels), format_func=labels.get, key="data_v_sample_col", width=560)
+    m = vm[pick] if pick is not None and pick < len(vm) else None
+    if not m:
+        return
+    rows = [{"Record": s.get("record_id"), "Raw value": s.get("raw_value"), "Canonical value": s.get("canonical_value")} for s in m.get("sample_records") or []]
+    st.caption(md(f"{m.get('rationale') or ''} · transform {m.get('transform')} · confidence {float(m.get('confidence') or 0):.2f}"))
+    st.dataframe(rows, hide_index=True, width="stretch", height=common.table_height(len(rows)), key=f"data_v_samples_{pick}")
+    with st.popover("Attestation", key=f"data-v-att-{pick}"):
+        st.json(m.get("attestation") or {}, expanded=True)
+
+
+def _review(mapping: dict) -> None:
+    unmapped = [u for u in mapping.get("unmapped_columns") or [] if isinstance(u, dict)]
+    low = [x for x in mapping.get("low_confidence") or [] if isinstance(x, dict)]
+    design.html_block(design.section("", "For review", note="what nothing matched, and what matched below 0.95, before the mapping is used",
+                                     aside=esc(f"{len(unmapped)} unmapped · {len(low)} low confidence")))
+    if not unmapped and not low:
+        st.caption("Nothing to review: every column mapped at 0.95 or above.")
+    if unmapped:
+        st.dataframe([{"Column": f"{u.get('source_file')} / {u.get('source_column')}", "Table role": u.get("table_role"), "Why": u.get("reason"),
+                       "Top values": ", ".join(map(str, u.get("top_values") or []))} for u in unmapped],
+                     hide_index=True, width="stretch", height=common.table_height(len(unmapped)), key="data_v_unmapped")
+    if low:
+        st.dataframe([{"Column": f"{x.get('source_file')} / {x.get('source_column')}", "Mapped to": x.get("canonical_column"),
+                       "Confidence": float(x.get("confidence") or 0), "Rationale": x.get("rationale")} for x in low],
+                     hide_index=True, width="stretch", height=common.table_height(len(low)), key="data_v_low",
+                     column_config={"Confidence": st.column_config.ProgressColumn("Confidence", min_value=0.0, max_value=1.0, format="%.2f")})
+
+
+def _decision(job: str, mapping: dict, session) -> None:
+    """Accept or reject this mapping (final for this mapping), like the C12 migration gate."""
+    rec = variant_jobs.mapping_decision(job)
+    sha = variant_jobs.mapping_sha(mapping)
+    current = rec if rec and rec.get("mapping_sha") == sha else None
+    kind = {"approved": "green", "rejected": "red"}.get(str((current or {}).get("status")), "ochre")
+    state = (f'{design.tag(current["status"], kind, "gate")} by <b>{esc(current.get("by"))}</b> ({esc(current.get("role"))}) at {esc(current.get("at"))}, final'
+             if current else design.tag("pending", "ochre", "gate") + (" · an earlier decision was on a different mapping" if rec else ""))
+    design.html_block(f'<p class="tc dq-gate">Mapping <span class="tc-mono">{esc(sha)}</span> is {state}.</p>')
+    why = ("read-only deployment" if ro else None) or ("Sign in first (identity menu in the top bar)" if session is None else None) \
+        or (None if session.role in GATE_ROLES else f"{session.role} cannot decide: needs {' or '.join(GATE_ROLES)}") or ("already decided" if current else None)
+
+    @st.dialog("Decide the variant mapping")
+    def _dialog(decision: str) -> None:
+        sess = common.approver_session()
+        st.markdown(f"Mapping **{md(sha)}** of **{md(job)}** → **{md(decision)}** as {md(f'{sess.principal} ({sess.role})' if sess else 'signed out')}")
+        note = st.text_input("Note (optional)", key="data_v_note", max_chars=300)
+        st.info("This decision is final for this mapping and is logged in the approval audit log (route 'gate').")
+        if st.button("Confirm (final)", type="primary", key="data_v_confirm"):
+            try:
+                variant_jobs.decide_mapping(job, decision, sess, mapping, note)
+                st.session_state["data_v_decided"] = {"ok": True, "text": f"{decision}"}
+            except (PermissionError, ValueError, OSError) as exc:
+                st.session_state["data_v_decided"] = {"ok": False, "text": f"Refused: {exc}"}
+            st.rerun()
+
+    with st.container(horizontal=True, vertical_alignment="center", gap="small", key="data-v-decide"):
+        if st.button("Accept mapping…", key="data_v_accept", type="primary", disabled=bool(why), help=md(why) if why else None):
+            _dialog("approved")
+        if st.button("Reject mapping…", key="data_v_reject", disabled=bool(why), help=md(why) if why else None):
+            _dialog("rejected")
+    if (m := st.session_state.pop("data_v_decided", None)):
+        (st.success if m["ok"] else st.error)(md(m["text"]))
+
+
+def _rehearsal_view(rep: dict) -> None:
+    n, same = int(rep.get("n_cases") or 0), int(rep.get("n_same_decision") or 0)
+    rows = rep.get("row_comparison") or {}
+    differ = {c: v.get("differ") for c, v in (rows.get("columns") or {}).items() if isinstance(v, dict) and v.get("differ")}
+    acc = rep.get("accuracy")
+    lead = (f'<b class="{"green" if n and same == n else "red"}">Same decision on {same} of {n} case{"s" if n != 1 else ""}</b>'
+            f' · {int(rows.get("n_in_canonical") or 0):,} of {int(rows.get("n_translated") or 0):,} translated transactions found in the canonical facts DB'
+            + (f' · columns that differ: {esc(", ".join(f"{c} ({k})" for c, k in differ.items()))}' if differ else " · every compared column equal"))
+    if isinstance(acc, dict):
+        lead += (f' · against the ground truth: precision <b>{float(acc.get("precision") or 0):.0%}</b>, recall <b>{float(acc.get("recall") or 0):.0%}</b>'
+                 f' ({int(acc.get("correct") or 0)} correct, {len(acc.get("wrong") or [])} wrong, {len(acc.get("missed") or [])} missed)')
+    design.html_block(f'<p class="tc tc-lead">{lead}</p>')
+
+    def _d(x: dict | None) -> str:
+        return f"{x.get('verdict')} · {x.get('status')}" if x else "no decision"
+
+    cases = rep.get("cases") or {}
+    st.dataframe([{"Case": cid, "On the variant": _d(v.get("variant")), "On the canonical schema": _d(v.get("canonical")),
+                   "Final actions (variant)": ", ".join((v.get("variant") or {}).get("final_actions") or []),
+                   "Final actions (canonical)": ", ".join((v.get("canonical") or {}).get("final_actions") or []),
+                   "Exposure (variant)": (v.get("variant") or {}).get("exposure_usd"), "Same": bool(v.get("same"))} for cid, v in cases.items()],
+                 hide_index=True, width="stretch", height=common.table_height(len(cases)), key="data_v_cases",
+                 column_config={"Same": st.column_config.CheckboxColumn("Same decision"),
+                                "Exposure (variant)": st.column_config.NumberColumn("Exposure (variant)", format="dollar")})
+    with st.expander(f"Row comparison · {len(differ)} column(s) differ", key="data-v-rows"):
+        cols = rows.get("columns") or {}
+        st.dataframe([{"Column": c, "Equal": v.get("equal"), "Differ": v.get("differ"),
+                       "Example": "; ".join(f"{e.get('TransactionID')}: {e.get('variant')} → canonical {e.get('canonical')}" for e in v.get("examples") or [])}
+                      for c, v in cols.items() if isinstance(v, dict)],
+                     hide_index=True, width="stretch", height=common.table_height(len(cols)), key="data_v_rowcmp")
+        if rows.get("missing_in_canonical"):
+            st.caption(md("Not in the canonical facts DB: " + ", ".join(map(str, rows["missing_in_canonical"]))))
+    if isinstance(acc, dict) and (acc.get("wrong") or acc.get("missed")):
+        with st.expander("Ground-truth misses", key="data-v-acc"):
+            st.dataframe([{"Column": w.get("column"), "Wanted": w.get("want"), "Got": w.get("got", "—")} for w in [*(acc.get("wrong") or []), *(acc.get("missed") or [])]],
+                         hide_index=True, width="stretch", key="data_v_accrows")
+    st.caption(md(f"rehearsal.json generated {rep.get('generated_at')} · scratch facts DB {common.rel(rep.get('rehearsal_db') or '')} · offline engine, no graph, no LLM"))
+
+
+def _rehearsal(src: str, session, why: str) -> None:
+    design.html_block(design.section("", "Run on the variant", note="translate it, put it in a scratch facts DB, decide every case on it and on the canonical DB"))
+    job = None if src == CHECKED_IN_SRC else src
+    state = variant_jobs.rehearsal_state(job) if job else {"state": "not run", "report": None, "log": []}
+    if src == CHECKED_IN_SRC and any(j["id"] == "bank-b" for j in variant_jobs.jobs()):
+        state = variant_jobs.rehearsal_state("bank-b")  # the checked-in variant is rehearsed as job bank-b
+    held = variant_jobs.running()
+    with st.container(horizontal=True, vertical_alignment="center", gap="small", key="data-v-run"):
+        st.button("Run on variant" if state["state"] in ("not run", "failed") else "Run again", key="data_v_run_btn", type="primary", icon=":material/play_arrow:",
+                  disabled=bool(why) or bool(held), on_click=_run_variant, args=(src, session),
+                  help=md(why) if why else md(f"the rehearsal of {held.get('job')} is running") if held else
+                  "python -m ops.variant_rehearsal <variant> --out runs/_uploads/variant-<id>/out (a few seconds per hundred transactions)")
+        design.html_block(design.tag(state["state"], {"done": "green", "failed": "red", "running": "ochre"}.get(state["state"], "")))
+        if state["state"] == "running":  # the view refreshes itself every 2 s; a background tab may throttle that
+            st.button("Refresh", key="data_v_refresh", type="tertiary", icon=":material/refresh:")
+    res = st.session_state.get("data_v_run")
+    if res and not res.get("ok"):
+        st.error(md(res.get("error") or "not started"), icon=":material/error:")
+    if why:
+        st.caption(md(why))
+    if state["state"] == "done" and state["report"]:
+        _rehearsal_view(state["report"])
+    elif state["state"] in ("running", "failed") and state["log"]:
+        st.caption(md(f"rehearse.log, last lines · started {state.get('started') or '—'}"))
+        st.code("\n".join(state["log"]), language=None)
+
+
+def _csv_variant_view() -> None:
+    session = common.approver_session()
+    why = variant_jobs.blocked(session)
+    sources = ([(CHECKED_IN_SRC, "Bank B · checked in (data/variant_bank_b)")] if VARIANT_DIR.is_dir() else []) + \
+        [(j["id"], f"{j['id']} · {j['source']} · {len(j['files'])} file(s)") for j in variant_jobs.jobs()]
+    labels = dict(sources)
+    if st.session_state.get(SRC_KEY) not in labels and sources:
+        st.session_state[SRC_KEY] = sources[0][0]
+    design.html_block(design.section("", "CSV variant columns onto the canonical tables", note="someone else's schema: mapped from value fingerprints, not names"))
+    with st.container(horizontal=True, vertical_alignment="bottom", gap="medium", key="data-v-pick"):
+        src = st.selectbox("Variant", list(labels), format_func=labels.get, key=SRC_KEY, width=460) if sources else None
+    _bring_variant(session, why)
+    if src is None:
+        _missing("No variant here yet: bring one in above.")
+        return
+    folder = _folder(src)
+    mapping = _map_folder(str(folder), _folder_sig(folder)) if folder.is_dir() else None
+    if not isinstance(mapping, dict) or not mapping.get("mappings"):
+        _missing(f"No column of {common.rel(folder)} could be mapped" + ("" if mapping is not None else " (schema_engine.mapper unavailable)") + ".")
+        if isinstance(mapping, dict):
+            _review(mapping)
+        return
+    vm = [m for m in mapping["mappings"] if isinstance(m, dict)]
+    roles = ", ".join(f"{k} → {v}" for k, v in (mapping.get("table_roles") or {}).items())
+    truth = variant_jobs.ground_truth(folder)
+    st.caption(md(f"{len(vm)} columns mapped · table roles: {roles or 'not recorded'} · mapped {mapping.get('discovered_at')} from {common.rel(folder)}"
+                  + (" · a ground_truth.json is present: the rehearsal scores the mapping against it" if truth else "")))
+    tr_opts = list(dict.fromkeys([*TRANSFORMS, *sorted({str(m.get("transform")) for m in vm})]))
+
+    def _sample(m: dict) -> str:
+        s = (m.get("sample_records") or [{}])[0]
+        return f"{s.get('raw_value', '')} → {s.get('canonical_value', '')}" if s else "—"
+
+    st.dataframe(
+        [{"Source column": f"{m.get('source_file')} / {m.get('source_column')}", "Canonical target": f"{m.get('table_role')}.{m.get('canonical_column')}",
+          "Transform": [str(m.get("transform"))], "Confidence": float(m.get("confidence") or 0), "Raw → canonical sample": _sample(m),
+          "Samples": len(m.get("sample_records") or [])} for m in vm],
+        hide_index=True, width="stretch", height=common.table_height(len(vm)), key="data_variant",
+        column_config={
+            "Transform": st.column_config.MultiselectColumn("Transform", options=tr_opts, color=["gray"] * len(tr_opts)),
+            "Confidence": st.column_config.ProgressColumn("Confidence", min_value=0.0, max_value=1.0, format="%.2f"),
+            "Raw → canonical sample": st.column_config.TextColumn("Raw → canonical sample", width="large"),
+            "Samples": st.column_config.NumberColumn("Samples", help="attested sample records behind the mapping (the brief asks for five)"),
+        })
+    _samples(vm)
+    _review(mapping)
+    if src != CHECKED_IN_SRC:
+        design.html_block(design.section("", "Mapping decision", note=f"a signed-in {' or '.join(approvals_db.ROLE_LABELS[r] for r in GATE_ROLES)} accepts or rejects it"))
+        _decision(src, mapping, session)
+
+    @st.fragment(run_every=2 if variant_jobs.running() else None)
+    def _live() -> None:
+        _rehearsal(src, common.approver_session(), variant_jobs.blocked(common.approver_session()))
+
+    _live()
+
+
+# --------------------------------------------------------------------------- #
 # Schema mapping (C13): bank schemas, or the CSV variant as a sub-view        #
 # --------------------------------------------------------------------------- #
 if view == "map":
@@ -646,25 +919,4 @@ if view == "map":
                         st.markdown(f"**{md(q.get('query_name'))}** · {md(q.get('detector'))} · uses {md(', '.join(map(str, q.get('uses_mappings') or [])))}")
                         st.code(str(q.get("gsql") or ""), language="sql")
     else:
-        roles = ", ".join(f"{k} → {v}" for k, v in ((variant or {}).get("table_roles") or {}).items())
-        design.html_block(design.section("", "CSV variant columns onto the canonical tables", note=var_label, aside=esc(f"as of {_when(var_as_of)}")))
-        if not isinstance(variant, dict) or not variant.get("mappings"):
-            _missing(f"No variant CSV mapping on this deployment ({var_as_of}).")
-        else:
-            vm = [m for m in variant["mappings"] if isinstance(m, dict)]
-            tr_opts = list(dict.fromkeys([*TRANSFORMS, *sorted({str(m.get("transform")) for m in vm})]))
-            st.caption(md(f"{len(vm)} columns · table roles: {roles or 'not recorded'}"))
-
-            def _sample(m: dict) -> str:
-                s = (m.get("sample_records") or [{}])[0]
-                return f"{s.get('raw_value', '')} → {s.get('canonical_value', '')}" if s else "—"
-
-            st.dataframe(
-                [{"Source column": f"{m.get('source_file')} / {m.get('source_column')}", "Canonical target": f"{m.get('table_role')}.{m.get('canonical_column')}",
-                  "Transform": [str(m.get("transform"))], "Confidence": float(m.get("confidence") or 0), "Raw → canonical sample": _sample(m)} for m in vm],
-                hide_index=True, width="stretch", height=common.table_height(len(vm)), key="data_variant",
-                column_config={
-                    "Transform": st.column_config.MultiselectColumn("Transform", options=tr_opts, color=["gray"] * len(tr_opts)),
-                    "Confidence": st.column_config.ProgressColumn("Confidence", min_value=0.0, max_value=1.0, format="%.2f"),
-                    "Raw → canonical sample": st.column_config.TextColumn("Raw → canonical sample", width="large"),
-                })
+        _csv_variant_view()

@@ -114,11 +114,12 @@ PERMISSIONS: dict[str, str] = {
     "run_live": "start live agent runs (TigerGraph and a paid LLM)",
     "workspace": "connect another TigerGraph workspace on the Run console",
     "own_data": "upload data and run the load steps into another workspace",
+    "variant": "upload a bank's variant CSVs and rehearse the agent on them (Challenge 13)",
     "users_view": "see every principal and its role",
 }
 ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
     "admin": frozenset(PERMISSIONS),
-    "fraud_manager": frozenset({"feedback", "approve_L1", "approve_L2", "approve_migration", "approve_detector", "run_live"}),
+    "fraud_manager": frozenset({"feedback", "approve_L1", "approve_L2", "approve_migration", "approve_detector", "run_live", "variant"}),
     "team_lead": frozenset({"feedback", "approve_L1", "approve_migration", "run_live"}),
     "analyst": frozenset({"feedback"}),
     "unauthorized": frozenset(),

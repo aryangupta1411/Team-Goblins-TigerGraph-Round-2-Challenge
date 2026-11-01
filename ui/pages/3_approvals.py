@@ -711,7 +711,8 @@ if t_enf.open:
         gated = "where RUNS_NEED_APPROVER is set" + (" (set here)" if common.runs_need_approver() else " (not set here: open to all)")
         cols = [("approve_L1", "L1 · team lead", ", ".join(fmt)), ("approve_L2", "L2 · fraud manager", ", ".join([f"BLOCK_CARD > ${limit:,.0f}", *l2])),
                 ("approve_migration", "Schema migration", "team lead or above"), ("approve_detector", "Detector proposals", "fraud manager or above"),
-                ("run_live", "Live runs", gated), ("own_data", "Workspaces & own data", gated), ("users_view", "Principals list", "this page")]
+                ("run_live", "Live runs", gated), ("own_data", "Workspaces & own data", gated), ("variant", "Variant rehearsal", gated),
+                ("users_view", "Principals list", "this page")]
 
         def _cell(role: str, col: str) -> str:
             ok = col in approvals_db.ROLE_PERMISSIONS.get(role, frozenset())

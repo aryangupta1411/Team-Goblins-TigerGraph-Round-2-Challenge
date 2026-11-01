@@ -7,7 +7,7 @@ asks for is listed here, each with where to find it and how it was checked.
 
 | Brief asks for | Where | Checked |
 |---|---|---|
-| Frozen commit | [`c2bcb296411a5e06ca0f5fec6e028433b37862f8`](https://github.com/aryangupta1411/Team-Goblins-TigerGraph-Round-2-Challenge/commit/c2bcb296411a5e06ca0f5fec6e028433b37862f8) (`c2bcb29`), the code that produced the answers; the final pushed commit adds only docs and run files on top | `runs/hhf-final-3/run_manifest.json` records this sha with `git_dirty: false` for the run's one invocation and all 18 cases, run from a clean detached worktree |
+| Frozen commit | The final pushed commit of `main`, tagged [`round2-freeze`](https://github.com/aryangupta1411/Team-Goblins-TigerGraph-Round-2-Challenge/tree/round2-freeze); its hash is the one we hand over at the freeze. The answers were produced at [`c2bcb29`](https://github.com/aryangupta1411/Team-Goblins-TigerGraph-Round-2-Challenge/commit/c2bcb296411a5e06ca0f5fec6e028433b37862f8), tagged [`hhf-final-3-run`](https://github.com/aryangupta1411/Team-Goblins-TigerGraph-Round-2-Challenge/tree/hhf-final-3-run), and the decision code is unchanged between the two ([below](#what-changed-between-the-run-and-the-freeze)) | `runs/hhf-final-3/run_manifest.json` records `c2bcb29` with `git_dirty: false` for the run's one invocation and all 18 cases, run from a clean detached worktree; `engine.run_cases` at the freeze reproduces all 18 answers |
 | 18 answers produced by the frozen code | [`cases/HHF-001.json`](cases/HHF-001.json) … `HHF-018.json`, per-case table in [`cases/MANIFEST.md`](cases/MANIFEST.md) | byte-identical to `runs/hhf-final-3/HHF-*/answer.json`; validator: 0 problems; the organisers' `grade.py` (sha256 b27e39ce…44b3): 18 / 18 clean, 0 hard, 0 policy, 1 warning |
 | The run behind them | [`runs/hhf-final-3/`](runs/hhf-final-3/): `answer.json`, `calls.jsonl`, `phases.jsonl` and `sar.md` per case, `run_manifest.json`, `provenance.json`, `_guard/` | one live run on `gemini-3.6-flash` against FraudGraph through MCP, 18 / 18 with no failure; tracked-file fingerprints (747 files) identical before and after (`provenance.json`, `code.list_sha256`); identical to the offline engine at the same commit |
 | One clean-clone, single-case command | [below](#clean-clone-one-command-one-case) | run on 2026-11-01 from a fresh clone of this repository (`main` at `40ad6ae`): 31 s, 0 validator problems; CI runs it on Ubuntu |
@@ -94,7 +94,22 @@ The answers were produced at `c2bcb29`. Since the previous run (`hhf-final-2`, `
 - `schema_engine/mapper.py`, `profiler.py` and `ops/variant_rehearsal.py`: three variants mapped at 100% precision and
   recall, with 18 / 18 decisions matching (Challenge 13).
 
-The commits after `c2bcb29` change the dashboard, documentation, run files, cost pricing (`agent/pricing.py`,
-`ops/cost_report.py`), the variant rehearsal script (`ops/variant_rehearsal.py`) and regenerated outputs under `engine/out/`; no decision code. `engine.run_cases` at `c2bcb29`
-gives 0 differences from `runs/hhf-final-3` on verdict, pattern, SAR and final actions with routes, probability within
-0.10. `git diff c2bcb29 HEAD -- agent/ engine/ graph/ mcp/ rag/ policy/ etl/ schema_engine/` shows every change.
+## What changed between the run and the freeze
+
+The freeze (`round2-freeze`) is the final pushed commit, so all the work above and the commits after the run count.
+Between `c2bcb29` and the freeze:
+
+- `3152d89`: the graph page redesign (icon nodes in semantic colours, the case layer in live mode, a full-screen view)
+  and a light theme on every page;
+- `dc079e2`: the proof board reads the measured evidence (Challenges 2, 3, 8, 9, 12, 13), and cost per case on Gemini 3.6
+  Flash prices (`agent/pricing.py`, `ops/cost_report.py`, `engine/out/cost_latency.json`);
+- `a29ac25`: Challenge 13 in the dashboard (upload or generate a variant, the attested mapping, run on variant, accept or
+  reject the mapping);
+- `3bfde5f` and later: the promotion of `hhf-final-3` and documentation.
+
+On the answer path (`agent/`, `engine/`, `graph/`, `mcp/`, `rag/`, `policy/`, `etl/`, `schema_engine/`) the only code
+change is `agent/pricing.py`, which only the cost report and the Runs page import; `agent.bench` never reads it. The
+rest is regenerated outputs under `engine/out/`. Checked at the freeze: `engine.run_cases` gives the same verdict,
+pattern, SAR decision and final actions with routes as `cases/HHF-*.json` on all 18 cases, probability within 0.10, as
+it does at `c2bcb29`. `git diff hhf-final-3-run round2-freeze -- agent/ engine/ graph/ mcp/ rag/ policy/ etl/ schema_engine/`
+shows every change.

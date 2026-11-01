@@ -19,3 +19,28 @@
 /* progress: the counts strip under the section head, then the pipeline and the table */
 .st-key-rc-progress { gap: .6rem !important; }
 .st-key-rc-inspect { gap: .6rem !important; flex-wrap: wrap; }
+
+/* mode and workspace: the Mock / Live switch and the workspace choice on one line, the status under them */
+.st-key-rc-mode { padding: .75rem 1rem !important; gap: .45rem !important; border-radius: 4px !important; margin-bottom: .6rem; }
+.st-key-rc-mode-row { gap: .6rem 1.6rem !important; flex-wrap: wrap; }
+.st-key-rc-mode [data-testid="stForm"] { padding: 0 !important; }
+.rc-ws-note { margin: 0; font-size: .84rem; line-height: 1.5; color: var(--tc-ink-2); overflow-wrap: anywhere; }
+.rc-ws-note .green, .rc-ws-note.green { color: var(--tc-green-ink); font-weight: 600; }
+.rc-ws-note .red, .rc-ws-note.red { color: var(--tc-red-ink); font-weight: 600; }
+.rc-ws-note.red { font-weight: 500; }
+
+/* what to investigate: the uploader and its template link on one line */
+.st-key-rc-upload { gap: .6rem !important; }
+
+/* bring your own data: the five steps as a numbered list with their state and command */
+.rc-steps { list-style: none; margin: .2rem 0 .5rem; padding: 0; border-top: 1px solid var(--tc-rule); }
+.rc-steps li { display: grid; grid-template-columns: 1.4rem 13rem auto minmax(0, 1fr); align-items: center; gap: .6rem; margin: 0;
+  padding: .45rem 0; border-bottom: 1px solid var(--tc-rule); font-size: .86rem; color: var(--tc-ink); }
+.rc-steps .n { color: var(--tc-muted); font-variant-numeric: tabular-nums; }
+.rc-steps .l { font-weight: 600; }
+.rc-steps code { font-family: "Roboto Mono", ui-monospace, monospace; font-size: .74rem; color: var(--tc-muted); background: none;
+  overflow-wrap: anywhere; }
+@media (max-width: 900px) {
+  .rc-steps li { grid-template-columns: 1.4rem minmax(0, 1fr) auto; }
+  .rc-steps code { grid-column: 2 / -1; }
+}

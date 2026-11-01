@@ -67,7 +67,18 @@ def _env(name: str, default: str = "") -> str:
 
 
 def mode_status() -> tuple[str, str]:
-    """('live', 'TG_HOST set') or ('mock', why): the UI reads the live graph only when RUN_MODE=live and TG_HOST is set."""
+    """('live', 'TG_HOST set') or ('mock', why): the UI reads the live graph only when RUN_MODE=live and TG_HOST is set,
+    or when this session switched to Live on the Run console with the .env workspace (SESSION_MODE_KEY)."""
+    ss = _session_state()
+    choice = ss.get(SESSION_MODE_KEY) if ss is not None else None
+    if choice == "mock":
+        return "mock", "Mock is selected on the Run console"
+    if choice == "live":
+        if ss.get(SESSION_WS_KEY, "env") != "env":
+            return "mock", "this session's runs use another workspace"
+        if not _env("TG_HOST").strip():
+            return "mock", "Live is selected on the Run console, but TG_HOST is unset"
+        return "live", "Live is selected on the Run console"
     mode = _env("RUN_MODE", "mock").strip().lower() or "mock"
     if mode != "live":
         return "mock", f"RUN_MODE={mode}"
@@ -693,7 +704,9 @@ def _failure_note(phases: list[dict]) -> str | None:
 
 
 def _read_lock(path: Path) -> dict | None:
-    """The lock at `path` when its process is alive (os.kill(pid, 0)), else None."""
+    """The lock at `path` when its process is alive (os.kill(pid, 0)), else None. A process this server started (the Run
+    console's agent.bench and data steps) is reaped first when it has finished: unreaped, it would linger as a zombie
+    that os.kill still finds, and the console would show the run in progress until a restart."""
     data, _ = _read_json(path)
     if not isinstance(data, dict):
         return None
@@ -703,6 +716,12 @@ def _read_lock(path: Path) -> dict | None:
         return None
     if pid <= 0:
         return None
+    if hasattr(os, "WNOHANG"):
+        try:
+            if os.waitpid(pid, os.WNOHANG)[0] == pid:
+                return None
+        except (ChildProcessError, OSError):
+            pass  # not this server's child: os.kill below decides
     try:
         os.kill(pid, 0)
     except ProcessLookupError:
@@ -3334,12 +3353,15 @@ def backend_status(backend: str) -> dict:
     return {"ok": False, "reason": f"unknown backend {backend!r}; one of {', '.join(LLM_BACKENDS)}"}
 
 
-def launch_run(cases: list[str], backend: str, run_id: str, resume: bool = False, session: object = None) -> dict:
+def launch_run(cases: list[str], backend: str, run_id: str, resume: bool = False, session: object = None,
+               case_pack: list[dict] | None = None, target: dict | None = None) -> dict:
     """Start agent.bench detached (its own session) for `cases` under runs/<run_id>/, logging to runs/<run_id>/bench.log and
-    writing runs/<run_id>/.bench.lock {pid, started, cases, backend}. RUN_MODE and --llm-backend are always explicit.
-    Refuses on a read-only deployment, for a live backend without a verified approver `session` when RUNS_NEED_APPROVER
-    is set, for a live backend outside live mode, when the backend is not ready, and while any live lock exists.
-    Returns {ok, error, pid, cmd, log, lock}."""
+    writing runs/<run_id>/.bench.lock {pid, started, cases, backend, workspace}. RUN_MODE and --llm-backend are always
+    explicit. `case_pack` (validate_case_pack rows) is written to runs/<run_id>/case_pack.csv and passed as --case-pack; a
+    resumed run reuses its own. `target` is run_target() (computed here when omitted): a live backend needs a live
+    target, and another workspace's TG_* reach the child process only. Refuses on a read-only deployment, for a live
+    backend without a verified approver `session` when RUNS_NEED_APPROVER is set, for a live backend without a live
+    target, when the backend is not ready, and while any live lock exists. Returns {ok, error, pid, cmd, log, lock}."""
     out: dict = {"ok": False, "error": "", "pid": None, "cmd": [], "log": "", "lock": ""}
     if read_only():
         return {**out, "error": "read-only deployment (DEPLOY_READONLY=1): runs are never started here"}
@@ -3350,9 +3372,11 @@ def launch_run(cases: list[str], backend: str, run_id: str, resume: bool = False
             return {**out, "error": "live runs on this deployment need a signed-in approver (Sign in, top right)"}
     if not _safe_id(run_id) or not cases or not all(_safe_id(c) for c in cases):
         return {**out, "error": "a run id and at least one case id are needed"}
-    mode, reason = mode_status()
-    if backend != "mock" and mode != "live":
-        return {**out, "error": f"backend {backend} needs the live graph, but the mode is mock ({reason})"}
+    target = run_target() if target is None else target
+    if backend != "mock" and not target.get("live"):
+        return {**out, "error": f"backend {backend} needs the live graph, but this session's runs are mock ({target.get('reason')})"}
+    if case_pack is not None and not set(cases) <= {str(r.get("case_id")) for r in case_pack}:
+        return {**out, "error": "every case to run must be one of the uploaded alerts"}
     bs = backend_status(backend)
     if not bs["ok"]:
         return {**out, "error": f"backend {backend} not ready: {bs['reason']}"}
@@ -3366,10 +3390,385 @@ def launch_run(cases: list[str], backend: str, run_id: str, resume: bool = False
         cmd.append("--mock")
     if resume:
         cmd.append("--resume")
-    env = {**os.environ, "RUN_MODE": "mock" if backend == "mock" else "live", "LLM_BACKEND": backend}
+    pack_path = run_dir / "case_pack.csv"
+    if case_pack is not None:
+        pack_path.write_text(case_pack_csv(case_pack), encoding="utf-8")
+    if case_pack is not None or (resume and pack_path.is_file()):
+        cmd += ["--case-pack", str(pack_path)]
+    live = backend != "mock"
+    env = {**os.environ, "RUN_MODE": "live" if live else "mock", "LLM_BACKEND": backend, **(target.get("child_env") or {} if live else {})}
     log_path = run_dir / "bench.log"
     with open(log_path, "ab") as log:
         proc = subprocess.Popen(cmd, cwd=str(ROOT), stdout=log, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, env=env, start_new_session=True)
     lock_path = run_dir / LOCK_FILE
-    lock_path.write_text(json.dumps({"pid": proc.pid, "started": _now(), "cases": list(cases), "backend": backend}), encoding="utf-8")
+    lock_path.write_text(json.dumps({"pid": proc.pid, "started": _now(), "cases": list(cases), "backend": backend,
+                                     "workspace": target.get("host", "") if live else "", "case_pack": rel(pack_path) if "--case-pack" in cmd else ""}),
+                         encoding="utf-8")
     return {**out, "ok": True, "pid": proc.pid, "cmd": cmd, "log": rel(log_path), "lock": rel(lock_path)}
+
+
+# --------------------------------------------------------------------------- #
+# Run targets: the session's Live switch, TigerGraph workspaces, own data      #
+# --------------------------------------------------------------------------- #
+SESSION_MODE_KEY = "rc_mode"         # 'live' | 'mock' picked on the Run console; absent: RUN_MODE decides
+SESSION_WS_KEY = "rc_workspace"      # 'env' (TG_HOST in .env) | 'other' (typed on the Run console)
+SESSION_OTHER_KEY = "rc_ws_other"    # {'host', 'graph', 'secret'}: this session's memory only, never written to disk
+SESSION_CHECK_KEY = "rc_ws_check"    # the last check_workspace() result for the other workspace
+TRIGGER_TYPES = ("risk_score", "customer_report", "analyst_request")
+CASE_PACK_MAX_ROWS = 200
+UPLOAD_MAX_BYTES = 2_000_000         # an alerts file; a month of transactions may be larger (MONTH_MAX_BYTES)
+MONTH_MAX_BYTES = 200_000_000  # Streamlit's own upload cap (server.maxUploadSize, 200 MB)
+UPLOADS_DIR = "_uploads"             # runs/_uploads/<job>/: the leading '_' keeps it out of every run listing
+BASE_SNAPSHOT_DB = ROOT / "data" / "hhgoa_engine_base.duckdb"  # Jul-Dec 2016: what etl.delta appends a month to
+MONTH_SLOTS = {  # upload slot -> the name etl.delta.find_month_files looks for
+    "transactions": "transactions_upload.csv", "identity": "identity_upload.csv",
+    "closed_cases": "closed_cases_history.csv", "case_pack": "case_pack_final.csv",
+}
+DATA_STEPS = ("build", "export", "load", "install", "algos")
+GRAPH_STEPS = ("load", "install", "algos")
+DATA_STEP_LABELS = {
+    "build": "Check and build", "export": "Export graph files", "load": "Load into the workspace",
+    "install": "Install the agent's queries", "algos": "Run the graph algorithms",
+}
+DATA_LOCK = ".job.lock"
+_CASE_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
+# Records a detached step's exit code next to its log: the step itself is the argv after the exit-file path.
+_EXIT_WRAPPER = "import subprocess, sys; open(sys.argv[1], 'w').write(str(subprocess.call(sys.argv[2:])))"
+
+
+def _session_state() -> Any:
+    """st.session_state inside a Streamlit script run, else None (agent code and tests import this module bare)."""
+    try:
+        from streamlit.runtime.scriptrunner import get_script_run_ctx
+
+        return _st().session_state if get_script_run_ctx(suppress_warning=True) is not None else None
+    except Exception:  # noqa: BLE001 - no Streamlit, or an older runtime: no session choice
+        return None
+
+
+def _hostname(url: str) -> str:
+    from urllib.parse import urlparse
+
+    u = str(url or "").strip()
+    return (urlparse(u if "://" in u else f"https://{u}").hostname or "").lower()
+
+
+def is_live_workspace(host: str) -> bool:
+    """Whether `host` is the .env workspace (TG_HOST): the live FraudGraph that holds the Final Round evidence."""
+    env_host = _hostname(_env("TG_HOST"))
+    return bool(env_host) and _hostname(host) == env_host
+
+
+def _ws_sig(host: str, graph: str, secret: str) -> str:
+    import hashlib
+
+    return hashlib.sha256(f"{host.strip().rstrip('/')}\n{graph.strip()}\n{secret}".encode()).hexdigest()[:16]
+
+
+def run_target() -> dict:
+    """Where a run or data step started from this session goes: {live, reason, workspace ('env' | 'other'), host, graph,
+    child_env}. The session's Live switch decides (RUN_MODE when the session has not chosen). Live is the .env workspace
+    (TG_HOST and TG_SECRET set) or another workspace this session typed in and checked; child_env carries that workspace's
+    TG_* for the child process only. Another workspace is refused on a read-only deployment."""
+    ss = _session_state()
+    ss = ss if ss is not None else {}
+    picked = ss.get(SESSION_MODE_KEY)
+    env_mode = _env("RUN_MODE", "mock").strip().lower() or "mock"
+    ws = ss.get(SESSION_WS_KEY, "env")
+    out = {"live": False, "reason": "", "workspace": ws, "host": "", "graph": "", "child_env": {}}
+    if (picked or ("live" if env_mode == "live" else "mock")) != "live":
+        return {**out, "reason": "Mock is selected on the Run console" if picked else f"RUN_MODE={env_mode}"}
+    if ws == "other":
+        if read_only():
+            return {**out, "reason": "another workspace cannot be used on a read-only deployment"}
+        other = ss.get(SESSION_OTHER_KEY) or {}
+        host, graph, secret = str(other.get("host") or "").strip().rstrip("/"), str(other.get("graph") or "FraudGraph").strip(), str(other.get("secret") or "")
+        if not host or not secret:
+            return {**out, "reason": "type the other workspace's host and secret"}
+        check = ss.get(SESSION_CHECK_KEY) or {}
+        if not check.get("ok") or check.get("sig") != _ws_sig(host, graph, secret):
+            return {**out, "reason": "check the other workspace's connection first", "host": host, "graph": graph}
+        return {**out, "live": True, "reason": f"another workspace: {_hostname(host)}", "host": host, "graph": graph,
+                "child_env": {"TG_HOST": host, "TG_GRAPHNAME": graph, "TG_SECRET": secret}}
+    host = _env("TG_HOST").strip()
+    if not host:
+        return {**out, "reason": "TG_HOST is unset in .env"}
+    if not _env("TG_SECRET").strip():
+        return {**out, "reason": "TG_SECRET is unset in .env", "host": host}
+    return {**out, "live": True, "reason": f"the .env workspace: {_hostname(host)}", "host": host, "graph": _env("TG_GRAPHNAME", "FraudGraph")}
+
+
+def approver_gate(session: object) -> str:
+    """'' when this caller may connect another workspace, upload data or run data steps here, else why not: a deployment
+    with RUNS_NEED_APPROVER (a public URL that can run the agent) lets only a verified approver session do them."""
+    if not runs_need_approver():
+        return ""
+    try:
+        approvals_db.verify_session(session)
+    except PermissionError:
+        return "on this deployment only a signed-in approver can do this (Sign in, top right)"
+    return ""
+
+
+def _workspace_conn(host: str, graph: str, secret: str, wait_s: float = 30) -> Any:
+    from pyTigerGraph import TigerGraphConnection
+
+    from ops.ensure_awake import ensure_awake
+
+    conn = TigerGraphConnection(host=host.strip().rstrip("/"), graphname=graph.strip() or "FraudGraph", gsqlSecret=secret)
+    conn.customizeHeader(timeout=20000, responseSize=8_000_000)
+    ensure_awake(max_wait_s=wait_s)(conn.getToken)(secret)
+    return conn
+
+
+def check_workspace(host: str, graph: str, secret: str, wait_s: float = 30, session: object = None) -> dict:
+    """A read-only probe of a TigerGraph workspace: a token, its vertex counts and which of this repo's queries
+    (graph/queries/*.gsql) are installed there. Nothing is written. Never raises; the secret never appears in the
+    result (it is masked out of any error text). Refused on a read-only deployment and, where RUNS_NEED_APPROVER is set,
+    without a verified approver `session` (the server would otherwise call any host a visitor types)."""
+    host, graph = str(host or "").strip().rstrip("/"), str(graph or "").strip() or "FraudGraph"
+    out = {"ok": False, "error": "", "host": host, "graph": graph, "counts": {}, "missing": [], "queries": None, "latency_s": None,
+           "at": _now(), "sig": _ws_sig(host, graph, secret or ""), "live_workspace": is_live_workspace(host)}
+    blocked = "read-only deployment (DEPLOY_READONLY=1): no other workspace is connected here" if read_only() else approver_gate(session)
+    if blocked:
+        return {**out, "error": blocked}
+    if not host.lower().startswith("https://") or not _hostname(host):
+        return {**out, "error": "the host must be an https:// URL, like https://tg-….i.tgcloud.io"}
+    if not str(secret or "").strip():
+        return {**out, "error": "the workspace's GSQL secret is needed"}
+    t0 = time.time()
+    try:
+        conn = _workspace_conn(host, graph, secret, wait_s)
+        counts = conn.getVertexCount("*") or {}
+        try:
+            installed = conn.getInstalledQueries()
+        except Exception:  # noqa: BLE001 - an older server without the endpoint list: counts only
+            installed = None
+    except Exception as exc:  # noqa: BLE001 - shown on the Run console
+        return {**out, "error": f"{type(exc).__name__}: {exc}".replace(secret, "***")[:400], "latency_s": round(time.time() - t0, 2)}
+    names = {str(k).rsplit("/", 1)[-1] for k in (installed or {})}
+    wanted = sorted(p.stem for p in (ROOT / "graph" / "queries").glob("*.gsql") if p.stem != "install_all")
+    return {**out, "ok": True, "latency_s": round(time.time() - t0, 2), "counts": {str(k): v for k, v in counts.items() if isinstance(v, int)},
+            "missing": [q for q in wanted if q not in names] if installed is not None else [], "queries": len(names) if installed is not None else None}
+
+
+def validate_case_pack(data: bytes | str) -> dict:
+    """Uploaded or typed alerts as case-pack rows (CASE_PACK_COLUMNS; risk_score may be empty), or the problems that stop
+    them: a missing column, an unusable or repeated case_id, an unknown trigger_type, an opened_at that is not
+    'YYYY-MM-DD HH:MM:SS', an empty card_id / customer_id / trigger_text, more than CASE_PACK_MAX_ROWS rows. trigger_text
+    stays verbatim: the agent sanitises it at intake (agent/security.py). Returns {rows, problems, warnings}."""
+    from datetime import datetime
+
+    raw = data if isinstance(data, bytes) else str(data).encode("utf-8")
+    if len(raw) > UPLOAD_MAX_BYTES:
+        return {"rows": [], "problems": [f"the file is {len(raw):,} bytes; alerts files are at most {UPLOAD_MAX_BYTES:,}"], "warnings": []}
+    try:
+        text = raw.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        return {"rows": [], "problems": ["the file is not UTF-8 text"], "warnings": []}
+    try:
+        reader = csv.DictReader(io.StringIO(text))
+        cols = [str(c or "").strip() for c in reader.fieldnames or []]
+        records = list(reader)
+    except csv.Error as exc:
+        return {"rows": [], "problems": [f"not a readable CSV: {exc}"], "warnings": []}
+    missing = [c for c in CASE_PACK_COLUMNS if c != "risk_score" and c not in cols]
+    if missing:
+        return {"rows": [], "problems": [f"missing column(s): {', '.join(missing)} (the header must name {', '.join(CASE_PACK_COLUMNS)})"], "warnings": []}
+    problems, warnings, rows, seen = [], [], [], set()
+    if not records:
+        problems.append("no alert rows under the header")
+    if len(records) > CASE_PACK_MAX_ROWS:
+        problems.append(f"{len(records)} rows; at most {CASE_PACK_MAX_ROWS} alerts per upload")
+    for line, rec in enumerate(records[:CASE_PACK_MAX_ROWS], 2):
+        r = {str(k or "").strip(): str(v or "").strip() for k, v in rec.items() if k}
+        cid = r.get("case_id", "")
+        where = f"line {line}" + (f" ({cid})" if cid else "")
+        if not _CASE_ID_RE.match(cid):
+            problems.append(f"{where}: case_id must be 1-64 letters, digits, '.', '_' or '-', starting with a letter or digit")
+        elif cid in seen:
+            problems.append(f"{where}: case_id {cid} appears twice")
+        seen.add(cid)
+        if r.get("trigger_type") not in TRIGGER_TYPES:
+            problems.append(f"{where}: trigger_type must be one of {', '.join(TRIGGER_TYPES)}")
+        try:
+            datetime.strptime(r.get("opened_at", ""), "%Y-%m-%d %H:%M:%S")
+        except ValueError:
+            problems.append(f"{where}: opened_at must look like 2017-01-15 01:25:19")
+        for k in ("card_id", "customer_id", "trigger_text"):
+            if not r.get(k):
+                problems.append(f"{where}: {k} is empty")
+        if not r.get("flagged_txn_id"):
+            warnings.append(f"{where}: no flagged_txn_id; the agent starts from the card's window around opened_at")
+        rs = r.get("risk_score", "")
+        if rs:
+            try:
+                r["risk_score"] = f"{float(rs):.2f}"
+            except ValueError:
+                problems.append(f"{where}: risk_score {rs!r} is not a number")
+        rows.append(_pack_row(r))
+    return {"rows": [] if problems else sorted(rows, key=_pack_order), "problems": problems[:20], "warnings": warnings[:20]}
+
+
+def case_pack_csv(rows: list[dict]) -> str:
+    buf = io.StringIO()
+    w = csv.DictWriter(buf, fieldnames=CASE_PACK_COLUMNS, extrasaction="ignore", lineterminator="\n")
+    w.writeheader()
+    for r in rows:
+        w.writerow({k: r.get(k, "") for k in CASE_PACK_COLUMNS})
+    return buf.getvalue()
+
+
+def cards_in_graph(card_ids: list[str], target: dict | None = None) -> tuple[set[str] | None, str | None]:
+    """Which of `card_ids` exist as Card vertices in the run target's workspace (a read: getVerticesById); (None, why)
+    when the target is not live or the workspace cannot be read."""
+    target = run_target() if target is None else target
+    if not target.get("live"):
+        return None, f"not checked: this session's runs are mock ({target.get('reason')})"
+    ids = sorted({str(c) for c in card_ids if c})
+    try:
+        if target.get("workspace") == "other":
+            env = target.get("child_env") or {}
+            conn = _workspace_conn(env.get("TG_HOST", ""), env.get("TG_GRAPHNAME", "FraudGraph"), env.get("TG_SECRET", ""))
+        else:
+            conn, err = graph_connection()
+            if conn is None:
+                return None, err
+        found = conn.getVerticesById("Card", ids) or []
+    except Exception as exc:  # noqa: BLE001
+        secret = (target.get("child_env") or {}).get("TG_SECRET") or "\0"
+        return None, f"{type(exc).__name__}: {exc}".replace(secret, "***")[:300]
+    return {str(v.get("v_id")) for v in found if isinstance(v, dict)}, None
+
+
+def data_pipeline_missing() -> list[str]:
+    """The pipeline files absent from this deployment (the UI image ships ui/ only, not etl/, graph/ or data/)."""
+    need = [ROOT / "etl" / "delta.py", ROOT / "etl" / "export_graph_csvs.py", ROOT / "graph" / "load_all.py", ROOT / "graph" / "install_all.py",
+            ROOT / "graph" / "run_algos.py", BASE_SNAPSHOT_DB]
+    return [rel(p) + (" (git-ignored: `make data/hhgoa_engine_base.duckdb` extracts it from git)" if p == BASE_SNAPSHOT_DB else "")
+            for p in need if not p.exists()]
+
+
+def data_job_dir(job_id: str) -> Path:
+    return runs_root() / UPLOADS_DIR / job_id
+
+
+def data_jobs() -> list[str]:
+    """Upload folders under runs/_uploads/, newest first."""
+    root = runs_root() / UPLOADS_DIR
+    try:
+        dirs = [p for p in root.iterdir() if p.is_dir() and _safe_id(p.name) and (p / "month").is_dir()]
+    except OSError:
+        return []
+    return [p.name for p in sorted(dirs, key=lambda p: p.stat().st_mtime, reverse=True)]
+
+
+def save_month_upload(job_id: str, files: dict[str, bytes], session: object = None) -> dict:
+    """The four month files (MONTH_SLOTS: transactions, identity, closed_cases, case_pack) saved under
+    runs/_uploads/<job_id>/month/ with the names etl.delta looks for. Refuses on a read-only deployment, for an unusable
+    or existing job id, a missing slot or a file over MONTH_MAX_BYTES, and without an approver where approver_gate says so.
+    Returns {ok, error, dir}."""
+    if read_only():
+        return {"ok": False, "error": "read-only deployment (DEPLOY_READONLY=1): nothing is uploaded here", "dir": ""}
+    if approver_gate(session):
+        return {"ok": False, "error": approver_gate(session), "dir": ""}
+    if not _CASE_ID_RE.match(job_id or ""):
+        return {"ok": False, "error": "the upload name must be 1-64 letters, digits, '.', '_' or '-'", "dir": ""}
+    missing = [s for s in MONTH_SLOTS if not files.get(s)]
+    if missing:
+        return {"ok": False, "error": f"missing file(s): {', '.join(missing)}", "dir": ""}
+    big = [s for s, b in files.items() if len(b) > MONTH_MAX_BYTES]
+    if big:
+        return {"ok": False, "error": f"over {MONTH_MAX_BYTES:,} bytes: {', '.join(big)}", "dir": ""}
+    job = data_job_dir(job_id)
+    if job.exists():
+        return {"ok": False, "error": f"runs/{UPLOADS_DIR}/{job_id} already exists: choose another name", "dir": ""}
+    (job / "month").mkdir(parents=True)
+    for slot, name in MONTH_SLOTS.items():
+        (job / "month" / name).write_bytes(files[slot])
+    return {"ok": True, "error": "", "dir": rel(job)}
+
+
+def data_step_command(job_id: str, step: str) -> list[str]:
+    """The argv of one data step, run from the repo root (the scripts read TG_* from the environment)."""
+    job = data_job_dir(job_id)
+    return {
+        "build": [sys.executable, "-m", "etl.delta", "build", "--base", str(BASE_SNAPSHOT_DB), "--month-dir", str(job / "month"),
+                  "--work", str(job / "work.duckdb")],
+        "export": [sys.executable, "-m", "etl.export_graph_csvs", str(job / "work.duckdb"), "--out", str(job / "out")],
+        "load": [sys.executable, "graph/load_all.py", "--data-out", str(job / "out"), "--report", str(job / "load_report.json")],
+        "install": [sys.executable, "graph/install_all.py"],
+        "algos": [sys.executable, "graph/run_algos.py", "--report", str(job / "algos_report.json")],
+    }[step]
+
+
+def _data_lock(job: Path) -> dict | None:
+    """The job's lock while its step is still running: a step that wrote its exit file is finished."""
+    lock = _read_lock(job / DATA_LOCK)
+    return None if not lock or (job / f"{lock.get('step')}.exit").is_file() else lock
+
+
+def data_job_state(job_id: str) -> dict:
+    """{steps: {step: 'done' | 'failed' | 'running' | 'not run'}, running: step or '', lock: {...} | None} from the
+    <step>.exit files and the job lock."""
+    job = data_job_dir(job_id)
+    lock = _data_lock(job)
+    steps = {}
+    for s in DATA_STEPS:
+        code = None
+        try:
+            code = int((job / f"{s}.exit").read_text().strip())
+        except (OSError, ValueError):
+            pass
+        steps[s] = "running" if lock and lock.get("step") == s else "done" if code == 0 else "failed" if code is not None else "not run"
+    return {"steps": steps, "running": (lock or {}).get("step", ""), "lock": lock}
+
+
+def data_job_lock() -> dict | None:
+    """A data step still running in any upload folder (one at a time), else None."""
+    for j in data_jobs():
+        lock = _data_lock(data_job_dir(j))
+        if lock:
+            return {**lock, "job": j}
+    return None
+
+
+def launch_data_step(job_id: str, step: str, target: dict | None = None, session: object = None) -> dict:
+    """Start one data step detached, logging to runs/_uploads/<job>/<step>.log and recording its exit code. Steps run in
+    DATA_STEPS order, each after the previous one finished with exit 0, one at a time. The graph steps (load, install,
+    algos) go only to another workspace this session checked, never the .env workspace (the live FraudGraph). Refuses
+    on a read-only deployment and without an approver where approver_gate says so. Returns {ok, error, pid, cmd, log}."""
+    out: dict = {"ok": False, "error": "", "pid": None, "cmd": [], "log": ""}
+    if read_only():
+        return {**out, "error": "read-only deployment (DEPLOY_READONLY=1): data steps never run here"}
+    if approver_gate(session):
+        return {**out, "error": approver_gate(session)}
+    if data_pipeline_missing():
+        return {**out, "error": f"this deployment lacks {', '.join(data_pipeline_missing())}: run the console from a full checkout"}
+    if step not in DATA_STEPS or not _CASE_ID_RE.match(job_id or "") or not (data_job_dir(job_id) / "month").is_dir():
+        return {**out, "error": "an upload folder and a known step are needed"}
+    held = data_job_lock()
+    if held:
+        return {**out, "error": f"{held.get('step')} is still running for {held.get('job')} (pid {held.get('pid')}); one data step at a time"}
+    state = data_job_state(job_id)["steps"]
+    before = DATA_STEPS[: DATA_STEPS.index(step)]
+    if any(state[s] != "done" for s in before):
+        return {**out, "error": f"{DATA_STEP_LABELS[step]} runs after {', '.join(DATA_STEP_LABELS[s] for s in before if state[s] != 'done')}"}
+    env = {**os.environ, "PYTHONUNBUFFERED": "1"}  # the log fills while the step runs
+    if step in GRAPH_STEPS:
+        target = run_target() if target is None else target
+        if target.get("workspace") != "other" or not target.get("live"):
+            return {**out, "error": f"{DATA_STEP_LABELS[step]} needs another TigerGraph workspace, switched to Live and checked ({target.get('reason')})"}
+        if is_live_workspace(target.get("host", "")):
+            return {**out, "error": "that is the .env workspace, the live FraudGraph: uploaded data is never loaded there"}
+        env.update(target.get("child_env") or {}, RUN_MODE="live")
+    job = data_job_dir(job_id)
+    cmd = data_step_command(job_id, step)
+    (job / f"{step}.exit").unlink(missing_ok=True)
+    log_path = job / f"{step}.log"
+    with open(log_path, "ab") as log:
+        proc = subprocess.Popen([sys.executable, "-c", _EXIT_WRAPPER, str(job / f"{step}.exit"), *cmd], cwd=str(ROOT), stdout=log,
+                                stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, env=env, start_new_session=True)
+    (job / DATA_LOCK).write_text(json.dumps({"pid": proc.pid, "step": step, "started": _now(),
+                                             "workspace": _hostname(env.get("TG_HOST", "")) if step in GRAPH_STEPS else ""}), encoding="utf-8")
+    return {**out, "ok": True, "pid": proc.pid, "cmd": cmd, "log": rel(log_path)}

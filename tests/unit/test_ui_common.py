@@ -668,7 +668,7 @@ def test_pipeline_state_done_case_and_the_p8_timeline_entry(tree):
     assert codes.index("P5") < codes.index("P8") < codes.index("P10")
     p8 = next(e for e in tl if e["code"] == "P8")
     assert len(p8["llm"]) == 1 and p8["llm"][0]["model"] == "m-x" and p8["sentence"].startswith("SAR filed")
-    assert next(e for e in tl if e["code"] == "P10")["start"] == 12.0
+    assert next(e for e in tl if e["code"] == "P10")["start"] == 15.0  # after the P9 closing call (t 15), which follows P8's draft (t 12)
 
 
 def test_call_lines_never_rewrite_the_model_and_compact_vectors():
@@ -793,7 +793,7 @@ def test_after_the_last_decision_the_final_actions_decide_p8_or_p9(tree):
     assert (no_sar["active"], no_sar["llm"], no_sar["model"]) == ("P9", True, "m-main")
     assert {s["code"]: s["state"] for s in no_sar["stages"]}["P8"] == "skipped"
     sar = common.pipeline_state(common.case_view("r-p7", "HHF-001"))
-    assert (sar["active"], sar["model"]) == ("P8", "m-sar") and "P8 rows" in sar["model_source"]
+    assert (sar["active"], sar["llm"]) == ("P8", False) and "OFAC and grounding reads" in sar["waiting"]  # the SAR step reads first
     unknown = common.pipeline_state(common.case_view("r-p7", "HHF-002"), run_sar_model="m-other")
     assert unknown["active"] == "P8" and unknown["model"] == "" and "different models" in unknown["model_source"]
 
@@ -889,7 +889,8 @@ def test_sar_checks_resolve_ids_against_the_dataset(monkeypatch, tmp_path):
     pytest.importorskip("duckdb", reason="the id checks open data/ids.duckdb read-only")
     if not common.SAR_IDS_DB.exists():
         pytest.skip("data/ids.duckdb is not in this checkout")
-    common._SAR_RESOLVERS.clear()
+    common._SAR_OPENABLE.clear()
+    common._SAR_EXISTS.clear()
     resolver, where = common.sar_resolver()
     assert resolver is not None and "data/ids.duckdb" in where, where
     unresolved = ("does not resolve", "does not exist in the dataset")
@@ -906,7 +907,8 @@ def test_sar_checks_resolve_ids_against_the_dataset(monkeypatch, tmp_path):
     ans = answers["HHF-004"]
     meta = {"customer_id": ans["sar"]["subjects"][0], "card_id": ans["sar"]["subjects"][1]}
     assert any("does not resolve" in detail for _, ok, detail in common.sar_checks(ans, meta) if not ok)  # the old false FAIL
-    common._SAR_RESOLVERS.clear()
+    common._SAR_OPENABLE.clear()
+    common._SAR_EXISTS.clear()
 
 
 def test_follow_ups_attempts_failures_retries_and_model_window(tree):
@@ -964,3 +966,59 @@ def test_floors_table_lists_only_scanned_detectors():
     assert names.index("D4_RECIPIENT_EMAIL_MULE") < names.index("D1_MOBILE_ANON_PROXY_WAVE") and not any("D5_" in n or "D6_" in n for n in names)
     plain = [str(c.value).replace("\\", "") for c in at.caption]  # md() escapes the underscores
     assert any("not tried by hit_from_scan" in c and "D5_" in c and "D6_" in c for c in plain), plain
+
+
+def test_regression_follow_ups(tree, tmp_path, monkeypatch):
+    """One attempt per view with its count kept; P9's closing call timed as P9; the SAR step's reads are not an LLM wait;
+    the replay plays rows in the order they were written; the SAR dataset is never held open; submodules are named."""
+    ok = [_p0("HHF-012") | {"t": 0.0, "at": "2026-10-31 10:00:00"}, _ph("P1", 1.0), _ph("P7", 10.0, {"actions": [{"action": "CLOSE_NO_FRAUD"}]}),
+          _ph("P10", 20.0, {"written_to_graph": True}), _ph("P9", 21.0, {"validation": []})]
+    rerun = [_p0("HHF-012") | {"t": 0.0, "at": "2026-10-31 12:00:00"}, {"kind": "note", "t": 3.0, "text": "case failed", "error": "x"}]
+    calls = [_tool("P0", "query:case_context", 0.3, ts="2026-10-31 10:00:01"), _llm("P9", 15.0, "m") | {"ts": "2026-10-31 10:00:15"},
+             _tool("P10", "pytg:upsertVertex(AgentCase)", 18.0, caller="persist", ts="2026-10-31 10:00:18"),
+             _tool("P0", "query:card_profile", 0.4, ts="2026-10-31 12:00:01")]
+    _write_run(tree["runs"], "r-rf", {"HHF-012": _answer("HHF-012")}, phases={"HHF-012": ok + rerun}, calls={"HHF-012": calls})
+    v = common.answer_attempt_view(common.case_view("r-rf", "HHF-012"))
+    assert v.ok and common.trace_attempts(v) == 2 and [c["name"] for c in v.calls] == ["query:case_context", "P9", "pytg:upsertVertex(AgentCase)"]
+    tl = {e["code"]: e for e in common.trace_timeline(v)}
+    assert tl["P10"]["start"] == 15.0 and tl["P10"]["duration"] == 5.0 and tl["P9"]["duration"] == 6.0  # (15 - 10) + (21 - 20)
+
+    from ui import replay
+    whats = [x["what"] for x in replay.steps(v)]
+    assert whats.index("model m") < whats.index("tool pytg:upsertVertex(AgentCase)") < next(i for i, w in enumerate(whats) if w.startswith("P10 "))
+    assert not any(w.startswith("P8 ") for w in whats)
+
+    sar = [_p0("HHF-001") | {"t": 0.0}, _ph("P1", 1.0), _ph("P2", 2.0), _ph("P3", 3.0), _ph("P4", 4.0), _ph("P5-voi", 4.1, {"ask": False}),
+           _ph("P5", 5.0, {"actions": [{"action": "FILE_REPORT"}]})]
+    _write_run(tree["runs"], "r-rs", {"HHF-001": None}, phases={"HHF-001": sar},
+               calls={"HHF-001": [_tool("P8", "ofac_screen", 5.1), _tool("P8", "query:grounding_chunks", 6.0)]})
+    ps = common.pipeline_state(common.case_view("r-rs", "HHF-001"))
+    assert (ps["active"], ps["llm"]) == ("P8", False)
+    (tree["runs"] / "r-rs" / "HHF-001" / "calls.jsonl").open("a", encoding="utf-8").write(json.dumps(_tool("P8", "query:grounding_chunks", 6.5)) + "\n")
+    ps = common.pipeline_state(common.case_view("r-rs", "HHF-001"))
+    assert (ps["active"], ps["llm"]) == ("P8", True) and "SAR draft" in ps["waiting"]
+
+    mod, why = common.optional_import("ops.no_such_module_here")
+    assert mod is None and why == "ops.no_such_module_here not shipped in this deployment"
+
+    duckdb = pytest.importorskip("duckdb", reason="the SAR id checks open DuckDB read-only")
+    if not common.SAR_IDS_DB.exists():
+        pytest.skip("data/ids.duckdb is not in this checkout")
+    copy = tmp_path / "ids_copy.duckdb"
+    copy.write_bytes(common.SAR_IDS_DB.read_bytes())
+    monkeypatch.setattr(common, "SAR_IDS_DB", copy)
+    monkeypatch.setenv("ENGINE_FACTS_DB", str(tmp_path / "missing_engine.duckdb"))
+    common._SAR_OPENABLE.clear()
+    common._SAR_EXISTS.clear()
+    ans = json.loads((common.ROOT / "cases" / "HHF-004.json").read_text(encoding="utf-8"))
+    meta = {"customer_id": ans["sar"]["subjects"][0], "card_id": ans["sar"]["subjects"][1]}
+    assert all(ok_ for _, ok_, _ in common.sar_checks(ans, meta))
+    con = duckdb.connect(str(copy))  # read-write: only possible when the dashboard holds no connection to the file
+    try:
+        common._SAR_OPENABLE.clear()
+        resolver, where = common.sar_resolver()
+        assert resolver is None and "could not be opened here" in where and "no dataset in this deployment" not in where
+    finally:
+        con.close()
+    common._SAR_OPENABLE.clear()
+    common._SAR_EXISTS.clear()

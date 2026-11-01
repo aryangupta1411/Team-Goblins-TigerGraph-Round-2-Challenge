@@ -1,0 +1,49 @@
+/* Data quality & schema (ui/pages/6_schema.py). Every class is .dq-*, every keyed container st-key-dq-*, st-key-data_view_*
+ * or st-key-strip-dq-*, so nothing here reaches another page. Colours are --tc-* tokens only. */
+
+/* the quiet recompute, right-aligned above the headers */
+.st-key-dq-actions { margin: -.2rem 0 .1rem; min-height: 1.6rem; }
+.st-key-dq-actions [data-testid="stCaptionContainer"] p { margin: 0; }
+
+/* ------------------------------------------------------------------ the three challenge headers: each one switches the view */
+div.st-key-strip-dq-heads { padding: 0 !important; overflow: hidden; }
+.st-key-strip-dq-heads [data-testid="stHorizontalBlock"] { gap: 0 !important; }
+.st-key-strip-dq-heads [class*="st-key-dq-head-"] {
+  height: 100%; gap: .3rem !important; padding: .75rem 1.1rem .85rem;
+  border-top: 2px solid transparent; transition: background-color .15s ease-out;
+}
+.st-key-strip-dq-heads [class*="st-key-dq-head-"]:hover { background: var(--tc-panel); }
+.st-key-strip-dq-heads [class*="st-key-dq-head-"]:has(.dq-scope.on) { background: var(--tc-highlight); border-top-color: var(--tc-petrol); }
+.st-key-strip-dq-heads [class*="st-key-dq-head-"] [data-testid="stMetric"] { padding: 0 !important; }
+/* the header's title is its switch */
+[class*="st-key-data_view_"] button { min-height: 0 !important; padding: 0 !important; border: 0 !important; background: transparent !important; }
+[class*="st-key-data_view_"] button p { font-size: 1.05rem !important; font-weight: 650; color: var(--tc-ink); letter-spacing: -.005em; }
+[class*="st-key-data_view_"] button:hover p { color: var(--tc-link); text-decoration: underline; text-underline-offset: 3px; }
+.st-key-strip-dq-heads [class*="st-key-dq-head-"]:has(.dq-scope.on) [class*="st-key-data_view_"] button p { color: var(--tc-petrol); }
+[class*="st-key-data_view_"] button:focus-visible { outline: 2px solid var(--tc-focus) !important; outline-offset: 2px; }
+.dq-scope p { margin: 0; font-size: .84rem; line-height: 1.4; color: var(--tc-ink-2); }
+.dq-scope .dq-src { margin-top: .25rem; font-size: .8rem; color: var(--tc-muted); overflow-wrap: anywhere; }
+.dq-code { font-family: "Roboto Mono", ui-monospace, monospace; font-size: .8rem; font-weight: 600; color: var(--tc-petrol); margin-right: .3rem; }
+
+/* ------------------------------------------------------------------ defect classes and drifts: collapsible rows on rules */
+.st-key-dq-defects, .st-key-dq-drifts { gap: 0 !important; border-top: 1px solid var(--tc-rule-strong); }
+.st-key-dq-defects [data-testid="stExpander"] details,
+.st-key-dq-drifts [data-testid="stExpander"] details { border-width: 0 0 1px 0 !important; border-radius: 0 !important; background: transparent; }
+.st-key-dq-defects [data-testid="stExpander"] summary:hover,
+.st-key-dq-drifts [data-testid="stExpander"] summary:hover { background: var(--tc-panel); }
+.st-key-dq-defects [data-testid="stExpander"] summary p,
+.st-key-dq-drifts [data-testid="stExpander"] summary p { font-weight: 400; font-size: .88rem; }
+.st-key-dq-defects [data-testid="stExpander"] summary strong,
+.st-key-dq-drifts [data-testid="stExpander"] summary strong { font-family: "Roboto Mono", ui-monospace, monospace; font-size: .8rem; font-weight: 600; }
+
+/* ------------------------------------------------------------------ the migration gate */
+.dq-gate { margin: 0 0 .15rem; font-size: .95rem; line-height: 1.55; color: var(--tc-ink-2); max-width: 110ch; }
+.dq-gate b { color: var(--tc-ink); font-weight: 650; }
+.dq-gate .tc-tag { vertical-align: 1px; }
+.st-key-dq-gate-actions { margin: .35rem 0 1.2rem; }
+.st-key-dq-gate-actions [data-testid="stCaptionContainer"] p { margin: 0; }
+
+@media (max-width: 900px) {
+  .st-key-strip-dq-heads [data-testid="stHorizontalBlock"] { flex-direction: column; }
+  .st-key-strip-dq-heads [data-testid="stColumn"] + [data-testid="stColumn"] { border-left: 0 !important; border-top: 1px solid var(--tc-rule); }
+}

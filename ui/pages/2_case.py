@@ -21,7 +21,7 @@ import streamlit as st
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from ui import approvals_db, common  # noqa: E402
+from ui import approvals_db, case_brief, common, design  # noqa: E402
 
 md, badge = common.md, common.badge
 RUN_ID_RE = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
@@ -179,7 +179,7 @@ def _show_rerun(ctx: common.Ctx, view: common.CaseView) -> None:
 
 @st.fragment(run_every="3s")
 def _running_card(source_id: str, case_id: str) -> None:
-    v = common.case_view(source_id, case_id)
+    v = common.answer_attempt_view(common.case_view(source_id, case_id))
     if v.state != "running":
         st.rerun()  # the answer (or a failure) landed: redraw the whole page
     phases = [r.get("phase") for r in v.phases if r.get("kind", "phase") == "phase" and r.get("phase")]
@@ -230,23 +230,47 @@ def _state_gate(ctx: common.Ctx, view: common.CaseView) -> None:
     st.stop()
 
 
-def _case_bar(ctx: common.Ctx, view: common.CaseView) -> None:
+def _agreement_line(ctx: common.Ctx, view: common.CaseView) -> str:
+    """One sentence for how this case's answer compares with the same case in every other source, e.g. 'identical to the
+    submitted answer · same decision in 5 other runs'; differences name their source."""
+    holders = _holders(view.case_id, ctx.source_id)
+    if not view.ok or not holders:
+        return ""
+    same, differs, other = 0, [], []
+    submitted = ""
+    for h in holders:
+        if not h.ok:
+            other.append(f"{h.source_id} {common.STATE_LABELS.get(h.state, h.state)}")
+            continue
+        cls = common.agreement(view.answer, h.answer)["cls"]
+        if h.source_id in common.SUBMITTED:
+            submitted = "identical to the submitted answer" if cls == "identical" else f"{cls} vs the submitted answer"
+        elif cls in ("identical", "same decision"):
+            same += 1
+        else:
+            differs.append(f"{h.source_id} ({cls})")
+    parts = [submitted] if submitted else []
+    if same:
+        parts.append(f"same decision in {same} other run{'s' if same != 1 else ''}")
+    if differs:
+        parts.append("differs in " + ", ".join(differs))
+    if other:
+        parts.append("; ".join(other))
+    return " · ".join(parts)
+
+
+def _case_bar(ctx: common.Ctx, view: common.CaseView, states: list[dict], lc: dict) -> None:
     case_id = view.case_id
     queue = _queue(ctx)
     i = queue.index(case_id) if case_id in queue else -1
     backend = ctx.source.llm_backend if ctx.source and ctx.source.llm_backend in common.LLM_BACKENDS and ctx.source.llm_backend != "mock" else "gemini"
     blockers = _live_blockers(ctx, backend)
     with st.container(border=True, horizontal=True, vertical_alignment="center", key="casebar"):
-        st.markdown(f"# {md(case_id)} {common.state_badge(view.state)}")  # the screen's one h1: the case it is about
-        holders = _holders(case_id, ctx.source_id)
-        if holders:
-            st.caption("Also in")
-        for h in holders:
-            if view.ok and h.ok:
-                cls = common.agreement(view.answer, h.answer)["cls"]
-                common.chip(f"{h.source_id} · {cls}", common.AGREEMENT_COLORS.get(cls, "gray"), help=f"{case_id} in {h.source_id} compared with {ctx.source_id}")
-            else:
-                common.chip(f"{h.source_id} · {common.STATE_LABELS.get(h.state, h.state)}", common.STATE_COLORS.get(h.state, "gray"))
+        st.markdown(f"# {md(case_id)}")  # the screen's one h1: the case it is about
+        if view.ok and view.state == "done":
+            design.html_block(case_brief.verdict_html(view, states, lc))
+        else:
+            st.markdown(common.state_badge(view.state))
         st.space("stretch")
         if st.button("Prev", key="case-prev", icon=":material/chevron_left:", disabled=i <= 0):
             common.goto("case", case=queue[i - 1])
@@ -256,8 +280,7 @@ def _case_bar(ctx: common.Ctx, view: common.CaseView) -> None:
         common.page_link("approvals", "Approvals", icon=":material/approval:", case=case_id)
         clicked = st.button(md(f"Run {case_id} live"), key="run-live", type="primary", icon=":material/play_arrow:", disabled=bool(blockers),
                             help=md("Needs: " + "; ".join(blockers)) if blockers else md(f"Re-run {case_id} with {backend} into a new run folder"))
-    if blockers:
-        st.caption(md(f"Run {case_id} live is unavailable: " + "; ".join(blockers)))
+    # the blockers are the disabled button's tooltip, and the context strip already says this console reads files only
     if clicked and not blockers:
         last = view if view.ok else next((h for h in _holders(case_id, None) if h.ok), None)
         _confirm_rerun(case_id, backend, last)
@@ -334,84 +357,75 @@ def _card_mismatches(view: common.CaseView, events: list[dict]) -> tuple[list[di
     return [e for e in common.guardrail_events(common.case_view(run, view.case_id)) if e["type"] == "card_mismatch"], run
 
 
-def _why_band(view: common.CaseView, events: list[dict], claims: list[dict]) -> None:
+def _brief(view: common.CaseView, events: list[dict], claims: list[dict], states: list[dict], lc: dict) -> None:
+    """The first screen under the toolbar (case_brief): the case as a numbered scheme, the alert text verbatim and its
+    defences, the indicators with the query behind each; beside them the decision on the fixed probability ramp, the why,
+    the actions with their routes and where the case stands. Keys on the scheme light their indicator row."""
     meta = view.meta or {}
+    case = (view.answer or {}).get("case") or {}
     mismatches, mismatch_run = _card_mismatches(view, events)
     investigated = next(((e.get("info") or {}).get("txn_card") for e in mismatches if (e.get("info") or {}).get("txn_card")), None)
-    left, right = st.columns(2)
-    with left, st.container(border=True, key="why-alert"):
-        st.markdown("**Alert & defences**")
-        card = f"card {meta.get('card_id') or '?'}" + (f" (investigated: {investigated})" if investigated and investigated != meta.get("card_id") else "")
-        facts = [f"{meta.get('trigger_type') or 'trigger'} on txn {meta.get('flagged_txn_id') or '?'}", card,
-                 f"customer {meta.get('customer_id') or '?'}", f"opened {meta.get('opened_at') or '?'}", f"risk score {meta.get('risk_score') or '—'}"]
-        st.caption(md(" · ".join(facts)))
+    fam_fraud, fam_legit = common.families(view)
+    with st.container(key="case-brief"):
+        left, right = st.columns([1.72, 1], gap="large")
+    with left:
+        design.html_block(case_brief.scheme_html(view, claims, states, investigated))
         codes, where, clean = _security_codes(view, events)
-        common.untrusted_text("Trigger text", str(meta.get("trigger_text") or ""), codes=codes, clean_text=clean, source=where, key="trigger")
+        common.untrusted_text("Alert text", str(meta.get("trigger_text") or ""), codes=codes, clean_text=clean, source=where, key="trigger")
+        design.html_block(case_brief.indicators_html(claims, fam_fraud, fam_legit))
+        st.caption(md(f"customer {meta.get('customer_id') or '?'} · opened {meta.get('opened_at') or '?'} · risk score {meta.get('risk_score') or '—'}"))
         for e in mismatches:
             info = e.get("info") or {}
             origin = f" (from the trace in {mismatch_run})" if mismatch_run else ""
             st.warning(md(f"{e['text']}: case card {info.get('pack_card', '?')}, transaction record card {info.get('txn_card', '?')}{origin}"),
                        icon=":material/compare_arrows:")
         dq = common.proof("dq")
-        taints = ((dq["data"] or {}).get("taint_matrix") or {}).get(view.case_id, []) if isinstance(dq["data"], dict) else []
+        taints = case_brief.dq_taints(view.case_id)
         if taints:
             label = f"snapshot {dq['generated_at'] or dq['as_of']}" if dq["mode"] == "snapshot" else dq["source"]
-            st.markdown(" ".join(badge(f"{t.get('code')} · {', '.join(map(str, t.get('entity_ids') or []))}", "orange", icon=":material/report:") for t in taints)
-                        + " " + badge(label, "gray"))
             for t in taints:
-                st.caption(md(f"{t.get('code')}: {t.get('reason', '')} → {t.get('impact', '')}"))
+                st.caption(md(f"{t.get('code')} on {', '.join(map(str, t.get('entity_ids') or []))}: {t.get('reason', '')} → {t.get('impact', '')} ({label})"))
         elif dq["mode"] == "missing":
             st.caption("Data-quality taints: not available in this deployment")
         elif common.dq_covered(view.case_id):
             st.caption(md(f"Data-quality taints: none for this case ({dq['source']}, {dq['as_of']})"))
         else:
             st.caption(md(f"Data-quality taints: this case is not covered by the scan, which builds its taint matrix for the Final Round cases only ({dq['source']})"))
-    with right, st.container(border=True, key="why-evidence"):
-        st.markdown("**Key evidence**")
-        colors = {"fraud": "red", "legitimate": "green", "neutral": "gray"}
-        for c in claims[:5]:
-            ref = str(c["ref"]).replace("`", "'")
-            sim = f"{badge('SIMULATED', 'gray')} " if _simulated(c["claim"]) else ""
-            st.markdown(f"{sim}{badge(c['direction'], colors.get(c['direction'], 'gray'))} {badge(common.FAMILY_LABELS.get(c['family'], c['family']), 'gray')} "
-                        f"{md(c['claim'])}  \n`{ref}` · {len(c['entity_ids'])} ids")
-        if len(claims) > 5:
-            st.caption(md(f"first 5 of {len(claims)} claims; all of them are in the Evidence ledger tab"))
-        elif not claims:
-            st.caption("No evidence items in this answer")
+        waves = case_brief.detector_waves(view.case_id)
+        if waves:
+            bt = common.proof("backtest")
+            common.page_link("detectors", f"{waves[0][0].split('_', 1)[0]} wave in Detectors & containment", icon=":material/radar:", case=view.case_id,
+                             help=md(f"{bt['source']}, written {bt['as_of']}"))
+        if case.get("summary") or case.get("pattern_description"):
+            with st.expander("The agent's own summary (model-written)"):
+                if case.get("summary"):
+                    st.markdown(md(case["summary"]))
+                if case.get("pattern_description"):
+                    st.caption(md(f"Pattern description: {case['pattern_description']}"))
+    with right:
+        answer_src, answer_when = _file(view, "answer.json")
+        design.html_block(case_brief.decision_html(view, states, lc, events, f"{answer_src} · {answer_when}"))
         p3 = common.phase_payload(view, "P3")
         moves = [{"move": str(a[0]), "Δp": _num(a[1])} for a in p3.get("adjustments") or [] if isinstance(a, list | tuple) and len(a) == 2]
         if moves:
-            st.markdown("**Score moves** (P3)")
-            st.dataframe(pd.DataFrame(moves), hide_index=True, height=_height(len(moves)),
-                         column_config={"move": st.column_config.TextColumn("Adjustment", width="large"), "Δp": st.column_config.NumberColumn(format="%+.2f")})
-            st.caption(md(f"p_engine {common.prob(p3.get('p_engine'))} · calibrated {common.prob(p3.get('cal_p'))} · case-memory scorer {common.prob(p3.get('cms_p'))}"))
-        elif view.has_trace:
-            st.caption("No P3 score adjustments recorded")
-        bt = common.proof("backtest")
-        scan = (bt["data"] or {}).get("exam_scan") if isinstance(bt["data"], dict) else None
-        if isinstance(scan, dict):
-            waves = [(d, ids) for d, ids in scan.items() if view.case_id in (ids or [])]
-            if waves:
-                text = "; ".join(f"{d} flags this case" + (f" with {', '.join(i for i in ids if i != view.case_id)}" if len(ids) > 1 else "") for d, ids in waves)
-            else:
-                text = "no detector in the exam scan flags this case"
-            st.caption(md(f"Detector wave: {text}"), help=md(f"{bt['source']}, written {bt['as_of']}"))
-            common.page_link("detectors", "Detectors & containment", icon=":material/radar:", case=view.case_id)
-        else:
-            st.caption("Detector wave: not available in this deployment")
+            with st.expander(f"Score moves at P3 ({len(moves)})"):
+                st.dataframe(pd.DataFrame(moves), hide_index=True, height=_height(len(moves)),
+                             column_config={"move": st.column_config.TextColumn("Adjustment", width="large"), "Δp": st.column_config.NumberColumn(format="%+.2f")})
+                st.caption(md(f"p_engine {common.prob(p3.get('p_engine'))} · calibrated {common.prob(p3.get('cal_p'))} · case-memory scorer {common.prob(p3.get('cms_p'))}"))
 
 
 def _tg_panel(view: common.CaseView, stats: dict) -> None:
     tg = common.tg_usage(view)
-    with st.container(border=True, key="tg-panel"):
-        st.markdown("**TigerGraph in this case**")
+    with st.container(key="tg-panel"):
+        design.html_block(design.section(5, "What TigerGraph did", "reads, case memory and the write-back for this case"))
         if not tg["has_trace"]:
             st.caption(md("No trace recorded for this source: graph reads, vector hits and write-backs are only in a run's calls.jsonl"
                           + (f" (see {', '.join(view.promoted_from)})" if view.promoted_from else "")))
             return
         src, when = _file(view, "calls.jsonl")
         p_src, p_when = _file(view, "phases.jsonl")
-        cols = st.columns(4)
+        with st.container(border=True, key="strip-tg"):
+            cols = st.columns(4)
         common.measured("Graph reads", stats["reads"], source=src, as_of=when, container=cols[0],
                         how="tool rows with caller != persist", what=f"{len(tg['reads_by_caller'].get('harness', []))} harness + {tg['llm_chosen']} LLM-chosen")
         common.measured("Write-backs", f"{stats['writes_ok']}/{stats['writes']} ok", source=src, as_of=when, container=cols[1], how="rows with caller == persist")
@@ -419,8 +433,8 @@ def _tg_panel(view: common.CaseView, stats: dict) -> None:
         common.measured("Similar closed cases", len(closed), source=p_src, as_of=p_when, container=cols[2], how="P1 similar_prior_cases, kind closed")
         common.measured("Grounding chunks", len(tg["grounding"]), source=p_src, as_of=p_when, container=cols[3], how="P1 grounding")
         for caller, names in tg["reads_by_caller"].items():
-            head = f"{caller} ({len(names)}" + (f" of max {tg['max_tool_calls']}" if caller == "llm" and tg["max_tool_calls"] else "") + ")"
-            st.markdown(f"{badge(head, 'violet' if caller == 'llm' else 'gray')} " + md(", ".join(names)))
+            head = f"{'chosen by the model' if caller == 'llm' else 'by the ' + caller} ({len(names)}" + (f" of max {tg['max_tool_calls']}" if caller == "llm" and tg["max_tool_calls"] else "") + ")"
+            st.markdown(f"{badge(head, 'blue' if caller == 'llm' else 'gray')} " + md(", ".join(names)))
         if tg["vector_hits"]:
             rows = [{"id": h.get("id"), "kind": h.get("kind"), "outcome": h.get("outcome_or_verdict"), "pattern": h.get("pattern"),
                      "distance": _num(h.get("distance")), "overlap": ", ".join(map(str, h.get("overlap_reasons") or [])),
@@ -782,9 +796,12 @@ if not ctx.source_id or not ctx.case_id:
     st.stop()
 
 view = common.case_view(ctx.source_id, ctx.case_id)
+view = common.answer_attempt_view(view)  # one attempt for every panel: the one that wrote answer.json when a rerun appended more
 inbox, inbox_notice = common.inbox_rows(ctx.case_id)
 
-_case_bar(ctx, view)
+states = common.action_states(view, inbox)
+lifecycle = common.lifecycle(view, inbox)
+_case_bar(ctx, view, states, lifecycle)
 if view.state != "done" or not view.ok:
     _state_gate(ctx, view)
 
@@ -793,19 +810,14 @@ events = common.guardrail_events(view)
 claims = common.attest_claims(view)
 case = view.answer.get("case") or {}
 
-common.decision_card(view, inbox)
-txns = ", ".join(map(str, case.get("affected_txn_ids") or [])) or "none"
-st.caption(md(f"affected txns {txns} · first suspicious {case.get('first_suspicious_txn_id') or '—'}"))
-if case.get("summary"):
-    st.markdown(f"**Summary.** {md(case['summary'])}")
-if case.get("pattern") == "undocumented" and case.get("pattern_description"):
-    st.markdown(f"{badge('undocumented pattern (R9)', 'orange')} {md(case['pattern_description'])}")
+design.html_block(case_brief.checks_html(view, _agreement_line(ctx, view)))
+_brief(view, events, claims, states, lifecycle)
 _provenance(ctx, view, stats)
 _show_rerun(ctx, view)
 
-_why_band(view, events, claims)
 _tg_panel(view, stats)
 
+design.html_block('<span id="case-tabs" class="tc-anchor"></span>')  # the checks line's jump link lands here
 tabs = st.tabs(TABS, key="case_tab", on_change="rerun", default=TABS[0] if view.phases else TABS[1])
 if tabs[0].open:
     with tabs[0]:

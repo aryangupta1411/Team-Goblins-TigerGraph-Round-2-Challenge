@@ -1,17 +1,15 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 32" width="256" height="32" fill="none">
+  <!-- drawn for the petrol shell band (the same in light and dark), so it carries no colour-scheme switch -->
   <style>
-    text { fill: #18191c; font: 600 16px "IBM Plex Sans", -apple-system, "Segoe UI", sans-serif; letter-spacing: -.2px; }
-    .tile { fill: #18191c; } .node { fill: #fbfaf7; } .edge { stroke: #fbfaf7; }
-    @media (prefers-color-scheme: dark) {
-      text { fill: #e9e7e2; } .tile { fill: #e9e7e2; } .node { fill: #121314; } .edge { stroke: #121314; }
-    }
+    text { fill: #ffffff; font: 650 16px "Public Sans", -apple-system, "Segoe UI", sans-serif; letter-spacing: -.1px; }
+    .tile { fill: #ffffff; } .node { fill: #0f3b57; } .edge { stroke: #0f3b57; }
   </style>
-  <rect class="tile" width="32" height="32" rx="7"/>
-  <path class="edge" d="M9.5 21.5 16 10.5l6.5 11M9.5 21.5h13" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round" opacity=".5"/>
+  <rect class="tile" width="32" height="32" rx="4"/>
+  <path class="edge" d="M9.5 21.5 16 10.5l6.5 11M9.5 21.5h13" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round" opacity=".55"/>
   <circle class="node" cx="9.5" cy="21.5" r="2.6"/>
   <circle class="node" cx="22.5" cy="21.5" r="2.6"/>
-  <!-- the flagged vertex, in the same highlighter amber as text selection -->
-  <circle cx="16" cy="10.5" r="3" fill="#e0a526"/>
+  <!-- the flagged vertex: the red flag of the typology reports -->
+  <circle cx="16" cy="10.5" r="3" fill="#c8102e"/>
   <!-- this app's own name: TigerGraph is credited separately ("Built on TigerGraph Savanna"), never presented as our brand -->
   <text x="42" y="21.5">HHGOA Fraud Investigator</text>
 </svg>

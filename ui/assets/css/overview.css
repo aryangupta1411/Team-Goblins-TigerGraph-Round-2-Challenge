@@ -1,0 +1,57 @@
+/* Overview (ui/pages/0_overview.py). Every class is .ov-*, every keyed container st-key-ov-* or st-key-live-strip, so
+ * nothing here reaches another page. Colours are --tc-* tokens only. No strip of stacked tiles, so no column rules at 390 px. */
+
+/* ------------------------------------------------------------------ the title row: credit and run details at the right */
+.st-key-ov-side { gap: .3rem !important; }
+.ov-details { min-width: 26rem; }
+.ov-details td { padding: .3rem .45rem; font-size: .8rem; overflow-wrap: anywhere; }
+.ov-details td:first-child { color: var(--tc-muted); white-space: nowrap; width: 1%; }
+.ov-details td:last-child { font-family: "Roboto Mono", ui-monospace, monospace; font-size: .8rem; }
+
+/* ------------------------------------------------------------------ run health: only while a case is running or broken */
+.st-key-live-strip { border-color: var(--tc-ochre-line) !important; padding: .55rem .85rem !important; gap: .3rem !important; }
+.st-key-live-strip:has(.ov-health.red) { border-color: var(--tc-red-line) !important; }
+.ov-health { margin: 0; color: var(--tc-ink-2); }
+.ov-health b { font-weight: 650; }
+.ov-health.ochre b { color: var(--tc-ochre-ink); }
+.ov-health.red b { color: var(--tc-red-ink); }
+
+/* ------------------------------------------------------------------ the approvals line above the board's groups */
+.st-key-ov-pending { gap: .6rem !important; margin-top: -.35rem; flex-wrap: wrap; }
+.st-key-ov-pending p { margin: 0; font-size: .9rem; color: var(--tc-ink-2); font-variant-numeric: tabular-nums; }
+.st-key-ov-pending b, .st-key-ov-pending strong { font-weight: 650; color: var(--tc-ink); }
+.st-key-ov-pending [data-testid="stPageLink"] a { padding: 0 !important; min-height: 0; }
+.st-key-ov-pending [data-testid="stPageLink"] p { font-size: .88rem; }
+
+/* ------------------------------------------------------------------ the board's filter row */
+.st-key-ov-controls { gap: .9rem !important; }
+
+/* ------------------------------------------------------------------ the board: one block per verdict, its heading in ink, colour on the verdict word only */
+[class*="st-key-ov-g-"] { gap: .35rem !important; margin-top: .55rem; }
+.ov-gh { margin: 0; font-size: 1rem; font-weight: 650; line-height: 1.35; color: var(--tc-ink); font-variant-numeric: tabular-nums; }
+.ov-gh .ov-o { font-weight: 450; color: var(--tc-ink-2); }
+.ov-gh .ov-v.red { color: var(--tc-red-ink); }
+.ov-gh .ov-v.ochre { color: var(--tc-ochre-ink); }
+.ov-gh .ov-v.green { color: var(--tc-green-ink); }
+
+/* ------------------------------------------------------------------ proof: the C1-C14 table, rows split by 1 px rules */
+.st-key-ov-proof { gap: 0 !important; }
+.st-key-ov-proof [data-testid="stHorizontalBlock"] { gap: .9rem !important; }
+.st-key-ov-proof-head { gap: 0 !important; border-bottom: 1px solid var(--tc-rule-strong); padding-bottom: .3rem; }
+.st-key-ov-proof [class*="st-key-ov-c-"] { gap: 0 !important; padding: .5rem 0; border-bottom: 1px solid var(--tc-rule); }
+.st-key-ov-proof [data-testid="stPageLink"] a { padding: 0 !important; min-height: 0; }
+.st-key-ov-proof [data-testid="stPageLink"] p { font-size: .84rem; }
+.ov-th { font-size: .8rem; font-weight: 500; color: var(--tc-muted); white-space: nowrap; }
+.ov-td { font-size: .86rem; line-height: 1.4; color: var(--tc-ink); font-variant-numeric: tabular-nums; }
+.ov-td .sub { display: block; margin-top: .1rem; font-size: .8rem; color: var(--tc-muted); }
+.ov-td .mono { font-family: "Roboto Mono", ui-monospace, monospace; font-size: .8rem; overflow-wrap: anywhere; }
+.ov-td.ov-nm { color: var(--tc-muted); }
+.ov-code { display: inline-block; min-width: 2.1rem; font-weight: 700; color: var(--tc-petrol); }
+
+/* ------------------------------------------------------------------ proof: the known limits not already on screen */
+.ov-limits h3 { margin: 1.5rem 0 .45rem; padding: 0; font-size: .95rem; font-weight: 650; color: var(--tc-ink); }
+.ov-limits ul { margin: 0; padding-left: 1.1rem; }
+.ov-limits li { margin: 0 0 .45rem; font-size: .86rem; }
+.ov-limits li b { font-weight: 600; }
+.ov-limits .d { color: var(--tc-ink-2); }
+.ov-limits .s { display: block; margin-top: .05rem; font-family: "Roboto Mono", ui-monospace, monospace; font-size: .8rem; color: var(--tc-muted); }

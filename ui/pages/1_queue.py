@@ -1,14 +1,15 @@
-"""Run console: start agent.bench for a set of Final Round cases and follow it from its run folder.
+"""Run console: can a run start now, and how far along is it?
 
-One form (backend, target run, cases) opens a confirm dialog that shows the exact command, the environment, the side
-effects and the measured per-case timing, re-checks the run lock and only then calls common.launch_run, which starts
-agent.bench detached, logs to runs/<run>/bench.log and writes runs/<run>/.bench.lock. Progress is read from the run
-folder in a fragment that refreshes every 2 s: the case states, the live S0 + P0-P10 pipeline strip of the case in
-progress (what a running stage waits on, an LLM call or not, is inferred from the newest phases.jsonl / calls.jsonl row
-and labelled so; the model is the one calls.jsonl records) and the run's call console. Nothing starts at render, live
-backends are disabled outside live mode, and a read-only deployment shows only a disabled message and the replay.
-Below it, 'Replay a recorded case' (ui/replay.py) plays any recorded case's S0 + P0-P10 flow back in step with its calls
-and has a stage inspector: PR #1's live pipeline flow and clickable phase inspector, read from the run folder only.
+The header says in one sentence whether a run can start, with the individual checks in a 'Why' popover. While a run is
+active its progress leads, read from the run folder in a fragment that refreshes every 2 s: one strip of counts, the live
+S0 + P0-P10 pipeline strip of the case in progress with its status line and the run's call console (what a running stage
+waits on, an LLM call or not, is inferred from the newest phases.jsonl / calls.jsonl row and labelled so; the model is the
+one calls.jsonl records), failures verbatim, one per-case table and bench.log folded. The start form (cases first, then
+the backend and a New/Continue switch) is open when idle and folded while a run is active; it opens a confirm dialog that
+shows the exact command, the environment, the side effects and the measured per-case timing, re-checks the run lock and
+only then calls common.launch_run. Nothing starts at render, live backends are disabled outside live mode, and a
+read-only deployment shows only a disabled message and the replay. 'Replay a recorded case' (ui/replay.py) plays any
+recorded case back from its run folder.
 """
 from __future__ import annotations
 
@@ -24,9 +25,9 @@ import streamlit as st
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from ui import common, replay  # noqa: E402
+from ui import common, design, replay  # noqa: E402
 
-md, badge = common.md, common.badge
+md, badge, esc = common.md, common.badge, design.esc
 RUN_ID_RE = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
 BACKENDS = ("gemini", "cli", "api", "mock")  # 'google' is an alias of gemini in common.LLM_BACKENDS
 DIALOG_KEY = "console_dialog"   # the pending launch; kept so the dialog survives its own widget reruns
@@ -42,19 +43,13 @@ if common.read_only():
     st.info("Live runs are disabled on this deployment (DEPLOY_READONLY=1). Replay a recorded case below, or explain it from its case file.",
             icon=":material/lock:")
     common.page_link("case", "Open the case file", icon=common.PAGE_ICONS["case"], case=ctx.case_id)
-    st.markdown("#### Replay a recorded case")
+    design.html_block(design.section("", "Replay a recorded case", "read from the run folder; nothing runs"))
     replay.render(ctx.source_id, ctx.case_id)
     st.stop()
 
 _pending_goto = st.session_state.pop(GOTO_KEY, None)
 if isinstance(_pending_goto, tuple) and len(_pending_goto) == 2:
     common.goto("case", case=_pending_goto[0], run=_pending_goto[1])
-
-common.page_header(
-    "Run console",
-    "Runs agent.bench detached, one run at a time, and reads every case's state from its run folder.",
-    eyebrow="Operator · Stage 2 and Stage 3 live runs",
-)
 
 
 # --------------------------------------------------------------------------- #
@@ -123,25 +118,43 @@ checks = [
     ("No live run in progress", held is None, "no live .bench.lock under runs/" if held is None else _lock_text(held)),
     ("Not read-only", True, "DEPLOY_READONLY is unset"),
 ]
-with st.container(border=True, key="console-availability"):
-    st.markdown("**Availability**")
-    for name, ok, why in checks:
-        st.markdown(f"{common.badge('ready' if ok else 'blocked', 'green' if ok else 'orange')} **{md(name)}** · {md(why)}")
-    st.markdown("**Backends**")
-    for b in BACKENDS:
-        r = backends[b]
-        st.markdown(f"{common.badge(b, 'green' if r['ok'] else 'gray')} {md('available' if r['ok'] else 'disabled')} · {md(r['reason'])}")
-    if mode != "live":
-        # The reason verbatim (st.code does not interpret markdown), so it reads exactly as the setting to change.
-        st.caption("Why live backends are disabled")
-        st.code(mode_reason, language=None, wrap_lines=True)
 
-# A launch needs agent/ and no live lock; a live backend also needs the live mode and its key (shown above).
+# A launch needs agent/ and no live lock; a live backend also needs the live mode and its key (the 'Why' popover).
 form_blockers = []
 if bench_mod is None:
     form_blockers.append(f"agent.bench cannot be imported here: {bench_err}")
 if held is not None:
     form_blockers.append(f"one run at a time: {_lock_text(held)}")
+
+
+def _readiness_html() -> str:
+    """One sentence: can a run start now? The checks behind it are in the 'Why' popover."""
+    if held is not None:
+        return (f'<p class="tc tc-lead"><span class="ochre">Not now</span>: run <b>{esc(held.get("run_id"))}</b> is in progress, and the console '
+                "starts one run at a time.</p>")
+    if bench_mod is None:
+        return '<p class="tc tc-lead"><span class="red">No</span>: agent.bench cannot be imported here.</p>'
+    if live_ready:
+        return f'<p class="tc tc-lead"><span class="green">Yes</span>: a live run on <b>{esc(", ".join(live_ready))}</b>, or a mock run.</p>'
+    why = f"live backends are off ({mode_reason})" if mode != "live" else "no live backend has its key or CLI"
+    return f'<p class="tc tc-lead"><span class="green">Yes, a mock run</span>: {esc(why)}.</p>'
+
+
+def _readiness() -> None:
+    with st.container(horizontal=True, vertical_alignment="center", gap="small", key="rc-ready"):
+        design.html_block(_readiness_html())
+        with st.popover("Why", key="rc-why"):
+            design.html_block('<table class="tc tc-table rc-why"><tbody>' + "".join(
+                f'<tr><td class="rc-ok">{design.glyph("check" if ok else "cross", "ok" if ok else "bad")}</td><td><b>{esc(name)}</b>'
+                f'<span class="sub">{esc(why)}</span></td></tr>' for name, ok, why in checks) + "</tbody></table>")
+            st.markdown("**Backends**")
+            for b in BACKENDS:
+                r = backends[b]
+                st.markdown(f"{common.badge(b, 'green' if r['ok'] else 'gray')} {md('available' if r['ok'] else 'disabled')} · {md(r['reason'])}")
+            if mode != "live":
+                # The reason verbatim (st.code does not interpret markdown), so it reads exactly as the setting to change.
+                st.caption("Why live backends are disabled")
+                st.code(mode_reason, language=None, wrap_lines=True)
 
 
 # --------------------------------------------------------------------------- #
@@ -155,9 +168,24 @@ trigger_of = {r["case_id"]: r.get("trigger_type", "") for r in pack}
 pack_round = "round1" if pack_ids and all(c.startswith("HHG-") for c in pack_ids) else "final"
 
 
+def _interp(path: object) -> str:
+    """The interpreter relative to the repo, as typed (.venv/bin/python), not resolved through the venv's symlink to an
+    absolute path outside it; common.rel resolves first, so it is used only for a path outside the repo."""
+    p = Path(str(path))
+    try:
+        return str(p.relative_to(common.ROOT))
+    except ValueError:
+        return common.rel(p)
+
+
+def _shown(cmd: list) -> str:
+    """A launched argv for display: the interpreter relative to the repo, the rest verbatim."""
+    return shlex.join([_interp(cmd[0]), *(str(x) for x in cmd[1:])]) if cmd else ""
+
+
 def _command(cases: list[str], backend: str, run_id: str, resume: bool) -> list[str]:
     """The argv common.launch_run builds, with the interpreter shown relative to the repo."""
-    cmd = [common.rel(sys.executable), "-m", "agent.bench", "--run-id", run_id, "--cases", ",".join(cases), "--llm-backend", backend]
+    cmd = [_interp(sys.executable), "-m", "agent.bench", "--run-id", run_id, "--cases", ",".join(cases), "--llm-backend", backend]
     if backend == "mock":
         cmd.append("--mock")
     if resume:
@@ -272,45 +300,75 @@ def _confirm_launch(cases: list[str], backend: str, run_id: str, resume: bool, c
 
 enabled = [b for b in BACKENDS if backends[b]["ok"]]
 console_runs = _console_runs()
-if "console_target" not in st.session_state:  # seeded once, so typed text survives reruns
-    st.session_state["console_target"] = f"r2-{'live' if live_ready else 'mock'}-{time.strftime('%Y%m%d-%H%M')}"
-if st.session_state.get("console_continue") not in ["", *console_runs]:
-    st.session_state.pop("console_continue", None)
+CASES_KEY = f"console_cases-{_slug(pack_round)}"  # one key per pack, so the trigger filter never drops the selection
+KINDS = ("New run", "Continue a run")
 
-st.markdown("**Start a run**")
-triggers = sorted({t for t in trigger_of.values() if t})
-want = st.multiselect("Trigger filter", triggers, key="console_trigger", placeholder="All triggers")
-listed = [c for c in pack_ids if not want or trigger_of.get(c) in want]
-with st.form("console_form", border=True):
-    f1, f2 = st.columns([1, 2])
-    backend = f1.selectbox("Backend", enabled, key="console_backend", help="Disabled backends and their reasons are listed under Availability")
-    target_text = f2.text_input("Target run id", key="console_target", help="A new folder runs/<id>/; letters, digits, '.', '_' and '-', at most 64")
-    c1, c2 = st.columns([2, 1])
-    continue_run = c1.selectbox("Continue an existing run", ["", *console_runs], key="console_continue",
-                                format_func=lambda r: r or "No, start a new run",
-                                help="Only runs this console started (they hold bench.log), never a recorded source")
-    resume = c2.checkbox("Skip completed (--resume)", value=True, key="console_resume", help="Applies when continuing an existing run")
-    cases = st.multiselect(f"Cases ({len(listed)} of {len(pack_ids)} in opened_at order)", listed, default=listed,
-                           key=f"console_cases-{_slug('-'.join(want) or 'all')}")
-    start = st.form_submit_button("Start run", type="primary", icon=":material/play_arrow:", disabled=bool(form_blockers) or not pack_ids)
-for b in form_blockers:
-    st.caption(md(b))
-if not pack_ids:
-    st.info("This source has no case pack on this deployment.")
 
-if start:
-    continuing = bool(continue_run)
-    run_id = continue_run if continuing else str(target_text or "").strip()
-    order = {c: i for i, c in enumerate(pack_ids)}
-    chosen = sorted((c for c in cases if c in order), key=order.get)
-    problem = ("choose at least one case" if not chosen else "" if backend in enabled else f"backend {backend} is disabled") or _target_problem(run_id, continuing)
-    if problem:
-        st.error(md(problem), icon=":material/block:")
-    else:
-        st.session_state.pop("console_ack", None)  # every launch is acknowledged afresh
-        st.session_state[DIALOG_KEY] = {"cases": chosen, "backend": backend, "run_id": run_id, "resume": bool(resume and continuing), "continuing": continuing}
-if st.session_state.get(DIALOG_KEY):
-    _confirm_launch(**st.session_state[DIALOG_KEY])
+def _trigger_label(t: str) -> str:
+    n = sum(1 for c in pack_ids if trigger_of.get(c) == t)
+    return f"{t.replace('_', ' ').capitalize()} · {n}"
+
+
+def _pick(ids: list[str]) -> None:
+    st.session_state[CASES_KEY] = list(ids)
+
+
+def _start_form() -> None:
+    """Cases first (trigger chips, quick picks, the selection), then the New/Continue switch, then the backend and the run
+    id in st.form 'console_form'. Start only opens the confirm dialog."""
+    if "console_target" not in st.session_state:  # seeded once, so typed text survives reruns
+        st.session_state["console_target"] = f"r2-{'live' if live_ready else 'mock'}-{time.strftime('%Y%m%d-%H%M')}"
+    if st.session_state.get("console_continue") not in console_runs:
+        st.session_state.pop("console_continue", None)
+    if CASES_KEY not in st.session_state:
+        st.session_state[CASES_KEY] = list(pack_ids)
+    st.session_state[CASES_KEY] = [c for c in st.session_state[CASES_KEY] if c in trigger_of]
+    triggers = sorted({t for t in trigger_of.values() if t})
+    with st.container(border=True, key="rc-start"):
+        with st.container(horizontal=True, vertical_alignment="bottom", gap="small", key="rc-picks"):
+            want = st.pills("Trigger", triggers, selection_mode="multi", key="console_trigger", format_func=_trigger_label)
+            listed = [c for c in pack_ids if not want or trigger_of.get(c) in want]
+            st.button(f"Only the {len(listed)} shown" if want else f"All {len(listed)}", key="console_pick_all", on_click=_pick, args=(listed,), type="tertiary")
+            st.button("Clear", key="console_pick_none", on_click=_pick, args=([],), type="tertiary")
+        picked = st.session_state[CASES_KEY]
+        options = [c for c in pack_ids if c in listed or c in picked]  # a selected case stays listed whatever the filter
+        st.multiselect(f"Cases · {len(picked)} of {len(pack_ids)} selected, in opened_at order", options, key=CASES_KEY, placeholder="Choose cases")
+        kind = st.radio("Run", KINDS, horizontal=True, key="console_kind")
+        continuing = kind == KINDS[1]
+        with st.form("console_form", border=False, enter_to_submit=False):
+            f1, f2 = st.columns([1, 2], vertical_alignment="bottom")
+            backend = f1.selectbox("Backend", enabled, key="console_backend")
+            off: dict[str, list[str]] = {}
+            for b in BACKENDS:
+                if not backends[b]["ok"]:
+                    off.setdefault(backends[b]["reason"], []).append(b)
+            if off:
+                f2.caption(md(" · ".join(f"{', '.join(bs)} disabled: {reason}" for reason, bs in off.items())))
+            resume = False
+            if continuing:
+                c1, c2 = st.columns([2, 1], vertical_alignment="bottom")
+                continue_run = c1.selectbox("Run to continue", console_runs, key="console_continue", placeholder="No run started from this console",
+                                            help="Only runs this console started (they hold bench.log), never a recorded source")
+                resume = c2.checkbox("Skip completed (--resume)", value=True, key="console_resume", help="Cases that already have an answer in the run are skipped")
+                target_text = ""
+            else:
+                continue_run = None
+                target_text = st.text_input("New run id", key="console_target", help="A new folder runs/<id>/; letters, digits, '.', '_' and '-', at most 64")
+            start = st.form_submit_button("Start run", type="primary", icon=":material/play_arrow:", disabled=bool(form_blockers) or not pack_ids)
+        for b in form_blockers:
+            st.caption(md(b))
+        if not pack_ids:
+            st.info("This source has no case pack on this deployment.")
+    if start:
+        run_id = str(continue_run or "") if continuing else str(target_text or "").strip()
+        order = {c: i for i, c in enumerate(pack_ids)}
+        chosen = sorted((c for c in st.session_state.get(CASES_KEY) or [] if c in order), key=order.get)
+        problem = ("choose at least one case" if not chosen else "" if backend in enabled else f"backend {backend} is disabled") or _target_problem(run_id, continuing)
+        if problem:
+            st.error(md(problem), icon=":material/block:")
+        else:
+            st.session_state.pop("console_ack", None)  # every launch is acknowledged afresh
+            st.session_state[DIALOG_KEY] = {"cases": chosen, "backend": backend, "run_id": run_id, "resume": bool(resume and continuing), "continuing": continuing}
 
 
 # --------------------------------------------------------------------------- #
@@ -451,7 +509,7 @@ def _pipeline_panel(run_id: str, views: list[common.CaseView]) -> None:
     only. What a running stage waits on (an LLM call or not) is inferred from the newest row and the phase machine's
     order, and labelled so; the model is the one calls.jsonl records for that kind of call, never assumed."""
     v = _focus(views)
-    with st.container(border=True, key="console-pipeline"):
+    with st.container(key="console-pipeline"):
         if v is None:
             st.markdown("**Pipeline**")
             st.caption("No case of this run has written a trace yet")
@@ -492,62 +550,62 @@ def _pipeline_panel(run_id: str, views: list[common.CaseView]) -> None:
 
 
 def _progress(run_id: str, why: str, active: bool) -> None:
+    """One strip of counts, the live pipeline (strip, status line, console), failures verbatim, one per-case table and
+    bench.log folded, all read from runs/<run_id>/."""
     job = st.session_state.get(JOB_KEY) or {}
     lock = common.run_lock(run_id)
     now = time.strftime("%Y-%m-%d %H:%M:%S")
-    with st.container(border=True, key="console-progress"):
-        st.markdown(f"**Progress of {md(run_id)}** · {md(why)} · " + (common.badge("active", "green") if active else common.badge("idle", "gray")))
-        if lock is not None:
-            st.markdown(md(f"PID {lock.get('pid')} alive · started {lock.get('started') or 'unrecorded'} · backend {lock.get('backend') or 'unrecorded'} · lock {lock.get('path')}"))
-        elif job.get("run") == run_id:
-            st.markdown(md(f"PID {job.get('pid')} from this session's launch · no live lock now: the process is not running"))
-        else:
-            st.markdown(md("no live lock: no process is running for this run"))
-        views = [common.case_view(run_id, c) for c in _run_cases(run_id)]
+    with st.container(key="rc-progress"):
+        design.html_block(design.section("", f"Progress of {run_id}", why, design.tag("active" if active else "idle")))
+        views = [common.answer_attempt_view(common.case_view(run_id, c)) for c in _run_cases(run_id)]  # one attempt per case
         rows = [_case_row(run_id, v, active) for v in views]
         counts = {k: sum(1 for r in rows if r["state"] == k) for k in ("done", "running", "queued")}
         bad = sum(1 for r in rows if r["state"] in ("failed", "unreadable", "incomplete"))
-        cols = st.columns(4)
+        with st.container(border=True, key="strip-rc-counts"):
+            cols = st.columns(4)
         kw = {"source": f"runs/{run_id}/<case>/answer.json, phases.jsonl, calls.jsonl", "as_of": now}
         common.measured("Done", f"{counts['done']} / {len(rows)}", container=cols[0], how="cases whose answer.json parses", **kw)
         common.measured("Running", counts["running"], container=cols[1], how="trace written within 120 s or the lock lists the case, no answer yet", **kw)
         common.measured("Queued", counts["queued"], container=cols[2], how="selected for the run, no folder yet, run active", **kw)
         common.measured("Failed or incomplete", bad, container=cols[3], how="'case failed' note, unreadable answer.json or a trace that stopped", **kw)
+        if lock is not None:
+            st.caption(md(f"PID {lock.get('pid')} alive · started {lock.get('started') or 'unrecorded'} · backend {lock.get('backend') or 'unrecorded'} · lock {lock.get('path')}"))
+        elif job.get("run") == run_id:
+            st.caption(md(f"PID {job.get('pid')} from this session's launch · no live lock now: the process is not running"))
+        else:
+            st.caption("No live lock: no process is running for this run")
         _pipeline_panel(run_id, views)
-        for v, r in zip(views, rows):
-            with st.container(horizontal=True, vertical_alignment="center", key=f"console-case-{_slug(v.case_id)}"):
-                st.markdown(f"**{md(v.case_id)}**", width="content")
-                st.markdown(common.badge(r["state"], common.STATE_COLORS.get(v.state, "gray")), width="content")
-                if v.state == "running":
-                    st.markdown(md(f"phase {r['last phase'] or 'none yet'} · elapsed {common.secs(_elapsed_in_trace(v))} in the trace · {len(v.calls)} calls"), width="content")
-                elif v.ok:
-                    st.markdown(f"{common.verdict_badge(r['verdict'])} " + md(r["latency"]), width="content")
-                    if st.button("Inspect phases", key=f"console-open-{_slug(v.case_id)}", icon=":material/arrow_forward:", type="tertiary",
-                                 help="Opens the Case file's Decision path: the S0–P10 strip, and each stage's calls, model calls and payload"):
-                        st.session_state[GOTO_KEY] = (v.case_id, run_id)
-                        st.rerun()
-                elif v.state == "incomplete":
-                    st.markdown(md(f"stopped at {r['last phase'] or 'no phase'}; newest write {common.secs(v.last_write_age_s)} ago; no answer"), width="content")
-            if v.state in ("failed", "unreadable"):
-                st.code(v.error, language=None, wrap_lines=True)
+        for v in [v for v in views if v.error]:  # failures verbatim
+            st.markdown(f"**{md(v.case_id)}** {common.state_badge(v.state)}")
+            st.code(v.error, language=None, wrap_lines=True)
+        table = [{"case": r["case"], "state": r["state"], "verdict": r["verdict"] or "—",
+                  "latency": r["latency"] or (f"{common.secs(_elapsed_in_trace(v))} so far" if v.state == "running" else "—"),
+                  "last phase": r["last phase"] or "—", "calls": len(v.calls)} for v, r in zip(views, rows)]
+        if table:
+            st.dataframe(table, hide_index=True, width="stretch",
+                         column_config={"latency": st.column_config.TextColumn("latency", help="answer.json latency_s; for a running case, the newest t in its trace"),
+                                        "calls": st.column_config.NumberColumn("calls", help="rows in calls.jsonl, this attempt")})
+        else:
+            st.caption("The run lists no cases yet")
+        done_ids = [v.case_id for v in views if v.ok]
+        with st.container(horizontal=True, vertical_alignment="bottom", gap="small", key="rc-inspect"):
+            if done_ids:
+                pick = st.selectbox("Case", done_ids, key="console-inspect-case", width=180)
+                if st.button("Inspect phases", key="console-inspect", icon=":material/arrow_forward:",
+                             help=md(f"Switches the source to {run_id} and opens the case's Decision path in the Case file: the S0–P10 strip, "
+                                     "and each stage's calls, model calls and payload")):
+                    st.session_state[GOTO_KEY] = (pick, run_id)
+                    st.rerun()
+            common.page_link("runs", "Open Runs & consistency", icon=common.PAGE_ICONS["runs"])
         log = common.runs_root() / run_id / "bench.log"
-        with st.expander(f"bench.log (last {LOG_LINES} lines, hosts and tokens scrubbed)"):
+        with st.expander(f"Command and bench.log (last {LOG_LINES} lines, hosts and tokens scrubbed)"):
+            if job.get("run") == run_id and job.get("cmd"):
+                st.code(_shown(job["cmd"]), language=None, wrap_lines=True)
             tail = _log_tail(log)
             if tail is None:
                 st.caption(md(f"{common.rel(log)} not written: the run was not started from this console"))
             else:
                 st.code(tail or "(empty)", language=None)
-    _target_table(run_id, rows)
-
-
-def _target_table(run_id: str, rows: list[dict]) -> None:
-    st.markdown(f"**Target run {md(run_id)}**")
-    if rows:
-        st.dataframe(rows, hide_index=True, width="stretch",
-                     column_config={"error": st.column_config.TextColumn("error", help="verbatim, from phases.jsonl or the answer check")})
-    else:
-        st.caption("The run lists no cases yet")
-    common.page_link("runs", "Open Runs & consistency", icon=common.PAGE_ICONS["runs"])
 
 
 @st.fragment(run_every="2s")
@@ -557,26 +615,28 @@ def _progress_live(run_id: str, why: str) -> None:
     _progress(run_id, why, True)
 
 
-st.divider()
-job = st.session_state.get(JOB_KEY)
-if isinstance(job, dict):
-    with st.container(border=True, key="console-launched"):
-        st.success(md(f"Started {len(job.get('cases') or [])} case(s) into run {job.get('run')} with backend {job.get('backend')}: PID {job.get('pid')}"),
-                   icon=":material/rocket_launch:")
-        st.caption(md(f"log {job.get('log')} · lock {job.get('lock')}"))
-        st.code(shlex.join(str(x) for x in job.get("cmd") or []), language=None, wrap_lines=True)
-
+# --------------------------------------------------------------------------- #
+# The page                                                                    #
+# --------------------------------------------------------------------------- #
 target, why = _target()
-if target is None:
-    st.caption("No run launched from this session and no live run in progress. Replay a recorded case below; run-level numbers are on Runs & consistency.")
-    common.page_link("runs", "Open Runs & consistency", icon=common.PAGE_ICONS["runs"])
-elif _active(target):
+active = target is not None and _active(target)
+common.page_header("Run console", "Runs agent.bench detached, one run at a time, and reads every case's state from its run folder.",
+                   eyebrow=f"{common.ROUND_LABELS.get(pack_round, pack_round)} pack · {len(pack_ids)} cases")
+_readiness()
+if active:
     _progress_live(target, why)
+    with st.expander("Start a run"):
+        _start_form()
 else:
-    _progress(target, why, False)
+    design.html_block(design.section("", "Start a run", f"{len(pack_ids)} cases in opened_at order"))
+    _start_form()
+    if target is not None:
+        _progress(target, why, False)
+if st.session_state.get(DIALOG_KEY):
+    _confirm_launch(**st.session_state[DIALOG_KEY])
+if target is None:
+    st.caption("No run launched from this session and no live run in progress; run-level numbers are on Runs & consistency.")
+    common.page_link("runs", "Open Runs & consistency", icon=common.PAGE_ICONS["runs"])
 
-st.divider()
-st.markdown("#### Replay a recorded case")
-st.caption("Plays any recorded case back through the S0 + P0-P10 pipeline in step with its tool and model calls, then lets you "
-           "inspect what each stage recorded. It reads the run folder only; nothing runs.")
+design.html_block(design.section("", "Replay a recorded case", "read from the run folder; nothing runs"))
 replay.render(ctx.source_id, ctx.case_id)

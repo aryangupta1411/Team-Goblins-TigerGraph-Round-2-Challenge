@@ -1,0 +1,38 @@
+/* Security & drills (ui/pages/9_security.py). Every class is .sc-*, every keyed container st-key-sec-* or st-key-strip-sec,
+ * so nothing here reaches another page. Colours are --tc-* tokens only. */
+
+/* the four figures as a 2 x 2 strip at half width: a rule between the two rows */
+.st-key-strip-sec [data-testid="stHorizontalBlock"] + [data-testid="stHorizontalBlock"] { margin-top: .5rem; padding-top: .75rem; border-top: 1px solid var(--tc-rule); }
+.st-key-sec-rerun { margin-top: .35rem; }
+.st-key-sec-rerun [data-testid="stCaptionContainer"] { margin: 0; }
+
+/* the drills as a readable list: rules between items, the claim in grey, evidence and exercise as labelled lines */
+.sc-drills { list-style: none; margin: .2rem 0 0; padding: 0; }
+.sc-drills li { padding: .7rem 0 .75rem; border-bottom: 1px solid var(--tc-rule); font-size: .86rem; line-height: 1.45; color: var(--tc-ink-2); }
+.sc-drills li:first-child { padding-top: .2rem; }
+.sc-drills p { margin: .2rem 0 0; max-width: 132ch; overflow-wrap: anywhere; }
+.sc-drill-head { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
+.sc-drill-head b { color: var(--tc-ink); font-weight: 600; font-size: .92rem; }
+.sc-claim { color: var(--tc-muted); }
+.sc-k { display: inline-block; min-width: 7.5rem; color: var(--tc-ink); font-weight: 500; }
+
+/* the planted injections: the caveat beside the operator check, then the table and the row detail */
+.sc-caveat { margin: 0; font-size: .84rem; line-height: 1.5; color: var(--tc-ink-2); max-width: 96ch; }
+.sc-caveat b { color: var(--tc-ink); font-weight: 600; }
+.st-key-sec-indep-bar { margin-bottom: .4rem; }
+.sc-planted .sub { display: block; color: var(--tc-muted); font-size: .8rem; margin-top: .12rem; }
+.sc-planted td.mono, .sc-attacks td.mono { overflow-wrap: anywhere; }
+
+/* the attacks grouped by family: one quiet head row per family */
+.sc-attacks tr.sc-fam td { padding-top: .85rem; background: var(--tc-panel); color: var(--tc-ink-2); font-size: .82rem; border-bottom: 1px solid var(--tc-rule-strong); }
+.sc-attacks tr.sc-fam td b { color: var(--tc-ink); font-weight: 600; }
+
+/* provenance lines under the tables */
+.sc-src { margin: .45rem 0 0; font-size: .8rem; color: var(--tc-muted); overflow-wrap: anywhere; }
+
+@media (max-width: 900px) {
+  .sc-k { display: block; min-width: 0; }
+}
+
+/* quiet cells in this page's tables: codes, messages and times in grey */
+.sc-t td.quiet { color: var(--tc-muted); font-size: .8rem; }

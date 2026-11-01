@@ -1,34 +1,52 @@
-"""How it works: the TigerGraph-use checklist measured from the selected source, every known limit with its source file,
-a measured-facts strip, a map of the pipeline with the page that proves each stage and the LLM models the source's
-calls.jsonl records, and how the scorecard decides with every number read from the code.
+"""How it works: how the agent uses TigerGraph, and what it does not do, measured from the selected source.
 
-Files only: the selected source's traces (common.tg_usage, trace_stats, guardrail_events, attest_claims, llm_models),
-engine/out/detector_backtest.json, engine/out/containment_summary.json, engine/out/proof_snapshot.json, the
-graph/queries/*.gsql listing and common.scorecard_rules (policy/fraud_policy.yaml, engine/detectors.py read with ast and
-agent/security.py where they exist, else the snapshot's scorecard section). agent.mcp_client is imported only when
-present, to read the tool allowlist. No case data reaches HTML, and this page writes nothing.
+First screen: the S0-P10 pipeline (common.PIPELINE) as a numbered chain with a graph lane and an LLM lane counted per
+phase from the source's calls.jsonl (the model only as those rows record it), each stage linked to the page that proves
+it, and beside it the TigerGraph-use checklist as status rows. Below: the same counts as a call graph (folded), how the
+scorecard decides with every number read from the code (tables folded) and the known limits grouped by theme.
+
+Files only: the selected source's traces, one attempt per case (common.answer_attempt_view, tg_usage, attest_claims,
+guardrail_events, llm_models), common.known_limits and common.scorecard_rules (policy/fraud_policy.yaml,
+engine/detectors.py read with ast and agent/security.py where they exist, else the snapshot's scorecard section).
+agent.mcp_client is imported only when present, to read the tool allowlist. Every value that reaches HTML goes through
+design.esc(), and this page writes nothing.
 """
 from __future__ import annotations
 
 import json
+import re
 import sys
 from collections import Counter
 from pathlib import Path
+from urllib.parse import quote
 
 import pandas as pd
 import streamlit as st
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from ui import common  # noqa: E402
+from ui import common, design  # noqa: E402
 
-md = common.md
+md, esc = common.md, design.esc
 ctx = common.page_setup("system")
-common.page_header("How it works", "TigerGraph use measured from the selected source, known limits with their sources, and a map of the pipeline.", eyebrow="System")
 src = ctx.source
 sid = ctx.source_id or ""
 NOT_SHOWN = "not shown in this source"
-TRAVERSALS = ("episode_candidates", "shared_origin_scan", "ring_profile")
+TRAVERSALS = ("episode_candidates", "shared_origin_scan", "ring_profile", "typology_scan")
+# the page that proves each stage (a common.PAGES key)
+PROOF_PAGE = {"S0": "data", "P0": "security", "P1": "case", "P2": "case", "P3": "detectors", "P4": "case", "P5": "approvals",
+              "P6": "approvals", "P7": "approvals", "P8": "case", "P9": "runs", "P10": "graph"}
+STATUS_KIND = {"shown": "green", "partial": "ochre", "check": "ochre"}
+STATUS_TEXT = {NOT_SHOWN: "not shown"}
+# known limits by theme, matched on the limit's title (common.known_limits computes them from files)
+THEMES = (("Answers", re.compile(r"verdict mix|accuracy", re.I)),
+          ("Detectors and the engine", re.compile(r"^D\d|^C[23]\b|detector|graph algorithm|analyst feedback|engine", re.I)),
+          ("Gates: schema and approvals", re.compile(r"schema|approv", re.I)),
+          ("Runs and records", re.compile(r"\brun|readme|git|model", re.I)))
+
+
+def _phase(c: dict) -> str:
+    return str(c.get("phase") or "?").split("-")[0]
 
 
 def _short(name: object) -> str:
@@ -62,23 +80,24 @@ def _example(traced: dict, pred) -> str:
 # --------------------------------------------------------------------------- #
 ids = [r["case_id"] for r in common.pack_for_source(src)] if src else []
 ids += [c for c in (src.cases if src else []) if c not in ids]
-views = {cid: common.case_view(sid, cid) for cid in ids} if src else {}
+views = {cid: common.answer_attempt_view(common.case_view(sid, cid)) for cid in ids} if src else {}  # one attempt per case
 done = {c: v for c, v in views.items() if v.ok}
 traced = {c: v for c, v in done.items() if v.has_trace}
 usage = {c: common.tg_usage(v) for c, v in traced.items()}
 n = len(traced)
 TRACE_SRC = f"runs/{sid}/<case>/calls.jsonl and phases.jsonl"
+live_graph = src is not None and src.mode == "live"
 
-with st.container(horizontal=True, vertical_alignment="center", gap="medium", key="system-tg-head"):
-    st.markdown("#### TigerGraph use in this source", width="content")
-    common.tigergraph_credit("system")
 if src is None:
     st.info("No sources on this deployment: no agent run under runs/ and no answer files under cases/.")
 rows: list[dict] = []
+llm_calls: list[dict] = []
+not_query: list[dict] = []
+llm_writes: list[dict] = []
 if src is not None and not traced:
     note = "no trace in this source (answer files only)" if src.kind == "submitted" else "no answered case with a trace yet"
-    for crit in ("Vector search in decisions", "Vector search + graph traversal", "Graph algorithm affecting output", "Write-back and read-back",
-                 "Restricted MCP tools", "Graph as source of truth"):
+    for crit in ("Vector search in decisions", "Vector search + graph traversal", "Graph algorithm affecting output",
+                 "Detectors run in the graph (typology_scan in P3)", "Write-back and read-back", "Restricted MCP tools", "Graph as source of truth"):
         rows.append({"criterion": crit, "measured in this source": note, "example call": "—", "status": "not measured here"})
 elif traced:
     vec = [c for c, u in usage.items() if u["vector_hits"]]
@@ -97,7 +116,13 @@ elif traced:
     algo_adj = next((str(a) for c in algo for a in common.phase_payload(traced[c], "P3").get("adjustments") or []), "—")
     rows.append({"criterion": "Graph algorithm affecting output", "measured in this source": f"a P3 adjustment names wcc / degree / pagerank / ppr in {', '.join(algo)}" if algo else NOT_SHOWN,
                  "example call": f"P3 adjustment {algo_adj}" if algo else "—", "status": "shown" if algo else NOT_SHOWN})
-    persist = [p for u in usage.values() for p in u["persist"]]
+    scans = [(c, x) for c, v in traced.items() for x in v.calls if x.get("kind", "tool") == "tool" and _short(x.get("name")) == "typology_scan"]
+    in_p3 = sum(1 for _, x in scans if _phase(x) == "P3")
+    rows.append({"criterion": "Detectors run in the graph (typology_scan in P3)",
+                 "measured in this source": (f"typology_scan {in_p3} call(s) in P3" + (f", {len(scans) - in_p3} in other phases" if len(scans) > in_p3 else "")
+                                             + f" · in {len({c for c, _ in scans})}/{n} traces") if scans else "no typology_scan call",
+                 "example call": _example(traced, lambda c: _short(c.get("name")) == "typology_scan"), "status": "shown" if in_p3 else NOT_SHOWN})
+    persist =[p for u in usage.values() for p in u["persist"]]
     ok = sum(1 for p in persist if p["ok"])
     back = {c: [h["id"] for h in u["agent_readbacks"]] for c, u in usage.items() if u["agent_readbacks"]}
     written = "persisted to FraudGraph" if src.mode == "live" else "mock session, nothing written to a graph"
@@ -134,114 +159,156 @@ if src is not None:
     live = src.kind == "run" and prov.get("run_mode") == "live"
     rows.append({"criterion": "A live run", "measured in this source": f"{sid} · run_mode {prov.get('run_mode')} · {src.n_answered}/{src.n_total} answered · finished {src.finished or 'not finished'}"
                  if src.kind == "run" else f"{sid} holds answer files, not a run", "example call": "—", "status": "shown" if live and src.complete else NOT_SHOWN})
-if rows:
-    st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch",
-                 column_config={"measured in this source": st.column_config.TextColumn(width="large"), "example call": st.column_config.TextColumn(width="large")})
-    st.caption(md(f"Computed now from {TRACE_SRC if traced else sid} ({n} traced case(s)) with common.tg_usage, attest_claims and guardrail_events"))
-
 # --------------------------------------------------------------------------- #
-# Known limits                                                                #
+# Calls per phase, from calls.jsonl                                           #
 # --------------------------------------------------------------------------- #
-limits = common.known_limits()
-with st.container(border=True, key="system-limits"):
-    st.markdown(f"**Known limits** · {len(limits)} computed from files")
-    for item in limits:
-        st.markdown(f"**{md(item['title'])}** · {md(item['detail'])} · :gray[{md(item['source'])} · as of {md(item['as_of'])}]")
-    if not limits:
-        st.caption("No limit computed from the files on this deployment")
-
-# --------------------------------------------------------------------------- #
-# Measured facts strip                                                        #
-# --------------------------------------------------------------------------- #
-st.markdown("#### Measured facts")
-facts, attacks, bt, cs, c3 = (common.proof(x) for x in ("facts", "attacks", "backtest", "containment_summary", "c3_built"))
-fd = facts["data"] if isinstance(facts["data"], dict) else {}
-
-
-def _count(*keys: str) -> int | None:
-    for key in keys:
-        v = fd.get(key)
-        v = v.get("count", v.get("n")) if isinstance(v, dict) else v
-        if isinstance(v, int | float) and not isinstance(v, bool):
-            return int(v)
-    return None
-
-
-def _src(p: dict, fallback: str) -> tuple[str, str]:
-    return (p["source"] or f"{fallback} ({p['error'] or 'missing'})"), (p["as_of"] or "missing")
-
-
-txc, ccs = _count("txc", "transactions"), _count("cc", "closed_cases")
-dets = (bt["data"] or {}).get("detectors") if isinstance(bt["data"], dict) else None
-ad = attacks["data"] if isinstance(attacks["data"], dict) else {}
-csd = cs["data"] if isinstance(cs["data"], dict) else None
-qdir = common.ROOT / "graph" / "queries"
-qfiles = sorted(f for f in qdir.glob("*.gsql") if f.stem != "install_all") if qdir.is_dir() else []
-cols = st.columns(6)
-common.measured("Transactions / closed cases", f"{txc:,} / {ccs:,}" if txc is not None and ccs is not None else None, container=cols[0],
-                source=_src(facts, "engine/out/proof_snapshot.json facts")[0], as_of=_src(facts, "")[1], how="read-only DuckDB counts in the proof snapshot")
-common.measured("Detectors (cleared-customer hits)", f"{len(dets)} ({sum(len(d.get('legitimate_customers_acted_against') or []) for d in dets)})" if dets else None,
-                container=cols[1], source=_src(bt, "engine/out/detector_backtest.json")[0], as_of=_src(bt, "")[1],
-                how="detectors in the backtest; in brackets, cleared customers inside their match sets")
-common.measured("Attacks blocked", f"{ad['attacks_blocked']}/{ad['total_attacks']}" if {"attacks_blocked", "total_attacks"} <= ad.keys() else None, container=cols[2],
-                source=_src(attacks, "engine/out/proof_snapshot.json attacks")[0], as_of=_src(attacks, "")[1], how="agent.security attack ablation recorded in the snapshot")
-waves = sorted({str(v.get("wave")) for v in (csd or {}).values() if isinstance(v, dict) and v.get("wave")})
-common.measured("Containment waves", f"{len(waves)} over {len(csd)} case(s)" if csd else None, container=cols[3],
-                source=_src(cs, "engine/out/containment_summary.json")[0], as_of=_src(cs, "")[1], how="distinct detector waves with a targeted containment plan")
-common.measured("C3 policy-rule compiler", {True: "built", False: "not built"}.get(c3["data"]) if isinstance(c3["data"], bool) else None, container=cols[4],
-                source=_src(c3, "engine/out/proof_snapshot.json c3_built")[0], as_of=_src(c3, "")[1])
-common.measured("GSQL query files in repo", len(qfiles) if qfiles else None, container=cols[5], source="graph/queries/*.gsql (install_all excluded)", as_of=common.as_of(qdir),
-                how="files in the repository, not a count of queries installed on the graph")
-
-# --------------------------------------------------------------------------- #
-# System map                                                                  #
-# --------------------------------------------------------------------------- #
-STAGES = [
-    ("Trigger", "the case pack row and its untrusted trigger text", "case"),
-    ("P0 intake / sanitiser", "injection markers found and neutralised before any model sees the text", "security"),
-    ("P1 memory (TigerVector)", "similar prior cases and policy chunks from vector search", "case"),
-    ("P2 investigate (MCP reads)", "the installed queries the LLM chose, with params and timestamps", "case"),
-    ("P3 engine scorecard + detectors", "the deterministic probability and the detector waves", "detectors"),
-    ("P4 assess", "the verdict, its evidence and the claims tied to graph calls", "case"),
-    ("P5-P7 policy gate + evidence request", "actions, their L1 / L2 routes and the simulated customer reply", "approvals"),
-    ("P8 SAR", "the SAR draft and its validator checks", "case"),
-    ("P9 explain / validate", "the explanation, its guardrail notes and the same-case agreement", "runs"),
-    ("P10 persist + approvals", "the AgentCase write-back, its read-back and the approval queue", "graph"),
-]
-st.markdown("#### System map")
-# the LLM node names the models this source's calls.jsonl records (P2, P4, P5-P7, P8 and P9 call it), never an assumed one
+lanes = {s["code"]: {"reads": 0, "writes": 0, "llm": 0, "picked": 0, "scan": 0, "names": Counter(), "models": Counter()} for s in common.PIPELINE}
+unplaced = 0
+for v in traced.values():
+    for c in v.calls:
+        lane = lanes.get(_phase(c))
+        if lane is None:
+            unplaced += 1
+        elif c.get("kind") == "llm":
+            lane["llm"] += 1
+            if c.get("model"):
+                lane["models"][str(c["model"])] += 1
+        elif c.get("kind", "tool") == "tool":
+            lane["writes" if c.get("caller") == "persist" else "reads"] += 1
+            lane["picked"] += c.get("caller") == "llm"
+            lane["scan"] += _short(c.get("name")) == "typology_scan"
+            lane["names"][_short(c.get("name"))] += 1
 models = common.llm_models(traced.values())
-llm_phases = Counter(str(c.get("phase") or "?").split("-")[0] for v in traced.values() for c in v.calls if c.get("kind") == "llm")
+calls_as_of = max((common.as_of(v.dir / "calls.jsonl") for v in traced.values() if v.dir is not None), default="missing")
+GRAPH_LANE = "TigerGraph" if live_graph else "Graph (mock)"
+LLM_LANE = ("LLM · " + ", ".join(models)) if models else "LLM"
+
+
+def _total(key: str) -> int:
+    return sum(x[key] for x in lanes.values())
+
+
+def _codes(key: str) -> str:
+    return ", ".join(k for k, x in lanes.items() if x[key]) or "no phase"
+
+
+def _lead() -> str:
+    if not traced:
+        why = "holds answer files without a trace" if src is not None and src.kind == "submitted" else "has no answered case with a trace yet"
+        return f'<p class="tc tc-lead">{esc(sid or "This deployment")} {why}, so the graph and LLM calls per phase are <b>not measured here</b>.</p>'
+    graph = ", ".join(k for k, x in lanes.items() if x["reads"] or x["writes"]) or "no phase"
+    where = "TigerGraph" if live_graph else "the mock graph (DuckDB facts, not TigerGraph)"
+    picked = _total("picked")
+    wrote = (f'<span class="red">{len(llm_writes)} graph write(s) it chose</span>' if llm_writes else '<span class="green">no graph write</span>')
+    return (f'<p class="tc tc-lead">Over {n} answered case(s) the agent called {esc(where)} in <b>{esc(graph)}</b>: <b>{_total("reads"):,} reads</b> '
+            f'and <b>{_total("writes"):,} writes</b>, every write from its own persist step ({esc(_codes("writes"))}). The LLM made '
+            f'<b>{_total("llm"):,} calls</b> in {esc(_codes("llm"))}; it picked {picked:,} of the reads'
+            f'{", all installed queries," if picked and not not_query else ""} and made {wrote}.</p>')
+
+
+def _lane_graph(code: str) -> str:
+    x = lanes[code]
+    if code == "S0" or not traced:
+        return '<span class="sy-dash" title="no trace row">—</span>'
+    if not (x["reads"] or x["writes"]):
+        return '<span class="sy-zero">0</span>'
+    parts = [f"<b>{x['reads']:,}</b> reads"] * bool(x["reads"]) + [f"<b>{x['writes']:,}</b> writes"] * bool(x["writes"])
+    subs = [f"{x['picked']:,} picked by the LLM"] * bool(x["picked"]) + [f"{x['scan']:,} typology_scan (the detectors)"] * bool(x["scan"])
+    names = " · ".join(f"{k} {m}" for k, m in x["names"].most_common())
+    sub = f'<span class="sub">{esc(" · ".join(subs))}</span>' if subs else ""
+    return f'<span title="{esc(names)}">{" · ".join(parts)}</span>{sub}'
+
+
+def _lane_llm(code: str) -> str:
+    x = lanes[code]
+    if code == "S0" or not traced:
+        return '<span class="sy-dash" title="no trace row">—</span>'
+    if not x["llm"]:
+        return '<span class="sy-zero">0</span>'
+    sub = f'<span class="sub">{esc(" · ".join(f"{m} {k}" for m, k in x["models"].most_common()))}</span>' if len(models) > 1 else ""
+    return f"<b>{x['llm']:,}</b> calls{sub}"
+
+
+def _chain() -> str:
+    head = (f'<li class="sy-row sy-head"><span></span><span>Stage</span><span>{esc(GRAPH_LANE)}</span><span>{esc(LLM_LANE)}</span>'
+            '<span>Proved on</span></li>')
+    out = [head]
+    for s in common.PIPELINE:
+        code, page = s["code"], PROOF_PAGE.get(s["code"], "case")
+        href = common.PAGES[page]["url_path"] + (f"?run={quote(sid)}" if sid else "")
+        out.append(f'<li class="sy-row{" off" if code == "S0" else ""}"><span class="sy-n">{esc(code)}</span>'
+                   f'<span class="sy-stage"><b>{esc(s["label"])}</b><span class="sub">{esc(s["module"])}</span></span>'
+                   f'<span class="sy-lane">{_lane_graph(code)}</span><span class="sy-lane">{_lane_llm(code)}</span>'
+                   f'<a class="sy-proof" href="{esc(href)}" target="_self">{esc(common.PAGES[page]["title"])}</a></li>')
+    return f'<div class="tc">{design.section("", "Pipeline", "S0–P10, calls per phase")}<ol class="sy-chain">{"".join(out)}</ol></div>'
+
+
+def _checklist() -> str:
+    body = "".join(f'<tr><td class="sy-status">{design.tag(STATUS_TEXT.get(r["status"], r["status"]), STATUS_KIND.get(r["status"], ""))}</td>'
+                   f'<td><b>{esc(r["criterion"])}</b><span class="sub">{esc(r["measured in this source"])}</span></td></tr>' for r in rows)
+    return f'<div class="tc">{design.section("", "TigerGraph use", sid)}<table class="tc-table sy-checks"><tbody>{body}</tbody></table></div>'
 
 
 def _dot(text: str) -> str:
     return str(text).replace("\\", "\\\\").replace('"', '\\"')
 
 
-chain = [s for s, _, _ in STAGES]
-dot = ["digraph pipeline {", 'rankdir=LR; node [shape=box, style="rounded", fontname="Helvetica", fontsize=11]; edge [color="#888888"];']
-dot += [f'n{i} [label="{name}"];' for i, name in enumerate(chain)]
-dot += [f"n{i} -> n{i + 1};" for i in range(len(chain) - 1)]
-dot += ['tg [label="TigerGraph FraudGraph", shape=cylinder];', 'n2 -> tg [dir=both, style=dashed];', 'n3 -> tg [dir=both, style=dashed];', 'n9 -> tg [style=dashed];']
-dot += [f'llm [label="{_dot("LLM · " + ", ".join(models) if models else "LLM (model not recorded in this source)")}", shape=component];',
-        "n3 -> llm [dir=both, style=dashed];", "n5 -> llm [style=dashed];", "n6 -> llm [style=dashed];", "n7 -> llm [style=dashed];", "n8 -> llm [style=dashed];", "}"]
-st.graphviz_chart("\n".join(dot), width="stretch")
-if models:
-    st.caption(md(f"LLM calls in runs/{sid}/<case>/calls.jsonl: " + " · ".join(f"{m} {k}" for m, k in models.most_common()) + " · by phase "
-                  + ", ".join(f"{p} {k}" for p, k in sorted(llm_phases.items(), key=lambda x: common.PIPELINE_CODES.index(x[0]) if x[0] in common.PIPELINE_CODES else 99))
-                  + f" · computed now from {n} traced case(s); agent/llm.py picks the backend from LLM_BACKEND"))
-else:
-    st.caption(md(f"No LLM row in {sid or 'this source'}: the model is recorded only in a run's calls.jsonl"))
-with st.container(border=True, key="system-stages"):
-    for name, proves, page in STAGES:
-        with st.container(horizontal=True, vertical_alignment="center", gap="small"):
-            st.markdown(f"**{md(name)}** · {md(proves)}")
-            common.page_link(page, common.PAGES[page]["title"], icon=":material/arrow_forward:")
+def _call_graph() -> str:
+    """The same counts as a Graphviz call graph: the graph left, the stages stacked in order, the LLM right. Every edge comes
+    from a phase's counts above; a stage with no call has no edge. The LLM node names the models calls.jsonl records."""
+    graph = "TigerGraph · FraudGraph" if live_graph else "Graph (mock, DuckDB facts)"
+    llm = ("LLM · " + ", ".join(models)) if models else "LLM (model not recorded in this source)"
+    dot = ["digraph pipeline {", 'rankdir=LR; bgcolor="transparent"; nodesep=0.14; ranksep=1.2;',
+           'node [shape=box, style="rounded", fontname="Helvetica", fontsize=13, margin="0.14,0.05", height=0.34];',
+           'edge [fontname="Helvetica", fontsize=11, arrowsize=0.6];',
+           f'tg [label="{_dot(graph)}", shape=cylinder, height=0.9];',
+           f'llm [label="{_dot(llm)}", shape=component];', "{ rank=same;"]
+    nid = {s["code"]: s["code"].lower() for s in common.PIPELINE}
+    for s in common.PIPELINE:
+        dashed = ', style="rounded,dashed"' if s["code"] == "S0" else ""
+        dot.append(f'{nid[s["code"]]} [label="{_dot(s["code"] + "  " + s["label"])}"{dashed}];')
+    dot += ["}", " -> ".join(nid.values()) + " [arrowsize=0.5];"]
+    for code, x in lanes.items():
+        if code == "S0":
+            continue
+        label = " · ".join([f"{x['reads']:,} reads"] * bool(x["reads"]) + [f"{x['writes']:,} writes"] * bool(x["writes"]))
+        if x["reads"] or x["writes"]:
+            way = "both" if x["reads"] and x["writes"] else "forward" if x["reads"] else "back"
+            dot.append(f'tg -> {nid[code]} [dir={way}, label="{label}"];')
+        if x["llm"]:
+            dot.append(f'{nid[code]} -> llm [label="{x["llm"]:,} calls"];')
+    return "\n".join([*dot, "}"])
+
+
+# --------------------------------------------------------------------------- #
+# First screen: the answer, the pipeline map and the checklist                #
+# --------------------------------------------------------------------------- #
+common.page_header("How it works", "Read from the source's calls.jsonl and phases.jsonl, the scorecard's code and the proof files.",
+                   eyebrow=f"{sid} · {n} answered case(s) with a trace" if src is not None else "")
+if src is not None:
+    design.html_block(_lead())
+left, right = st.columns([1.75, 1], gap="large")
+with left:
+    design.html_block(_chain())
+    st.caption(md(f"Counted now from runs/{sid}/<case>/calls.jsonl, one attempt per answered case ({n}), newest file {calls_as_of}. Reads are tool "
+                  "rows whose caller is not persist, writes are persist rows, LLM calls are llm rows with the model each records. S0 runs "
+                  "offline before any case, so it has no trace row." + (f" {unplaced} call(s) name a phase outside S0–P10 and are not counted." if unplaced else ""))
+               if traced else "Graph and LLM calls are recorded only in a run's calls.jsonl")
+    with st.expander("Call graph"), st.container(key="sy-callgraph"):
+        st.graphviz_chart(_call_graph(), width="content")
+with right:
+    if rows:
+        design.html_block(_checklist())
+        st.caption(md(f"Computed now from {TRACE_SRC if traced else sid} ({n} traced case(s)) with common.tg_usage, attest_claims and guardrail_events"))
+        with st.expander("Example call per criterion"):
+            design.html_block('<table class="tc tc-table sy-examples"><tbody>' + "".join(
+                f'<tr><td>{esc(r["criterion"])}</td><td class="mono">{esc(r["example call"])}</td></tr>' for r in rows) + "</tbody></table>")
+    common.tigergraph_credit("system")
 
 # --------------------------------------------------------------------------- #
 # How the scorecard decides: every number read from the code                  #
 # --------------------------------------------------------------------------- #
-st.markdown("#### How the scorecard decides")
+design.html_block(design.section("", "How the scorecard decides", "P3, then P4 and P7"))
 rules = common.scorecard_rules()
 rd = rules["data"] if isinstance(rules["data"], dict) else None
 if rd is None:
@@ -256,9 +323,8 @@ else:
             return "not set"
         return f"[{x[0]}, {x[1]}]" if isinstance(x, list | tuple) and len(x) == 2 else str(x)
 
-    left, right = st.columns([1, 1], gap="medium")
-    with left, st.container(border=True, key="system-scorecard-steps"):
-        st.markdown("**From the scorer to a verdict** (P3, then P4 and P7)")
+    left, right = st.columns([1.3, 1], gap="large")
+    with left, st.container(key="sy-scorecard-steps"):
         for title, body in (
             ("Scorer.", f"cms_p from the ETL scorer (etl/cms_train.py) becomes cal_p through the isotonic calibration in {rd.get('calibration_file') or 'the calibration file'}."),
             ("Evidence.", f"Graph signals add log-odds adjustments; their sum is clipped to ±{_v(E, 'max_abs_adjustment')}: p1 = expit(logit(cal_p) + clip(sum)). "
@@ -285,10 +351,11 @@ else:
                  ("shared_profile_bump", "a strong shared profile with ≥ 2 other fraud cards, seen from 30 days before the flagged transaction up "
                                          "to the alert, and no ring hit"),
                  ("denial_bump_when_scorer_agrees", "a customer denial with cal_p ≥ 0.5 and no R7 recurring-charge match")]
-        st.markdown("**Log-odds adjustments** " + md(f"({rd.get('policy_file')}, engine)"))
-        st.dataframe(pd.DataFrame([{"parameter": k, "value": _v(E, k), "applied when": w} for k, w in bumps]), hide_index=True, width="stretch",
-                     column_config={"applied when": st.column_config.TextColumn(width="large")})
-        floors = [("ring_floor", "anonymous-proxy device ring", rd.get("policy_file")), ("burst_with_denial_floor", "under-$500 burst with a customer denial", rd.get("policy_file")),
+        with st.expander(f"Log-odds adjustments · {len(bumps)}"):
+            st.caption(md(f"{rd.get('policy_file')}, engine block"))
+            st.dataframe(pd.DataFrame([{"parameter": k, "value": _v(E, k), "applied when": w} for k, w in bumps]), hide_index=True, width="stretch",
+                         column_config={"applied when": st.column_config.TextColumn(width="large")})
+        floors =[("ring_floor", "anonymous-proxy device ring", rd.get("policy_file")), ("burst_with_denial_floor", "under-$500 burst with a customer denial", rd.get("policy_file")),
                   ("burst_alone_floor", "under-$500 burst without a denial", rd.get("policy_file")), ("denial_floor", "customer denial not explained by R7", rd.get("policy_file"))]
         dets = [d for d in (rd.get("detector_floors") if isinstance(rd.get("detector_floors"), list) else []) if isinstance(d, dict)]
         ordered = bool(dets) and all("in_scan" in d for d in dets)  # older snapshots carry no hit_from_scan order
@@ -298,31 +365,40 @@ else:
                     "when": f"detector hit{(': ' + str(d['name'])) if d.get('name') else ''}", "source": f"{rd.get('detectors_file')}:{d.get('line')}"}
                    for d in dets if not ordered or d.get("in_scan")]
         rows_f += [{"floor": k, "value": _v(E, k), "when": w, "source": s} for k, w, s in floors[1:]]
-        st.markdown("**Floors** " + md("(checked in this order; the first that matches applies)" if ordered
-                                       else "(the detector rows' order is not recorded in this source; the first floor that matches applies)" if dets
-                                       else "(the first floor that matches applies)"))
-        st.dataframe(pd.DataFrame(rows_f), hide_index=True, width="stretch", column_config={"when": st.column_config.TextColumn(width="large")})
-        if unused:
-            st.caption(md(f"Defined in {rd.get('detectors_file')} but not tried by hit_from_scan, so they never floor p: {', '.join(unused)}"))
-        if not dets:
-            st.caption("The detector floors are not readable in this source (detector_floors missing or not a list), so they are not in the table")
+        with st.expander(f"Floors · {len(rows_f)}"):
+            st.caption(md("Checked in this order; the first that matches applies" if ordered
+                          else "The detector rows' order is not recorded in this source; the first floor that matches applies" if dets
+                          else "The first floor that matches applies"))
+            st.dataframe(pd.DataFrame(rows_f), hide_index=True, width="stretch", column_config={"when": st.column_config.TextColumn(width="large")})
+            if unused:
+                st.caption(md(f"Defined in {rd.get('detectors_file')} but not tried by hit_from_scan, so they never floor p: {', '.join(unused)}"))
+            if not dets:
+                st.caption("The detector floors are not readable in this source (detector_floors missing or not a list), so they are not in the table")
     how = (f"read now from {rules['source']} (policy file as of {rules['as_of']})" if rules["mode"] == "code"
            else f"from {rules['source']} (snapshot generated {rules['generated_at'] or rules['as_of']}, git {rules['git_sha'] or 'unknown'})")
-    st.caption(md(f"Every number is {how}. The 'applied when' and 'when' texts summarise the conditions in engine/scorecard.py. Two rules are inline "
-                  "in engine/scorecard.py, not parameters, and their thresholds are not listed: the R5 card-testing floor (between the bursts and the "
-                  "customer denial) and the Final Round mixed-channel / recipient-email conflict override."
+    st.caption(md(f"Every parameter value in these sentences and tables is {how}. The 'applied when' and 'when' texts, thresholds included, are "
+                  "typed summaries of engine/scorecard.py. Rules coded inline in engine/scorecard.py are not parameters and are not listed, for "
+                  "example the R5 card-testing floor (between the bursts and the customer denial) and the Final Round mixed-channel / "
+                  "recipient-email conflict override."
                   + (f" Notes: {rules['error']}" if rules["error"] else "")))
 
-with st.expander("Design notes", expanded=False):
-    for text, page in (
-        ("Intake: trigger text is treated as data; the sanitiser records what it removed", "security"),
-        ("Memory: TigerVector search over closed and agent cases, timeboxed to the case's opened_at", "case"),
-        ("Investigation: the model picks installed read queries by name; it never gets a write tool", "case"),
-        ("Engine: a deterministic scorecard and detectors bound the model's probability", "detectors"),
-        ("Policy: hard actions wait for an L1 or L2 human; approvals fail closed without principals", "approvals"),
-        ("Data: schema drift and data quality are gated before new data reaches the engine", "data"),
-        ("Runs: every run keeps its manifest, trace and answer so any case can be replayed and compared", "runs"),
-    ):
-        with st.container(horizontal=True, vertical_alignment="center", gap="small"):
-            st.markdown(md(text))
-            common.page_link(page, common.PAGES[page]["title"], icon=":material/arrow_forward:")
+# --------------------------------------------------------------------------- #
+# Known limits, grouped by theme                                              #
+# --------------------------------------------------------------------------- #
+limits = common.known_limits()
+groups: dict[str, list[dict]] = {}
+for item in limits:
+    theme = next((name for name, rx in THEMES if rx.search(str(item["title"]))), "Other")
+    groups.setdefault(theme, []).append(item)
+design.html_block(design.section("", "Known limits", f"{len(limits)} computed from files"))
+if not limits:
+    st.caption("No limit computed from the files on this deployment")
+else:
+    order = [name for name, _ in THEMES] + ["Other"]
+    blocks = []
+    for theme in [t for t in order if t in groups]:
+        body = "".join(f'<tr><td><b>{esc(it["title"])}</b><span class="sub">{esc(it["detail"])}</span></td>'
+                       f'<td class="sy-src">{esc(it["source"])}<span class="sub">as of {esc(it["as_of"])}</span></td></tr>' for it in groups[theme])
+        blocks.append(f'<section class="sy-lim"><h3>{esc(theme)} <span>{len(groups[theme])}</span></h3>'
+                      f'<table class="tc-table"><tbody>{body}</tbody></table></section>')
+    design.html_block(f'<div class="tc sy-limits">{"".join(blocks)}</div>')

@@ -1,0 +1,91 @@
+/* Detectors & containment (ui/pages/8_detectors.py). Every class is .dt-*, every keyed container st-key-dt-* or
+ * st-key-det_row_*, so nothing here reaches another page. Colours are --tc-* tokens only. */
+
+/* ------------------------------------------------------------------ the three figures: one compact row of type, no tiles */
+.st-key-strip-dt { padding: .6rem 0 !important; }
+/* st.metric(border=True) pads an inner wrapper 15 px; clearing it puts the label flush with the footnote under it */
+.st-key-strip-dt [data-testid="stMetric"] > div, .st-key-strip-dt-plan [data-testid="stMetric"] > div { padding: 0 !important; }
+.st-key-strip-dt [data-testid="stMetric"] { height: auto !important; }
+.st-key-strip-dt [data-testid="stMetricLabel"] { margin-bottom: .1rem; }
+.st-key-strip-dt [data-testid="stMetricValue"], .st-key-strip-dt [data-testid="stMetricValue"] > div {
+  font-size: 1.3rem !important; line-height: 1.25 !important; font-weight: 600; color: var(--tc-ink) !important;
+}
+.st-key-strip-dt [data-testid="stCaptionContainer"] { margin: .15rem 0 0 !important; padding: 0 !important; }
+.st-key-strip-dt [data-testid="stCaptionContainer"] p { font-size: .8rem; line-height: 1.4; margin: 0; }
+
+/* ------------------------------------------------------------------ the wave ledger: one grid for the head and each row */
+.dt-grid {
+  display: grid; column-gap: 1rem; align-items: start;
+  grid-template-columns: minmax(0, 3.2fr) minmax(0, .9fr) minmax(0, 1.05fr) minmax(0, .95fr) minmax(0, 1.35fr) minmax(0, .8fr) minmax(0, .8fr);
+}
+.dt-head { padding: 0 .75rem .4rem; border-bottom: 1px solid var(--tc-rule-strong); font-size: .8rem; font-weight: 500; color: var(--tc-muted); line-height: 1.3; }
+.dt-head .num, .dt-tr .num { text-align: right; }
+.dt-tr { padding: .65rem .75rem .7rem; font-size: .86rem; color: var(--tc-ink); line-height: 1.4; }
+.dt-tr .num { font-variant-numeric: tabular-nums; }
+.dt-tr .sub { display: block; color: var(--tc-muted); font-size: .8rem; margin-top: .12rem; }
+.dt-tr .mono { font-family: "Roboto Mono", ui-monospace, monospace; font-size: .8rem; }
+.dt-det { display: flex; align-items: center; gap: .45rem; }
+.dt-det .dt-id { font-weight: 700; }
+.dt-det .dt-name { font-weight: 600; color: var(--tc-ink); }
+.dt-det .tc-glyph { color: var(--tc-petrol); }
+/* the selection mark: an empty ring, filled in petrol on the selected wave */
+.dt-radio { position: relative; width: 14px; height: 14px; flex: none; border-radius: 50%; border: 1.5px solid var(--tc-rule-strong); }
+.dt-tr.on .dt-radio { border-color: var(--tc-petrol); }
+.dt-tr.on .dt-radio::after { content: ""; position: absolute; inset: 2.5px; border-radius: 50%; background: var(--tc-petrol); }
+.dt-lost { color: var(--tc-red-ink); font-weight: 600; }
+.dt-prev { color: var(--tc-ochre-ink); font-weight: 600; }
+.dt-flag { color: var(--tc-red-ink); font-weight: 600; }
+
+/* the typology, compact: numbered steps joined by petrol arrows (the console's scheme, one line per detector) */
+.dt-chain { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem .4rem; margin: .4rem 0 0 1.4rem; }
+.dt-step { display: inline-flex; align-items: center; gap: .3rem; font-size: .8rem; line-height: 1.3; color: var(--tc-ink-2); }
+.dt-step .n { display: inline-grid; place-items: center; width: 1.05rem; height: 1.05rem; flex: none; border-radius: 50%; background: var(--tc-petrol); color: var(--tc-ground); font-size: .8rem; font-weight: 700; }
+.dt-arr { position: relative; display: inline-block; flex: none; width: 13px; height: 1.5px; margin-right: 4px; background: var(--tc-petrol); }
+.dt-arr::after { content: ""; position: absolute; right: -5px; top: -3.25px; width: 6px; height: 8px; background: var(--tc-petrol); clip-path: polygon(0 0, 100% 50%, 0 100%); }
+
+/* rows: a rule under each, a wash on hover, the highlight on the selected wave */
+.st-key-dt-ledger { gap: 0 !important; }
+.st-key-dt-ledger [class*="st-key-dt-row-"] { position: relative; gap: 0 !important; border-bottom: 1px solid var(--tc-rule); transition: background-color .15s ease-out; }
+.st-key-dt-ledger [class*="st-key-dt-row-"]:hover { background: var(--tc-panel); }
+.st-key-dt-ledger [class*="st-key-dt-row-"]:has(.dt-tr.on) { background: var(--tc-highlight); }
+/* the whole row selects its wave: the row's button lies over it; its label stays in the accessibility tree */
+.st-key-dt-ledger [class*="st-key-det_row_"] { position: absolute !important; inset: 0; z-index: 1; width: auto !important; margin: 0 !important; }
+.st-key-dt-ledger [class*="st-key-det_row_"] > div, .st-key-dt-ledger [class*="st-key-det_row_"] button { width: 100% !important; height: 100% !important; }
+.st-key-dt-ledger [class*="st-key-det_row_"] button {
+  min-height: 0 !important; padding: 0 !important; border: 0 !important; border-radius: 0 !important;
+  background: transparent !important; box-shadow: none !important; cursor: pointer;
+}
+.st-key-dt-ledger [class*="st-key-det_row_"] button > * { opacity: 0; }
+.st-key-dt-ledger [class*="st-key-det_row_"] button:focus-visible { outline: 2px solid var(--tc-focus) !important; outline-offset: -2px; }
+
+/* notes under the ledger and the plan: grey reading text, ink for the facts */
+.dt-notes { margin: .55rem 0 0; font-size: .8rem; line-height: 1.5; color: var(--tc-muted); max-width: 132ch; }
+.dt-notes p { margin: 0 0 .25rem; }
+.dt-notes b { color: var(--tc-ink); font-weight: 600; }
+.dt-notes .mono { font-family: "Roboto Mono", ui-monospace, monospace; font-size: .8rem; color: var(--tc-ink-2); overflow-wrap: anywhere; }
+
+/* ------------------------------------------------------------------ the selected wave: its plan and replay */
+.st-key-strip-dt-plan [data-testid="stHorizontalBlock"] + [data-testid="stHorizontalBlock"] { margin-top: .5rem; padding-top: .75rem; border-top: 1px solid var(--tc-rule); }
+.st-key-dt-replay [data-testid="stVegaLiteChart"] { margin-top: -.2rem; }
+.dt-frame { font-size: .84rem; color: var(--tc-ink-2); line-height: 1.45; margin: .1rem 0 .2rem; }
+.dt-frame b { color: var(--tc-ink); font-weight: 600; }
+
+/* ------------------------------------------------------------------ partial / not built */
+.dt-c2-head { margin: .2rem 0 .5rem; font-size: .86rem; line-height: 1.45; color: var(--tc-ink-2); }
+.dt-c2-head b { color: var(--tc-ink); font-weight: 600; margin-right: .35rem; }
+.dt-c2-head .tc-tag { margin-right: .35rem; }
+.dt-c2 .sub { display: block; color: var(--tc-muted); font-size: .8rem; margin-top: .15rem; }
+.dt-src { margin: .35rem 0 0; font-size: .8rem; color: var(--tc-muted); overflow-wrap: anywhere; }
+.dt-gate { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem .55rem; margin: .65rem 0 .25rem; font-size: .84rem; color: var(--tc-ink-2); }
+.dt-gate b { color: var(--tc-ink); font-weight: 600; }
+.dt-gate .tc-glyph { color: var(--tc-gate); }
+.dt-c3 { display: flex; flex-wrap: wrap; align-items: baseline; gap: .55rem; margin: .9rem 0 .2rem; padding-top: .7rem; border-top: 1px solid var(--tc-rule); font-size: .86rem; color: var(--tc-ink-2); }
+.dt-c3 b { color: var(--tc-ink); font-weight: 600; }
+.dt-c3 .tc-muted { font-size: .8rem; }
+
+@media (max-width: 1100px) {
+  .dt-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); row-gap: .35rem; }
+  .dt-head { display: none; }
+  .dt-grid > :first-child { grid-column: 1 / -1; }
+  .dt-tr .num { text-align: left; }
+}

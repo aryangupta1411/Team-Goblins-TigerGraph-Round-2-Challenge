@@ -1,0 +1,60 @@
+/* How it works (ui/pages/7_architecture.py). Every class is .sy-*, every keyed container st-key-sy-*, so nothing here
+ * reaches another page. Colours are --tc-* tokens only. */
+
+/* ------------------------------------------------------------------ the pipeline: a numbered chain with two lanes */
+.sy-chain { list-style: none; margin: 0; padding: 0; }
+.sy-row {
+  position: relative; display: grid; align-items: start; column-gap: .9rem;
+  grid-template-columns: 2.3rem minmax(0, 2.3fr) minmax(0, 1.25fr) minmax(0, .8fr) minmax(0, 1.05fr);
+  padding: .42rem 0; border-bottom: 1px solid var(--tc-rule); font-size: .86rem; line-height: 1.35;
+}
+.sy-row.sy-head { padding: 0 0 .35rem; border-bottom-color: var(--tc-rule-strong); font-size: .8rem; font-weight: 500; color: var(--tc-muted); }
+.sy-row .sub { display: block; color: var(--tc-muted); font-size: .8rem; margin-top: .08rem; overflow-wrap: anywhere; }
+.sy-n {
+  box-sizing: border-box; display: inline-grid; place-items: center; min-width: 2.1rem; height: 1.3rem; padding: 0 .3rem; border-radius: .65rem;
+  background: var(--tc-petrol); color: var(--tc-ground); font-size: .8rem; font-weight: 700; font-variant-numeric: tabular-nums;
+}
+/* the chain: a petrol line from each stage's number down to the next */
+.sy-row:not(.sy-head):not(:last-child)::after {
+  content: ""; position: absolute; left: 1.05rem; top: calc(.42rem + 1.3rem); bottom: -.42rem; width: 1.5px; background: var(--tc-petrol);
+}
+.sy-row.off .sy-n { background: transparent; color: var(--tc-petrol); border: 1.5px solid var(--tc-petrol); }
+.sy-stage b { font-weight: 650; color: var(--tc-ink); }
+.sy-lane { font-variant-numeric: tabular-nums; color: var(--tc-ink-2); }
+.sy-lane b { font-weight: 650; color: var(--tc-ink); }
+.sy-zero, .sy-dash { color: var(--tc-muted); }
+.sy-proof { color: var(--tc-link); font-weight: 500; text-decoration: none; }
+.sy-proof::after { content: " →"; }
+
+/* ------------------------------------------------------------------ the checklist: status rows */
+.sy-checks td { padding: .45rem .4rem; }
+.sy-checks td.sy-status { width: 1%; white-space: nowrap; padding-left: 0; }
+.sy-checks td b { font-weight: 600; }
+.sy-examples td { font-size: .8rem; }
+.sy-examples td.mono { overflow-wrap: anywhere; color: var(--tc-ink-2); }
+
+/* the call graph: the SVG takes the theme's ink and rules (Graphviz writes fixed colours) */
+.st-key-sy-callgraph svg text { fill: var(--tc-ink) !important; }
+.st-key-sy-callgraph svg .node path, .st-key-sy-callgraph svg .node polygon, .st-key-sy-callgraph svg .node ellipse { stroke: var(--tc-rule-strong) !important; fill: var(--tc-ground) !important; }
+.st-key-sy-callgraph svg .edge path { stroke: var(--tc-petrol) !important; }
+.st-key-sy-callgraph svg .edge polygon { stroke: var(--tc-petrol) !important; fill: var(--tc-petrol) !important; }
+.st-key-sy-callgraph svg .edge text { fill: var(--tc-muted) !important; }
+
+/* the scorecard's steps */
+.st-key-sy-scorecard-steps [data-testid="stMarkdownContainer"] p { font-size: .88rem; line-height: 1.5; margin-bottom: .1rem; }
+
+/* ------------------------------------------------------------------ known limits, grouped */
+.sy-limits { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.2rem 2rem; }
+.sy-lim h3 { margin: 0 0 .3rem; padding: 0; font-size: .92rem; font-weight: 650; color: var(--tc-ink); }
+.sy-lim h3 span { font-weight: 400; color: var(--tc-muted); font-variant-numeric: tabular-nums; }
+.sy-lim td { font-size: .84rem; }
+.sy-lim td b { font-weight: 600; }
+.sy-lim td .sub { overflow-wrap: anywhere; }
+.sy-lim td.sy-src { width: 34%; font-family: "Roboto Mono", ui-monospace, monospace; font-size: .8rem; color: var(--tc-muted); overflow-wrap: anywhere; }
+
+@media (max-width: 1000px) {
+  .sy-limits { grid-template-columns: 1fr; }
+  .sy-row { grid-template-columns: 2.3rem minmax(0, 1fr); row-gap: .15rem; }
+  .sy-row > :nth-child(n+3) { grid-column: 2; }
+  .sy-row.sy-head { display: none; }
+}

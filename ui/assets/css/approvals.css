@@ -1,0 +1,55 @@
+/* Approvals (ui/pages/3_approvals.py). Every class is .ap-*, every keyed container st-key-ap-*, so nothing here reaches
+ * another page. Colours are --tc-* tokens only. */
+
+/* the authority sentence under the title */
+.ap-auth { margin-bottom: .6rem; }
+.ap-auth .tc-mono { font-size: .86rem; color: var(--tc-ink-2); }
+
+/* the count bar (status filter) with the round picker at its end, and the integrity line under it */
+.st-key-ap-countbar { padding: .1rem 0 .35rem; border-bottom: 1px solid var(--tc-rule); margin-bottom: .45rem; }
+/* the selected round: filled petrol with ground-coloured text (about 11:1 light, 10:1 dark), the others stay outlined */
+.st-key-ap_round button[kind="segmented_controlActive"]:not(:disabled) {
+  background: var(--tc-petrol) !important; border-color: var(--tc-petrol) !important; color: var(--tc-ground) !important;
+}
+.st-key-ap_round button[kind="segmented_controlActive"]:not(:disabled) * { color: var(--tc-ground) !important; font-weight: 600; }
+.st-key-ap_round button[kind="segmented_controlActive"]:focus-visible { outline: 2px solid var(--tc-focus) !important; outline-offset: 2px; }
+.ap-int .tc-checks { margin: 0 0 .5rem; font-variant-numeric: tabular-nums; }
+.ap-int-detail { margin: -.25rem 0 .6rem; font-size: .8rem; line-height: 1.45; color: var(--tc-red-ink); max-width: 110ch; }
+
+/* the selected request: head line, decision facts, evidence, blocking reason */
+.ap-dhead { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem .55rem; font-size: .95rem; color: var(--tc-ink); margin: .1rem 0 .15rem; }
+.ap-dhead .tc-mono { font-size: .84rem; font-weight: 500; }
+.ap-dlg-head { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem .5rem; font-size: .95rem; color: var(--tc-ink); }
+
+.ap-dec { display: flex; flex-direction: column; gap: .45rem; }
+.ap-verdict { display: flex; align-items: center; gap: .45rem; font-size: .95rem; color: var(--tc-ink); }
+.ap-verdict.fraud b { color: var(--tc-red-ink); }
+.ap-verdict.uncertain b { color: var(--tc-ochre-ink); }
+.ap-verdict.legitimate b { color: var(--tc-green-ink); }
+.ap-p { margin-left: auto; color: var(--tc-muted); font-size: .84rem; font-variant-numeric: tabular-nums; }
+.ap-p b { color: var(--tc-ink); }
+.ap-facts { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: .25rem .9rem; margin: .2rem 0 0; font-size: .84rem; }
+.ap-facts dt { color: var(--tc-muted); font-weight: 400; }
+.ap-facts dd { margin: 0; color: var(--tc-ink); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.ap-facts .tc-mono { font-size: .8rem; }
+.ap-wait { color: var(--tc-ochre-ink) !important; }
+.ap-done { color: var(--tc-green-ink) !important; }
+.ap-warn { color: var(--tc-red-ink) !important; }
+
+.ap-line { margin: .15rem 0 .35rem; font-size: .82rem; line-height: 1.45; }
+.ap-ev { margin: .1rem 0 .4rem; font-size: .82rem; }
+.ap-sub { color: var(--tc-muted); }
+.ap-refs { margin: .2rem 0 0; padding-left: 1.1rem; }
+.ap-refs li { margin: .05rem 0; color: var(--tc-ink-2); overflow-wrap: anywhere; }
+.ap-refs .tc-mono { font-size: .8rem; }
+.ap-checks .tc-checks { margin: 0 0 .4rem; }
+
+.ap-block { display: flex; align-items: flex-start; gap: .4rem; margin: .1rem 0 .45rem; font-size: .82rem; line-height: 1.4; color: var(--tc-ochre-ink); }
+.ap-block .tc-glyph { flex: none; margin-top: .1rem; color: var(--tc-gate); }
+
+/* Enforcement & audit: the drill result and the role x route matrix */
+.ap-drill td:nth-child(4) { color: var(--tc-muted); overflow-wrap: anywhere; }
+.ap-matrix th { white-space: normal; vertical-align: bottom; }
+.ap-matrix td.ap-yn { vertical-align: middle; }
+.ap-yn.ok .tc-glyph { color: var(--tc-green); }
+.ap-yn.no .tc-glyph { color: var(--tc-muted); }

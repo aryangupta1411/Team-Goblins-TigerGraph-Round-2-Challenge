@@ -1,0 +1,35 @@
+/* Runs & consistency (ui/pages/5_runs.py). Every class is .rn-*, every keyed container st-key-rn-* or st-key-strip-runs /
+ * st-key-strip-rn-cons, so nothing here reaches another page. Colours are --tc-* tokens only. */
+
+/* the provenance sentence and its details popover on one line */
+.st-key-rn-lead { gap: .75rem !important; margin-bottom: .35rem; }
+.st-key-rn-lead .tc-lead { margin: 0; }
+.st-key-rn-lead [data-testid="stPopover"] button { white-space: nowrap; }
+
+/* the details: a label / value table, labels muted on the left */
+.rn-kv { min-width: 34rem; max-width: 52rem; }
+.rn-kv th { width: 11rem; padding: .45rem .75rem .45rem 0; vertical-align: top; border-bottom: 1px solid var(--tc-rule); white-space: nowrap; }
+.rn-kv td { padding: .45rem 0; color: var(--tc-ink); overflow-wrap: anywhere; }
+.rn-kv tr:last-child th, .rn-kv tr:last-child td { border-bottom: 0; }
+
+/* the five figures: the note under each figure sits on the figure's own inset */
+.st-key-strip-runs [data-testid="stCaptionContainer"],
+.st-key-strip-rn-cons [data-testid="stCaptionContainer"] { padding: 0 1.1rem; margin-top: -.35rem; }
+.st-key-strip-runs [data-testid="stCaptionContainer"] p { font-size: .8rem; line-height: 1.35; }
+
+/* the consistency headline: the figure, then the reading text beside it */
+.rn-cons { padding: 0 1.1rem; font-size: .88rem; line-height: 1.5; color: var(--tc-ink-2); max-width: 110ch; }
+.rn-cons p { margin: 0 0 .3rem; }
+.rn-cons p:first-child { color: var(--tc-ink); }
+.rn-cons p + p { color: var(--tc-muted); font-size: .82rem; }
+.rn-cons b { color: var(--tc-ink); font-weight: 600; font-family: "Roboto Mono", ui-monospace, monospace; font-size: .8rem; }
+.rn-cons .red { color: var(--tc-red-ink); font-weight: 600; }
+
+/* the README check */
+.rn-readme td.mono { white-space: nowrap; }
+.rn-readme td.num { max-width: 18rem; overflow-wrap: anywhere; }
+
+@media (max-width: 900px) {
+  .rn-kv { min-width: 0; }
+  .rn-kv th { width: auto; white-space: normal; }
+}

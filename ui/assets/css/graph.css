@@ -1,0 +1,79 @@
+/* Graph (ui/pages/4_graph.py). Every class is .gr-*, every keyed container st-key-gr-* or st-key-graph*, so nothing here
+ * reaches another page. Colours are --tc-* tokens only; the per-type glyph colours of the legend chips come from the
+ * page's vertex palette as light-dark() pairs. */
+
+/* ------------------------------------------------------------------ the head: title, verdict and p, provenance */
+.st-key-gr-head { gap: .75rem !important; }
+.gr-title { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem 1rem; }
+.gr-title h1 { margin: .2rem 0 .1rem; padding: 0; font-size: 1.65rem; font-weight: 650; line-height: 1.2; color: var(--tc-ink); }
+.gr-title .tc-verdict { font-size: 1rem; }
+.gr-p { font-size: .95rem; color: var(--tc-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.gr-p b { color: var(--tc-ink); font-weight: 650; }
+.gr-prov { margin: 0 0 .6rem; color: var(--tc-muted); font-size: .88rem; line-height: 1.45; }
+.gr-prov p { margin: 0; }
+.gr-prov .mono { font-family: "Roboto Mono", ui-monospace, monospace; font-size: .8rem; color: var(--tc-ink-2); overflow-wrap: anywhere; }
+.gr-prov .gr-note { margin-top: .15rem; color: var(--tc-ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gr-note .tc-glyph { color: var(--tc-quarantine); margin-right: .35rem; }
+
+/* ------------------------------------------------------------------ the canvas panel and its toolbar on the top edge */
+.st-key-graph_panel { gap: 0 !important; padding: 0 !important; overflow: hidden; }
+.st-key-graph-legend { padding: .4rem .6rem; border-bottom: 1px solid var(--tc-rule); gap: .4rem .9rem !important; flex-wrap: wrap; }
+.st-key-gr-canvas { padding: 0 .25rem; }
+.gr-count { font-size: .8rem; color: var(--tc-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+/* legend chips double as the type filter: each pill carries its type's glyph, dimmed when the type is filtered out */
+[class*="st-key-graph_types_"] button { gap: 0; }
+[class*="st-key-graph_types_"] button::before {
+  content: ""; display: inline-block; flex: none; width: 14px; height: 14px; margin-right: .35rem;
+  background-color: var(--tc-muted);
+  -webkit-mask-size: contain; mask-size: contain; -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat;
+  -webkit-mask-position: center; mask-position: center;
+}
+[class*="st-key-graph_types_"] button[data-testid="stBaseButton-pills"]::before { opacity: .4; }
+[class*="st-key-graph_types_"] button[data-testid="stBaseButton-pills"] { color: var(--tc-muted); }
+
+/* ------------------------------------------------------------------ the right rail */
+.gr-rail { display: grid; }
+.gr-row { display: grid; grid-template-columns: 6.6rem minmax(0, 1fr); gap: .6rem; padding: .5rem 0; border-bottom: 1px solid var(--tc-rule);
+  font-size: .86rem; line-height: 1.4; color: var(--tc-ink); }
+.gr-rail:first-child .gr-row:first-child { padding-top: .1rem; }
+.gr-row .k { color: var(--tc-muted); }
+.gr-row .v { min-width: 0; font-variant-numeric: tabular-nums; }
+.gr-row .v b { font-weight: 600; }
+.gr-row .mono { font-family: "Roboto Mono", ui-monospace, monospace; font-size: .8rem; color: var(--tc-ink); overflow-wrap: anywhere; }
+.gr-row .sub { display: block; margin-top: .1rem; color: var(--tc-muted); font-size: .8rem; }
+.gr-row .sub.red { color: var(--tc-red-ink); font-weight: 500; }
+.gr-row .ln { display: block; }
+.gr-row .quiet, .gr-dash { color: var(--tc-muted); }
+.st-key-graph-wave { gap: .25rem !important; }
+.st-key-graph-wave [data-testid="stPageLink"] { margin: .1rem 0 .2rem; }
+
+/* the AgentCase key: a solid petrol diamond when written, a dashed outline when not (as on the canvas) */
+.gr-sw { display: inline-block; width: .62rem; height: .62rem; margin: 0 .5rem 0 .15rem; vertical-align: .02rem; transform: rotate(45deg);
+  border: 1.5px solid var(--tc-petrol); background: var(--tc-petrol); }
+.gr-sw.unwritten { background: transparent; border-style: dashed; }
+
+/* ------------------------------------------------------------------ the node inspector: lower half, scrolls inside */
+.st-key-gr-inspector { gap: .2rem !important; margin-top: .35rem; padding-top: .55rem; border-top: 1px solid var(--tc-rule-strong); }
+.gr-insp-head { display: flex; align-items: center; gap: .4rem; font-size: .9rem; font-weight: 600; color: var(--tc-ink); }
+.gr-insp-head .tc-glyph { color: var(--tc-petrol); }
+.gr-empty { margin: .2rem 0 0; color: var(--tc-muted); font-size: .84rem; }
+.gr-insp-id { font-family: "Roboto Mono", ui-monospace, monospace; font-size: .8rem; color: var(--tc-ink-2); overflow-wrap: anywhere; }
+.gr-insp-desc { margin-top: .1rem; font-size: .8rem; color: var(--tc-muted); overflow-wrap: anywhere; }
+.gr-insp-n { margin-top: .45rem; font-size: .8rem; color: var(--tc-muted); font-variant-numeric: tabular-nums; }
+.gr-links { list-style: none; margin: .25rem 0 0; padding: 0; overflow-y: auto; border-top: 1px solid var(--tc-rule); }
+.gr-links li { display: grid; grid-template-columns: .9rem auto minmax(0, 1fr); align-items: baseline; gap: .4rem; margin: 0; padding: .3rem 0;
+  border-bottom: 1px solid var(--tc-rule); font-size: .8rem; line-height: 1.35; color: var(--tc-ink); }
+.gr-links li.gr-empty { display: block; border-bottom: 0; }
+.gr-links .d { color: var(--tc-muted); }
+.gr-links code { font-family: "Roboto Mono", ui-monospace, monospace; font-size: .8rem; padding: 0 .25rem; border-radius: 3px;
+  background: var(--tc-chip); color: var(--tc-ink-2); }
+.gr-links .t { color: var(--tc-muted); }
+
+/* ------------------------------------------------------------------ folded below the band */
+.st-key-graph-writeback { margin-top: .9rem; gap: .5rem !important; }
+
+@media (max-width: 900px) {
+  .gr-row { grid-template-columns: 5.6rem minmax(0, 1fr); }
+  .gr-prov .gr-note { white-space: normal; }
+}

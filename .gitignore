@@ -44,3 +44,6 @@ __pycache__/
 
 # local graph snapshot log (ops/graph_snapshot.py)
 logs/
+
+# design tool working state and mocks (the decisions are in DESIGN.md / PRODUCT.md)
+.impeccable/

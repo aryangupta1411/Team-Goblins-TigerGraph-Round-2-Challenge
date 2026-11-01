@@ -2,10 +2,12 @@
 calls, and a stage inspector (PR #1's "live pipeline flow" and "clickable phase inspector", rebuilt on common's readers).
 
 Everything comes from one run folder (phases.jsonl, calls.jsonl, answer.json) through common.case_view, trace_timeline
-and pipeline_state. The steps follow the newest attempt's calls in file order (calls.jsonl is append-only, so that is the
-order they finished), grouped under the stage that wrote them, and each stage closes with its own phases.jsonl row. A
-stage with no row (P6 and P7 without an evidence request, P8 without a SAR) is shown as skipped, never filled in. Models
-are the ones calls.jsonl records. Nothing starts or writes, so it also renders on a read-only deployment.
+and pipeline_state, for the same attempt the timeline shows (common.answer_attempt_view). The steps are every call and
+every phase row of that attempt in the order they were written (by t), each tagged with the stage that wrote it; a stage
+counts as finished when its own row is written, P0 (whose row opens it) once a later stage starts, and P8 (which writes no
+row) once a later stage writes one. A stage with no row (P6 and P7 without an evidence request, P8 without a SAR) is shown
+as skipped, never filled in. Models are the ones calls.jsonl records. Nothing starts or writes, so it also renders on a
+read-only deployment.
 """
 from __future__ import annotations
 
@@ -46,40 +48,38 @@ def _stage_of(phase: object) -> str:
     return m.group(1) if m else ""
 
 
-def _newest_attempt(calls: list[dict]) -> list[dict]:
-    """The calls of the newest attempt: agent.bench --resume appends a rerun to the same file and its t restarts at 0
-    (the same rule common.run_console marks)."""
-    start, prev = 0, None
-    for i, c in enumerate(calls):
-        t = c.get("t")
-        t = float(t) if isinstance(t, (int, float)) else None
-        if prev is not None and t is not None and t < prev - 1.0:
-            start = i
-        prev = t if t is not None else prev
-    return calls[start:]
+def _t(row: dict) -> float | None:
+    t = row.get("t")
+    return float(t) if isinstance(t, int | float) and not isinstance(t, bool) else None
 
 
 def steps(view: common.CaseView) -> list[dict]:
-    """The replay steps in execution order: for each recorded stage, its calls (a console line each), then the stage's own
-    phases.jsonl row closing it. Each step carries the stage it belongs to and the stages finished before it."""
-    timeline = common.trace_timeline(view)
-    order = [e["code"] for e in timeline]
-    calls = _newest_attempt(list(getattr(view, "calls", None) or []))
-    by_stage: dict[str, list[dict]] = {code: [] for code in order}
-    for c in calls:
-        code = _stage_of(c.get("phase"))
-        if code in by_stage:
-            by_stage[code].append(c)
+    """The replay steps in the order the case wrote them: every call and every phase row of the attempt the timeline shows,
+    by t (a phase row after the calls of the same instant), each tagged with its stage and the stages finished before it."""
+    v = common.answer_attempt_view(view)
+    by_code = {e["code"]: e for e in common.trace_timeline(v)}
+    rows = [(_t(c), 0, i, "call", c) for i, c in enumerate(getattr(v, "calls", None) or [])]
+    rows += [(_t(r), 1, i, "row", r) for i, r in enumerate(getattr(v, "phases", None) or []) if r.get("kind", "phase") == "phase" and r.get("phase")]
+    rows.sort(key=lambda x: (x[0] is None, x[0] or 0.0, x[1], x[2]))
     out: list[dict] = []
     done: list[str] = []
-    for e in timeline:
-        for c in by_stage[e["code"]]:
-            out.append({"stage": e["code"], "done": list(done), "line": common.call_line(c, view.case_id),
-                        "what": ("model " + str(c.get("model") or "not recorded")) if c.get("kind") == "llm" else f"tool {c.get('name') or '?'}"})
-        timing = f" · {e['duration']:.2f} s" if e["duration"] is not None else ""
-        done.append(e["code"])
-        out.append({"stage": e["code"], "done": list(done), "what": f"{e['code']} {e['name']} recorded{timing}",
-                    "line": f"{view.case_id} {e['code']} {e['name']} recorded{timing}: {_cut(e['sentence'], 220)}"})
+    for t, _, _, kind, r in rows:
+        stage = _stage_of(r.get("phase"))
+        if stage and stage != "P0" and "P0" not in done:
+            done.append("P0")  # P0's row opens it: it is finished once a later stage starts
+        if kind == "call":
+            out.append({"stage": stage, "done": list(done), "line": common.call_line(r, view.case_id),
+                        "what": ("model " + str(r.get("model") or "not recorded")) if r.get("kind") == "llm" else f"tool {r.get('name') or '?'}"})
+            continue
+        if stage in ("P9", "P10") and "P8" in by_code and "P8" not in done:
+            done.append("P8")  # P8 writes no row: a later stage's row closes it
+        raw = str(r.get("phase") or "")
+        if raw != "P5-voi" and stage != "P0" and stage not in done:
+            done.append(stage)
+        what = (f"{stage} value-of-information test written" if raw == "P5-voi"
+                else f"{stage} {r.get('name') or common.PHASE_NAMES.get(stage, '')} row written") + ("" if t is None else f" at t+{t:.1f} s")
+        sentence = (by_code.get(stage) or {}).get("sentence") if raw != "P5-voi" else ""
+        out.append({"stage": stage, "done": list(done), "what": what, "line": f"{view.case_id} {what}" + (f": {_cut(sentence, 220)}" if sentence else "")})
     return out
 
 
@@ -149,6 +149,9 @@ def _inspector(view: common.CaseView, stages: list[dict]) -> None:
         e = by_code.get(pick)
         if e is None:
             skipped = s["state"] == "skipped"  # a later stage wrote rows: this one was passed over, not still ahead
+            if s.get("rows"):
+                st.caption(md(f"This stage has {s['rows']} call(s) in calls.jsonl but no phase row yet: the case is still in it, or stopped in it."))
+                return
             st.caption(md("This stage wrote no row in this case's trace: " + (
                 "no evidence request was made, so there was no assumed reply and no final re-decision" if skipped and pick in ("P6", "P7") else
                 "no SAR was owed, so none was drafted" if skipped and pick == "P8" else "the case has not reached it")))
@@ -187,7 +190,8 @@ def _controls(n: int) -> None:
     with st.container(horizontal=True, gap="small", vertical_alignment="bottom", key="replay-controls"):
         st.button("Restart", icon=":material/skip_previous:", on_click=go, args=(0,), key="replay-restart")
         if playing:
-            st.button("Pause", icon=":material/pause:", on_click=go, args=(step,), key="replay-pause")
+            # stop only: the playing fragment has moved the step on since these buttons were drawn
+            st.button("Pause", icon=":material/pause:", on_click=lambda: st.session_state.update({PLAY_KEY: False}), key="replay-pause")
         else:
             st.button("Play", icon=":material/play_arrow:", type="primary", on_click=go, args=(0 if step >= n else step, True), key="replay-play")
         st.button("Step", icon=":material/arrow_forward:", on_click=go, args=(step + 1,), key="replay-step", disabled=playing or step >= n)

@@ -1,0 +1,21 @@
+/* Run console (ui/pages/1_queue.py). Every class is .rc-*, every keyed container st-key-rc-*, so nothing here reaches
+ * another page. Colours are --tc-* tokens only. */
+
+/* the readiness sentence and its 'Why' popover on one line */
+.st-key-rc-ready { gap: .75rem !important; margin: .1rem 0 .6rem; }
+.st-key-rc-ready .tc-lead { margin: 0; }
+.st-key-rc-ready [data-testid="stPopover"] { flex: none; }
+.rc-why td { padding: .4rem .4rem; font-size: .84rem; }
+.rc-why td.rc-ok { width: 1%; padding-left: 0; }
+.rc-why .tc-glyph.ok { color: var(--tc-green); }
+.rc-why .tc-glyph.bad { color: var(--tc-red); }
+.rc-why td b { font-weight: 600; }
+
+/* the start form: cases first, the trigger chips and quick picks on one line above the selection */
+.st-key-rc-start { padding: .9rem 1rem !important; gap: .6rem !important; border-radius: 4px !important; }
+.st-key-rc-picks { gap: .4rem .6rem !important; flex-wrap: wrap; }
+.st-key-rc-start [data-testid="stForm"] { padding: 0 !important; }
+
+/* progress: the counts strip under the section head, then the pipeline and the table */
+.st-key-rc-progress { gap: .6rem !important; }
+.st-key-rc-inspect { gap: .6rem !important; flex-wrap: wrap; }

@@ -42,7 +42,7 @@ from pathlib import Path
 from types import ModuleType, SimpleNamespace
 from typing import Any
 
-from ui import approvals_db
+from ui import approvals_db, design
 
 # --------------------------------------------------------------------------- #
 # Paths, environment and mode                                                 #
@@ -1295,12 +1295,14 @@ BRIEF_LEGITIMATE = 9  # the Final Round brief: exactly 9 of the 18 cases are leg
 # One meaning per colour: red fraud / irreversible / failed / safety violation; green legitimate / approved / passed /
 # done / agrees / LIVE; blue uncertain (a correct policy stop); violet human-gate routes; orange waiting on a human or
 # needs attention; gray auto, neutral, simulated, not run; yellow only for 'medium' data-quality severity.
-VERDICT_COLORS = {"fraud": "red", "legitimate": "green", "uncertain": "blue"}
-ROUTE_COLORS = {"auto": "gray", "L1": "violet", "L2": "violet"}
+# Typology palette (.streamlit/config.toml maps Streamlit's colour names onto it): yellow is the ochre of uncertain and
+# of anything waiting on a human; blue is the petrol of the L1/L2 human gates; orange is a data or input warning.
+VERDICT_COLORS = {"fraud": "red", "legitimate": "green", "uncertain": "yellow"}
+ROUTE_COLORS = {"auto": "gray", "L1": "blue", "L2": "blue"}
 STATE_COLORS = {"done": "green", "running": "gray", "incomplete": "orange", "failed": "red", "unreadable": "red", "not_run": "gray"}
-STATUS_COLORS = {"open": "orange", "escalated": "blue", "closed_fraud": "red", "closed_legitimate": "green"}
+STATUS_COLORS = {"open": "yellow", "escalated": "yellow", "closed_fraud": "red", "closed_legitimate": "green"}
 SOURCE_COLORS = {"graph": "primary", "document": "gray", "customer": "gray", "external": "gray"}
-SEVERITY_COLORS = {"critical": "orange", "high": "orange", "medium": "yellow", "low": "gray", "info": "gray"}
+SEVERITY_COLORS = {"critical": "orange", "high": "orange", "medium": "gray", "low": "gray", "info": "gray"}
 AGREEMENT_COLORS = {"identical": "green", "same decision": "green", "differs · no hard action": "orange", "differs · hard action": "red", "not comparable": "gray"}
 ROUTE_LABELS = {"auto": "auto", "L1": "L1 · team lead", "L2": "L2 · fraud manager"}
 VERDICT_HEADLINES = {"fraud": "Fraud — contain", "uncertain": "Uncertain → handed to analyst", "legitimate": "Legitimate — closed"}
@@ -1448,7 +1450,7 @@ def action_states(view: Any, inbox: list[dict]) -> list[dict]:
             if r is None:
                 local_part, decision, color = "not queued", "not queued", "orange" if g == "pending" else "gray"
             elif r.get("status") == "pending":
-                local_part, decision, color = f"inbox #{r.get('id')} pending", "pending", "orange"
+                local_part, decision, color = f"inbox #{r.get('id')} pending", "pending", "yellow"
             elif r.get("status") == "approved":
                 local_part, decision, color = f"approved by {r.get('decided_by')} at {r.get('decided_at')}", "approved", "green"
             else:
@@ -1715,6 +1717,17 @@ def trace_timeline(view: Any) -> list[dict]:
         if t8 is not None and pos + 1 < len(rows) and rows[pos + 1]["t"] is not None:
             rows[pos + 1]["start"] = t8
             rows[pos + 1]["duration"] = round(rows[pos + 1]["t"] - t8, 3)
+    # the P9 closing LLM call runs before the P10 write-back, but the P9 row is written after it: P10 starts where that call
+    # ended, and P9's duration is its closing span plus the validation tail after P10
+    p9, p10 = by_code.get("P9"), by_code.get("P10")
+    if p9 is not None and p10 is not None and p10["t"] is not None:
+        closing = [t for t in (_float(c.get("t")) for c in getattr(view, "calls", None) or [] if c.get("kind") == "llm" and _fold(c.get("phase", "")) == "P9")
+                   if t is not None and t <= p10["t"]]
+        if closing:
+            seg = p10["start"]
+            p10["start"], p10["duration"] = max(closing), round(p10["t"] - max(closing), 3)
+            if p9["t"] is not None:
+                p9["start"], p9["duration"] = seg, round((max(closing) - seg) + (p9["t"] - p10["t"]), 3)
     for c in getattr(view, "calls", None) or []:
         code = _fold(c.get("phase", ""))
         entry = by_code.get(code)
@@ -1771,10 +1784,10 @@ _SAR_OR_CLOSING = "an LLM call: the SAR draft when a SAR is filed (after its OFA
 # (_after_decision); a newer retry note, or the phase a failed case's error names, overrides the table.
 _AFTER: dict[tuple[str, str], tuple[str, str, str]] = {
     ("phase", "P0"): ("P0", "the intake reads", ""),
-    ("tool", "P0"): ("P0", "the intake reads", ""),
+    ("tool", "P0"): ("P0", "the intake reads, or P1's vector search", ""),
     ("tool", "P1"): ("P1", "the vector search", ""),
     ("phase", "P1"): ("P2", "an LLM investigate turn", "main"),
-    ("tool", "P2"): ("P2", "an LLM investigate turn", "main"),
+    ("tool", "P2"): ("P2", "the LLM's next investigate turn, or the next read it asked for", "main"),
     ("llm", "P2"): ("P2", "the reads the LLM asked for, or the end of its tool loop", ""),
     ("phase", "P2"): ("P3", "the scorecard reads and the engine", ""),
     ("tool", "P3"): ("P3", "the scorecard reads and the engine", ""),
@@ -1833,19 +1846,34 @@ def _latest_attempt(view: Any) -> tuple[list[dict], list[dict]]:
 
 
 def _attempt_view(view: Any) -> Any:
-    """The view cut to its newest attempt (_latest_attempt); the view itself when its folder holds one attempt."""
+    """The view cut to one attempt (_latest_attempt); the view itself when its folder holds one attempt."""
     phases, calls = _latest_attempt(view)
     if len(phases) == len(getattr(view, "phases", None) or []) and len(calls) == len(getattr(view, "calls", None) or []):
         return view
+    if dataclasses.is_dataclass(view) and not isinstance(view, type):
+        return dataclasses.replace(view, phases=phases, calls=calls)
     try:
         return SimpleNamespace(**{**vars(view), "phases": phases, "calls": calls})
     except TypeError:  # an object without __dict__: keep it whole
         return view
 
 
+def answer_attempt_view(view: Any) -> Any:
+    """The view as a page should read a case: one attempt, the newest, or for a finished case the one that wrote
+    answer.json (a rerun appends to the same files). `attempts_total` keeps how many attempts the folder holds."""
+    n = trace_attempts(view)
+    cut = _attempt_view(view)
+    if cut is not view:
+        try:
+            cut.attempts_total = n
+        except AttributeError:
+            pass
+    return cut
+
+
 def trace_attempts(view: Any) -> int:
-    """Attempts recorded in a case folder (its P0 phase rows): agent.bench --resume appends a rerun to the same files."""
-    return sum(1 for r in getattr(view, "phases", None) or [] if _is_phase_row(r) and r.get("phase") == "P0")
+    """Attempts recorded in a case folder (its P0 phase rows; a rerun appends to the same files), also on a cut view."""
+    return getattr(view, "attempts_total", None) or sum(1 for r in getattr(view, "phases", None) or [] if _is_phase_row(r) and r.get("phase") == "P0")
 
 
 def _newest_row(view: Any) -> dict | None:
@@ -1869,7 +1897,7 @@ def _after_decision(view: Any, code: str) -> tuple[str, str, str]:
     if not isinstance(acts, list):
         return "P8", _SAR_OR_CLOSING, "either"
     if any(isinstance(a, dict) and a.get("action") == "FILE_REPORT" for a in acts):
-        return "P8", "the SAR step: its OFAC and grounding reads, then the LLM's SAR draft", "sar"
+        return "P8", "the SAR step's OFAC and grounding reads (the LLM's SAR draft follows them)", ""
     return "P9", "the LLM's P9 closing (no SAR to draft: FILE_REPORT is not in the final actions)", "main"
 
 
@@ -1903,6 +1931,9 @@ def pipeline_state(view: Any, run_model: str = "", run_sar_model: str = "", sinc
             active, waiting, kind = ("P6", "the assumed reply to the evidence request", "") if ask else _after_decision(view, "P5")
         elif key == ("phase", "P7"):
             active, waiting, kind = _after_decision(view, "P7")
+        elif key == ("tool", "P8"):  # p8_sar reads OFAC and two grounding sets, then drafts
+            reads = sum(1 for c in calls if _fold(c.get("phase")) == "P8" and "grounding_chunks" in str(c.get("name") or ""))
+            active, waiting, kind = ("P8", "the LLM's SAR draft", "sar") if reads >= 2 else ("P8", "the SAR step's OFAC and grounding reads", "")
         elif key != ("phase", "P9"):  # the P9 row is the last one a case writes
             active, waiting, kind = _AFTER.get(key, (key[1] if key[1] in PIPELINE_CODES else None, "", ""))
         # a retry / re-prompt note newer than that row: the agent is calling the LLM again for the note's phase
@@ -1937,7 +1968,7 @@ def pipeline_state(view: Any, run_model: str = "", run_sar_model: str = "", sinc
             st_ = "active" if state == "running" else "stopped"
         else:  # P10 is written before the P9 row, so a stage after the active one can be done
             st_ = "done" if n else ("skipped" if i < ai else "pending")
-        stages.append({**s, "state": st_, "rows": n})
+        stages.append({**s, "state": st_, "rows": n} | ({"state_label": "stopped (inferred)"} if st_ == "stopped" and basis == "inferred" else {}))
     llm_rows = [c for c in calls if c.get("kind") == "llm" and c.get("model") and str(c.get("ts") or "") >= since]
     own = {"main": [str(c["model"]) for c in llm_rows if _fold(c.get("phase")) != "P8"], "sar": [str(c["model"]) for c in llm_rows if _fold(c.get("phase")) == "P8"]}
     run = {"main": run_model, "sar": run_sar_model}
@@ -1999,7 +2030,7 @@ def run_console(views: list, limit: int = 40) -> list[str]:
         for c in getattr(v, "calls", None) or []:
             t = _float(c.get("t"))
             if prev is not None and t is not None and t < prev - 1.0:
-                lines.append(f"{v.case_id} -- new attempt (agent.bench --resume reran the case; t restarts at 0) --")
+                lines.append(f"{v.case_id} -- new attempt (a rerun appended to the same files; t restarts at 0) --")
             prev = t if t is not None else prev
             lines.append(call_line(c, v.case_id))
         if getattr(v, "ok", False):
@@ -2017,7 +2048,7 @@ def pipeline_strip(stages: list[dict], *, key: str) -> None:
             color, icon = STAGE_STYLE.get(s["state"], ("gray", None))
             with st.container(border=True, width=124, gap=None, key=f"stage-{_slug(key)}-{s['code'].lower()}"):
                 st.markdown(badge(s["code"], color, icon=icon))
-                st.caption(md(f"{s['label']} · {STAGE_LABELS.get(s['state'], s['state'])}"))
+                st.caption(md(f"{s['label']} · {s.get('state_label') or STAGE_LABELS.get(s['state'], s['state'])}"))
 
 
 _REF_RE = re.compile(r"^(?:query:)?([A-Za-z_][\w]*)\s*(?:\((.*)\))?\s*$")
@@ -2139,48 +2170,71 @@ SAR_CHECK_LABELS = [
 
 
 SAR_IDS_DB = ROOT / "data" / "ids.duckdb"  # the id-only dataset, checked in for CI
-_SAR_RESOLVERS: dict[str, tuple[Any | None, str, float]] = {}  # "path|signature" -> (resolver or None, where or why, built at)
+_SAR_OPENABLE: dict[str, tuple[bool, str, float]] = {}  # "path|signature" -> (opens, where or why, checked at)
+_SAR_EXISTS: dict[tuple[str, str, str], bool] = {}  # ("path|signature", kind, id) -> exists: a known id never reopens the file
 _SAR_LOCK = threading.Lock()
 
 
-class _SerialResolver:
-    """A rag.validate_sar Resolver whose lookups take turns: one read-only DuckDB connection serves every session."""
+class _ScopedResolver:
+    """A rag.validate_sar Resolver over one DuckDB file that holds no connection between checks: it opens the file
+    read-only only for an id it has not answered before, and sar_checks closes it right after, so the dashboard never keeps
+    the file's lock (a read-write writer such as `make ids` can always open it)."""
 
-    def __init__(self, inner: Any) -> None:
-        self.inner = inner
+    def __init__(self, path: Path, key: str) -> None:
+        self.path, self.key, self.db, self.inner = path, key, None, None
 
     def exists(self, kind: str, ident: str) -> bool:
+        k = (self.key, str(kind), str(ident))
         with _SAR_LOCK:
-            return bool(self.inner.exists(kind, ident))
+            if k not in _SAR_EXISTS:
+                if self.inner is None:
+                    self.db = importlib.import_module("agent.validator").open_db(self.path)
+                    self.inner = importlib.import_module("engine.validator").FactsResolver(self.db)
+                _SAR_EXISTS[k] = bool(self.inner.exists(kind, ident))
+            return _SAR_EXISTS[k]
+
+    def close(self) -> None:
+        with _SAR_LOCK:
+            con, self.db, self.inner = getattr(self.db, "con", None), None, None
+        if con is not None:
+            try:
+                con.close()
+            except Exception:  # noqa: BLE001 - a read-only connection that fails to close changes nothing on the page
+                pass
 
 
 def sar_resolver() -> tuple[Any | None, str]:
     """(resolver, where) for the SAR id checks: engine.validator.FactsResolver, the resolver P8 falls back to, over the
-    id-only dataset data/ids.duckdb, else over the engine facts DB, opened read-only (agent.validator.open_db). (None, why)
-    when neither is here, e.g. on the Railway image (no data/, duckdb or engine code); the checks then resolve against the
-    answer's own ids. Kept per database file signature, so it is built once; a failed open is retried after 60 s."""
+    id-only dataset data/ids.duckdb, else over the engine facts DB, opened read-only (agent.validator.open_db) only for the
+    length of a check (_ScopedResolver). (None, why) when neither opens, e.g. on the Railway image (no data/, duckdb or
+    engine code); the checks then resolve against the answer's own ids. Whether a file opens is kept per file signature; a
+    failure is retried after 60 s."""
     reasons: list[str] = []
+    absent = 0
     for path in dict.fromkeys((SAR_IDS_DB, _facts_db_path())):
         sig = _sig(path)
         if sig is None:
             reasons.append(f"{rel(path)} not here")
+            absent += 1
             continue
         key = f"{path}|{sig}"
-        hit = _SAR_RESOLVERS.get(key)
-        if hit is None or (hit[0] is None and time.time() - hit[2] > 60):
+        hit = _SAR_OPENABLE.get(key)
+        if hit is None or (not hit[0] and time.time() - hit[2] > 60):
             try:
                 av, err = optional_import("agent.validator")
                 ev, err2 = optional_import("engine.validator")
                 if av is None or ev is None:
                     raise ImportError(err or err2)
-                hit = (_SerialResolver(ev.FactsResolver(av.open_db(path))), f"ids checked against {rel(path)} (engine.validator.FactsResolver, read-only)", time.time())
+                av.open_db(path).con.close()  # only whether it opens is kept
+                hit = (True, f"ids checked against {rel(path)} (engine.validator.FactsResolver, read-only, opened per check)", time.time())
             except Exception as exc:  # noqa: BLE001 - no duckdb, no engine code or a locked file: the answer's ids are the fallback
-                hit = (None, f"{rel(path)}: {type(exc).__name__}: {str(exc)[:120]}", time.time())
-            _SAR_RESOLVERS[key] = hit
-        if hit[0] is not None:
-            return hit[0], hit[1]
+                hit = (False, f"{rel(path)}: {type(exc).__name__}: {str(exc)[:120]}", time.time())
+            _SAR_OPENABLE[key] = hit
+        if hit[0]:
+            return _ScopedResolver(path, key), hit[1]
         reasons.append(hit[1])
-    return None, "ids checked against the answer's own lists only (no dataset in this deployment: " + "; ".join(reasons) + ")"
+    lead = "no dataset in this deployment" if absent == len(reasons) else "the dataset could not be opened here"
+    return None, f"ids checked against the answer's own lists only ({lead}: " + "; ".join(reasons) + ")"
 
 
 def sar_checks(answer: dict, meta: dict | None = None, resolver: Any | None = None) -> list[tuple[str, bool, str]]:
@@ -2197,6 +2251,9 @@ def sar_checks(answer: dict, meta: dict | None = None, resolver: Any | None = No
         errs = validate_answer_sar(answer, customer_id=meta.get("customer_id", ""), card_id=meta.get("card_id", ""), resolver=resolver)
     except Exception as exc:  # noqa: BLE001 - a half-written answer must still render
         return [("rag.validate_sar ran", False, str(exc)[:160])]
+    finally:
+        if isinstance(resolver, _ScopedResolver):
+            resolver.close()
     filed = bool((answer.get("sar") or {}).get("file"))
     out: list[tuple[str, bool, str]] = []
     for code, label in SAR_CHECK_LABELS:
@@ -2363,8 +2420,7 @@ def untrusted_text(label: str, text: str, *, codes: list[str] | None = None, cle
     st.code, the defence codes as badges with where they came from, and the sanitised text in an expander."""
     st = _st()
     with st.container(border=True, key=f"untrusted-{_slug(key or label)}"):
-        st.markdown(f"**{md(label)}**")
-        st.caption(UNTRUSTED_CAPTION)
+        st.caption(f"**{md(label)}** · {UNTRUSTED_CAPTION}")
         st.code(str(text or ""), language=None, wrap_lines=True)
         marks = [badge(c, "orange", icon=":material/shield:") for c in codes or []]
         if codes is not None and not codes:
@@ -2379,14 +2435,11 @@ def untrusted_text(label: str, text: str, *, codes: list[str] | None = None, cle
 
 
 def page_header(title: str, subtitle: str = "", icon: str = "", *, eyebrow: str = "", chips: list[tuple[str, str]] | None = None) -> None:
-    """The one header of every page: the H1 title first, then one grey caption holding the scope (`eyebrow`, e.g. the round
-    and case range) on its first line and the subtitle on its second, then an optional chip row (text, colour). Nothing
-    sits above the title. The old positional call page_header(title, subtitle, icon) still works."""
+    """The one header of every page (design.page_head): the H1 title first, then the scope (`eyebrow`, e.g. the round and
+    case range) and the subtitle as two grey lines under it, then an optional chip row (text, colour). Nothing sits above
+    the title. `icon` is accepted for the old positional call page_header(title, subtitle, icon) and no longer drawn."""
     st = _st()
-    st.markdown(f"# {(icon + ' ') if icon else ''}{md(title)}")
-    lines = [md(x) for x in (eyebrow, subtitle) if x]
-    if lines:
-        st.caption("  \n".join(lines))
+    design.html_block(design.page_head(title, eyebrow, subtitle))
     if chips:
         with st.container(horizontal=True, gap="small"):
             for text, color in chips:
@@ -2431,7 +2484,7 @@ def optional_import(name: str) -> tuple[ModuleType | None, str | None]:
         top = name.split(".")[0]
         missing = getattr(exc, "name", None) or ""
         if missing and missing.split(".")[0] == top:
-            return None, f"{top}/ not shipped in this deployment"
+            return None, f"{top}/ not shipped in this deployment" if missing == top else f"{missing} not shipped in this deployment"
         if missing:
             return None, f"{name} needs {missing}, which is not installed in this deployment"
         return None, f"{name} unavailable here: {type(exc).__name__}: {exc}"
@@ -2531,121 +2584,11 @@ def decision_card(view: CaseView, inbox: list[dict], compact: bool = False, *, k
 
 
 def inject_css() -> None:
-    """The stylesheet on top of the config.toml theme: menu cleanup, wrapping labels, metric values, and the keyed
-    container rules (.st-key-ctxbar, untrusted-*, decision-*, proof-*, stage-*). Called once per run by the router, or by
-    page_setup when a page runs alone."""
-    _st().markdown(
-        """
-        <style>
-        /* the top navigation bar: a quiet 56 px strip. Brand mark on the left, muted links that sharpen on hover, the
-           current page marked by a 2 px rule sitting on the bar's bottom border (no filled pill). Colours come from
-           currentColor and opacity, so the bar follows the light/dark theme without hardcoded values. The Proof /
-           System dropdowns share the link style; their panel is a small elevated card. */
-        [data-testid="stHeader"], [data-testid="stHeader"] [data-testid="stToolbar"] { height: 56px; }
-        [data-testid="stHeader"] { padding: 0 1.25rem; border-bottom: 1px solid rgba(128,128,128,.28); box-shadow: none; }
-        [data-testid="stHeaderLogo"] { height: 28px; width: auto; margin-right: 1.1rem; }
-        [data-testid="stTopNavLink"], [data-testid="stTopNavSection"] {
-            position: relative; height: 56px !important; padding: 0 .8rem !important; border-radius: 0 !important; gap: .4rem;
-            background: transparent !important; color: inherit !important; opacity: .62;
-            font-weight: 500 !important; transition: opacity .12s ease; }
-        [data-testid="stTopNavLink"] span, [data-testid="stTopNavSection"] p { font-size: .875rem !important; letter-spacing: -.003em; }
-        [data-testid="stTopNavLink"] [data-testid="stIconMaterial"] { font-size: 1.15rem !important; }
-        [data-testid="stTopNavSection"] svg { width: 1.05rem !important; height: 1.05rem !important; }
-        [data-testid="stTopNavLink"]:hover, [data-testid="stTopNavSection"]:hover,
-        [data-testid="stTopNavSection"][aria-expanded="true"] { opacity: 1; background: transparent !important; }
-        [data-testid="stTopNavLink"][aria-current="page"] { opacity: 1; font-weight: 600 !important; }
-        [data-testid="stTopNavLink"][aria-current="page"]::after { content: ""; position: absolute; left: .8rem; right: .8rem; bottom: -1px;
-            height: 2px; border-radius: 2px 2px 0 0; background: currentColor; }
-        [data-testid="stTopNavLink"]:focus-visible, [data-testid="stTopNavSection"]:focus-visible { outline: 2px solid currentColor; outline-offset: -4px; border-radius: 6px !important; opacity: 1; }
-        [data-testid="stTopNavPopoverBody"] { padding: .35rem; min-width: 16rem; border-radius: 10px; box-shadow: 0 12px 32px rgba(0,0,0,.28); }
-        [data-testid="stTopNavDropdownLink"] { height: 38px !important; padding: 0 .7rem !important; border-radius: 6px !important; font-weight: 500 !important; }
-        [data-testid="stTopNavDropdownLink"] span, [data-testid="stTopNavDropdownLink"] p { font-size: .875rem !important; }
-        [data-testid="stTopNavDropdownLink"] [data-testid="stIconMaterial"] { font-size: 1.1rem !important; }
-        [data-testid="stTopNavDropdownLink"]:hover { background: color-mix(in srgb, currentColor 8%, transparent) !important; }
-        [data-testid="stTopNavDropdownLink"][aria-current="page"] { background: color-mix(in srgb, currentColor 12%, transparent) !important; font-weight: 600 !important; }
-        .block-container { padding-top: 4.75rem; padding-bottom: 3rem; max-width: 1480px; }
-        /* the browser surfaces carry the ledger too: a highlighter-amber text selection (the one warm mark in the
-           chrome, as on a paper case file), thin neutral scrollbars, an ink focus ring, and tabular figures wherever
-           numbers are compared */
-        ::selection { background: rgba(224, 165, 38, .38); }
-        * { scrollbar-width: thin; scrollbar-color: rgba(128,128,128,.45) transparent; }
-        a:focus-visible, button:focus-visible, summary:focus-visible { outline: 2px solid currentColor !important; outline-offset: 2px; }
-        [data-testid="stMetricValue"], [data-testid="stTable"], table, [data-testid="stCaptionContainer"], code, .ov-vkey { font-variant-numeric: tabular-nums; }
-        h1 { letter-spacing: -.02em; line-height: 1.2 !important; padding-bottom: .15rem !important; }
-        [data-testid="stCode"] pre, [data-testid="stCode"] code { font-size: .84rem; }
-        [data-testid="stExpander"] summary p { font-weight: 500; }
-        /* untrusted text is shown verbatim: no code-font ligatures turning "<!--" or "-->" into arrows */
-        code, pre, [data-testid="stCode"] * { font-variant-ligatures: none !important; font-feature-settings: "liga" 0, "calt" 0 !important; }
-        /* main-menu cleanup: keep Print and the theme toggle, drop the screen recorder and the version footer
-           (toolbarMode="viewer" has no flag for single items, so this is CSS by necessity) */
-        [data-testid="stMainMenuItem-recordScreencast"] { display: none !important; }
-        [data-testid="stMainMenuPopover"] > div > div:not([data-testid]) { display: none !important; }
-        /* metric and widget labels wrap instead of Streamlit's fixed-width single-line ellipsis */
-        [data-testid="stMetricLabel"],
-        [data-testid="stMetricLabel"] > div,
-        [data-testid="stMetricLabel"] [data-testid="stMarkdownContainer"],
-        [data-testid="stMetricLabel"] [data-testid="stMarkdownContainer"] p,
-        [data-testid="stWidgetLabel"],
-        [data-testid="stWidgetLabel"] [data-testid="stMarkdownContainer"],
-        [data-testid="stWidgetLabel"] [data-testid="stMarkdownContainer"] p {
-            white-space: normal !important;
-            overflow: visible !important;
-            text-overflow: clip !important;
-            width: 100% !important;
-            max-width: 100% !important;
-            line-height: 1.25 !important;
-        }
-        [data-testid="stMetricLabel"] p { font-size: .82rem !important; font-weight: 500; opacity: .72; }
-        [data-testid="stMetricValue"],
-        [data-testid="stMetricValue"] > div { font-size: 1.65rem !important; font-weight: 600; line-height: 1.2; letter-spacing: -.015em; }
-        /* a long measured value wraps onto a second line instead of being cut off with an ellipsis */
-        [data-testid="stMetricValue"] > div,
-        [data-testid="stMetricValue"] p { white-space: normal !important; overflow: visible !important; text-overflow: clip !important; overflow-wrap: anywhere; }
-        .st-key-ctxbar { padding: 6px 10px !important; gap: 8px !important; }
-        /* the Case file's toolbar leads with the case id as the page's h1, sized to sit on the toolbar's centre line */
-        .st-key-casebar h1 { font-size: 1.45rem !important; padding: 0 !important; margin: 0 !important; }
-        .st-key-casebar h1 [data-testid="stHeaderActionElements"] { display: none; }
-        /* untrusted input is quarantined: a dashed amber frame all the way round and a faint wash, never followed */
-        [class*="st-key-untrusted-"] { border: 1px dashed rgba(180, 83, 9, .75) !important; background: rgba(224, 138, 60, .045); }
-        /* a decision card takes its verdict as a 1px frame in the verdict hue and a faint wash of it: state, not a stripe */
-        [class*="st-key-decision-fraud"] { border-color: rgba(214, 69, 65, .55) !important; background: rgba(214, 69, 65, .03); }
-        [class*="st-key-decision-legitimate"] { border-color: rgba(47, 154, 102, .55) !important; background: rgba(47, 154, 102, .03); }
-        [class*="st-key-decision-uncertain"] { border-color: rgba(79, 127, 224, .55) !important; background: rgba(79, 127, 224, .03); }
-        [class*="st-key-proof-"] { min-width: 180px; }
-        /* a horizontal strip of proof cards wraps whole cards: the minimum width goes on the flex item that holds each
-           card, otherwise the item shrinks below it and the card overflows into its neighbour */
-        .stHorizontalBlock > div:has([class*="st-key-proof-"]) { flex: 1 1 180px !important; min-width: 180px !important; }
-        /* Overview (marked by its .st-key-ov-proofs strip): section titles, headline tiles, a verdict bar and an even proof
-           strip. Section titles are sentence-case headings with a grey note after them and a hairline running out to the
-           right edge: no tiny tracked capitals. */
-        .ov-section { display: flex; align-items: baseline; gap: .6rem; margin: 2.25rem 0 .8rem; font-size: 1rem; font-weight: 600;
-            letter-spacing: -.005em; }
-        .ov-section::after { content: ""; flex: 1; height: 1px; background: rgba(128,128,128,.28); }
-        .ov-section b { font-weight: 400; font-size: .875rem; opacity: .62; }
-        .stMainBlockContainer:has(.st-key-ov-proofs) [data-testid="stMetric"] { padding: .95rem 1.1rem !important; border-radius: 8px; min-height: 7.25rem; }
-        .stMainBlockContainer:has(.st-key-ov-proofs) [data-testid="stMetricValue"],
-        .stMainBlockContainer:has(.st-key-ov-proofs) [data-testid="stMetricValue"] > div { font-size: 2rem !important; font-weight: 600; letter-spacing: -.02em; }
-        .ov-vbar { display: flex; height: 8px; border-radius: 4px; overflow: hidden; gap: 2px; margin: .55rem 0 .45rem; }
-        .ov-vbar span { display: block; min-width: 4px; }
-        .ov-vkey { display: flex; flex-wrap: wrap; gap: .25rem .9rem; font-size: .82rem; }
-        .ov-vkey span { white-space: nowrap; }
-        .ov-vkey i { display: inline-block; width: .55rem; height: .55rem; border-radius: 50%; margin-right: .35rem; }
-        .ov-fraud { background: #d64541; } .ov-legit { background: #2f9a66; } .ov-unc { background: #4f7fe0; }
-        .st-key-ov-proofs { align-items: stretch !important; gap: .75rem !important; }
-        .st-key-ov-proofs > div { display: flex; }
-        .st-key-ov-proofs [class*="st-key-proof-"] { width: 100%; border-radius: 8px; padding: .8rem .95rem !important; gap: .35rem !important; }
-        .st-key-ov-proofs [class*="st-key-proof-"] > :last-child { margin-top: auto; padding-top: .4rem; }
-        .st-key-ov-proofs [class*="st-key-proof-"] [data-testid="stCaptionContainer"] p { font-size: .82rem; font-weight: 500; opacity: .72; }
-        .st-key-ov-proofs [class*="st-key-proof-"] [data-testid="stMarkdownContainer"] p { font-size: .92rem; line-height: 1.4; }
-        .stMainBlockContainer:has(.st-key-ov-proofs) h4 { font-size: 1rem; font-weight: 600; margin-top: 1.5rem; }
-        /* pipeline strip (common.pipeline_strip): compact stage boxes that wrap whole */
-        [class*="st-key-stage-"] { padding: 0.4rem 0.55rem !important; gap: 0.1rem !important; }
-        [class*="st-key-stage-"] [data-testid="stCaptionContainer"] p { line-height: 1.25; margin: 0; }
-        h2, h3 { letter-spacing: -0.01em; }
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
+    """The console's stylesheet on top of the config.toml theme: ui/design.py injects the --tc-* tokens for the active
+    theme and ui/assets/console.css (the shell band, the context strip, figures, tags, and the keyed container rules
+    .st-key-ctxbar, casebar, case-brief, untrusted-*, decision-*, proof-*, strip-*, stage-*). Called once per run by the
+    router, or by page_setup when a page runs alone."""
+    design.inject()
 
 
 # --------------------------------------------------------------------------- #
@@ -2909,23 +2852,25 @@ def _write_url(key: str, value: str | None, mem_key: str) -> None:
     st.session_state[mem_key] = value
 
 
-def _provenance_chips(src: Source, where: Any) -> None:
-    if src.kind == "submitted":
-        runs = sorted({r for rs in src.promoted_from.values() for r in rs})
-        chip("PROMOTED" if runs else "ENGINE", "green" if runs else "gray", where=where,
-             help=f"identical to answer.json files of {', '.join(runs)}" if runs else "no run answer is identical to these files")
-    else:
-        chip("LIVE" if src.mode == "live" else "MOCK", "green" if src.mode == "live" else "gray", where=where, help=f"run_manifest.json run_mode={src.manifest.get('run_mode') or src.manifest.get('mode') or 'unknown'}")
-        if src.models_seen:
-            chip(", ".join(src.models_seen), "gray", where=where, help="model seen in calls.jsonl LLM rows")
+def _provenance_line(src: Source | None, mode: str, reason: str, where: Any) -> None:
+    """One plain phrase in the context strip for what this console is doing (reading the live graph or files only,
+    read-only or not), kept apart from the source picker's label, which already says what the selected source is (live
+    or mock run, model, answered count). Chips appear only for what needs attention: a model mismatch, uncommitted code,
+    failed or running cases. The run manifest's details (git sha, run_mode, windows) stay in the Provenance popover."""
+    console = ("<b>Live</b> · this console queries TigerGraph" if mode == "live"
+               else f"<b>Replay</b> · recorded files, TigerGraph not queried ({design.esc(reason)})")
+    where.html(f'<span class="tc-mode">{console}{" · read-only" if read_only() else ""}</span>')
+    if src is None:
+        return
+    if src.kind != "submitted":
         if src.model_note:
             chip("model mismatch", "orange", icon=":material/warning:", where=where, help=src.model_note)
-        if src.git_sha:
-            chip(f"git {src.git_sha[:7]}", "gray", where=where, help=f"git_sha {src.git_sha}")
         if src.git_dirty:
             chip("uncommitted changes", "orange", where=where, help="git_dirty=true in run_manifest.json: the run used code that was not committed")
-    counts = f"{src.n_answered}/{src.n_total} answered" + (f" · {src.n_running} running" if src.n_running else "") + (f" · {src.n_failed} failed" if src.n_failed else "")
-    chip(counts, "red" if src.n_failed or src.n_unreadable else "green" if src.complete else "orange", where=where)
+    if src.n_running or src.n_failed or src.n_unreadable:
+        alarm = " · ".join(x for x in (f"{src.n_running} running" if src.n_running else "", f"{src.n_failed} failed" if src.n_failed else "",
+                                        f"{src.n_unreadable} unreadable" if src.n_unreadable else "") if x)
+        chip(alarm, "red" if src.n_failed or src.n_unreadable else "yellow", where=where)
 
 
 def _banners(src: Source | None, invalid: list[str]) -> list[str]:
@@ -2983,17 +2928,14 @@ def context_bar(page_key: str) -> Ctx:
                 case_id = st.selectbox("Case", pack_ids, key="case", label_visibility="collapsed", width=160)
                 _write_url("case", case_id, "_case_qp")
                 state = case_state(source_id, case_id)
-                chip(STATE_LABELS.get(state, state), STATE_COLORS.get(state, "gray"))
+                if state != "done":  # a decided case says so on its own page; only an unfinished one needs the chip
+                    chip(STATE_LABELS.get(state, state), STATE_COLORS.get(state, "gray"))
             else:
                 st.caption("This source has no case pack on this deployment")
         else:
             mirror = st.session_state.get("case_id")
             case_id = mirror if mirror in pack_ids else _default_case(pack_ids)
-        if src is not None:
-            _provenance_chips(src, st)
-        chip(f"UI: files only ({reason})" if mode != "live" else "UI: live graph", "gray" if mode != "live" else "green")
-        if read_only():
-            chip("READ-ONLY", "gray", help="DEPLOY_READONLY=1: never spawns the agent, never writes to the graph")
+        _provenance_line(src, mode, reason, st)
         if source_id:
             with st.popover("Provenance", icon=":material/info:", key="provenance"):
                 st.json(run_provenance(source_id), expanded=True)

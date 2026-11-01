@@ -1,4 +1,12 @@
-"""Data quality & schema (C11 data quality, C12 schema drift, C13 someone else's schema), served as the 'data' page.
+"""Data quality & schema, served as the 'data' page: which data problems touch which cases, and is the January migration
+approved.
+
+First screen: three challenge headers that also switch the view, each with its headline figure, one line of scope and
+its source and as-of: data quality (C11), drift and the migration gate (C12), schema mapping (C13). Recompute is a quiet
+action beside them. Data quality: the tainted cases (all 18 on a toggle) and the defect classes as rows, with ids,
+attestation and Replay SQL in each row's detail. Drift: one gate status line with its single Approve home, then the drifts
+as collapsible rows. Mapping: the schema picker, summary figures and the mapping table, custom DDL / AI refine / adapted
+GSQL folded, and the CSV variant mapper as a sub-view.
 
 Everything shown comes from common.proof (engine/out/proof_snapshot.json sections and data/schema_approvals.json) unless
 the operator asks for a live recompute, or from schema_engine modules loaded through common.optional_import. Rendering
@@ -24,23 +32,26 @@ import streamlit as st
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from ui import approvals_db, common  # noqa: E402
+from ui import approvals_db, common, design  # noqa: E402
 
-md = common.md
+md, esc = common.md, design.esc
 
 ctx = common.page_setup("data")
 dq_p, drift_p, appr_p = common.proof("dq"), common.proof("drift"), common.proof("schema_approval")
 gsql_p, var_p = common.proof("gsql"), common.proof("variant")
 ro = common.read_only()
 
-TABS = ["C11 · Data quality", "C12 · Schema drift", "C13 · Someone else's schema"]
+# the three challenges: (view key, title in words, challenge code)
+VIEWS = (("dq", "Data quality", "C11"), ("drift", "Drift and the migration gate", "C12"), ("map", "Schema mapping", "C13"))
+MAP_VIEWS = ("Bank schemas (GSQL)", "CSV variant")
 PRESETS = ("bank1_iso20022_payments", "bank2_bian_service_domains", "bank3_core_banking_t24")
 CUSTOM = "custom"
 SCHEMA_DIR = common.ROOT / "data" / "schemas"
 VARIANT_DIR = common.ROOT / "data" / "variant_bank_b"
 GRADER = common.ROOT / "data" / "raw" / "round2" / "grade.py"
 GATE_ROLES = ("team_lead", "fraud_manager")
-SEVERITY = {"critical": "red", "high": "orange", "medium": "yellow", "low": "gray"}
+# a defect or a drift is a data warning: orange for critical and high, grey below (red stays for fraud and hard actions)
+SEVERITY = {"critical": "orange", "high": "orange", "medium": "gray", "low": "gray"}
 VERIFIED_COLORS = {"yes": "green", "partly": "orange", "NO": "red", "—": "gray"}
 TRANSFORMS = ["cents_to_usd", "epoch_to_iso", "channel_synonym", "split_device_bundle"]
 # what an answer would say when it takes a defect into account (a keyword rule over the evidence claims and refs)
@@ -217,7 +228,7 @@ def _llm_refine(text: str, analyst) -> None:
     st.session_state.pop("data_llm_error", None)
 
 
-def _shape_rows(before: dict, after: dict, severity: str) -> list[dict]:
+def _shape_rows(before: dict, after: dict) -> list[dict]:
     def val(x: object) -> str:
         return "—" if x is None else json.dumps(x, default=str) if isinstance(x, (list, dict)) else str(x)
 
@@ -225,7 +236,7 @@ def _shape_rows(before: dict, after: dict, severity: str) -> list[dict]:
     for k in list(dict.fromkeys([*(before or {}), *(after or {})])):
         b, a = (before or {}).get(k), (after or {}).get(k)
         change = "added" if k not in (before or {}) else "removed" if k not in (after or {}) else "same" if a == b else "changed"
-        rows.append({"Field": k, "Before": val(b)[:200], "After": val(a)[:200], "Change": change, "Severity": severity})
+        rows.append({"Field": k, "Before": val(b)[:200], "After": val(a)[:200], "Change": change})
     return rows
 
 
@@ -290,128 +301,164 @@ pack_rows, pack_note = common.final_round_pack()
 pack_ids = [r["case_id"] for r in pack_rows]
 
 # --------------------------------------------------------------------------- #
-# Header and scoreboard                                                       #
+# Header: three challenge headers that switch the view, and the recompute    #
 # --------------------------------------------------------------------------- #
-common.page_header("Data quality & schema", eyebrow="C11 data quality · C12 schema drift · C13 someone else's schema")
-for b in ctx.banners:
-    st.warning(md(b))
+def _set_view(view: str) -> None:
+    st.session_state["data_view"] = view
 
-t1, t2, t3 = st.columns(3)
-with t1:
-    n_tainted = (dq or {}).get("n_tainted_cases", len((dq or {}).get("taint_matrix") or {})) if dq else None
-    common.measured("Data quality", f"{len(dq.get('defects') or [])} defect classes · {n_tainted}/{len(pack_ids)} cases tainted" if dq else None,
-                    source=dq_src, as_of=dq_as_of, how="defect classes from SQL over the facts DB, joined to the case pack; the denominator is the Final Round case pack")
-    st.caption(md(dq_label if dq else f"not available: {dq_p['error']}"))
-with t2:
-    common.measured("Schema drift", f"{len(drift.get('drifts') or [])} drifts · migration {MIGRATION_ID} {gate_status.upper()}" if drift else None,
-                    source=f"{drift_src}; {appr_p['source'] or 'data/schema_approvals.json'}", as_of=f"{drift_as_of}; {appr_p['as_of'] or 'missing'}",
-                    how="drifts detected between Round 1 and the January files; gate status from data/schema_approvals.json")
-    st.caption(md(f"{drift_label if drift else 'drift not available: ' + drift_p['error']} · What the gate blocks today: nothing in the January delta path "
-                  "(etl/delta*.py) checks it; the engine facts and FraudGraph already include January."))
-with t3:
-    evals = [(v[0].get("benchmark_eval") or {}) for v in ok_presets.values()]
-    sm, tt = sum(int(e.get("status_matches") or 0) for e in evals), sum(int(e.get("total_targets") or 0) for e in evals)
-    n_cols = (variant or {}).get("n_mapped_columns", len((variant or {}).get("mappings") or [])) if variant else None
-    value = (f"{len(ok_presets)} bank schemas" + (f" · {n_cols} CSV variant columns mapped" if n_cols is not None else "")) if ok_presets else None
-    labels = sorted({v[2].split(" · ")[0] for v in ok_presets.values()})
-    map_as_of = "computed on this page" if labels == ["live recompute"] else _gen(gsql_p)
-    common.measured("Mapping", value, source=f"{', '.join(labels) or 'missing'}; variant: {var_label}", as_of=f"{map_as_of}; {var_as_of}",
-                    how="AST mapping of each bank .gsql onto the canonical fraud ontology, and the CSV variant column mapper")
-    st.caption(md(f"{' / '.join(labels) or 'not available'} · mapping only, no investigation run on a variant · "
-                  + (f"self-check vs the files' own answer-key comments: {sm}/{tt}" if tt else "no answer-key comments to self-check against")))
+
+def _when(value: object) -> str:
+    """A timestamp as 'YYYY-MM-DD HH:MM' (a clock time or a phrase passes through)."""
+    s = str(value or "").replace("T", " ").rstrip("Z")
+    return s[:16] if re.match(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}", s) else (s or "—")
+
+
+if st.session_state.get("data_view") not in {v for v, _, _ in VIEWS}:
+    st.session_state["data_view"] = "dq"
+view = st.session_state["data_view"]
+
+GATE_FILE = appr_p["source"] or "data/schema_approvals.json"
+gate_here = appr_p["mode"] != "missing"
+gate_word = gate_status if gate_here and appr is not None else "not in this deployment" if not gate_here else f"no record for {MIGRATION_ID}"
+n_tainted = (dq or {}).get("n_tainted_cases", len((dq or {}).get("taint_matrix") or {})) if dq else None
+n_defects = len((dq or {}).get("defects") or [])
+n_drifts = len((drift or {}).get("drifts") or [])
+evals = [(v[0].get("benchmark_eval") or {}) for v in ok_presets.values()]
+sm, tt = sum(int(e.get("status_matches") or 0) for e in evals), sum(int(e.get("total_targets") or 0) for e in evals)
+n_cols = (variant or {}).get("n_mapped_columns", len((variant or {}).get("mappings") or [])) if variant else None
+map_labels = sorted({v[2].split(" · ")[0] for v in ok_presets.values()})
+map_as_of = "computed on this page" if map_labels == ["live recompute"] else _gen(gsql_p)
+map_src = " and ".join([*([f"{_rel(SCHEMA_DIR)}/*.gsql"] if "live recompute" in map_labels else []),
+                         *([gsql_p["source"] or "engine/out/proof_snapshot.json"] if any(x.startswith("snapshot") for x in map_labels) else [])]) or "missing"
+
+common.page_header("Data quality & schema", "Read from engine/out/proof_snapshot.json and data/schema_approvals.json; a recompute reads the facts DB "
+                   "read-only and is kept for this session.", eyebrow=f"Final Round · January 2017 files · {len(pack_ids)} cases")
 
 dqm_ok = not common.optional_import("schema_engine.data_quality")[1] and not common.optional_import("schema_engine.drift")[1]
 why = None if dqm_ok and not ro else ("read-only deployment" if ro else "schema_engine.data_quality / drift not available here")
-rc1, rc2 = st.columns([1, 3], vertical_alignment="center")
-rc1.button("Recompute DQ and drift now", key="data_recompute", icon=":material/refresh:", disabled=bool(why), help=md(why) if why else None, on_click=_recompute)
-if live.get("error"):
-    rc2.error(md(f"Recompute failed at {live['at']}: {live['error']}"))
-else:
-    rc2.caption("Reads the facts DB read-only and keeps the result for this session; nothing is written.")
+with st.container(horizontal=True, vertical_alignment="center", gap="small", key="dq-actions"):
+    if live.get("error"):
+        st.caption(md(f"Recompute failed at {live['at']}: {live['error']}"))
+    elif live.get("dq") is not None:
+        st.caption(md(f"Data quality and drift recomputed at {live['at']}, kept for this session"))
+    st.space("stretch")
+    st.button("Recompute data quality and drift", key="data_recompute", type="tertiary", icon=":material/refresh:", disabled=bool(why),
+              help=md(why) if why else None, on_click=_recompute)
 
-tab_dq, tab_drift, tab_map = st.tabs(TABS, key="data_tab", on_change="rerun", default=TABS[0])
+HEADS = {
+    "dq": {"label": "Cases touched by a data defect", "value": f"{n_tainted} of {len(pack_ids)}" if dq else None, "source": dq_src, "as_of": dq_as_of,
+           "how": "cases in the taint matrix (defects joined to the case pack by SQL over the facts DB) over the Final Round case pack",
+           "scope": f"{n_defects} defect classes found by SQL over the January facts and joined to each case" if dq else f"no scan here: {dq_p['error'] or 'snapshot section missing'}",
+           "line": f"{dq_src} · as of {_when(dq_as_of)}"},
+    "drift": {"label": "January migration", "value": gate_word, "source": f"{GATE_FILE}; drifts: {drift_src}",
+              "as_of": f"{appr_p['as_of'] or 'missing'}; drifts {drift_as_of}",
+              "how": f"status of {MIGRATION_ID} in {GATE_FILE} (approved only by a signed-in team lead or fraud manager); drifts from the drift detector",
+              "scope": f"{n_drifts} schema drifts from the Round 1 files to the January files, behind one migration gate" if drift else f"no drift report here: {drift_p['error'] or 'snapshot section missing'}",
+              "line": f"{GATE_FILE} · as of {_when(appr_p['as_of'])}" if gate_here else f"{GATE_FILE} not in this deployment · drifts {drift_label}"},
+    "map": {"label": "Bank schemas mapped", "value": str(len(ok_presets)) if ok_presets else None, "source": map_src, "as_of": map_as_of,
+            "how": "comment-blind AST mapping of each bank .gsql onto the canonical fraud ontology (mapping only, no investigation run on a variant)",
+            "scope": "Mapping only: no investigation run on a variant" + (f" · a CSV variant of {n_cols} columns" if n_cols is not None else ""),
+            "line": (f"{map_src} · " + ("computed on this page" if map_as_of == "computed on this page" else f"as of {_when(map_as_of)}"))
+                    if ok_presets else f"not available: {analyst_err or gsql_p['error']}"},
+}
+with st.container(border=True, key="strip-dq-heads"):
+    head_cols = st.columns(3)
+for col, (k, title, code) in zip(head_cols, VIEWS, strict=True):
+    h = HEADS[k]
+    with col, st.container(key=f"dq-head-{k}"):
+        st.button(title, key=f"data_view_{k}", type="tertiary", on_click=_set_view, args=(k,), width="content")
+        common.measured(h["label"], h["value"], source=h["source"], as_of=h["as_of"], how=h["how"])
+        design.html_block(f'<div class="tc dq-scope{" on" if k == view else ""}"><p>{esc(h["scope"])}</p>'
+                          f'<p class="dq-src"><span class="dq-code">{esc(code)}</span> {esc(h["line"])}</p></div>')
 
 # --------------------------------------------------------------------------- #
-# C11 · Data quality                                                          #
+# Data quality (C11): tainted cases, then the defect classes as rows          #
 # --------------------------------------------------------------------------- #
-if tab_dq.open:
-    with tab_dq:
-        if dq is None:
-            _missing(f"No data-quality scan on this deployment: {dq_p['error'] or 'snapshot section missing'}.")
-        else:
-            tm = dq.get("taint_matrix") or {}
-            sev_of = {str(d.get("code")): str(d.get("severity")) for d in dq.get("defects") or []}
-            src_id = ctx.source_id or ""
-            rows, mismatches = [], []
-            for r in pack_rows:
-                cid = r["case_id"]
-                items = [it for it in tm.get(cid) or [] if isinstance(it, dict)]
-                v = common.case_view(src_id, cid)
-                card = _card_mismatch(v, v.meta or r)
-                if card:
-                    mismatches.append((cid, card))
-                fin = _final(v.answer) if v.ok else []
-                rows.append({
-                    "Case": cid, "DQ codes": sorted({str(it.get("code")) for it in items}),
-                    "Pack card vs transaction card": card or "—",
-                    "Verdict": [str((v.answer.get("case") or {}).get("verdict"))] if v.ok else [],
-                    "Final actions": ", ".join(f"{x.get('action')} · {x.get('route', 'auto')}" for x in fin if x.get("action") != "CREATE_CASE")
-                    or ("—" if v.ok else common.STATE_LABELS.get(v.state, v.state)),
-                    "Answer cites the taint": _cites(v.answer, items, v.meta or r),
-                    "Entity ids": ", ".join(dict.fromkeys(str(i) for it in items for i in it.get("entity_ids") or [])),
-                })
-            codes = sorted({c for row in rows for c in row["DQ codes"]})
-            st.markdown(f"**Per-case join** · {md(len([x for x in rows if x['DQ codes']]))} of {md(len(rows))} cases tainted · answers of {md(src_id)}")
+if view == "dq":
+    if dq is None:
+        _missing(f"No data-quality scan on this deployment: {dq_p['error'] or 'snapshot section missing'}.")
+    else:
+        tm = dq.get("taint_matrix") or {}
+        sev_of = {str(d.get("code")): str(d.get("severity")) for d in dq.get("defects") or []}
+        src_id = ctx.source_id or ""
+        rows, mismatches = [], []
+        for r in pack_rows:
+            cid = r["case_id"]
+            items = [it for it in tm.get(cid) or [] if isinstance(it, dict)]
+            v = common.case_view(src_id, cid)
+            card = _card_mismatch(v, v.meta or r)
+            if card:
+                mismatches.append((cid, card))
+            fin = _final(v.answer) if v.ok else []
+            rows.append({
+                "Case": cid, "Defects": sorted({str(it.get("code")) for it in items}),
+                "Verdict": [str((v.answer.get("case") or {}).get("verdict"))] if v.ok else [],
+                "Final actions": ", ".join(f"{x.get('action')} · {x.get('route', 'auto')}" for x in fin if x.get("action") != "CREATE_CASE")
+                or ("—" if v.ok else common.STATE_LABELS.get(v.state, v.state)),
+                "Mentions the taint (keyword match)": _cites(v.answer, items, v.meta or r),
+                "Pack card vs transaction card": card or "—",
+                "Entity ids": ", ".join(dict.fromkeys(str(i) for it in items for i in it.get("entity_ids") or [])) or "—",
+            })
+        tainted = [x for x in rows if x["Defects"]]
+        show_all = st.session_state.get("data_dq_all", False)
+        shown = rows if show_all else tainted
+        codes = sorted({c for row in rows for c in row["Defects"]})
+        design.html_block(design.section("", "Cases touched by a data defect", note=f"answers of {src_id}" if src_id else "",
+                                         aside=esc(f"{len(shown)} of {len(rows)} cases shown")))
+        st.toggle(f"Show all {len(rows)} cases", key="data_dq_all")
+        if shown:
             st.dataframe(
-                rows, hide_index=True, width="stretch", height=35 * len(rows) + 38, key="data_join",
+                shown, hide_index=True, width="stretch", height=min(35 * len(shown) + 38, 35 * 20 + 38), key="data_join",
                 column_config={
                     "Case": st.column_config.ButtonColumn("Case", type="tertiary", pinned=True, key="data_case_open", help="Open the Case file"),
-                    "DQ codes": st.column_config.MultiselectColumn("DQ codes", options=codes or None, color=[SEVERITY.get(sev_of.get(c, ""), "gray") for c in codes] or None,
-                                                                   help="defects joined to the case by SQL (snapshot or live recompute)"),
+                    "Defects": st.column_config.MultiselectColumn("Defects", options=codes or None, color=[SEVERITY.get(sev_of.get(c, ""), "gray") for c in codes] or None,
+                                                                  help="defect classes joined to the case by SQL (snapshot or live recompute)"),
                     "Verdict": st.column_config.MultiselectColumn("Verdict", options=list(common.VERDICT_COLORS), color=list(common.VERDICT_COLORS.values())),
-                    "Pack card vs transaction card": st.column_config.TextColumn("Pack card vs transaction card", help="the case pack names one card, the transaction record another"),
                     "Final actions": st.column_config.TextColumn("Final actions", width="medium"),
-                    "Answer cites the taint": st.column_config.TextColumn(
-                        "Answer cites the taint", help="per defect: a keyword for the defect in the evidence claims or refs, or a tainted id other than the case's own transaction, card and customer"),
+                    "Mentions the taint (keyword match)": st.column_config.TextColumn(
+                        "Mentions the taint (keyword match)", help="per defect: a keyword for the defect in the evidence claims or refs, or a tainted id other than the case's own transaction, card and customer"),
+                    "Pack card vs transaction card": st.column_config.TextColumn("Pack card vs transaction card", help="the case pack names one card, the transaction record another"),
                     "Entity ids": st.column_config.TextColumn("Entity ids", width="large"),
                 })
             click = st.session_state.get("data_case_open")
             if click:
                 common.goto("case", case=click["label"])
-            st.caption(md(f"DQ: {dq_label} ({dq_src}) · answers and traces: {src_id}" + (f" · pack: {pack_note}" if pack_note else "")))
+        else:
+            st.caption("No case in the taint matrix.")
+        st.caption(md(f"{dq_src} · as of {_when(dq_as_of)} · answers: {src_id or 'no source'} · pack card differs from the transaction card on {len(mismatches)} case(s)"
+                      + (": " + "; ".join(f"{c} {m}" for c, m in mismatches) if mismatches else "")))
 
-            st.markdown("#### Defect classes")
-            replays = st.session_state.get("data_replay") or {}
-            att_ok = not common.optional_import("schema_engine.attestation")[1] and not common.optional_import("duckdb")[1]
-            replay_why = None if att_ok and not ro else ("read-only deployment" if ro else "schema_engine.attestation or duckdb not available here")
+        replays = st.session_state.get("data_replay") or {}
+        att_ok = not common.optional_import("schema_engine.attestation")[1] and not common.optional_import("duckdb")[1]
+        replay_why = None if att_ok and not ro else ("read-only deployment" if ro else "schema_engine.attestation or duckdb not available here")
+        design.html_block(design.section("", "Defect classes", note="SQL over the facts DB, each with its attestation", aside=esc(f"{n_defects} classes")))
+        with st.container(key="dq-defects"):
             for d in dq.get("defects") or []:
                 code, sev = str(d.get("code")), str(d.get("severity"))
                 ids = [str(i) for i in d.get("affected_ids") or []]
-                with st.container(border=True, key=f"dq-{code}"):
-                    hc1, hc2, hc3, hc4 = st.columns([5, 1, 1, 1], vertical_alignment="center")
-                    hc1.markdown(f"**{md(code)} · {md(d.get('title'))}** · {md(f'{int(d.get('count') or 0):,}')} record{'' if int(d.get('count') or 0) == 1 else 's'} {common.badge(sev, SEVERITY.get(sev, 'gray'))}")
-                    with hc2.popover("Ids", key=f"dq-ids-{code}"):
-                        st.caption(md(f"{len(ids)} stored of {int(d.get('count') or 0):,}"))
-                        st.code(", ".join(ids), language=None, wrap_lines=True)
-                    with hc3.popover("Attestation", key=f"dq-att-{code}"):
-                        st.json(d.get("attestation") or {}, expanded=True)
-                    hc4.button("Replay SQL", key=f"dq-replay-{code}", disabled=bool(replay_why) or not d.get("attestation"), help=md(replay_why) if replay_why else None,
-                               on_click=_replay, args=(code, d.get("attestation") or {}))
-                    st.caption(md(d.get("description")))
-                    st.caption(md("Sample ids: " + (", ".join(ids[:5]) or "none") + " · cases: " + (", ".join(d.get("tainted_cases") or []) or "none")))
+                count = int(d.get("count") or 0)
+                cases = [str(c) for c in d.get("tainted_cases") or []]
+                label = (f"**{md(code)}** · {md(d.get('title'))} · {md(f'{count:,}')} record{'' if count == 1 else 's'} · "
+                         f"{md(len(cases))} case{'' if len(cases) == 1 else 's'} · :{SEVERITY.get(sev, 'gray')}[{md(sev)}]")
+                with st.expander(label, key=f"dq-{code}"):
+                    st.markdown(md(d.get("description")))
+                    st.caption(md("Cases: " + (", ".join(cases) or "none")))
+                    st.caption(md(f"Affected ids, {len(ids)} stored of {count:,}"))
+                    st.code(", ".join(ids) or "none stored", language=None, wrap_lines=True)
+                    st.caption("Attestation")
+                    st.json(d.get("attestation") or {}, expanded=False)
+                    st.button("Replay SQL", key=f"dq-replay-{code}", disabled=bool(replay_why) or not d.get("attestation"), help=md(replay_why) if replay_why else None,
+                              on_click=_replay, args=(code, d.get("attestation") or {}))
                     if code in replays:
                         rp = replays[code]
                         sql = str(((d.get("attestation") or {}).get("how") or {}).get("sql") or "")
                         limit = re.search(r"\bLIMIT\s+(\d+)", sql, re.I)
                         msg = (f"Replayed at {rp['at']}: {rp.get('row_count', 0):,} rows" + (f" (the SQL has LIMIT {limit.group(1)})" if limit else "")
-                               + f" against the claimed {int(d.get('count') or 0):,} · {rp.get('mode', '')}") if not rp.get("error") else f"Replay failed at {rp['at']}: {rp['error']}"
+                               + f" against the claimed {count:,} · {rp.get('mode', '')}") if not rp.get("error") else f"Replay failed at {rp['at']}: {rp['error']}"
                         (st.success if rp.get("ok") else st.error)(md(msg))
-            with st.container(border=True, key="dq-card-mismatch"):
-                st.markdown(f"**Case pack card differs from the transaction card** · {md(len(mismatches))} case(s) {common.badge('from the traces and answers', 'gray')}")
-                st.caption(md("; ".join(f"{c}: {m}" for c, m in mismatches) if mismatches else f"No case in {src_id} shows a card mismatch note."))
 
-        if GRADER.is_file():
-            st.markdown("#### Answer-key grader")
+    if GRADER.is_file():
+        with st.expander("Answer-key grader · data/raw/round2/grade.py"):
             g_why = "read-only deployment" if ro else None
             if st.button("Run data/raw/round2/grade.py on cases/HHF-\\*.json", key="data_run_grader", icon=":material/play_arrow:", disabled=bool(g_why), help=g_why):
                 work = Path(tempfile.mkdtemp(prefix="grade-"))  # the grader sees only a temporary teams dir and writes its report there
@@ -428,115 +475,119 @@ if tab_dq.open:
                     st.code(res.stdout[-3000:] or "(no output)", language=None)
                 finally:
                     shutil.rmtree(work, ignore_errors=True)
-        else:
-            st.caption("Accuracy against the answer key is not measured here: data/raw/round2/grade.py is not in this checkout.")
+    else:
+        st.caption("Accuracy against the answer key is not measured here: data/raw/round2/grade.py is not in this checkout.")
 
 # --------------------------------------------------------------------------- #
-# C12 · Schema drift                                                          #
+# Drift and the migration gate (C12): the gate line, then the drifts         #
 # --------------------------------------------------------------------------- #
-if tab_drift.open:
-    with tab_drift:
-        drift_mod, drift_err = common.optional_import("schema_engine.drift")
-        session = common.approver_session()
-        with st.container(border=True, key="data-gate"):
-            st.markdown(f"**Migration gate {md(MIGRATION_ID)}** " + " ".join([
-                common.badge(gate_status, "orange" if gate_status == "pending" else "green" if gate_status == "approved" else "gray"),
-                common.badge("roles: team_lead / fraud_manager", "violet")]))
-            if appr and appr.get("approved_by"):
-                st.caption(md(f"Approved by {appr.get('approved_by')} ({appr.get('role')}) at {appr.get('approved_at')} · final"))
-            st.caption(md(f"Source: {appr_p['source'] or 'missing'} · as of {appr_p['as_of'] or '—'}" + (f" · {appr_p['error']}" if appr_p["error"] else "")))
-            st.caption("What it blocks today: nothing in the January delta path (etl/delta*.py) checks it; the engine facts and FraudGraph already include January.")
-            gate_why = (f"schema_engine.drift: {drift_err}" if drift_mod is None else None) or ("read-only deployment" if ro else None) \
-                or ("Sign in first (identity menu in the top bar)" if session is None else None) \
-                or (None if session.role in GATE_ROLES else f"{session.role} cannot approve: needs team_lead or fraud_manager") \
-                or (None if gate_status == "pending" else f"already {gate_status}")
+if view == "drift":
+    drift_mod, drift_err = common.optional_import("schema_engine.drift")
+    session = common.approver_session()
+    design.html_block(design.section("", "Migration gate", note="a signed-in team lead or fraud manager approves it", aside=f'<span class="tc-mono">{esc(MIGRATION_ID)}</span>'))
+    with st.container(key="data-gate"):
+        kind = {"pending": "ochre", "approved": "green"}.get(gate_status, "") if gate_here and appr is not None else ""
+        who = (f" by <b>{esc(appr.get('approved_by'))}</b> ({esc(appr.get('role'))}) at {esc(_when(appr.get('approved_at')))}, final"
+               if appr and appr.get("approved_by") else "")
+        state = (f'is {design.tag(gate_status, kind, "gate")}{who}' if gate_here and appr is not None
+                 else f"has {design.tag('no record', '', 'gate')} in {esc(GATE_FILE)}" if gate_here else f"is {design.tag('not in this deployment', '', 'gate')}")
+        design.html_block(f'<p class="tc dq-gate">The January migration {state}. <b>What the gate blocks today: nothing</b>; the January delta path '
+                          f'(<span class="tc-mono">etl/delta*.py</span>) never checks it, and the engine facts and FraudGraph already include January.</p>')
+        st.caption(md(f"{GATE_FILE} · as of {appr_p['as_of']}" if gate_here else f"{GATE_FILE} is not in this deployment ({appr_p['error'] or 'missing'})"))
+        gate_why = (f"schema_engine.drift: {drift_err}" if drift_mod is None else None) or ("read-only deployment" if ro else None) \
+            or ("Sign in first (identity menu in the top bar)" if session is None else None) \
+            or (None if session.role in GATE_ROLES else f"{session.role} cannot approve: needs team_lead or fraud_manager") \
+            or (None if gate_status == "pending" else f"already {gate_word}")
 
-            @st.dialog("Approve schema migration")
-            def _gate_dialog() -> None:
-                sess = common.approver_session()
-                st.markdown(f"**{md(MIGRATION_ID)}** → **approved** as {md(f'{sess.principal} ({sess.role})' if sess else 'signed out')}")
-                st.info("This decision is final and is logged in the approval audit log (route 'gate').")
-                if st.button("Confirm (final)", type="primary", key="data_gate_confirm"):
-                    actor, role = (sess.principal, sess.role) if sess else ("", "unauthenticated")
-                    try:
-                        rec = drift_mod.approve_schema_migration(MIGRATION_ID, session=sess)
-                    except (PermissionError, OSError, ValueError) as exc:
-                        approvals_db.audit_gate(MIGRATION_ID, "approved", actor, role, "denied_rbac" if isinstance(exc, PermissionError) else "error", str(exc),
-                                                common.approvals_db_path())
-                        st.session_state["data_gate_msg"] = {"ok": False, "text": f"Refused: {exc}"}
-                    else:
-                        approvals_db.audit_gate(MIGRATION_ID, "approved", actor, role, "ok", "approved on the Data quality & schema page", common.approvals_db_path())
-                        st.session_state["data_gate_msg"] = {"ok": True, "text": f"approved: {rec.get('approved_by')} at {rec.get('approved_at')}"}
-                    st.rerun()
+        @st.dialog("Approve schema migration")
+        def _gate_dialog() -> None:
+            sess = common.approver_session()
+            st.markdown(f"**{md(MIGRATION_ID)}** → **approved** as {md(f'{sess.principal} ({sess.role})' if sess else 'signed out')}")
+            st.info("This decision is final and is logged in the approval audit log (route 'gate').")
+            if st.button("Confirm (final)", type="primary", key="data_gate_confirm"):
+                actor, role = (sess.principal, sess.role) if sess else ("", "unauthenticated")
+                try:
+                    rec = drift_mod.approve_schema_migration(MIGRATION_ID, session=sess)
+                except (PermissionError, OSError, ValueError) as exc:
+                    approvals_db.audit_gate(MIGRATION_ID, "approved", actor, role, "denied_rbac" if isinstance(exc, PermissionError) else "error", str(exc),
+                                            common.approvals_db_path())
+                    st.session_state["data_gate_msg"] = {"ok": False, "text": f"Refused: {exc}"}
+                else:
+                    approvals_db.audit_gate(MIGRATION_ID, "approved", actor, role, "ok", "approved on the Data quality & schema page", common.approvals_db_path())
+                    st.session_state["data_gate_msg"] = {"ok": True, "text": f"approved: {rec.get('approved_by')} at {rec.get('approved_at')}"}
+                st.rerun()
 
-            gc1, gc2 = st.columns([1, 2], vertical_alignment="center")
-            if gc1.button("Approve (final)…", key="data_gate_approve", type="primary", disabled=bool(gate_why), help=md(gate_why) if gate_why else None):
+        with st.container(horizontal=True, vertical_alignment="center", gap="medium", key="dq-gate-actions"):
+            if st.button("Approve (final)…", key="data_gate_approve", type="primary", disabled=bool(gate_why), help=md(gate_why) if gate_why else None):
                 _gate_dialog()
-            gc2.caption("Reject is not implemented in schema_engine.drift.")
-            if (m := st.session_state.get("data_gate_msg")):
-                (st.success if m["ok"] else st.error)(md(m["text"]))
-            common.page_link("approvals", "Approvals › Other gates", icon=":material/gavel:")
+            st.caption("Reject is not implemented in schema_engine.drift.")
+            st.space("stretch")
+            common.page_link("approvals", "Approvals › Other gates", icon=":material/arrow_forward:")
+        if (m := st.session_state.get("data_gate_msg")):
+            (st.success if m["ok"] else st.error)(md(m["text"]))
 
-        if drift is None:
-            _missing(f"No drift report on this deployment: {drift_p['error'] or 'snapshot section missing'}.")
-        else:
-            st.caption(md(f"{drift_label} · {drift_src}" + (f" · detected at {drift.get('detected_at')}" if drift.get("detected_at") else "")))
+    design.html_block(design.section("", "Schema drifts, Round 1 to January", note=drift_label if drift else "",
+                                     aside=esc(f"{drift_src}" + (f" · detected {_when(drift.get('detected_at'))}" if drift and drift.get("detected_at") else ""))))
+    if drift is None:
+        _missing(f"No drift report on this deployment: {drift_p['error'] or 'snapshot section missing'}.")
+    else:
+        with st.container(key="dq-drifts"):
             for dr in drift.get("drifts") or []:
                 sev = str(dr.get("severity"))
-                with st.container(border=True, key=f"drift-{dr.get('drift_id')}"):
-                    h1, h2 = st.columns([6, 1], vertical_alignment="center")
-                    h1.markdown(f"**{md(dr.get('drift_id'))} · {md(dr.get('title'))}** {common.badge(sev, SEVERITY.get(sev, 'gray'))}")
-                    with h2.popover("Attestation", key=f"drift-att-{dr.get('drift_id')}"):
-                        st.json(dr.get("attestation") or {}, expanded=True)
-                    shape = _shape_rows(dr.get("before_shape") or {}, dr.get("after_shape") or {}, sev)
+                with st.expander(f"**{md(dr.get('drift_id'))}** · {md(dr.get('title'))} · :{SEVERITY.get(sev, 'gray')}[{md(sev)}]", key=f"drift-{dr.get('drift_id')}"):
+                    st.markdown(f"**Breaks if unhandled:** {md(dr.get('what_breaks'))}")
+                    st.markdown(f"**Recovery:** {md(dr.get('remapping_action'))}")
+                    shape = _shape_rows(dr.get("before_shape") or {}, dr.get("after_shape") or {})
                     st.dataframe(shape, hide_index=True, width="stretch", height=35 * len(shape) + 38,
                                  column_config={"Before": st.column_config.TextColumn("Before", width="large"),
                                                 "After": st.column_config.TextColumn("After", width="large")})
-                    st.markdown(f"**Breaks if unhandled:** {md(dr.get('what_breaks'))}")
-                    st.markdown(f"**Recovery:** {md(dr.get('remapping_action'))}")
+                    with st.popover("Attestation", key=f"drift-att-{dr.get('drift_id')}"):
+                        st.json(dr.get("attestation") or {}, expanded=True)
 
 # --------------------------------------------------------------------------- #
-# C13 · Someone else's schema                                                 #
+# Schema mapping (C13): bank schemas, or the CSV variant as a sub-view        #
 # --------------------------------------------------------------------------- #
-if tab_map.open:
-    with tab_map:
-        st.caption("Mapping only: no investigation has been run on a variant schema. The bank schemas are mapped onto the canonical fraud "
-                   "ontology and the CSV variant's columns onto the canonical tables; no case was investigated against either.")
+if view == "map":
+    sub_view = st.segmented_control("Mapping view", MAP_VIEWS, default=MAP_VIEWS[0], key="data_map_view", required=True,
+                                    label_visibility="collapsed") or MAP_VIEWS[0]
+    if sub_view == MAP_VIEWS[0]:
+        design.html_block(design.section("", "Bank schemas onto the fraud ontology", note="comment-blind AST mapping of each bank's GSQL DDL"))
         options = [*stems, CUSTOM]
         choice = st.segmented_control("Schema", options, default=options[0], key="data_schema", required=True,
                                       format_func=lambda s: "Custom DDL" if s == CUSTOM else md(s)) or options[0]
         analysis, names, label, text = None, None, "", ""
         if choice == CUSTOM:
-            up = st.file_uploader("Upload a .gsql file (1 MB at most)", type=["gsql", "txt"], max_upload_size=1, key="data_ddl_upload")
-            pasted = st.text_area("Or paste GSQL DDL", max_chars=200_000, height=160, key="data_ddl", placeholder="CREATE GRAPH Bank_Custom () ...")
-            raw = up.getvalue().decode("utf-8", errors="replace") if up is not None else (pasted or "")
-            text = raw + "\n" if raw.strip() else ""  # always text plus a newline, so it is never read as a server path
-            if text:
-                sec, sec_err = common.optional_import("agent.security")
-                findings = sec.scan_text(text, "gsql_ddl")[1] if sec is not None else None
-                if findings is None:
-                    st.caption(md(f"Injection scan unavailable ({sec_err}); the live AI pass stays off."))
-                elif findings:
-                    st.warning(md(f"The DDL carries instruction text ({', '.join(sorted({f.code for f in findings}))}); the live AI pass stays off."))
-                if analyst is None:
-                    _missing(f"Custom DDL analysis needs schema_engine.ai_analyst: {analyst_err}")
+            with st.expander("Custom DDL · upload or paste GSQL", expanded=True, key="dq-custom"):
+                up = st.file_uploader("Upload a .gsql file (1 MB at most)", type=["gsql", "txt"], max_upload_size=1, key="data_ddl_upload")
+                pasted = st.text_area("Or paste GSQL DDL", max_chars=200_000, height=160, key="data_ddl", placeholder="CREATE GRAPH Bank_Custom () ...")
+                raw = up.getvalue().decode("utf-8", errors="replace") if up is not None else (pasted or "")
+                text = raw + "\n" if raw.strip() else ""  # always text plus a newline, so it is never read as a server path
+                if text:
+                    sec, sec_err = common.optional_import("agent.security")
+                    findings = sec.scan_text(text, "gsql_ddl")[1] if sec is not None else None
+                    if findings is None:
+                        st.caption(md(f"Injection scan unavailable ({sec_err}); the live AI pass stays off."))
+                    elif findings:
+                        st.warning(md(f"The DDL carries instruction text ({', '.join(sorted({f.code for f in findings}))}); the live AI pass stays off."))
+                    if analyst is None:
+                        _missing(f"Custom DDL analysis needs schema_engine.ai_analyst: {analyst_err}")
+                    else:
+                        analysis = analyst.analyze_gsql_schema(text).to_dict()
+                        names = _ast_names(parser.parse_gsql_ddl(text)) if parser is not None else None
+                        label = "computed on this page · pasted / uploaded DDL"
+                    backend = os.getenv("LLM_BACKEND", "").split("#")[0].strip().lower()  # an inline .env comment is not a backend name
+                    if analysis is not None and not ro and backend not in ("", "mock"):
+                        use_llm = st.toggle(md(f"Refine with live AI ({backend})"), key="data_use_llm", disabled=findings is None or bool(findings),
+                                            help="Calls the configured LLM on top of the comment-blind AST mapping; its run log goes to a temporary folder.")
+                        if use_llm and findings == []:
+                            st.button("Run the AI pass", key="data_llm_run", icon=":material/auto_awesome:", on_click=_llm_refine, args=(text, analyst))
+                            if st.session_state.get("data_llm_error"):
+                                st.error(md(f"AI pass failed (not cached): {st.session_state['data_llm_error']}"))
+                            got = (st.session_state.get("data_llm") or {}).get(hashlib.sha256(text.encode()).hexdigest())
+                            if got:
+                                analysis, label = got, f"AI pass · {got.get('analyzed_by')}"
                 else:
-                    analysis = analyst.analyze_gsql_schema(text).to_dict()
-                    names = _ast_names(parser.parse_gsql_ddl(text)) if parser is not None else None
-                    label = "computed on this page · pasted / uploaded DDL"
-                backend = os.getenv("LLM_BACKEND", "").split("#")[0].strip().lower()  # an inline .env comment is not a backend name
-                if analysis is not None and not ro and backend not in ("", "mock"):
-                    use_llm = st.toggle(md(f"Refine with live AI ({backend})"), key="data_use_llm", disabled=findings is None or bool(findings),
-                                        help="Calls the configured LLM on top of the comment-blind AST mapping; its run log goes to a temporary folder.")
-                    if use_llm and findings == []:
-                        st.button("Run the AI pass", key="data_llm_run", icon=":material/auto_awesome:", on_click=_llm_refine, args=(text, analyst))
-                        if st.session_state.get("data_llm_error"):
-                            st.error(md(f"AI pass failed (not cached): {st.session_state['data_llm_error']}"))
-                        got = (st.session_state.get("data_llm") or {}).get(hashlib.sha256(text.encode()).hexdigest())
-                        if got:
-                            analysis, label = got, f"AI pass · {got.get('analyzed_by')}"
-            else:
-                st.caption("Paste or upload a GSQL schema to map it.")
+                    st.caption("No DDL given yet.")
         else:
             analysis, names, label, err = presets.get(choice, (None, None, "", f"unknown preset {choice}"))
             if err:
@@ -546,12 +597,27 @@ if tab_map.open:
 
         if analysis is not None:
             maps = [m for m in analysis.get("mappings") or [] if isinstance(m, dict)]
-            st.caption(md(f"{label} · graph {analysis.get('graph_name')} · {analysis.get('architecture_family')} · "
-                          f"{analysis.get('n_vertices')} vertices · {analysis.get('n_edges')} edges · analysed by {analysis.get('analyzed_by')}"
+            checks = [_verify(m, names) for m in maps]
+            by_status = {s: sum(1 for m in maps if m.get("status") == s) for s in ("exact", "approximate", "unmapped")}
+            n_checked = sum(1 for s, _ in checks if s != "—")
+            n_yes = sum(1 for s, _ in checks if s == "yes")
+            ev = analysis.get("benchmark_eval") or {}
+            m_as_of = _gen(gsql_p) if label.startswith("snapshot") else "computed on this page"
+            with st.container(border=True, key="strip-dq-map"):
+                mc = st.columns(4)
+            common.measured("Vertices · edges parsed", f"{analysis.get('n_vertices')} · {analysis.get('n_edges')}", source=label, as_of=m_as_of, container=mc[0],
+                            how=f"graph {analysis.get('graph_name')}, {analysis.get('architecture_family')}; analysed by {analysis.get('analyzed_by')}")
+            common.measured("Targets mapped, exact · approximate", f"{by_status['exact']} · {by_status['approximate']} of {len(maps)}", source=label, as_of=m_as_of,
+                            container=mc[1], how=f"mapping status per canonical target; {by_status['unmapped']} unmapped")
+            common.measured("Verified in this DDL", f"{n_yes} of {n_checked}" if names is not None and n_checked else None, source="computed on this page", as_of="computed on this page",
+                            container=mc[2], how="every vertex / edge / attribute name in 'mapped to' and 'path' is a name of the parsed DDL")
+            common.measured("Self-check vs this file's answer-key comments", f"{ev['status_matches']}/{ev['total_targets']}" if ev.get("total_targets") else None,
+                            source=label, as_of=m_as_of, container=mc[3],
+                            how="mapping statuses against the comments in the same file (stripped before inference); not an independent accuracy measure")
+            st.caption(md(f"{label} · the self-check compares with the file's own comments, so it is not an independent accuracy measure"
                           + ("" if names is not None else " · DDL names not available here, so 'verified in DDL' is not checked")))
             if not analysis.get("n_vertices") and not analysis.get("n_edges"):
                 st.warning("No vertex or edge was parsed from this text: any mapping below comes from the analyser's fallback, not from this DDL.")
-            checks = [_verify(m, names) for m in maps]
             unverified = [(m.get("canonical_target"), bad) for m, (state, bad) in zip(maps, checks, strict=True) if state == "NO"]
             if unverified:
                 st.error(md(f"{len(unverified)} mapping(s) name things that are not in this DDL, so they are not mappings of it: "
@@ -569,27 +635,25 @@ if tab_map.open:
                                                                           help="computed on this page: every vertex / edge / attribute name in 'mapped to' and 'path' must be a name of the parsed DDL; partly = only inside a longer DDL name"),
                     "Rationale": st.column_config.TextColumn("Rationale", width="large"),
                 })
-            ev = analysis.get("benchmark_eval") or {}
-            common.measured("Self-check vs this file's answer-key comments", f"{ev['status_matches']}/{ev['total_targets']}" if ev.get("total_targets") else None,
-                            source=label, as_of=_gen(gsql_p) if label.startswith("snapshot") else "computed on this page",
-                            how="mapping statuses against the comments in the same file (stripped before inference); not an independent accuracy measure")
             enabled = analysis.get("enabled_detectors") or []
             disabled = analysis.get("disabled_detectors") or []
-            st.caption(md("Detectors enabled on this schema: " + (", ".join(map(str, enabled)) or "none")))
-            if disabled:
-                st.caption(md("Disabled: " + "; ".join(f"{x.get('detector')} ({x.get('reason')})" for x in disabled if isinstance(x, dict))))
-            for q in analysis.get("adapted_queries") or []:
-                with st.expander(md(f"{q.get('query_name')} — generated, not installed or syntax-checked")):
-                    st.caption(md(f"{q.get('detector')} · uses {', '.join(map(str, q.get('uses_mappings') or []))}"))
-                    st.code(str(q.get("gsql") or ""), language="sql")
-
-        st.markdown("#### CSV variant column mapper")
+            st.caption(md("Detectors enabled on this schema: " + (", ".join(map(str, enabled)) or "none")
+                          + (" · disabled: " + "; ".join(f"{x.get('detector')} ({x.get('reason')})" for x in disabled if isinstance(x, dict)) if disabled else "")))
+            queries = [q for q in analysis.get("adapted_queries") or [] if isinstance(q, dict)]
+            if queries:
+                with st.expander(f"Adapted detector queries · {len(queries)} · generated, not installed or syntax-checked", key="dq-adapted"):
+                    for q in queries:
+                        st.markdown(f"**{md(q.get('query_name'))}** · {md(q.get('detector'))} · uses {md(', '.join(map(str, q.get('uses_mappings') or [])))}")
+                        st.code(str(q.get("gsql") or ""), language="sql")
+    else:
+        roles = ", ".join(f"{k} → {v}" for k, v in ((variant or {}).get("table_roles") or {}).items())
+        design.html_block(design.section("", "CSV variant columns onto the canonical tables", note=var_label, aside=esc(f"as of {_when(var_as_of)}")))
         if not isinstance(variant, dict) or not variant.get("mappings"):
             _missing(f"No variant CSV mapping on this deployment ({var_as_of}).")
         else:
             vm = [m for m in variant["mappings"] if isinstance(m, dict)]
             tr_opts = list(dict.fromkeys([*TRANSFORMS, *sorted({str(m.get("transform")) for m in vm})]))
-            st.caption(md(f"{var_label} · {len(vm)} columns · roles: " + ", ".join(f"{k} → {v}" for k, v in (variant.get("table_roles") or {}).items())))
+            st.caption(md(f"{len(vm)} columns · table roles: {roles or 'not recorded'}"))
 
             def _sample(m: dict) -> str:
                 s = (m.get("sample_records") or [{}])[0]
@@ -600,7 +664,7 @@ if tab_map.open:
                   "Transform": [str(m.get("transform"))], "Confidence": float(m.get("confidence") or 0), "Raw → canonical sample": _sample(m)} for m in vm],
                 hide_index=True, width="stretch", height=min(35 * len(vm) + 38, 35 * 20 + 38), key="data_variant",
                 column_config={
-                    "Transform": st.column_config.MultiselectColumn("Transform", options=tr_opts, color=["violet" if t in TRANSFORMS else "gray" for t in tr_opts]),
+                    "Transform": st.column_config.MultiselectColumn("Transform", options=tr_opts, color=["gray"] * len(tr_opts)),
                     "Confidence": st.column_config.ProgressColumn("Confidence", min_value=0.0, max_value=1.0, format="%.2f"),
                     "Raw → canonical sample": st.column_config.TextColumn("Raw → canonical sample", width="large"),
                 })

@@ -1,0 +1,311 @@
+/* HHGOA Fraud Investigator: the console stylesheet, on top of .streamlit/config.toml.
+ *
+ * The world is the typology case study (FATF / Egmont / FinCEN typology reports): a petrol shell band, white work
+ * surfaces split by 1 px rules, numbered sections, and one 1.5 px line-glyph legend. Colour is a state, never a
+ * decoration: --tc-red for red flags, fraud and hard actions; --tc-ochre for uncertain and waiting on a human;
+ * --tc-green for legitimate and executed; --tc-gate (petrol) for the L1/L2 human gates.
+ *
+ * ui/design.py injects the --tc-* tokens for the active theme, then this file. Streamlit exposes no theme variables,
+ * so every colour here is a token. Keyed containers (.st-key-<key>) are styled by key; keep the keys when editing pages.
+ */
+
+/* ------------------------------------------------------------------ shell: the petrol band and the context strip */
+[data-testid="stHeader"] {
+  height: 56px; padding: 0 1.25rem; background: var(--tc-shell) !important; color: var(--tc-shell-ink) !important;
+  border-bottom: 0; box-shadow: none;
+}
+[data-testid="stHeader"] [data-testid="stToolbar"] { height: 56px; }
+[data-testid="stHeader"] button, [data-testid="stHeader"] svg { color: var(--tc-shell-ink) !important; }
+[data-testid="stHeaderLogo"] { height: 28px; width: auto; margin-right: 1.25rem; }
+[data-testid="stTopNavLink"], [data-testid="stTopNavSection"] {
+  position: relative; height: 56px !important; padding: 0 .8rem !important; gap: .4rem; border-radius: 0 !important;
+  background: transparent !important; color: var(--tc-shell-ink) !important; opacity: .74;
+  font-weight: 500 !important; transition: opacity .15s ease-out;
+}
+[data-testid="stTopNavLink"] span, [data-testid="stTopNavSection"] p { font-size: .875rem !important; color: inherit !important; }
+[data-testid="stTopNavLink"] [data-testid="stIconMaterial"] { font-size: 1.1rem !important; color: inherit !important; }
+[data-testid="stTopNavSection"] svg { width: 1rem !important; height: 1rem !important; }
+[data-testid="stTopNavLink"]:hover, [data-testid="stTopNavSection"]:hover,
+[data-testid="stTopNavSection"][aria-expanded="true"] { opacity: 1; background: transparent !important; }
+[data-testid="stTopNavLink"][aria-current="page"] { opacity: 1; font-weight: 600 !important; }
+[data-testid="stTopNavLink"][aria-current="page"]::after {
+  content: ""; position: absolute; left: .8rem; right: .8rem; bottom: 0; height: 3px; background: var(--tc-shell-ink);
+}
+[data-testid="stTopNavLink"]:focus-visible, [data-testid="stTopNavSection"]:focus-visible {
+  outline: 2px solid var(--tc-shell-ink); outline-offset: -6px; opacity: 1;
+}
+[data-testid="stTopNavPopoverBody"] { padding: .3rem; min-width: 16rem; border-radius: 4px; border: 1px solid var(--tc-rule); box-shadow: 0 8px 24px rgba(8, 26, 38, .18); }
+[data-testid="stTopNavDropdownLink"] { height: 36px !important; padding: 0 .7rem !important; border-radius: 3px !important; font-weight: 500 !important; }
+[data-testid="stTopNavDropdownLink"] span, [data-testid="stTopNavDropdownLink"] p { font-size: .875rem !important; }
+[data-testid="stTopNavDropdownLink"]:hover { background: var(--tc-strip) !important; }
+[data-testid="stTopNavDropdownLink"][aria-current="page"] { background: var(--tc-strip) !important; font-weight: 600 !important; }
+
+.block-container { padding-top: 56px; padding-bottom: 4rem; max-width: 1480px; }
+
+/* the context strip sits flush under the band and bleeds to both window edges, with one rule under it: the fill is a
+   pseudo-element as wide as the window, behind the strip's own controls (isolation keeps it above the page ground) */
+.st-key-ctxbar {
+  position: relative; isolation: isolate; background: transparent !important; border: 0 !important; border-radius: 0 !important;
+  padding: 8px 0 !important; gap: 10px !important; margin-top: -15px; margin-bottom: 14px; overflow: visible !important; /* flush under the band: Streamlit adds 15 px above the first element */
+}
+.st-key-ctxbar::before {
+  content: ""; position: absolute; z-index: -1; top: 0; bottom: 0; left: calc(50% - 50vw); width: 100vw;
+  background: var(--tc-strip); border-bottom: 1px solid var(--tc-rule);
+}
+/* the page keeps a real margin on tablets and phones (Streamlit's own is 15 px) */
+@media (max-width: 1000px) { .block-container { padding-left: 20px !important; padding-right: 20px !important; } }
+.st-key-ctxbar [data-baseweb="select"] > div { background: var(--tc-ground) !important; }
+.tc-mode { font-size: .82rem; color: var(--tc-muted); white-space: nowrap; }
+.tc-mode b { color: var(--tc-ink); font-weight: 600; }
+.tc-mode .tc-sep { margin: 0 .45rem; color: var(--tc-rule-strong); }
+
+/* ------------------------------------------------------------------ browser surfaces */
+/* focus is never hidden under the sticky band and strip; wide HTML tables scroll sideways on a phone instead of
+   breaking the page (UI/UX Pro Max: "Focus not obscured", "Table handling") */
+[data-testid="stMain"], [data-testid="stAppViewContainer"], html { scroll-padding-top: 132px; }
+[data-testid="stHtml"] { overflow-x: auto; }
+::selection { background: var(--tc-select); }
+/* where Streamlit draws the primary colour as text (a selected pill, a tertiary button), use the petrol token: the dark
+   primary stays dark enough for white button labels, which is too dark for text on the dark ground */
+button[data-variant="pills"][data-selected="true"], button[data-variant="pills"][data-selected="true"] p, [data-testid="stBaseButton-tertiary"] p,
+[data-testid="stBaseButton-tertiary"] [data-testid="stIconMaterial"], [data-testid="stPageLink"] p { color: var(--tc-petrol) !important; }
+* { scrollbar-width: thin; scrollbar-color: var(--tc-rule-strong) transparent; }
+a:focus-visible, button:focus-visible, summary:focus-visible, [role="tab"]:focus-visible { outline: 2px solid var(--tc-focus) !important; outline-offset: 2px; }
+[data-testid="stMetricValue"], [data-testid="stTable"], table, [data-testid="stCaptionContainer"], code, .tc-num { font-variant-numeric: tabular-nums; }
+code, pre, [data-testid="stCode"] * { font-variant-ligatures: none !important; font-feature-settings: "liga" 0, "calt" 0 !important; }
+
+/* ------------------------------------------------------------------ type */
+h1 { letter-spacing: -.015em; line-height: 1.2 !important; padding-bottom: .1rem !important; }
+h2, h3 { letter-spacing: -.01em; }
+[data-testid="stCaptionContainer"] p { color: var(--tc-muted) !important; }
+[data-testid="stCode"] pre, [data-testid="stCode"] code { font-size: .82rem; }
+[data-testid="stExpander"] details { border-radius: 4px; border-color: var(--tc-rule) !important; }
+[data-testid="stExpander"] summary p { font-weight: 500; }
+
+/* markdown badges become flat 3 px tags */
+span.stMarkdownBadge { border-radius: 3px !important; font-weight: 500; font-size: .8rem !important; padding: .05rem .4rem !important; }
+
+/* tabs are a page's section navigation, so they read as a band, not as body text. Streamlit 1.64 renders them with
+   React Aria: [role=tablist] (its ::after is the rule under the list) > [role=tab] (a markdown label and a
+   .react-aria-SelectionIndicator). The list is a strip band with a hairline frame; closed tabs are muted labels at
+   interface weight; the open tab takes the page ground, a 2 px petrol rule on top and side rules, and sits above the
+   band's bottom rule so it joins the panel it opens. The focus ring is drawn inside the tab: the list scrolls sideways on
+   a phone, and that scroll box clips a ring drawn outside the tab into two stray vertical bars. */
+[data-testid="stTabs"] [role="tablist"] {
+  position: relative; gap: .2rem; padding: .3rem .3rem 0; background: var(--tc-strip);
+  border: 1px solid var(--tc-rule); border-bottom: 0; border-radius: 4px 4px 0 0;
+}
+[data-testid="stTabs"] [role="tablist"]::after { height: 1px; background: var(--tc-rule-strong); z-index: 0; }
+[data-testid="stTabs"] [role="tab"] {
+  position: relative; z-index: 1; height: auto; padding: .5rem 1rem .55rem;
+  border: 1px solid transparent; border-top-width: 2px; border-bottom: 0; border-radius: 0;
+  color: var(--tc-muted); transition: color .12s ease-out, background-color .12s ease-out;
+}
+[data-testid="stTabs"] [role="tab"] p { font-size: .95rem; font-weight: 600; color: inherit; white-space: nowrap; }
+[data-testid="stTabs"] [role="tab"]:hover { color: var(--tc-ink); background: var(--tc-highlight); }
+[data-testid="stTabs"] [role="tab"][aria-selected="true"] {
+  color: var(--tc-ink); background: var(--tc-ground);
+  border-color: var(--tc-rule-strong); border-top-color: var(--tc-petrol);
+}
+[data-testid="stTabs"] [role="tab"] .react-aria-SelectionIndicator { display: none; }
+[data-testid="stTabs"] [role="tab"]:focus-visible { outline-offset: -4px; }
+[data-testid="stTabs"] [role="tabpanel"] { padding-top: 1.1rem; }
+
+/* main-menu cleanup: keep Print and the theme toggle, drop the screen recorder and the version footer */
+[data-testid="stMainMenuItem-recordScreencast"] { display: none !important; }
+[data-testid="stMainMenuPopover"] > div > div:not([data-testid]) { display: none !important; }
+
+/* ------------------------------------------------------------------ figures: KPIs are type, not tiles */
+[data-testid="stMetricLabel"], [data-testid="stMetricLabel"] > div,
+[data-testid="stMetricLabel"] [data-testid="stMarkdownContainer"], [data-testid="stMetricLabel"] [data-testid="stMarkdownContainer"] p,
+[data-testid="stWidgetLabel"], [data-testid="stWidgetLabel"] [data-testid="stMarkdownContainer"],
+[data-testid="stWidgetLabel"] [data-testid="stMarkdownContainer"] p {
+  white-space: normal !important; overflow: visible !important; text-overflow: clip !important; width: 100% !important; max-width: 100% !important; line-height: 1.3 !important;
+}
+[data-testid="stMetric"] { border-radius: 4px !important; }
+[data-testid="stMetricLabel"] p { font-size: .82rem !important; font-weight: 500; color: var(--tc-muted); }
+[data-testid="stMetricValue"], [data-testid="stMetricValue"] > div { font-size: 1.55rem !important; font-weight: 600; line-height: 1.2; letter-spacing: -.01em; }
+[data-testid="stMetricValue"] > div, [data-testid="stMetricValue"] p { white-space: normal !important; overflow: visible !important; text-overflow: clip !important; overflow-wrap: anywhere; }
+/* a figure strip: one bordered container (key "strip-<name>") split into columns by 1 px rules; the metrics inside lose their own frames */
+[class*="st-key-strip-"] { padding: .9rem 0 !important; border-radius: 4px !important; }
+[class*="st-key-strip-"] [data-testid="stMetric"] { border: 0 !important; padding: 0 !important; background: transparent !important; }
+[class*="st-key-strip-"] [data-testid="stColumn"] { padding: 0 1.1rem; }
+[class*="st-key-strip-"] [data-testid="stMetric"] > div { padding: 0 !important; } /* st.metric(border=True) pads its inner box; inside a strip the label, value and footnote share the column's inset */ /* the inset lives on the column, so a caption under a figure clears the rule too */
+[class*="st-key-strip-"] [data-testid="stColumn"] + [data-testid="stColumn"] { border-left: 1px solid var(--tc-rule); }
+
+/* ------------------------------------------------------------------ keyed containers */
+.st-key-casebar { border: 0 !important; padding: .35rem 0 .2rem !important; gap: .55rem !important; }
+.st-key-casebar h1 { font-size: 1.75rem !important; padding: 0 !important; margin: 0 !important; }
+.st-key-casebar [data-testid="stHeaderActionElements"] { display: none; }
+/* untrusted input is quarantined: a dashed frame all the way round and a faint warm wash, never followed */
+[class*="st-key-untrusted-"] { border: 1px dashed var(--tc-quarantine) !important; background: var(--tc-quarantine-bg); border-radius: 4px !important; padding: .55rem .75rem !important; gap: .4rem !important; }
+[class*="st-key-untrusted-"] [data-testid="stCaptionContainer"] p strong { color: var(--tc-ink); }
+[class*="st-key-untrusted-"] [data-testid="stCode"] pre { padding: .5rem .65rem !important; }
+/* a decision card (compact, on Approvals and Graph) takes its verdict as a 1 px frame in the verdict hue */
+[class*="st-key-decision-fraud"] { border-color: var(--tc-red-line) !important; }
+[class*="st-key-decision-legitimate"] { border-color: var(--tc-green-line) !important; }
+[class*="st-key-decision-uncertain"] { border-color: var(--tc-ochre-line) !important; }
+[class*="st-key-proof-"] { min-width: 180px; border-radius: 4px !important; }
+.stHorizontalBlock > div:has([class*="st-key-proof-"]) { flex: 1 1 180px !important; min-width: 180px !important; }
+[class*="st-key-stage-"] { padding: .4rem .55rem !important; gap: .1rem !important; border-radius: 4px !important; }
+[class*="st-key-stage-"] [data-testid="stCaptionContainer"] p { line-height: 1.25; margin: 0; }
+
+
+/* ------------------------------------------------------------------ components (ui/design.py, ui/case_brief.py) */
+.tc { color: var(--tc-ink); font-size: .9rem; line-height: 1.45; }
+.tc a { color: var(--tc-link); text-decoration: none; }
+.tc a:hover { text-decoration: underline; text-underline-offset: 2px; }
+.tc-mono { font-family: "Roboto Mono", ui-monospace, monospace; font-size: .8rem; }
+.tc-muted { color: var(--tc-muted); }
+.tc-glyph { display: inline-block; width: 16px; height: 16px; flex: none; vertical-align: -3px; background: currentColor;
+  -webkit-mask: no-repeat center / contain; mask: no-repeat center / contain; }
+
+/* page head: the h1, then the scope and the data sentence, never a label above the title */
+.tc-head h1 { font-size: 1.65rem; font-weight: 650; margin: .2rem 0 .15rem; padding: 0; color: var(--tc-ink); }
+.tc-head p { margin: 0; color: var(--tc-muted); font-size: .9rem; }
+/* a page's answer: one sentence in ink at reading size, under the head, saying what the screen's data shows */
+.tc-lead { font-size: 1.02rem; line-height: 1.5; color: var(--tc-ink); max-width: 78ch; margin: .1rem 0 .2rem; }
+.tc-lead b { font-weight: 650; }
+.tc-lead .red { color: var(--tc-red-ink); } .tc-lead .ochre { color: var(--tc-ochre-ink); } .tc-lead .green { color: var(--tc-green-ink); }
+
+/* a compact table for short fixed lists: grey header in sentence case, one rule per row, numbers right-aligned */
+.tc-table { width: 100%; border-collapse: collapse; }
+.tc-table th { text-align: left; font-weight: 500; font-size: .8rem; color: var(--tc-muted); padding: .35rem .5rem; border-bottom: 1px solid var(--tc-rule-strong); white-space: nowrap; }
+.tc-table td { padding: .5rem .5rem; border-bottom: 1px solid var(--tc-rule); vertical-align: top; font-size: .86rem; }
+.tc-table td.num, .tc-table th.num { text-align: right; font-variant-numeric: tabular-nums; }
+.tc-table td.mono { font-family: "Roboto Mono", ui-monospace, monospace; font-size: .8rem; }
+.tc-table tr.quiet td { color: var(--tc-muted); }
+.tc-table .sub { display: block; color: var(--tc-muted); font-size: .8rem; margin-top: .1rem; }
+
+/* numbered section heads: the number in petrol, a sentence-case title, an optional note and a right-aligned aside */
+.tc-sec { display: flex; align-items: baseline; gap: .55rem; margin: 0 0 .7rem; padding-bottom: .45rem; border-bottom: 1px solid var(--tc-rule); }
+.tc-sec .tc-n { font-weight: 700; color: var(--tc-petrol); font-variant-numeric: tabular-nums; min-width: .8rem; }
+.tc-sec h2 { margin: 0; padding: 0; font-size: 1.05rem; font-weight: 650; color: var(--tc-ink); letter-spacing: -.005em; }
+.tc-sec .tc-sec-note { color: var(--tc-muted); font-size: .88rem; }
+.tc-sec .tc-sec-aside { margin-left: auto; color: var(--tc-muted); font-size: .8rem; text-align: right; }
+
+/* tags: route, state and family, flat with 3 px corners */
+.tc-tag { display: inline-flex; align-items: center; gap: .3rem; padding: .05rem .4rem; border-radius: 3px; font-size: .8rem; font-weight: 500; white-space: nowrap; background: var(--tc-chip); color: var(--tc-ink-2); }
+.tc-tag.gate { background: var(--tc-gate-bg); color: var(--tc-gate); }
+.tc-tag.red { background: var(--tc-red-bg); color: var(--tc-red-ink); }
+.tc-tag.ochre { background: var(--tc-ochre-bg); color: var(--tc-ochre-ink); }
+.tc-tag.green { background: var(--tc-green-bg); color: var(--tc-green-ink); }
+.tc-dot { display: inline-block; width: .6rem; height: .6rem; border-radius: 50%; flex: none; }
+.tc-dot.fraud { background: var(--tc-red); } .tc-dot.uncertain { background: var(--tc-ochre); } .tc-dot.legitimate { background: var(--tc-green); } .tc-dot.none { background: var(--tc-rule-strong); }
+
+/* the case title line in the toolbar: the verdict as a dot and an honest headline */
+.tc-verdict { display: flex; align-items: center; gap: .5rem; font-size: 1.05rem; font-weight: 600; white-space: nowrap; }
+.tc-verdict.fraud { color: var(--tc-red-ink); } .tc-verdict.uncertain { color: var(--tc-ochre-ink); } .tc-verdict.legitimate { color: var(--tc-green-ink); }
+.tc-verdict .tc-then { font-weight: 400; color: var(--tc-muted); font-size: .95rem; }
+
+/* one line of checks under the toolbar */
+.tc-checks { display: flex; flex-wrap: wrap; gap: .35rem 1.1rem; font-size: .82rem; color: var(--tc-muted); margin: -.2rem 0 .9rem; }
+.tc-checks b { color: var(--tc-ink); font-weight: 600; }
+.tc-check { display: inline-flex; align-items: center; gap: .3rem; }
+.tc-check.ok svg { color: var(--tc-green); } .tc-check.bad { color: var(--tc-red-ink); } .tc-check.bad svg { color: var(--tc-red); }
+.tc-checks .tc-jump { margin-left: auto; color: var(--tc-link); font-weight: 500; }
+.tc-anchor { display: block; scroll-margin-top: 120px; }
+
+/* ------------------------------------------------------------------ the signature: the scheme */
+.tc-scheme { display: grid; grid-template-columns: repeat(var(--steps, 5), minmax(0, 1fr)); gap: 0; background: var(--tc-panel); border: 1px solid var(--tc-rule); border-radius: 4px; padding: .7rem; }
+.tc-step { position: relative; display: flex; flex-direction: column; gap: .28rem; padding: .6rem .6rem .55rem; margin-right: 18px; background: var(--tc-ground); border: 1px solid var(--tc-rule-strong); border-radius: 4px; min-width: 0; }
+.tc-step:last-child { margin-right: 0; }
+.tc-step:not(:last-child)::after { /* the arrow to the next step */
+  content: ""; position: absolute; top: 1.2rem; right: -16px; width: 12px; height: 1.5px; background: var(--tc-petrol);
+}
+.tc-step:not(:last-child)::before {
+  /* the arrowhead: a clipped triangle, not a border trick */
+  content: ""; position: absolute; top: calc(1.2rem - 4px); right: -17px; width: 6px; height: 9px; background: var(--tc-petrol); clip-path: polygon(0 0, 100% 50%, 0 100%);
+}
+.tc-step-top { display: flex; align-items: flex-start; gap: .4rem; color: var(--tc-petrol); }
+.tc-step-n { display: inline-grid; place-items: center; width: 1.2rem; height: 1.2rem; border-radius: 50%; background: var(--tc-petrol); color: var(--tc-ground); font-size: .8rem; font-weight: 700; flex: none; }
+.tc-step-title { font-weight: 650; font-size: .82rem; line-height: 1.25; color: var(--tc-ink); padding-top: .05rem; }
+.tc-step-top .tc-glyph { margin-left: auto; }
+.tc-step-line { font-size: .8rem; line-height: 1.35; color: var(--tc-ink-2); overflow-wrap: anywhere; }
+.tc-step-line.big { font-size: 1.05rem; font-weight: 650; color: var(--tc-ink); }
+.tc-step-line.flag { color: var(--tc-red-ink); }
+.tc-step.decision.fraud { border-color: var(--tc-red-line); } .tc-step.decision.uncertain { border-color: var(--tc-ochre-line); } .tc-step.decision.legitimate { border-color: var(--tc-green-line); }
+.tc-step.quiet { border-style: dashed; }
+.tc-keys { display: flex; flex-wrap: wrap; gap: .25rem; margin-top: auto; padding-top: .35rem; }
+.tc-key { display: inline-block; padding: 0 .3rem; border: 1px solid var(--tc-red-line); border-radius: 3px; color: var(--tc-red-ink); font-size: .8rem; font-weight: 600; font-variant-numeric: tabular-nums; text-decoration: none !important; }
+.tc-key.neutral { border-color: var(--tc-rule-strong); color: var(--tc-muted); }
+.tc-key.legit { border-color: var(--tc-green-line); color: var(--tc-green-ink); }
+.tc-key:hover, .tc-key:focus-visible { background: var(--tc-red-bg); }
+.tc-rule-key { display: inline-block; padding: 0 .3rem; border: 1px solid var(--tc-gate-line); border-radius: 3px; color: var(--tc-gate); font-size: .8rem; font-weight: 600; }
+@media (max-width: 1100px) {
+  .tc-scheme { grid-template-columns: 1fr; gap: 18px; }
+  .tc-step { margin-right: 0; }
+  .tc-step:not(:last-child)::after { top: auto; bottom: -15px; right: auto; left: 1.3rem; width: 1.5px; height: 12px; }
+  .tc-step:not(:last-child)::before { top: auto; bottom: -17px; right: auto; left: calc(1.3rem - 3.75px); width: 9px; height: 6px; clip-path: polygon(0 0, 100% 0, 50% 100%); }
+}
+
+/* red-flag indicators: key · family · indicator and its query · ids · checked */
+.tc-ind { width: 100%; border-collapse: collapse; margin-top: .2rem; }
+.tc-ind th { text-align: left; font-weight: 500; font-size: .8rem; color: var(--tc-muted); padding: .35rem .5rem; border-bottom: 1px solid var(--tc-rule-strong); }
+.tc-ind td { vertical-align: top; padding: .55rem .5rem; border-bottom: 1px solid var(--tc-rule); font-size: .85rem; }
+.tc-ind td.k { width: 2.6rem; } .tc-ind td.f { width: 8.5rem; color: var(--tc-ink-2); } .tc-ind td.n { width: 3rem; text-align: right; } .tc-ind td.t { width: 5.5rem; text-align: right; }
+.tc-ind .claim { color: var(--tc-ink); }
+.tc-ind .ref { display: block; margin-top: .2rem; color: var(--tc-muted); font-family: "Roboto Mono", ui-monospace, monospace; font-size: .8rem; overflow-wrap: anywhere; }
+.tc-ind .flags { display: block; margin-top: .25rem; color: var(--tc-ochre-ink); font-size: .8rem; }
+.tc-ind tr { transition: background-color .15s ease-out; scroll-margin-top: 132px; /* lands below the band and the strip */ }
+.st-key-tg-panel { margin-top: 1.2rem; }
+.tc-ind tr:target { background: var(--tc-highlight); }
+/* the signature interaction: a key on a scheme step lights its indicator row */
+.st-key-case-brief:has(.tc-key[data-k="E1"]:hover) tr[data-k="E1"], .st-key-case-brief:has(.tc-key[data-k="E2"]:hover) tr[data-k="E2"],
+.st-key-case-brief:has(.tc-key[data-k="E3"]:hover) tr[data-k="E3"], .st-key-case-brief:has(.tc-key[data-k="E4"]:hover) tr[data-k="E4"],
+.st-key-case-brief:has(.tc-key[data-k="E5"]:hover) tr[data-k="E5"], .st-key-case-brief:has(.tc-key[data-k="E6"]:hover) tr[data-k="E6"],
+.st-key-case-brief:has(.tc-key[data-k="E7"]:hover) tr[data-k="E7"], .st-key-case-brief:has(.tc-key[data-k="E8"]:hover) tr[data-k="E8"],
+.st-key-case-brief:has(.tc-key[data-k="E9"]:hover) tr[data-k="E9"], .st-key-case-brief:has(.tc-key[data-k="E10"]:hover) tr[data-k="E10"],
+.st-key-case-brief:has(.tc-key[data-k="E11"]:hover) tr[data-k="E11"], .st-key-case-brief:has(.tc-key[data-k="E12"]:hover) tr[data-k="E12"] { background: var(--tc-highlight); }
+.st-key-case-brief { gap: 1.4rem !important; }
+
+/* ------------------------------------------------------------------ the decision panel */
+.tc-p { display: flex; align-items: flex-end; gap: .9rem; margin: .1rem 0 .55rem; }
+.tc-p .tc-pv { font-size: 2.6rem; line-height: 1; font-weight: 650; letter-spacing: -.02em; color: var(--tc-ink); font-variant-numeric: tabular-nums; }
+.tc-p .tc-pl { font-size: .8rem; color: var(--tc-muted); padding-bottom: .3rem; line-height: 1.35; }
+.tc-p .tc-pl b { color: var(--tc-ink); font-weight: 600; }
+/* the fixed 0-1 ramp: the model's +/-0.10 window drawn round the engine's value */
+.tc-ramp { position: relative; height: 34px; margin: .3rem 0 .2rem; }
+.tc-ramp .track { position: absolute; left: 0; right: 0; top: 13px; height: 6px; background: var(--tc-chip); border-radius: 3px; }
+.tc-ramp .window { position: absolute; top: 9px; height: 14px; background: var(--tc-gate-bg); border: 1px solid var(--tc-gate-line); border-radius: 2px; }
+.tc-ramp .tick { position: absolute; top: 24px; transform: translateX(-50%); font-size: 12px; color: var(--tc-muted); }
+.tc-ramp .tick:first-of-type { transform: none; } .tc-ramp .tick:last-of-type { transform: translateX(-100%); }
+.tc-ramp .mark { position: absolute; top: 10px; width: 12px; height: 12px; margin-left: -6px; border-radius: 50%; }
+.tc-ramp .mark.engine { background: var(--tc-ground); border: 2px solid var(--tc-petrol); }
+.tc-ramp .mark.model { width: 8px; height: 8px; margin-left: -4px; top: 12px; background: var(--tc-petrol); }
+.tc-ramp .mark.final { width: 4px; height: 20px; margin-left: -2px; top: 6px; border-radius: 1px; }
+.tc-ramp .mark.final.fraud { background: var(--tc-red); } .tc-ramp .mark.final.uncertain { background: var(--tc-ochre); } .tc-ramp .mark.final.legitimate { background: var(--tc-green); }
+.tc-path { display: grid; grid-template-columns: auto 1fr; gap: .1rem .9rem; font-size: .82rem; margin: .35rem 0 .7rem; }
+.tc-path dt { color: var(--tc-muted); } .tc-path dd { margin: 0; font-variant-numeric: tabular-nums; color: var(--tc-ink); }
+.tc-why { font-size: .86rem; color: var(--tc-ink); margin: 0 0 .9rem; padding: .55rem .7rem; background: var(--tc-panel); border-radius: 4px; }
+.tc-why b { font-weight: 650; }
+/* actions: action · route · where it stands */
+.tc-act { width: 100%; border-collapse: collapse; }
+.tc-act th { text-align: left; font-weight: 500; font-size: .8rem; color: var(--tc-muted); padding: .3rem .4rem; border-bottom: 1px solid var(--tc-rule-strong); }
+.tc-act td { padding: .5rem .4rem; border-bottom: 1px solid var(--tc-rule); vertical-align: top; font-size: .84rem; }
+.tc-act td.a { font-family: "Roboto Mono", ui-monospace, monospace; font-size: .8rem; }
+.tc-act td.a .hard { color: var(--tc-red-ink); }
+.tc-act .st { display: inline-flex; align-items: center; gap: .3rem; }
+.tc-act .st.done svg { color: var(--tc-green); } .tc-act .st.wait { color: var(--tc-ochre-ink); } .tc-act .st.off { color: var(--tc-muted); }
+.tc-act .sub { display: block; color: var(--tc-muted); font-size: .8rem; margin-top: .1rem; }
+.tc-note { margin: .55rem 0 0; font-size: .8rem; color: var(--tc-ink-2); }
+.tc-note b { font-weight: 600; color: var(--tc-ink); }
+.tc-owner { display: flex; align-items: flex-start; gap: .5rem; margin-top: .7rem; padding: .55rem .7rem; border: 1px solid var(--tc-ochre-line); border-radius: 4px; font-size: .85rem; }
+.tc-owner .tc-glyph { margin-top: .15rem; }
+.tc-owner.closed { border-color: var(--tc-green-line); }
+.tc-owner b { font-weight: 650; }
+.tc-open { margin: .3rem 0 0; padding-left: 1rem; color: var(--tc-muted); font-size: .8rem; }
+.tc-open li { margin: 0; }
+.tc-prov { margin-top: .6rem; font-size: .8rem; color: var(--tc-muted); }
+
+/* ------------------------------------------------------------------ dataframes and alerts follow the rules */
+[data-testid="stAlert"] { border-radius: 4px; }
+[data-testid="stDataFrame"] { border-radius: 4px; }
+
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+
+/* phones: the verdict line wraps instead of clipping; stacked strip columns lose their dividing rule */
+@media (max-width: 640px) {
+  .tc-verdict { white-space: normal; flex-wrap: wrap; }
+  [class*="st-key-strip-"] [data-testid="stColumn"] + [data-testid="stColumn"] { border-left: 0; border-top: 1px solid var(--tc-rule); padding-top: .7rem; }
+}

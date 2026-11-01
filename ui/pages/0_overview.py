@@ -435,13 +435,13 @@ EXTRA = ["Evidence request", "Run state", "Opened at", "vs submitted"]
 BOARD_COLS = {
     "p(fraud)": st.column_config.ProgressColumn("p(fraud)", min_value=0.0, max_value=1.0, format="%.2f", width=90, help="case.fraud_probability on a fixed 0–1 scale"),
     "Trigger": st.column_config.TextColumn("Trigger", width=118),
-    "Pattern or wave": st.column_config.TextColumn("Pattern or wave", width=165,
+    "Pattern or wave": st.column_config.TextColumn("Pattern or wave", width=common.text_width((r["Pattern or wave"] for r in rows), 150, 300),
                                                    help=f"case.pattern from the answer; the detector wave from {bt['source'] or 'the detector backtest'} exam_scan"),
-    "Gated actions": st.column_config.TextColumn("Gated actions", width=300,
+    "Gated actions": st.column_config.TextColumn("Gated actions", width=common.text_width((r["Gated actions"] for r in rows), 160, 480),
                                                  help="ACTION · route for each L1/L2-gated final action; +N auto: final actions without a gate, CREATE_CASE left out"),
     "SAR": st.column_config.TextColumn("SAR", width=88, help="sar.file true: the SAR draft, and its FILE_REPORT row in the approvals inbox"),
     "Approvals": st.column_config.TextColumn("Approvals", width=88),
-    "Attention": st.column_config.TextColumn("Attention", width=195,
+    "Attention": st.column_config.TextColumn("Attention", width=common.text_width((r["Attention"] for r in rows), 150, 340),
                                              help="run state when not done, guardrail notes from phases.jsonl (injection stripped, retries) and DQ taints"),
     "Evidence request": st.column_config.TextColumn("Evidence request", width="medium"),
     "vs submitted": st.column_config.TextColumn("vs submitted", help=f"common.agreement against {REF_SRC}" if REF else "no submitted answers to compare"),
@@ -459,12 +459,12 @@ for g, word, kind, total, outcome, tip in [*GROUP_HEADS, *([undecided_head] if n
     word_html = f'<span class="ov-v {kind}">{esc(word)}</span>' if kind else esc(word)  # colour sits on the verdict word only
     with st.container(key=f"ov-g-{name}"):
         st.markdown(f'<p class="ov-gh">{word_html} · {total} <span class="ov-o">→ {esc(outcome)}{esc(note)}</span></p>',
-                    unsafe_allow_html=True, help=tip)
+                    unsafe_allow_html=True, help=tip, width="content")  # content width: the help icon sits after the heading
         if grp:
             board_names.append(name)
             st.dataframe(
                 pd.DataFrame([{k: v for k, v in r.items() if not k.startswith("_")} for r in grp], columns=MAIN + EXTRA),
-                key=f"board_{name}", hide_index=True, height=35 * len(grp) + 38, column_order=None if all_cols else MAIN,
+                key=f"board_{name}", hide_index=True, height="content", column_order=None if all_cols else MAIN,
                 column_config={"Case": st.column_config.ButtonColumn("Case", type="tertiary", pinned=True, key=f"board_open_{name}", width=84,
                                                                      help="Open the Case file"), **BOARD_COLS},
             )

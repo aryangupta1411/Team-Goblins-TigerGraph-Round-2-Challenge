@@ -139,8 +139,10 @@ def _stylesheet() -> str:
 
 
 def inject() -> None:
-    """The tokens for the active theme, then the stylesheet. Called once per run by common.inject_css()."""
-    st.markdown(f"<style>{tokens_css()}\n{_stylesheet()}\n{glyph_css()}</style>", unsafe_allow_html=True)
+    """The tokens for the active theme, then the stylesheet. Called once per run by common.inject_css(). A dialog renders
+    outside .stApp, where light-dark() would resolve light, so it gets the active theme's color-scheme."""
+    dialog = f'[data-testid="stDialog"]{{color-scheme:{theme_type()}}}'
+    st.markdown(f"<style>{tokens_css()}\n{dialog}\n{_stylesheet()}\n{glyph_css()}</style>", unsafe_allow_html=True)
 
 
 def html_block(markup: str) -> None:

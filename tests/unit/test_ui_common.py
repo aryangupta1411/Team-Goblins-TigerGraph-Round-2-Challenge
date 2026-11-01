@@ -555,7 +555,33 @@ def test_console_mock_mode(mock_run, monkeypatch):
     assert sorted(p.name for p in mock_run.iterdir()) == ["t1"]
 
 
-def test_console_read_only_shows_only_the_disabled_message(mock_run, monkeypatch):
+def test_table_height_and_text_width():
+    assert common.table_height(3) == "content" and common.table_height(20) == "content"  # every row, no blank band
+    assert common.table_height(21) == common.TABLE_ROW_PX * 21 + 2  # 20 rows and the header, then a scrollbar
+    assert common.table_height(9, cap=8) == common.TABLE_ROW_PX * 9 + 2
+    assert common.text_width([]) == 120 and common.text_width(["x" * 400]) == 480  # floor and cap
+    assert common.text_width(["DECLINE_TRANSACTION · L1, BLOCK_CARD · L1 +1 auto"], 160, 480) > 300  # wider than the old fixed 300
+
+
+def test_graph_page_reset_expand_reading_and_no_edge_label_toggle(mock_run):
+    """The canvas toolbar has Reset layout and Expand and no all-edges label toggle; the reading sentence and the edge key
+    describe the drawing; Reset layout starts a fresh canvas key; Expand opens without an exception."""
+    at = _apptest("ui/pages/4_graph.py")
+    at.run()
+    assert not at.exception, [e.value for e in at.exception]
+    labels = [str(b.label) for b in at.button]
+    assert "Reset layout" in labels and "Expand" in labels, labels
+    assert not [t for t in at.toggle if str(t.label) == "Edge labels"]
+    html = " ".join(str(h.proto.body) for h in at.get("html"))
+    assert "The diamond is AC-HHG-014" in html and "gr-edgekey" in html and "card the case was opened on" in html
+    next(b for b in at.button if str(b.label) == "Reset layout").click().run()
+    assert not at.exception, [e.value for e in at.exception]
+    assert at.session_state["gr_layout_n"] == 1
+    next(b for b in at.button if str(b.label) == "Expand").click().run()
+    assert not at.exception, [e.value for e in at.exception]
+
+
+def test_console_read_only_shows_the_disabled_message_and_stays_in_the_nav(mock_run, monkeypatch):
     monkeypatch.setenv("DEPLOY_READONLY", "1")
     monkeypatch.setattr(subprocess, "Popen", lambda *a, **k: (_ for _ in ()).throw(AssertionError("Popen on a read-only deployment")))
     at = _apptest("ui/pages/1_queue.py")
@@ -563,7 +589,7 @@ def test_console_read_only_shows_only_the_disabled_message(mock_run, monkeypatch
     assert not at.exception, [e.value for e in at.exception]
     assert any("DEPLOY_READONLY=1" in str(e.value) for e in at.info), [str(e.value) for e in at.info]
     assert not [b for b in at.button if str(b.label).startswith(("Start", "Investigate"))]
-    assert _nav(monkeypatch)["console"].get("visibility") == "hidden"  # hidden from the top bar
+    assert _nav(monkeypatch)["console"].get("visibility", "visible") == "visible"  # listed: the replay lives there
     monkeypatch.setenv("DEPLOY_READONLY", "")
     assert _nav(monkeypatch)["console"].get("visibility", "visible") == "visible"
 

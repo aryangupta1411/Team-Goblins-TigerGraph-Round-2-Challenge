@@ -28,6 +28,9 @@
 
 /* ------------------------------------------------------------------ the board: one block per verdict, its heading in ink, colour on the verdict word only */
 [class*="st-key-ov-g-"] { gap: .35rem !important; margin-top: .55rem; }
+/* Streamlit pulls a markdown block that carries a help icon up by -1rem, which slid the heading under its table */
+[class*="st-key-ov-g-"] [data-testid="stMarkdownContainer"] { margin-bottom: 0 !important; }
+[class*="st-key-ov-g-"] [data-testid="stMarkdown"] > div { align-items: center; gap: .4rem; }
 .ov-gh { margin: 0; font-size: 1rem; font-weight: 650; line-height: 1.35; color: var(--tc-ink); font-variant-numeric: tabular-nums; }
 .ov-gh .ov-o { font-weight: 450; color: var(--tc-ink-2); }
 .ov-gh .ov-v.red { color: var(--tc-red-ink); }

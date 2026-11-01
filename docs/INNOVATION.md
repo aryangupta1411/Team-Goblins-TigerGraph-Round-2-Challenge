@@ -16,7 +16,7 @@ The "Before" column describes earlier code that is no longer on disk as output, 
 | **D4 rarity needs history** (data must start ≥ 60 days before `as_of`; ≤ 40 cards all-time) | D4 matched cleared closed cases from the data's first weeks | D4: 1 cleared closed case (CC-3407, customer C03470). It catches HHF-006 and HHF-013 and 5 confirmed-fraud closed cases. | `engine/out/detector_backtest.json` |
 | **Injection defence generalised** (NFKC + zero-width folding, sentence-level removal, chat-template and role markup, reworded suppression, amount spoofing; stored notes and tool rows scrubbed too) | Exact-phrase patterns that matched the six planted phrasings | 23 / 23 attacks blocked (6 planted in the pack, 17 synthetic). 0 false alarms on the 12 HHF triggers that carry no injection. | `agent.security.run_attack_ablation()`; `sanitize_trigger_text` over the 18 `cp_round2` triggers in `data/hhgoa_engine.duckdb` |
 | **Approvals need an authenticated session** | The approver was a dropdown | scrypt passphrase directory. Only a server-minted session can decide, and SQLite triggers refuse edits to decided approvals. 4 of the 23 attacks are approval drills, all refused by the server: L2 by a team lead, a role claimed by the client, a session re-labelled outside `authenticate()`, and an overwrite of a decided row. | `run_attack_ablation()` (ATK-08, ATK-22, ATK-23, ATK-09) |
-| **The policy gate admits impact actions only when a rule requires them** (`engine/policy.py`, `IMPACT_ACTIONS` = `BLOCK_CARD`, `BLOCK_ALL_CARDS`, `DECLINE_TRANSACTION`, `FILE_REPORT`) | The model could add any action that was not forbidden | The model can add only low-impact optional actions, and no block, decline or report appears beyond what the engine requires: in `runs/hhf-final-2` the final action sets with routes equal the offline engine's on all 18 cases. | `engine/policy.py`; `runs/hhf-final-2/HHF-*/answer.json` vs `engine.run_cases` at `8dc9e07` |
+| **The policy gate admits impact actions only when a rule requires them** (`engine/policy.py`, `IMPACT_ACTIONS` = `BLOCK_CARD`, `BLOCK_ALL_CARDS`, `DECLINE_TRANSACTION`, `FILE_REPORT`) | The model could add any action that was not forbidden | The model can add only low-impact optional actions, and no block, decline or report appears beyond what the engine requires: in `runs/hhf-final-3` the final action sets with routes equal the offline engine's on all 18 cases, and the uncertain HHF-008 carries no decline (the R4 decline waits on a real reply). | `engine/policy.py`; `runs/hhf-final-3/HHF-*/answer.json` vs `engine.run_cases` at `c2bcb29` |
 
 ## Detector backtest (all 5,585 closed cases, July 2016 to January 2017)
 
@@ -51,25 +51,28 @@ The waves share no device, so no vertex exists to traverse from. `graph/queries/
 
 Where it stands:
 
-- **Installed on the workspace, and used by the submitted run.** In `runs/hhf-final-2`, the harness called `typology_scan` through MCP once per case: 18 calls, all `ok` (`runs/hhf-final-2/HHF-*/calls.jsonl`). The seven ring cases (HHF-001 … 006 and HHF-013) took their D1-D4 evidence from the graph.
-- **Parity with the DuckDB twin.** `graph/check_typology_parity.py --installed` covers 30 cases (the 18 HHF cases plus 12 other January cards): 0 differences and 6 hits (D1 HHF-001 and 002, D2 HHF-003, D3 HHF-004 and 005, D4 HHF-006). Source: `engine/out/typology_parity.json`, written by `uv run python graph/check_typology_parity.py --installed --json engine/out/typology_parity.json`.
+- **Installed on the workspace, and used by the submitted run.** In `runs/hhf-final-3`, the harness called `typology_scan` through MCP once per case: 18 calls, all `ok` (`runs/hhf-final-3/HHF-*/calls.jsonl`). The seven ring cases (HHF-001 … 006 and HHF-013) took their D1-D4 evidence from the graph.
+- **Parity with the DuckDB twin.** `graph/check_typology_parity.py --installed` covers 30 cases (the 18 HHF cases plus 12 other January cards): 0 differences and 7 hits (D1 HHF-001 and 002, D2 HHF-003, D3 HHF-004 and 005, D4 HHF-006 and HHF-013). Source: `engine/out/typology_parity.json`, written by `uv run python graph/check_typology_parity.py --installed --json engine/out/typology_parity.json`.
 - **The backtest above runs on DuckDB** (`engine.backtest_detectors` over the twin), and so do mock mode and `engine.run_cases`.
 
 ## The 18 answers
 
 8 fraud: the January rings that share no device (HHF-001 … HHF-006 and HHF-013, `undocumented`) plus HHF-007's denied card-testing run. 1 uncertain with escalation (HHF-008). 9 legitimate. SARs are filed on the seven multi-card undocumented rings, as §3a requires. This includes the $23.99 (HHF-004) and $23.17 (HHF-005) micro-skimming cases.
 
-They come from one live run against FraudGraph, `runs/hhf-final-2/`, at frozen commit `8dc9e07` (tag `hhf-final-2-run`) with no local changes: one invocation, 18 / 18, no failure, nothing resumed. All 143 model calls went to `gemini-3.6-flash`, and every case was written back to the graph. `make validate` reports 0 problems on all 38 answer files, and the organisers' `grade.py` reports 18 / 18 clean (0 hard, 0 policy). It supersedes `runs/hhf-final` (`b397c2c`, `gemini-2.5-flash`), where HHF-005 once failed closed and was resumed (`docs/RESILIENCE.md`). Per case:
+They come from one live run against FraudGraph, `runs/hhf-final-3/`, at frozen commit `c2bcb29` from a clean detached worktree with no local changes: one invocation, 18 / 18, no failure, nothing resumed. All 142 model calls went to `gemini-3.6-flash`, and every case was written back to the graph. The validator reports 0 problems, and the organisers' `grade.py` reports 18 / 18 clean (0 hard, 0 policy, 1 warning on HHF-013, whose flagged in-person purchase is genuine). It supersedes `runs/hhf-final-2` (`8dc9e07`; same verdicts, HHF-008 then still carried `DECLINE_TRANSACTION`), which superseded `runs/hhf-final` (`b397c2c`, `gemini-2.5-flash`), where HHF-005 once failed closed and was resumed (`docs/RESILIENCE.md`). Per case:
 
 | Per case | Median | p95 |
 |---|---:|---:|
-| Tool calls | 21 | 26 |
-| Tokens | 213,861 | 350,878 |
-| Latency | 67.8 s | 105.1 s |
+| Tool calls | 21 | 25 |
+| Tokens | 202,270 | 318,654 |
+| Latency | 62.7 s | 84.2 s |
+| Cost | $0.10 | $0.18 |
 
-Sources: `runs/hhf-final-2/HHF-*/answer.json` (`tool_calls`, `tokens`, `latency_s`; p95 is nearest-rank, which is the maximum of 18 values); `runs/hhf-final-2/HHF-*/calls.jsonl` (`kind=llm`, `model`); `runs/hhf-final-2/run_manifest.json`.
+Sources: `runs/hhf-final-3/HHF-*/answer.json` (`tool_calls`, `tokens`, `latency_s`; p95 is nearest-rank, which is the maximum of 18 values); `runs/hhf-final-3/HHF-*/calls.jsonl` (`kind=llm`, `model`); `runs/hhf-final-3/run_manifest.json`; cost from `engine/out/cost_latency.json` (`ops/cost_report.py`, Gemini paid-tier prices read 2026-11-01; $1.96 for the 18 cases).
 
-The deterministic engine (`engine.run_cases`, re-run offline at `8dc9e07`) gives the same verdict, pattern, SAR decision and final action set with routes on all 18 cases, with probability within 0.10.
+The deterministic engine (`engine.run_cases`, re-run offline at `c2bcb29`) gives the same verdict, pattern, SAR decision and final action set with routes on all 18 cases, with probability within 0.10.
+
+Also in the frozen code: each `sar.md` is a fileable filing with every sentence cited (59 / 59), a timeline and a Mermaid evidence graph (Challenge 4); R5 / R7 policy prose compiled to detectors with a backtest and rule-vs-agent comparison (Challenge 3, `engine/policy_compiler.py`, `engine/out/policy_detector_R5.json`); analyst feedback read by the engine, with before/after (Challenge 8, `engine/feedback.py`, `engine/out/feedback_before_after.json`); the smallest block set per wave (Challenge 7); cost per case and an alert watcher (Challenge 9, `ops/alert_watcher.py`); `close_case` on a final approval or customer reply, with a hand-over page (Challenge 14, `agent/lifecycle.py`); a loader that refuses January until the schema migration is signed (Challenge 12); and a variant rehearsal that maps three variants at 100% precision and recall with 18 / 18 decisions matching (Challenge 13, `ops/variant_rehearsal.py`).
 
 ## Reproduce
 
@@ -87,6 +90,6 @@ uv run python -m engine.run_cases --cases HHF-001 HHF-002 HHF-003 HHF-004 HHF-00
 
 ## What is not claimed
 
-- **Challenge 2 is partial.** The three candidate detectors in `self_growing_proposals` (AUTO-DET-02, -03, -04 in `engine/out/detector_backtest.json`) are scans we wrote. What is real is the measured backtest and the approval gate (`approve_detector`, fraud manager only). The agent did not invent the shapes.
+- **Challenge 2 is partial.** The three candidate detectors in `self_growing_proposals` (AUTO-DET-02, -03, -04 in `engine/out/detector_backtest.json`) are scans we wrote. What is real is the measured backtest and the approval gate (`approve_detector`, fraud manager only). The agent did not invent the shapes. Separately, the discovery miner (`engine/discovery.py`) mined and filed a pending proposal; it is not yet approved.
 - **No accuracy against the answer key.** The organisers hold it.
 - **The Round 1 scorer was not retrained.** It scores each of the 18 flagged January transactions at 0.093 or below (max `cms_p` over `cp_round2` joined to `txc` in `data/hhgoa_engine.duckdb`), so the engine treats it as one weak family.

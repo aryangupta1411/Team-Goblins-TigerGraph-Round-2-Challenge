@@ -13,7 +13,7 @@
     "exposure_usd": 0.0,
     "evidence": [
       {
-        "claim": "Case context shows in-person transaction 3602445 for $1,053.79 in region 315.0 with low calibrated model probability cms_p of 0.003849 on card C00750-K2.",
+        "claim": "Case context shows flagged in-person transaction 3602445 of $1,053.79 on card C00750-K2 in billing region 315.0 with low calibrated score cms_p 0.003849.",
         "source": "graph",
         "ref": "query:case_context(t=3602445, as_of=2017-01-01 05:00:25)",
         "entity_ids": [
@@ -22,7 +22,7 @@
         ]
       },
       {
-        "claim": "Billing region 315.0 is known to card C00750-K2 with 200 prior transactions across 103 distinct days since 2016-07-02.",
+        "claim": "Region history shows billing region 315.0 has 199 prior purchases across 102 distinct days for card C00750-K2 compared to modal region 325.0.",
         "source": "graph",
         "ref": "query:region_history(addr1=315.0, c=C00750-K2, as_of=2017-01-01 05:00:25)",
         "entity_ids": [
@@ -31,26 +31,16 @@
         ]
       },
       {
-        "claim": "Card C00750-K2 prior transactions reflect a maximum in-person amount of $4,606.50, well above transaction 3602445 amount of $1,053.79.",
+        "claim": "The bank labels card-present transactions outside modal region 325.0 as out_of_region_use under policy convention, even though region 315.0 is known with 199 prior purchases.",
         "source": "graph",
-        "ref": "query:case_context(t=3602445, as_of=2017-01-01 05:00:25)",
+        "ref": "query:region_history(addr1=315.0, c=C00750-K2, as_of=2017-01-01 05:00:25)",
         "entity_ids": [
           "3602445",
           "C00750-K2"
         ]
       },
       {
-        "claim": "Customer C00750 has 1 prior cleared case CC-0591 for travel/legitimate activity of the same alert template.",
-        "source": "graph",
-        "ref": "query:prior_cases_for_customer(cu=C00750, as_of=2017-01-01 05:00:25)",
-        "entity_ids": [
-          "CC-0591",
-          "C00750-K2",
-          "C00750"
-        ]
-      },
-      {
-        "claim": "Customer C00750 has 16 prior confirmed fraud cases on card C00750-K2 between July and October 2016.",
+        "claim": "Customer C00750 has 16 prior closed cases of confirmed fraud on card C00750-K2 including account takeover and out-of-region use, alongside 1 prior cleared travel case CC-0591.",
         "source": "graph",
         "ref": "query:prior_cases_for_customer(cu=C00750, as_of=2017-01-01 05:00:25)",
         "entity_ids": [
@@ -66,6 +56,20 @@
           "CC-2194",
           "CC-1930",
           "CC-1338",
+          "CC-0989",
+          "CC-0691",
+          "CC-0480",
+          "CC-0121",
+          "CC-0591",
+          "C00750-K2"
+        ]
+      },
+      {
+        "claim": "Transaction 3602445 ($1,053.79) is within card C00750-K2 baseline limits, where maximum prior purchase amount is $4,606.50.",
+        "source": "graph",
+        "ref": "query:case_context(t=3602445, as_of=2017-01-01 05:00:25)",
+        "entity_ids": [
+          "3602445",
           "C00750-K2"
         ]
       },
@@ -79,12 +83,12 @@
       }
     ],
     "similar_prior_cases": [
-      "CC-5077",
       "CC-3458",
       "CC-3901",
-      "CC-0591"
+      "CC-5077",
+      "CC-3150"
     ],
-    "summary": "The risk score alert on in-person transaction 3602445 ($1,053.79) for card C00750-K2 is evaluated as legitimate (probability 0.10, pattern none, exposure $0.00). Region 315.0 is well known to the card with 200 prior transactions, and the customer confirmed travel to region 315.0 and recognized the purchase. Under rule R3, the case is recommended for CLOSE_NO_FRAUD and ALLOW_TRANSACTION.",
+    "summary": "Risk score alert on in-person purchase 3602445 ($1,053.79) in region 315.0 on card C00750-K2 is determined legitimate with a fraud probability of 0.10. The decisive factor was customer confirmation of travel to region 315.0 and recognition of the transaction, supporting the card's 199 prior purchases in that region. Case HHF-014 is recommended for ALLOW_TRANSACTION and CLOSE_NO_FRAUD via auto route under Rule R3.",
     "written_to_graph": true,
     "graph_case_id": "AC-HHF-014"
   },
@@ -100,32 +104,42 @@
       {
         "action": "CREATE_CASE",
         "route": "auto",
-        "reason": "3a/§6: case opened to document the risk score alert review for card C00750-K2."
+        "reason": "3a/§3b: Open case while evidence verification is pending on high-dollar transaction 3602445."
       },
       {
         "action": "VERIFY_WITH_CUSTOMER",
         "route": "auto",
-        "reason": "R1/§6: probability 0.10 < 0.70 on a single risk score alert requires verifying transaction 3602445 with the customer."
+        "reason": "R1/§3b: Single risk score signal with probability 0.16 < 0.70 requires customer verification before any blocking action."
+      },
+      {
+        "action": "MONITOR_CARD",
+        "route": "auto",
+        "reason": "§3b: Monitor card C00750-K2 while customer verification reply is pending."
+      },
+      {
+        "action": "ESCALATE_TO_ANALYST",
+        "route": "auto",
+        "reason": "R8: Verdict uncertain and exposure $1,053.79 > $500 requires analyst escalation."
       }
     ],
     "final": [
       {
         "action": "CREATE_CASE",
         "route": "auto",
-        "reason": "3a: case created to record the investigation and customer response for transaction 3602445."
+        "reason": "3a: Open case for record-keeping on flagged risk score alert for transaction 3602445."
       },
       {
         "action": "ALLOW_TRANSACTION",
         "route": "auto",
-        "reason": "R3: customer confirmed travel to billing region 315.0 and recognised the $1,053.79 purchase on transaction 3602445."
+        "reason": "R3: Customer confirmed travel to billing region 315.0 and recognized the $1,053.79 purchase."
       },
       {
         "action": "CLOSE_NO_FRAUD",
         "route": "auto",
-        "reason": "R3/§6: customer confirmed the transaction as legitimate and investigation confirms no fraud."
+        "reason": "R3/§6: Customer confirmed transaction 3602445 and fraud probability is 0.10 ≤ 0.15, closing case with no fraud."
       }
     ],
-    "what_changed": "The assumed customer validation reply (confirm) left the probability at 0.10 and kept the verdict legitimate, adding ALLOW_TRANSACTION, CLOSE_NO_FRAUD, removing VERIFY_WITH_CUSTOMER. Counterfactual: had the customer denied the purchase, R2 would have applied: BLOCK_CARD (L1) and CREATE_CASE."
+    "what_changed": "The assumed customer validation reply (confirm) moved the probability from 0.16 to 0.10 and changed the verdict from uncertain to legitimate, adding ALLOW_TRANSACTION, CLOSE_NO_FRAUD, removing VERIFY_WITH_CUSTOMER, MONITOR_CARD, ESCALATE_TO_ANALYST. Counterfactual: had the customer denied the purchase, R2 would have applied: BLOCK_CARD (L1) and CREATE_CASE."
   },
   "sar": {
     "file": false,
@@ -135,8 +149,8 @@
     "total_amount_usd": 0,
     "activity_dates": []
   },
-  "stop_reason": "Policy §6 test 2: the customer confirmation settled the investigation. Probability 0.10 with 3 independent evidence families (customer, history, memory) also satisfies §6 test 1.",
+  "stop_reason": "Policy §6 test 2 fired: customer validation confirmed the purchase, settling the verdict as legitimate at probability 0.10 ≤ 0.15 across three independent evidence families.",
   "tool_calls": 17,
-  "tokens": 185542,
-  "latency_s": 53.7
+  "tokens": 186882,
+  "latency_s": 61.7
 }

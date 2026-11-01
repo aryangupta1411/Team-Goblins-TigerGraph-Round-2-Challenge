@@ -1,0 +1,75 @@
+{
+ "run_id": "hhf-final-3",
+ "code": {
+  "commit": "c2bcb296411a5e06ca0f5fec6e028433b37862f8",
+  "git_dirty": false,
+  "note": "run from a clean detached worktree of round2-final at c2bcb29 (git status empty before the run)",
+  "guard": "every tracked file hashed (sha256) before and after the run; both lists identical",
+  "tracked_files": 747,
+  "list_sha256": {
+   "before_main_run": "77ecb484c68f15e9d9fcf3c879079d4678ec7d86dc633594b78236e586ded4b9",
+   "after_main_run": "77ecb484c68f15e9d9fcf3c879079d4678ec7d86dc633594b78236e586ded4b9"
+  }
+ },
+ "model": {
+  "requested": "gemini-3.6-flash",
+  "sar_model": "gemini-3.6-flash",
+  "llm_calls": 142
+ },
+ "invocations": [
+  {
+   "started": "2026-11-01T23:42:21",
+   "finished": "2026-11-02T00:01:37",
+   "cases": 18,
+   "completed": 18,
+   "failed": 0,
+   "resumed": []
+  }
+ ],
+ "graph_before_run": {
+  "cleared_hhf_final_2_writebacks": {
+   "AgentCase": 18,
+   "CaseEvent": 121,
+   "Approval": 17,
+   "total": 156
+  },
+  "second_pass": 3,
+  "remaining_after_clear": 0,
+  "how": "ops.clear_case_writebacks --cases HHF-001..018 --apply, twice (3 vertices survived the first pass)"
+ },
+ "graph_at_end": {
+  "hhf_agentcase": 18,
+  "hhf_case_events": 121,
+  "hhf_approvals": 16,
+  "how": "ops.clear_case_writebacks dry run (read-only listing)"
+ },
+ "stats": {
+  "verdicts": {
+   "fraud": 8,
+   "uncertain": 1,
+   "legitimate": 9
+  },
+  "sars": 7,
+  "tokens_total": 3907730,
+  "tokens_median": 202270,
+  "tokens_p95": 318654,
+  "latency_median_s": 62.7,
+  "latency_p95_s": 84.2,
+  "tool_calls_median": 21,
+  "tool_calls_p95": 25,
+  "persist_writes_ok": 272,
+  "written_to_graph": "18/18",
+  "validator_problems": 0
+ },
+ "grader": {
+  "file": "grader/grade.py from the organisers' Drive (sha256 b27e39ce756b000ba379b9658c78028019bf5f0fc1babe27874974c0ef9244b3)",
+  "result": "18/18 clean, hard 0, policy 0, warning 1 (HHF-013 flagged_not_affected: the flagged in-person purchase is genuine; the ring payments are the affected txns)",
+  "report": "_guard/grade_report.json"
+ },
+ "vs_offline_engine": "0 differences on verdict, pattern, SAR and final actions with routes, |dp| <= 0.10 (engine.run_cases at c2bcb29)",
+ "vs_hhf_final_2": {
+  "HHF-008": "final actions drop DECLINE_TRANSACTION (R4 waits on a real reply): CREATE_CASE, VERIFY_WITH_CUSTOMER, MONITOR_CARD, ESCALATE_TO_ANALYST",
+  "all": "verdicts unchanged; sar.md is now the cited filing with timeline and evidence graph"
+ },
+ "supersedes": "hhf-final-2 (8dc9e07); its graph write-backs were deleted before this run"
+}

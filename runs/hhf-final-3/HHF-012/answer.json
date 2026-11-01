@@ -1,0 +1,132 @@
+{
+  "case_id": "HHF-012",
+  "case": {
+    "status": "closed_legitimate",
+    "verdict": "legitimate",
+    "fraud_probability": 0.0,
+    "pattern": "none",
+    "pattern_description": "",
+    "affected_txn_ids": [],
+    "first_suspicious_txn_id": "",
+    "connected_card_ids": [],
+    "connected_device_profiles": [],
+    "exposure_usd": 0.0,
+    "evidence": [
+      {
+        "claim": "Transaction 3655457 ($261.51) occurred in billing region 476.0, which is the cardholder's primary home modal region representing 139 prior transactions over 95 distinct days.",
+        "source": "graph",
+        "ref": "query:region_history(addr1=476.0, as_of=2017-01-09 04:34:19, c=C12223-K1)",
+        "entity_ids": [
+          "3655457",
+          "C12223-K1"
+        ]
+      },
+      {
+        "claim": "Card C12223-K1 had 148 prior transactions prior to transaction 3655457, with a prior maximum in-person transaction amount of $884.02 and a prior median amount of $59.00.",
+        "source": "graph",
+        "ref": "query:case_context(t=3655457, as_of=2017-01-09 04:34:19)",
+        "entity_ids": [
+          "3655457",
+          "C12223-K1"
+        ]
+      },
+      {
+        "claim": "The calibrated case-memory model cms_p for transaction 3655457 is 0.0031, indicating extremely low fraud probability.",
+        "source": "graph",
+        "ref": "query:case_context(t=3655457, as_of=2017-01-09 04:34:19)",
+        "entity_ids": [
+          "3655457"
+        ]
+      },
+      {
+        "claim": "The card window prior to opening contained 4 in-person transactions in region 476.0 totaling $384.62, including transactions 3655454, 3655463, and 3655445.",
+        "source": "graph",
+        "ref": "query:card_window(c=C12223-K1, from_ts=2017-01-06 00:34:19, to_ts=2017-01-09 04:34:19, max_rows=60)",
+        "entity_ids": [
+          "3655454",
+          "3655463",
+          "3655445",
+          "3655457",
+          "C12223-K1"
+        ]
+      },
+      {
+        "claim": "Customer C12223 has 1 prior closed case CC-0179 from July 2016 for account takeover, but no recent fraud reports or shared origin signals exist.",
+        "source": "graph",
+        "ref": "query:prior_cases_for_customer(cu=C12223, as_of=2017-01-09 04:34:19)",
+        "entity_ids": [
+          "CC-0179",
+          "C12223-K1",
+          "C12223"
+        ]
+      },
+      {
+        "claim": "Assumed reply: customer confirmed travel to billing region 476.0 and recognises the $261.51 purchase",
+        "source": "customer",
+        "ref": "evidence_request:1",
+        "entity_ids": [
+          "3655457"
+        ]
+      }
+    ],
+    "similar_prior_cases": [
+      "CC-4158",
+      "CC-4708",
+      "CC-3405"
+    ],
+    "summary": "The investigation concludes with a legitimate verdict (fraud probability 0.0016) and pattern none. Flagged in-person transaction 3655457 ($261.51) occurred in primary home billing region 476.0, where 139 prior transactions occurred over 95 days. Following customer validation, the cardholder confirmed the purchase as legitimate. The recommended automated actions are ALLOW_TRANSACTION and CLOSE_NO_FRAUD under Rule R3.",
+    "written_to_graph": true,
+    "graph_case_id": "AC-HHF-012"
+  },
+  "evidence_requests": [
+    {
+      "type": "customer_validation",
+      "asked_after_step": 17,
+      "assumed_response": "ASSUMED (simulated): customer confirmed travel to billing region 476.0 and recognises the $261.51 purchase"
+    }
+  ],
+  "next_best_actions": {
+    "initial": [
+      {
+        "action": "CREATE_CASE",
+        "route": "auto",
+        "reason": "3a: open a case for transaction 3655457 triggered by a real-time risk score alert."
+      },
+      {
+        "action": "VERIFY_WITH_CUSTOMER",
+        "route": "auto",
+        "reason": "R1: single risk score signal with probability < 0.70 requires customer verification before taking block actions."
+      }
+    ],
+    "final": [
+      {
+        "action": "CREATE_CASE",
+        "route": "auto",
+        "reason": "3a: open a case for transaction 3655457 triggered by a real-time risk score alert."
+      },
+      {
+        "action": "ALLOW_TRANSACTION",
+        "route": "auto",
+        "reason": "R3: customer confirmed the $261.51 transaction as legitimate."
+      },
+      {
+        "action": "CLOSE_NO_FRAUD",
+        "route": "auto",
+        "reason": "R3/§6: close the case as non-fraudulent following customer confirmation."
+      }
+    ],
+    "what_changed": "The assumed customer validation reply (confirm) left the probability at 0.00 and kept the verdict legitimate, adding ALLOW_TRANSACTION, CLOSE_NO_FRAUD, removing VERIFY_WITH_CUSTOMER. Counterfactual: had the customer denied the purchase, R2 would have applied: BLOCK_CARD (L1) and CREATE_CASE."
+  },
+  "sar": {
+    "file": false,
+    "reason": "3a not met: verdict legitimate (fraud not confirmed or strongly suspected), exposure $0.00; no report",
+    "narrative": "",
+    "subjects": [],
+    "total_amount_usd": 0,
+    "activity_dates": []
+  },
+  "stop_reason": "Policy §6 test 2: the assumed customer confirmation settled the question.",
+  "tool_calls": 17,
+  "tokens": 160694,
+  "latency_s": 57.3
+}

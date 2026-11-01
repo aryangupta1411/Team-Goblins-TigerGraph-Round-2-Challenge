@@ -17,7 +17,7 @@
     "exposure_usd": 567.33,
     "evidence": [
       {
-        "claim": "Transaction 3660353 ($165.65, in_person, addr1 087.0) on card C07871-K1 was flagged by a real-time risk score alert, with modal region 472.0 and prior maximum transaction amount of $2,948.12 across 282 prior transactions.",
+        "claim": "Case context returned flagged transaction 3660353 ($165.65, in_person, product code W, billing region 087.0) on card C07871-K1 for customer C07871.",
         "source": "graph",
         "ref": "query:case_context(t=3660353, as_of=2017-01-21 13:23:58)",
         "entity_ids": [
@@ -27,25 +27,16 @@
         ]
       },
       {
-        "claim": "Region history for billing region 087.0 showed 3 in-person transactions across 3 consecutive days (2017-01-19 to 2017-01-21) with modal region 472.0, while card C07871-K1 roams across 40 total regions.",
+        "claim": "The bank labels card-present fraud away from the card's modal region out_of_region_use even when the region is known to the card: card C07871-K1 has modal region 472.0 and billing region 087.0 was used 3 times across 3 days.",
         "source": "graph",
-        "ref": "query:region_history(as_of=2017-01-21 13:23:58, addr1=087.0, c=C07871-K1)",
+        "ref": "query:region_history(c=C07871-K1, addr1=087.0, as_of=2017-01-21 13:23:58)",
         "entity_ids": [
           "3660353",
           "C07871-K1"
         ]
       },
       {
-        "claim": "The bank labels card-present activity outside the modal region 472.0 as out_of_region_use even when the region is known to the card, which had 3 prior transactions in region 087.0.",
-        "source": "graph",
-        "ref": "query:region_history(as_of=2017-01-21 13:23:58, addr1=087.0, c=C07871-K1)",
-        "entity_ids": [
-          "3660353",
-          "C07871-K1"
-        ]
-      },
-      {
-        "claim": "In-person purchases 3660351, 3660352, and 3660353 in billing region 087.0 carried online device profile records, creating a telemetry mismatch between channel and device telemetry.",
+        "claim": "In-person purchase 3660353 carries an online device record Trident/7.0 | Windows 7 | ie 11.0 for desktop | 1280x1024; 3 in-person purchases on card C07871-K1 carry device records (3660351, 3660352, 3660353) in billing region 087.0.",
         "source": "graph",
         "ref": "query:episode_candidates(gap_h=48, t=3660353, as_of=2017-01-21 13:23:58)",
         "entity_ids": [
@@ -56,22 +47,30 @@
         ]
       },
       {
-        "claim": "Customer C07871 has prior cleared travel case CC-0270 from 2016-07-09 and prior confirmed fraud case CC-1638 for out_of_region_use from 2016-08-04 on card C07871-K1.",
+        "claim": "Card C07871-K1 has 1 prior confirmed fraud case CC-1638 for out_of_region_use opened on 2016-08-04 with exposure $225.99.",
+        "source": "graph",
+        "ref": "query:prior_cases_for_customer(cu=C07871, as_of=2017-01-21 13:23:58)",
+        "entity_ids": [
+          "CC-1638",
+          "C07871-K1"
+        ]
+      },
+      {
+        "claim": "Card C07871-K1 has 1 prior cleared alert CC-0270 opened on 2016-07-09 under cleared_travel template with exposure $0.",
         "source": "graph",
         "ref": "query:prior_cases_for_customer(cu=C07871, as_of=2017-01-21 13:23:58)",
         "entity_ids": [
           "CC-0270",
-          "CC-1638",
-          "C07871-K1",
-          "C07871"
+          "C07871-K1"
         ]
       },
       {
-        "claim": "The calibrated case-memory model cms_p for transaction 3660353 is 0.0072, resulting in a calibrated engine probability p_engine of 0.30 due to channel-telemetry conflict adjustments.",
+        "claim": "Flagged transaction 3660353 amount of $165.65 sits within normal card baseline prior median $100.03 and prior maximum $2948.12 across 281 prior transactions.",
         "source": "graph",
         "ref": "query:case_context(t=3660353, as_of=2017-01-21 13:23:58)",
         "entity_ids": [
-          "3660353"
+          "3660353",
+          "C07871-K1"
         ]
       },
       {
@@ -84,11 +83,12 @@
       }
     ],
     "similar_prior_cases": [
-      "CC-5111",
       "CC-5285",
-      "CC-4943"
+      "CC-5111",
+      "CC-4943",
+      "CC-3878"
     ],
-    "summary": "Case AC-HHF-008 concludes with an uncertain verdict (fraud probability 0.30) under pattern out_of_region_use across episode transactions 3660351, 3660352, and 3660353 with $567.33 exposure. The flagged in-person purchase carried an online device record, creating telemetry conflict despite the cardholder's roaming history across 40 regions. Following no customer reply within 24 hours, we recommend MONITOR_CARD, DECLINE_TRANSACTION (L1), CREATE_CASE, and ESCALATE_TO_ANALYST (R8) due to exposure over $500.",
+    "summary": "The verdict is uncertain (probability 0.30) under an out_of_region_use pattern across episode transactions 3660351, 3660352, and 3660353 totaling $567.33 in exposure. Decisive facts include an in-person channel carrying browser telemetry alongside a low calibrated cms_p of 0.007185 and prior cleared travel history. Customer validation was requested with no reply within 24 hours. Recommended actions are CREATE_CASE, MONITOR_CARD, and ESCALATE_TO_ANALYST under auto route.",
     "written_to_graph": true,
     "graph_case_id": "AC-HHF-008"
   },
@@ -104,47 +104,47 @@
       {
         "action": "CREATE_CASE",
         "route": "auto",
-        "reason": "3a: open a case at probability 0.30 ≥ 0.30 for out-of-region in-person activity."
+        "reason": "3a: open a case as probability 0.30 meets the threshold for investigation."
       },
       {
         "action": "VERIFY_WITH_CUSTOMER",
         "route": "auto",
-        "reason": "R1: single signal and probability 0.30 < 0.70 require verifying with customer before taking any block action."
+        "reason": "R1: single device telemetry anomaly signal with probability 0.30 < 0.70 requires customer verification before blocking."
       },
       {
         "action": "MONITOR_CARD",
         "route": "auto",
-        "reason": "§3b: monitor card C07871-K1 while customer verification is pending."
+        "reason": "§3b: monitor the card while customer verification remains pending."
       },
       {
         "action": "ESCALATE_TO_ANALYST",
         "route": "auto",
-        "reason": "R8: verdict uncertain and exposure $567.33 > $500 with conflicting telemetry evidence."
+        "reason": "R8: verdict is uncertain with conflicting telemetry evidence and exposure of $567.33 exceeding $500."
       }
     ],
     "final": [
       {
         "action": "CREATE_CASE",
         "route": "auto",
-        "reason": "3a: open a case at probability 0.30 ≥ 0.30 following no customer reply within 24 hours."
+        "reason": "3a: open a case as probability 0.30 meets the threshold for investigation."
+      },
+      {
+        "action": "VERIFY_WITH_CUSTOMER",
+        "route": "auto",
+        "reason": "R1: single device telemetry anomaly signal with probability 0.30 < 0.70 requires customer verification before blocking."
       },
       {
         "action": "MONITOR_CARD",
         "route": "auto",
-        "reason": "R4: no customer reply within 24 hours requires monitoring card C07871-K1."
-      },
-      {
-        "action": "DECLINE_TRANSACTION",
-        "route": "L1",
-        "reason": "R4: recommend declining pending authorizations after no customer reply within 24 hours."
+        "reason": "§3b: monitor the card while customer verification remains pending."
       },
       {
         "action": "ESCALATE_TO_ANALYST",
         "route": "auto",
-        "reason": "R8: verdict uncertain and exposure $567.33 > $500 following no customer reply within 24 hours."
+        "reason": "R8: verdict is uncertain with conflicting telemetry evidence and exposure of $567.33 exceeding $500."
       }
     ],
-    "what_changed": "The assumed customer validation reply (no_reply) left the probability at 0.30 and kept the verdict uncertain, adding DECLINE_TRANSACTION, removing VERIFY_WITH_CUSTOMER. Counterfactual: a confirmation would have closed the alert (R3); a denial would have led to BLOCK_CARD and CREATE_CASE (R2)."
+    "what_changed": "nothing"
   },
   "sar": {
     "file": false,
@@ -154,8 +154,8 @@
     "total_amount_usd": 0,
     "activity_dates": []
   },
-  "stop_reason": "Policy §6 test 3: customer verification was not answered within the 24-hour window; R4 applies (monitor and recommend declining pending authorizations) and the case remains open for a reply, so no further automated action is taken.",
+  "stop_reason": "Policy §6 test 3: the verification was not answered within the 24-hour window; R4 applies (monitor card) and no further automated step would change the recommendation until customer contact occurs.",
   "tool_calls": 19,
-  "tokens": 193441,
-  "latency_s": 72.5
+  "tokens": 188420,
+  "latency_s": 55.2
 }

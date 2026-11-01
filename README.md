@@ -11,7 +11,7 @@ An agent that takes an alert from the HHGOA case pack, investigates it through *
 |---|---|
 | Everything the brief asks for, in one place | [`SUBMISSION.md`](SUBMISSION.md) |
 | 18 answer files | [`cases/HHF-001.json`](cases/) … `HHF-018.json`, per-case table in [`cases/MANIFEST.md`](cases/MANIFEST.md) |
-| The run they come from | `runs/hhf-final-2/` (`answer.json`, `calls.jsonl`, `phases.jsonl`, `sar.md` per case; `run_manifest.json`, `provenance.json`) |
+| The run they come from | `runs/hhf-final-3/` (`answer.json`, `calls.jsonl`, `phases.jsonl`, `sar.md` per case; `run_manifest.json`, `provenance.json`) |
 | Innovation claim, with measurements | [`docs/INNOVATION.md`](docs/INNOVATION.md) |
 | One-page resilience statement | [`docs/RESILIENCE.md`](docs/RESILIENCE.md) |
 | 5-minute judged demo | [`docs/demo_script.md`](docs/demo_script.md) |
@@ -40,60 +40,64 @@ RUN_MODE=live LLM_BACKEND=gemini MODEL=gemini-3.6-flash uv run python -m agent.b
 On the current code, every January case calls the installed `typology_scan` query on the workspace. If that call fails,
 the case stops with `CaseDataMissing` and writes no answer (see [the typology scan](#the-january-typology-scan-runs-in-the-graph) below).
 
-### Results of the promoted run `runs/hhf-final-2`
+### Results of the promoted run `runs/hhf-final-3`
 
-The 18 files in `cases/HHF-*.json` are byte-identical to `runs/hhf-final-2/HHF-*/answer.json`. They come from one live run
-against FraudGraph through MCP on `gemini-3.6-flash`, from the frozen commit `8dc9e07` (tag `hhf-final-2-run`) with no local
-changes (`git_dirty: false`): one invocation, 2026-11-01 22:41:46 to 23:03:26, 18 / 18 completed, 0 failed, nothing
-resumed. Every tracked file (642) was hashed before and after the run, and the two lists are identical
-(`runs/hhf-final-2/provenance.json`, `code.list_sha256`).
+The 18 files in `cases/HHF-*.json` are byte-identical to `runs/hhf-final-3/HHF-*/answer.json`. They come from one live run
+against FraudGraph through MCP on `gemini-3.6-flash`, from the frozen commit `c2bcb29` in a clean detached worktree
+(`git_dirty: false`): one invocation, 2026-11-01 23:42:21 to 2026-11-02 00:01:37, 18 / 18 completed, 0 failed, nothing
+resumed. Every tracked file (747) was hashed before and after the run, and the two lists are identical
+(`runs/hhf-final-3/provenance.json`, `code.list_sha256`; `runs/hhf-final-3/_guard/`).
 
-It supersedes `runs/hhf-final` (commit `b397c2c`, `gemini-2.5-flash`), which is kept for the record. The engine change
-between them (`8dc9e07`) follows the raw January data on four cases: HHF-008 legitimate → uncertain, HHF-010 and HHF-014
-uncertain → legitimate, HHF-013 uncertain → fraud. Before the run, the 157 `hhf-final` write-backs were deleted from the
-graph (`provenance.json`, `graph_before_run`), so the graph holds only this run's HHF write-backs.
+It supersedes `runs/hhf-final-2` (commit `8dc9e07`), which superseded `runs/hhf-final` (commit `b397c2c`,
+`gemini-2.5-flash`); both are kept for the record. The engine change from `hhf-final` to `hhf-final-2` follows the raw
+January data on four cases: HHF-008 legitimate → uncertain, HHF-010 and HHF-014 uncertain → legitimate, HHF-013
+uncertain → fraud. From `hhf-final-2` to `hhf-final-3` the verdicts are unchanged; HHF-008's final set drops
+`DECLINE_TRANSACTION` (the R4 decline waits on a real reply), and `sar.md` is now the cited filing. Before the run, the
+156 + 3 `hhf-final-2` write-backs were deleted from the graph (`provenance.json`, `graph_before_run`), so the graph holds
+only this run's HHF write-backs.
 
 | Measure | Value |
 |---|---|
 | Completed | 18 / 18, every case `written_to_graph: true` |
 | Verdicts | 8 fraud, 1 uncertain, 9 legitimate |
-| Fraud | HHF-001 … HHF-006 and HHF-013 (pattern `undocumented`: the January waves that share no device; HHF-013 is a 17-card ring paying one recipient email domain, D4) and HHF-007 (`card_testing`, the customer denied it) |
-| Uncertain | HHF-008 (`out_of_region_use`, status `escalated`; no reply to the customer-validation request) |
+| Fraud | HHF-001 … HHF-006 and HHF-013 (pattern `undocumented`: the January waves that share no device; HHF-013 is the `sc.rr.com` recipient-email mule ring, payments 3660311 and 3660312, $321.75, D4) and HHF-007 (`card_testing`, the customer denied it; no SAR) |
+| Uncertain | HHF-008 (`out_of_region_use`, p 0.30, status `escalated`; no reply to the customer-validation request) |
 | Legitimate | HHF-009, 010, 011, 012, 014, 015, 016, 017, 018, all `closed_legitimate` |
 | Status | 8 `escalated`, 1 `closed_fraud`, 9 `closed_legitimate` |
 | SAR filed | 7: HHF-001 … HHF-006 and HHF-013, all `undocumented`. This includes the $23.99 (HHF-004) and $23.17 (HHF-005) micro-skimming cases. |
 | Evidence requested | 10 of 18 cases, all `customer_validation` (replies simulated and labelled `ASSUMED`) |
-| Final actions by route | 53 auto, 9 L1, 8 L2 |
+| Final actions by route | 54 auto, 8 L1, 8 L2 |
 | Exposure (sum of `exposure_usd`) | $15,057.50 |
-| Blocks or reports on a non-fraud case | 0. No `BLOCK_*`, `DECLINE_TRANSACTION` or `FILE_REPORT` on the 9 legitimate cases. The uncertain HHF-008 carries `DECLINE_TRANSACTION` (L1) in its final set and no block or report. |
-| `make validate` | 38 answer files (20 Round 1 + 18 Final Round), 38 clean, 0 problems |
-| Official grader (`grader/grade.py`) | 18 / 18 clean: 0 hard, 0 policy, 1 warning (HHF-013 `flagged_not_affected`: the flagged in-person purchase is genuine; the ring payments are the affected transactions) |
+| Blocks or reports on a non-fraud case | 0. No `BLOCK_*`, `DECLINE_TRANSACTION` or `FILE_REPORT` on the 9 legitimate cases or on the uncertain HHF-008, whose final set is `CREATE_CASE`, `VERIFY_WITH_CUSTOMER`, `MONITOR_CARD`, `ESCALATE_TO_ANALYST`. |
+| Validator | 0 problems |
+| Official grader (`grader/grade.py`, sha256 b27e39ce…44b3) | 18 / 18 clean: 0 hard, 0 policy, 1 warning (HHF-013 `flagged_not_affected`: the flagged in-person purchase is genuine; the ring payments are the affected transactions) |
+| Cost per case | p50 $0.10, p95 $0.18, $1.96 for the 18 cases (Gemini paid-tier prices read 2026-11-01; `engine/out/cost_latency.json`, `ops/cost_report.py`) |
 
-Sources: `runs/hhf-final-2/HHF-*/answer.json` (verdict, status, pattern, `sar.file`, `evidence_requests`, `next_best_actions`, `exposure_usd`, `written_to_graph`); byte comparison with `cases/HHF-*.json`; `make validate`; `python3 grade.py --teams-dir <dir> --case-pack case_pack_final.csv --transactions transactions_2017q1.csv` (report in `runs/hhf-final-2/_guard/grade_report.json`).
+Sources: `runs/hhf-final-3/HHF-*/answer.json` (verdict, status, pattern, `sar.file`, `evidence_requests`, `next_best_actions`, `exposure_usd`, `written_to_graph`); byte comparison with `cases/HHF-*.json`; `runs/hhf-final-3/provenance.json` (`stats`, `grader`); `python3 grade.py --teams-dir <dir> --case-pack case_pack_final.csv --transactions transactions_2017q1.csv` (report in `runs/hhf-final-3/_guard/grade_report.json`).
 
 | Per case | Median | p95 | Min | Max | Total |
 |---|---:|---:|---:|---:|---:|
-| Tool calls | 21 | 26 | 17 | 26 | 373 |
-| Tokens | 213,861 | 350,878 | 148,577 | 350,878 | 3,972,373 |
-| Latency (s) | 67.8 | 105.1 | 52.2 | 105.1 | 1,292.9 |
+| Tool calls | 21 | 25 | 17 | 25 | 369 |
+| Tokens | 202,270 | 318,654 | 150,773 | 318,654 | 3,907,730 |
+| Latency (s) | 62.7 | 84.2 | 47.9 | 84.2 | 1,151.7 |
 
-Sources: the `tool_calls`, `tokens` and `latency_s` fields of the 18 `runs/hhf-final-2/HHF-*/answer.json`. p95 is nearest-rank: with 18 values it is the 18th, which is also the maximum.
+Sources: the `tool_calls`, `tokens` and `latency_s` fields of the 18 `runs/hhf-final-3/HHF-*/answer.json`. p95 is nearest-rank: with 18 values it is the 18th, which is also the maximum.
 
 | Model and graph activity | Value |
 |---|---|
-| Model calls (`kind=llm`) | 143, all `gemini-3.6-flash`, 0 failed (`llm_backend` `gemini`; `run_manifest.json` names `gemini-3.6-flash` as `model` and `sar_model`) |
-| Tool rows (`kind=tool`) | 647, 0 failed: 303 harness queries, 70 queries the model chose, 274 write-back calls |
+| Model calls (`kind=llm`) | 142, all `gemini-3.6-flash`, 0 failed (`llm_backend` `gemini`; `run_manifest.json` names `gemini-3.6-flash` as `model` and `sar_model`) |
+| Tool rows (`kind=tool`) | 641, 0 failed: 303 harness queries, 66 queries the model chose, 272 write-back calls |
 | `typology_scan` | 18 calls, one per case, made by the harness through MCP, all `ok` |
-| Write-back calls (`caller=persist`, 274, all `ok`) | 18 `AgentCase` upserts, 18 `open_case`, 124 `append_case_event`, 17 `record_approval` (one per L1/L2 final action), 97 `add_edges` (`CASE_*` / `HAS_*`) |
-| In the graph afterwards | 18 `AgentCase` with `run_id` `hhf-final-2`, 121 HHF `CaseEvent`s, 17 HHF `Approval`s |
+| Write-back calls (`caller=persist`, 272, all `ok`) | 18 `AgentCase` upserts, 18 `open_case`, 124 `append_case_event`, 16 `record_approval` (one per L1/L2 final action), 96 `add_edges` (`CASE_*` / `HAS_*`) |
+| In the graph afterwards | 18 `AgentCase` with `run_id` `hhf-final-3`, 121 HHF `CaseEvent`s, 16 HHF `Approval`s |
 
-Sources: `runs/hhf-final-2/HHF-*/calls.jsonl` (fields `kind`, `model`, `caller`, `name`, `ok`); `runs/hhf-final-2/run_manifest.json`. The graph counts are `graph_at_end` in `runs/hhf-final-2/provenance.json`, read through pyTigerGraph (read-only) at 23:03:52. An answer's `tool_calls` counts the harness and model rows (303 + 70 = 373), not the write-backs.
+Sources: `runs/hhf-final-3/HHF-*/calls.jsonl` (fields `kind`, `model`, `caller`, `name`, `ok`); `runs/hhf-final-3/run_manifest.json`. The graph counts are `graph_at_end` in `runs/hhf-final-3/provenance.json` (read-only listing). An answer's `tool_calls` counts the harness and model rows (303 + 66 = 369), not the write-backs.
 
-**Agreement with the deterministic engine.** `engine.run_cases`, re-run offline at `8dc9e07`, gives the same verdict,
-pattern, SAR decision and final action set with routes as `runs/hhf-final-2` on all 18 cases, and a probability within
+**Agreement with the deterministic engine.** `engine.run_cases`, re-run offline at `c2bcb29`, gives the same verdict,
+pattern, SAR decision and final action set with routes as `runs/hhf-final-3` on all 18 cases, and a probability within
 0.10 on all 18. This shows self-consistency, not accuracy: the organisers hold the answer key.
 
-Source: `uv run python -m engine.run_cases --cases HHF-001 … HHF-018 --out <dir> --sheet <dir>/sheet.md` in a checkout of `hhf-final-2-run`, with each `<dir>/HHF-*.draft.json` compared to `runs/hhf-final-2/HHF-*/answer.json`.
+Source: `uv run python -m engine.run_cases --cases HHF-001 … HHF-018 --out <dir> --sheet <dir>/sheet.md` in a checkout of `c2bcb29`, with each `<dir>/HHF-*.draft.json` compared to `runs/hhf-final-3/HHF-*/answer.json`.
 
 **Live workspace.** FraudGraph holds July 2016 to January 2017. `uv run python -m ops.check_live_counts` compares the
 live vertex and edge counts with `expected_after` in `data/out_delta/delta_manifest.json`, which covers 18 types
@@ -105,7 +109,7 @@ counts with a timestamp in `logs/graph_snapshots.jsonl`, and diffs them against 
 The January waves share no device, so a device traversal cannot find them. Detectors D1-D4 are filtered scans over
 `Transaction` with per-card accumulators. They live in `graph/queries/typology_scan.gsql`, a harness-only query (the
 model never sees it), installed on the workspace. The harness calls it from `agent/phase_machine.py` (`_ensure_facts`)
-for every case opened in 2017 or later. In `runs/hhf-final-2` it ran once per case, 18 times, all `ok`. If the scan cannot
+for every case opened in 2017 or later. In `runs/hhf-final-3` it ran once per case, 18 times, all `ok`. If the scan cannot
 run, the case raises `CaseDataMissing` and no answer is written.
 
 The DuckDB twin (`DuckFacts.typology_scan` / `engine.detectors.scan_rows`) serves mock mode, the offline engine and the
@@ -220,7 +224,7 @@ make mock-run
 ```
 
 Open the analyst dashboard at http://localhost:8501. The sidebar's run picker opens on the canonical Final Round run
-(`runs/hhf-final-2`) when it is present; pick `mock` there to see the run you just built:
+(`runs/hhf-final-3`) when it is present; pick `mock` there to see the run you just built:
 
 ```bash
 RUN_MODE=mock make ui
@@ -528,7 +532,7 @@ embedding model into the image and ships:
 - `agent/`, `engine/`, `etl/`, `graph/`, `mcp/`, `ops/`, `policy/`, `rag/`, `schema_engine/`, `contracts/` and `ui/`;
 - the checked-in part of `data/`, including the facts snapshot `data/hhgoa_engine.duckdb` and the validator's
   `data/ids.duckdb`, but no raw CSVs, work DBs, `.env` or approver directory (`.dockerignore`);
-- `cases/`, the Final Round run named by `ARG CANONICAL_RUN` (`hhf-final-2`), the run it superseded (`runs/hhf-final/`) and `runs/live-final-2/` (Round 1).
+- `cases/`, the Final Round run named by `ARG CANONICAL_RUN` (`hhf-final-3`), the earliest superseded run (`runs/hhf-final/`) and `runs/live-final-2/` (Round 1).
 
 `tests/unit/test_ui_railway_smoke.py` renders every page from exactly the Dockerfile's file set. Without variables
 the image starts in mock mode and read-only: it replays the recorded runs, needs no keys and touches no graph.

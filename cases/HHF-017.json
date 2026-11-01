@@ -13,7 +13,7 @@
     "exposure_usd": 0.0,
     "evidence": [
       {
-        "claim": "Flagged transaction 3638829 of $43.92 in home region 299.0 is well below the card prior median of $100.56 and maximum of $2,341.40 across 784 prior transactions.",
+        "claim": "Transaction 3638829 ($43.92) is an online purchase under product code H in modal region 299.0 with purchaser email domain yahoo.com.",
         "source": "graph",
         "ref": "query:case_context(t=3638829, as_of=2017-01-01 02:02:06)",
         "entity_ids": [
@@ -22,7 +22,15 @@
         ]
       },
       {
-        "claim": "Purchaser email domain yahoo.com was used in 203 prior online transactions on card C08842-K2.",
+        "claim": "Card C08842-K2 has 784 prior transactions with median amount $100.56 and 332 prior transactions in modal region 299.0.",
+        "source": "graph",
+        "ref": "query:region_history(c=C08842-K2, addr1=299.0, as_of=2017-01-01 00:02:05)",
+        "entity_ids": [
+          "C08842-K2"
+        ]
+      },
+      {
+        "claim": "Purchaser email domain yahoo.com was used 203 prior times on card C08842-K2.",
         "source": "graph",
         "ref": "query:case_context(t=3638829, as_of=2017-01-01 02:02:06)",
         "entity_ids": [
@@ -31,16 +39,16 @@
         ]
       },
       {
-        "claim": "Device profile Windows | Windows 7 | chrome 61.0 | 1680x1050 was first used on card C08842-K2 on 2016-07-04 18:59:49 and has 2 prior uses on this card.",
+        "claim": "Device profile Windows | Windows 7 | chrome 61.0 | 1680x1050 was first seen on card C08842-K2 on 2016-07-04.",
         "source": "graph",
-        "ref": "query:device_history(c=C08842-K2, d=Windows | Windows 7 | chrome 61.0 | 1680x1050, as_of=2017-01-01 02:02:06)",
+        "ref": "query:device_history(d=Windows | Windows 7 | chrome 61.0 | 1680x1050, c=C08842-K2, as_of=2017-01-01 02:02:06)",
         "entity_ids": [
           "Windows | Windows 7 | chrome 61.0 | 1680x1050",
           "C08842-K2"
         ]
       },
       {
-        "claim": "The model calibrated fraud probability cms_p is 0.001675 with a risk score of 0.01 for transaction 3638829.",
+        "claim": "Calibrated model score cms_p for transaction 3638829 is 0.001675 based on memory calibration.",
         "source": "graph",
         "ref": "query:case_context(t=3638829, as_of=2017-01-01 02:02:06)",
         "entity_ids": [
@@ -48,20 +56,13 @@
         ]
       },
       {
-        "claim": "Card C08842-K2 has 8 prior confirmed fraud cases (CC-4809, CC-4281, CC-3815, CC-3715, CC-3378, CC-3242, CC-2978, CC-1496) and 1 prior cleared case CC-0026.",
+        "claim": "Card C08842-K2 has 8 prior confirmed fraud cases between July and October 2016 including CC-4809 and CC-4281.",
         "source": "graph",
         "ref": "query:prior_cases_for_customer(cu=C08842, as_of=2017-01-01 02:02:06)",
         "entity_ids": [
-          "C08842-K2",
           "CC-4809",
           "CC-4281",
-          "CC-3815",
-          "CC-3715",
-          "CC-3378",
-          "CC-3242",
-          "CC-2978",
-          "CC-1496",
-          "CC-0026"
+          "C08842-K2"
         ]
       },
       {
@@ -74,18 +75,18 @@
       }
     ],
     "similar_prior_cases": [
-      "CC-4208",
       "CC-5234",
+      "CC-4208",
       "CC-4783"
     ],
-    "summary": "Online transaction 3638829 ($43.92) triggered a real-time risk alert, but matches the cardholder's home region 299.0 baseline and routine yahoo.com email. Following assumed customer validation confirming authorization of the charge from a new device, the case is assessed as legitimate with fraud probability 0.0011 and $0.00 exposure under pattern none. Recommended actions are ALLOW_TRANSACTION and CLOSE_NO_FRAUD via auto route.",
+    "summary": "The risk score alert on online transaction 3638829 ($43.92) is assessed as legitimate with probability 0.0011 (pattern: none, exposure $0.00). The transaction took place in the cardholder's primary home region 299.0 with familiar email domain yahoo.com and product code H, yielding cms_p 0.0017. Following customer confirmation verifying the purchase, the recommended auto actions are CREATE_CASE, ALLOW_TRANSACTION, and CLOSE_NO_FRAUD under Rule R3.",
     "written_to_graph": true,
     "graph_case_id": "AC-HHF-017"
   },
   "evidence_requests": [
     {
       "type": "customer_validation",
-      "asked_after_step": 23,
+      "asked_after_step": 24,
       "assumed_response": "ASSUMED (simulated): customer confirmed the purchase from a new phone/device and recognises the $43.92 charge"
     }
   ],
@@ -94,29 +95,29 @@
       {
         "action": "CREATE_CASE",
         "route": "auto",
-        "reason": "3a: open a case for the risk score alert on online transaction 3638829."
+        "reason": "3a: open a case when evidence is requested."
       },
       {
         "action": "VERIFY_WITH_CUSTOMER",
         "route": "auto",
-        "reason": "R1: single risk score alert signal with fraud probability 0.0011 < 0.70 requires customer verification before taking blocking actions."
+        "reason": "R1: single signal risk score alert with probability 0.0011 < 0.70 requires customer verification before block."
       }
     ],
     "final": [
       {
         "action": "CREATE_CASE",
         "route": "auto",
-        "reason": "3a: open a case for tracking the risk score alert on online transaction 3638829."
+        "reason": "3a: open a case when evidence was requested and evaluated."
       },
       {
         "action": "ALLOW_TRANSACTION",
         "route": "auto",
-        "reason": "R3: customer confirmed authorizing the $43.92 transaction from a new device."
+        "reason": "R3: customer confirmed the transaction."
       },
       {
         "action": "CLOSE_NO_FRAUD",
         "route": "auto",
-        "reason": "R3: close the case as no fraud following customer confirmation."
+        "reason": "R3/§6: customer confirmed the purchase; close case as no fraud."
       }
     ],
     "what_changed": "The assumed customer validation reply (confirm) left the probability at 0.00 and kept the verdict legitimate, adding ALLOW_TRANSACTION, CLOSE_NO_FRAUD, removing VERIFY_WITH_CUSTOMER. Counterfactual: had the customer denied the purchase, R2 would have applied: BLOCK_CARD (L1) and CREATE_CASE."
@@ -129,8 +130,8 @@
     "total_amount_usd": 0,
     "activity_dates": []
   },
-  "stop_reason": "Policy §6 test 2: the assumed customer confirmation settled the question. Probability 0.0011 with two independent evidence families (customer, history) also meets Policy §6 test 1.",
-  "tool_calls": 23,
-  "tokens": 174657,
-  "latency_s": 75.6
+  "stop_reason": "Policy §6 test 2: the assumed customer confirmation settled the question; probability 0.0011 with two independent legitimacy evidence families also meets §6 test 1.",
+  "tool_calls": 24,
+  "tokens": 275869,
+  "latency_s": 75.8
 }

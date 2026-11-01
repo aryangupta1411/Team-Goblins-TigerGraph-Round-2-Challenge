@@ -24,7 +24,7 @@
       "/ui/**",
       "/runs/hhf-final/**",
       "/runs/live-final-2/**",
-      "/runs/hhf-final-2/**"
+      "/runs/hhf-final-3/**"
     ]
   },
   "deploy": {

@@ -19,16 +19,16 @@
     "exposure_usd": 246.38,
     "evidence": [
       {
-        "claim": "Customer C09582 explicitly denied authorizing transaction 3660350 for $236.28.",
+        "claim": "Customer C09582 explicitly reported that they did not make transaction 3660350 for $236.28.",
         "source": "customer",
         "ref": "trigger",
         "entity_ids": [
-          "3660350",
-          "C09582"
+          "C09582",
+          "3660350"
         ]
       },
       {
-        "claim": "Card testing check identified 4 small online authorizations under $5 (3660346, 3660347, 3660348, 3660349) within 60 minutes followed by cleared purchase 3660350 for $236.28.",
+        "claim": "Card testing check identified four small online authorizations under $5 (transactions 3660346, 3660347, 3660348, and 3660349) within 27 minutes immediately preceding larger cleared purchase 3660350 ($236.28).",
         "source": "graph",
         "ref": "query:card_testing_check(c=C09582-K1, as_of=2017-01-14 15:57:30, small=5.0, window_min=60, min_n=3, big=100.0, lookahead_h=48)",
         "entity_ids": [
@@ -36,11 +36,20 @@
           "3660347",
           "3660348",
           "3660349",
+          "3660350",
+          "C09582-K1"
+        ]
+      },
+      {
+        "claim": "Flagged transaction 3660350 ($236.28) was executed on a New mobile device profile.",
+        "source": "graph",
+        "ref": "query:case_context(t=3660350, as_of=2017-01-14 15:57:30)",
+        "entity_ids": [
           "3660350"
         ]
       },
       {
-        "claim": "Recurring charge check returned zero prior matching recurring transactions for transaction 3660350, ruling out policy rule R7.",
+        "claim": "Recurring charge check returned 0 matching historical groups for transaction 3660350, confirming the charge does not match a recurring pattern under R7.",
         "source": "graph",
         "ref": "query:recurring_charge_check(t=3660350, tol=0.01, as_of=2017-01-14 15:57:30)",
         "entity_ids": [
@@ -48,31 +57,22 @@
         ]
       },
       {
-        "claim": "Customer C09582 card C09582-K1 had 708 prior transactions and 1 prior confirmed fraud case CC-2822.",
+        "claim": "Card C09582-K1 had 708 prior transactions prior to case opening and 1 prior closed case for confirmed fraud (CC-2822).",
         "source": "graph",
-        "ref": "query:card_profile(c=C09582-K1, as_of=2017-01-14 15:57:30)",
+        "ref": "query:prior_cases_for_customer(cu=C09582, as_of=2017-01-14 15:57:30)",
         "entity_ids": [
           "C09582-K1",
           "CC-2822"
         ]
-      },
-      {
-        "claim": "Transaction 3660350 occurred online with product code C and device status New, with total episode exposure of $246.38.",
-        "source": "graph",
-        "ref": "query:case_context(t=3660350, as_of=2017-01-14 15:57:30)",
-        "entity_ids": [
-          "3660350",
-          "C09582-K1"
-        ]
       }
     ],
     "similar_prior_cases": [
-      "CC-4357",
       "CC-4052",
-      "CC-4629",
-      "CC-3757"
+      "CC-3757",
+      "CC-3963",
+      "CC-4357"
     ],
-    "summary": "This case is assessed as fraud (probability 0.92) following a card_testing pattern across five online transactions (3660346–3660350) with total exposure of $246.38. Decisive evidence includes explicit customer dispute of transaction 3660350 ($236.28) and four sub-$5 online test authorizations within 60 minutes. Recurring charge check confirmed no prior pattern under R7. Recommended actions include open case, step-up authentication, decline pending authorizations (L1), and block card (L1).",
+    "summary": "This case is assessed as fraud with 0.92 probability under the card_testing pattern. Customer C09582 explicitly denied transaction 3660350 ($236.28), and graph checks confirmed an R5 card-testing sequence of four small online authorizations under $5 (transactions 3660346–3660349) immediately preceding it. The episode comprises 5 transactions with total exposure of $246.38. We recommend CREATE_CASE (auto) and BLOCK_CARD (L1 recommendation) under rules R2 and R5.",
     "written_to_graph": true,
     "graph_case_id": "AC-HHF-007"
   },
@@ -82,44 +82,44 @@
       {
         "action": "CREATE_CASE",
         "route": "auto",
-        "reason": "3a/R2/§3b: customer denied transaction 3660350 and fraud probability is 0.92, requiring a case to be opened."
+        "reason": "3a/R2/§3b: customer denied transaction 3660350 and high fraud probability 0.92 warrants case creation."
       },
       {
         "action": "STEP_UP_AUTH",
         "route": "auto",
-        "reason": "R5: card testing pattern detected across transactions 3660346 to 3660350 warrants step-up authentication on online activity."
+        "reason": "R5: card-testing pattern detected across online transactions 3660346, 3660347, 3660348, and 3660349."
       },
       {
         "action": "DECLINE_TRANSACTION",
         "route": "L1",
-        "reason": "R5: card testing sequence requires declining pending authorizations on card C09582-K1."
+        "reason": "R5: decline pending authorizations following card-testing pattern detection."
       },
       {
         "action": "BLOCK_CARD",
         "route": "L1",
-        "reason": "R2/R5/§3b: customer denied transaction 3660350 and card testing cleared purchase over $100 with exposure $246.38 ≤ $2,500 requires blocking card C09582-K1."
+        "reason": "R2/R5/§3b: customer denied transaction 3660350 and a cleared purchase over $100 ($236.28) occurred within a card-testing sequence with exposure $246.38 ≤ $2,500."
       }
     ],
     "final": [
       {
         "action": "CREATE_CASE",
         "route": "auto",
-        "reason": "3a/R2/§3b: customer denied transaction 3660350 and fraud probability is 0.92, requiring a case to be opened."
+        "reason": "3a/R2/§3b: customer denied transaction 3660350 and high fraud probability 0.92 warrants case creation."
       },
       {
         "action": "STEP_UP_AUTH",
         "route": "auto",
-        "reason": "R5: card testing pattern detected across transactions 3660346 to 3660350 warrants step-up authentication on online activity."
+        "reason": "R5: card-testing pattern detected across online transactions 3660346, 3660347, 3660348, and 3660349."
       },
       {
         "action": "DECLINE_TRANSACTION",
         "route": "L1",
-        "reason": "R5: card testing sequence requires declining pending authorizations on card C09582-K1."
+        "reason": "R5: decline pending authorizations following card-testing pattern detection."
       },
       {
         "action": "BLOCK_CARD",
         "route": "L1",
-        "reason": "R2/R5/§3b: customer denied transaction 3660350 and card testing cleared purchase over $100 with exposure $246.38 ≤ $2,500 requires blocking card C09582-K1."
+        "reason": "R2/R5/§3b: customer denied transaction 3660350 and a cleared purchase over $100 ($236.28) occurred within a card-testing sequence with exposure $246.38 ≤ $2,500."
       }
     ],
     "what_changed": "nothing"
@@ -134,6 +134,6 @@
   },
   "stop_reason": "Policy §6 test 1: fraud probability 0.92 is at or above 0.85 with 2 independent evidence families (customer, history); no request could change the action set, so the initial recommendation is final.",
   "tool_calls": 18,
-  "tokens": 158123,
-  "latency_s": 52.2
+  "tokens": 161842,
+  "latency_s": 64.8
 }

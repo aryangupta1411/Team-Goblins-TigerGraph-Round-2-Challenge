@@ -22,7 +22,7 @@ case_pack_final.csv ──► agent/security.py (Prompt-Injection Shield + Trigg
                     engine/ (Deterministic Scorecard · D1–D4 Wave Detectors · Policy Gate R1–R10 · VoI · Simulator)
                               │
                               ▼
-                    cases/HHF-001..018.json (run hhf-final-2) + Graph Write-Back + RBAC Approvals Inbox
+                    cases/HHF-001..018.json (run hhf-final-3, commit c2bcb29) + Graph Write-Back + RBAC Approvals Inbox
 ```
 
 | Stage / Phase | Subsystem | Authority | What Happens |
@@ -36,9 +36,9 @@ case_pack_final.csv ──► agent/security.py (Prompt-Injection Shield + Trigg
 | **`P5` Initial Gate** | `engine/policy.py` | Deterministic Gate | Computes admissible initial actions and approval routes (`auto`, `L1`, `L2`) under Policy Rules `R1`–`R10`. |
 | **`P6` VoI & Sim** | `engine/voi.py` + `simulator.py` | Deterministic Sim | Requests evidence (`customer_validation`, `step_up_auth`, `analyst_info`) only if a reply can change the action set (§6); simulates the reply and logs the counterfactual branch. |
 | **`P7` Final Gate** | `engine/scorecard.py` + `policy.py` | Deterministic Gate | Updates `p_engine` and `verdict` post-evidence, selects `next_best_actions.final`, and records `what_changed` (§3b). |
-| **`P8` SAR** | `rag/sar.py` + `validate_sar.py` | Gemini + 19 Checks | Evaluates §3a (`exposure > $1,000` OR `connected_card_ids` OR `undocumented`), screens OFAC SDN, drafts a 6–12 sentence 5-W narrative with sentence-level citations, and validates `V00`–`V19`. |
+| **`P8` SAR** | `rag/sar.py` + `validate_sar.py` | Gemini + 19 Checks | Evaluates §3a (`exposure > $1,000` OR `connected_card_ids` OR `undocumented`), screens OFAC SDN, drafts a 6–12 sentence 5-W narrative with sentence-level citations, and validates `V00`–`V19`. `agent/sar_doc.py` writes `sar.md` as a fileable filing: every sentence cited (59 / 59 in `runs/hhf-final-3`), a timeline and a Mermaid evidence graph (Challenge 4). |
 | **`P9` Validator** | `engine/validator.py` + `agent/validator.py` | Deterministic Gate | Resolves every ID against `data/ids.duckdb`, checks exact exposure arithmetic, and enforces the `TIPOFF` regex guard on `evidence_requests`. |
-| **`P10` Persist** | `agent/persist.py` + `approvals_db.py` | Graph + RBAC SQLite | Writes `AgentCase` (+ 1024-d `note_emb`), `CaseEvent`s, and `Approval`s to TigerGraph, and queues `L1`/`L2` actions in the immutable RBAC inbox. |
+| **`P10` Persist** | `agent/persist.py` + `approvals_db.py` | Graph + RBAC SQLite | Writes `AgentCase` (+ 1024-d `note_emb`), `CaseEvent`s, and `Approval`s to TigerGraph, and queues `L1`/`L2` actions in the immutable RBAC inbox. A final approval or customer reply later closes the case (`close_case`, `agent/lifecycle.py`, Challenge 14). |
 
 ---
 

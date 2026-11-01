@@ -1,0 +1,444 @@
+{
+  "case_runs": {
+    "HHF-001": {
+      "finished": "2026-11-01T22:50:23",
+      "git_dirty": false,
+      "git_sha": "8dc9e0723f42bd735e1c4d5b36e8ad09c7e988d0",
+      "invocation_started": "2026-11-01T22:41:46",
+      "llm_backend": "gemini",
+      "model": "gemini-3.6-flash",
+      "prompt_sha256": {
+        "assess.md": "ff8dd8b37336",
+        "explain.md": "9580d7143059",
+        "investigate.md": "87b9249c670e",
+        "nba.md": "67043e265092",
+        "sar.md": "b68538088664",
+        "system.md": "940a201b9574"
+      },
+      "sar_model": "gemini-3.6-flash",
+      "tokens": 271576,
+      "tool_calls": 26
+    },
+    "HHF-002": {
+      "finished": "2026-11-01T22:51:46",
+      "git_dirty": false,
+      "git_sha": "8dc9e0723f42bd735e1c4d5b36e8ad09c7e988d0",
+      "invocation_started": "2026-11-01T22:41:46",
+      "llm_backend": "gemini",
+      "model": "gemini-3.6-flash",
+      "prompt_sha256": {
+        "assess.md": "ff8dd8b37336",
+        "explain.md": "9580d7143059",
+        "investigate.md": "87b9249c670e",
+        "nba.md": "67043e265092",
+        "sar.md": "b68538088664",
+        "system.md": "940a201b9574"
+      },
+      "sar_model": "gemini-3.6-flash",
+      "tokens": 350878,
+      "tool_calls": 26
+    },
+    "HHF-003": {
+      "finished": "2026-11-01T23:03:21",
+      "git_dirty": false,
+      "git_sha": "8dc9e0723f42bd735e1c4d5b36e8ad09c7e988d0",
+      "invocation_started": "2026-11-01T22:41:46",
+      "llm_backend": "gemini",
+      "model": "gemini-3.6-flash",
+      "prompt_sha256": {
+        "assess.md": "ff8dd8b37336",
+        "explain.md": "9580d7143059",
+        "investigate.md": "87b9249c670e",
+        "nba.md": "67043e265092",
+        "sar.md": "b68538088664",
+        "system.md": "940a201b9574"
+      },
+      "sar_model": "gemini-3.6-flash",
+      "tokens": 222567,
+      "tool_calls": 25
+    },
+    "HHF-004": {
+      "finished": "2026-11-01T22:57:52",
+      "git_dirty": false,
+      "git_sha": "8dc9e0723f42bd735e1c4d5b36e8ad09c7e988d0",
+      "invocation_started": "2026-11-01T22:41:46",
+      "llm_backend": "gemini",
+      "model": "gemini-3.6-flash",
+      "prompt_sha256": {
+        "assess.md": "ff8dd8b37336",
+        "explain.md": "9580d7143059",
+        "investigate.md": "87b9249c670e",
+        "nba.md": "67043e265092",
+        "sar.md": "b68538088664",
+        "system.md": "940a201b9574"
+      },
+      "sar_model": "gemini-3.6-flash",
+      "tokens": 229349,
+      "tool_calls": 23
+    },
+    "HHF-005": {
+      "finished": "2026-11-01T23:01:40",
+      "git_dirty": false,
+      "git_sha": "8dc9e0723f42bd735e1c4d5b36e8ad09c7e988d0",
+      "invocation_started": "2026-11-01T22:41:46",
+      "llm_backend": "gemini",
+      "model": "gemini-3.6-flash",
+      "prompt_sha256": {
+        "assess.md": "ff8dd8b37336",
+        "explain.md": "9580d7143059",
+        "investigate.md": "87b9249c670e",
+        "nba.md": "67043e265092",
+        "sar.md": "b68538088664",
+        "system.md": "940a201b9574"
+      },
+      "sar_model": "gemini-3.6-flash",
+      "tokens": 227510,
+      "tool_calls": 23
+    },
+    "HHF-006": {
+      "finished": "2026-11-01T23:00:21",
+      "git_dirty": false,
+      "git_sha": "8dc9e0723f42bd735e1c4d5b36e8ad09c7e988d0",
+      "invocation_started": "2026-11-01T22:41:46",
+      "llm_backend": "gemini",
+      "model": "gemini-3.6-flash",
+      "prompt_sha256": {
+        "assess.md": "ff8dd8b37336",
+        "explain.md": "9580d7143059",
+        "investigate.md": "87b9249c670e",
+        "nba.md": "67043e265092",
+        "sar.md": "b68538088664",
+        "system.md": "940a201b9574"
+      },
+      "sar_model": "gemini-3.6-flash",
+      "tokens": 254832,
+      "tool_calls": 23
+    },
+    "HHF-007": {
+      "finished": "2026-11-01T22:48:38",
+      "git_dirty": false,
+      "git_sha": "8dc9e0723f42bd735e1c4d5b36e8ad09c7e988d0",
+      "invocation_started": "2026-11-01T22:41:46",
+      "llm_backend": "gemini",
+      "model": "gemini-3.6-flash",
+      "prompt_sha256": {
+        "assess.md": "ff8dd8b37336",
+        "explain.md": "9580d7143059",
+        "investigate.md": "87b9249c670e",
+        "nba.md": "67043e265092",
+        "sar.md": "b68538088664",
+        "system.md": "940a201b9574"
+      },
+      "sar_model": "gemini-3.6-flash",
+      "tokens": 158123,
+      "tool_calls": 18
+    },
+    "HHF-008": {
+      "finished": "2026-11-01T22:54:20",
+      "git_dirty": false,
+      "git_sha": "8dc9e0723f42bd735e1c4d5b36e8ad09c7e988d0",
+      "invocation_started": "2026-11-01T22:41:46",
+      "llm_backend": "gemini",
+      "model": "gemini-3.6-flash",
+      "prompt_sha256": {
+        "assess.md": "ff8dd8b37336",
+        "explain.md": "9580d7143059",
+        "investigate.md": "87b9249c670e",
+        "nba.md": "67043e265092",
+        "sar.md": "b68538088664",
+        "system.md": "940a201b9574"
+      },
+      "sar_model": "gemini-3.6-flash",
+      "tokens": 193441,
+      "tool_calls": 19
+    },
+    "HHF-009": {
+      "finished": "2026-11-01T22:58:48",
+      "git_dirty": false,
+      "git_sha": "8dc9e0723f42bd735e1c4d5b36e8ad09c7e988d0",
+      "invocation_started": "2026-11-01T22:41:46",
+      "llm_backend": "gemini",
+      "model": "gemini-3.6-flash",
+      "prompt_sha256": {
+        "assess.md": "ff8dd8b37336",
+        "explain.md": "9580d7143059",
+        "investigate.md": "87b9249c670e",
+        "nba.md": "67043e265092",
+        "sar.md": "b68538088664",
+        "system.md": "940a201b9574"
+      },
+      "sar_model": "gemini-3.6-flash",
+      "tokens": 158933,
+      "tool_calls": 22
+    },
+    "HHF-010": {
+      "finished": "2026-11-01T22:46:50",
+      "git_dirty": false,
+      "git_sha": "8dc9e0723f42bd735e1c4d5b36e8ad09c7e988d0",
+      "invocation_started": "2026-11-01T22:41:46",
+      "llm_backend": "gemini",
+      "model": "gemini-3.6-flash",
+      "prompt_sha256": {
+        "assess.md": "ff8dd8b37336",
+        "explain.md": "9580d7143059",
+        "investigate.md": "87b9249c670e",
+        "nba.md": "67043e265092",
+        "sar.md": "b68538088664",
+        "system.md": "940a201b9574"
+      },
+      "sar_model": "gemini-3.6-flash",
+      "tokens": 191960,
+      "tool_calls": 17
+    },
+    "HHF-011": {
+      "finished": "2026-11-01T22:53:08",
+      "git_dirty": false,
+      "git_sha": "8dc9e0723f42bd735e1c4d5b36e8ad09c7e988d0",
+      "invocation_started": "2026-11-01T22:41:46",
+      "llm_backend": "gemini",
+      "model": "gemini-3.6-flash",
+      "prompt_sha256": {
+        "assess.md": "ff8dd8b37336",
+        "explain.md": "9580d7143059",
+        "investigate.md": "87b9249c670e",
+        "nba.md": "67043e265092",
+        "sar.md": "b68538088664",
+        "system.md": "940a201b9574"
+      },
+      "sar_model": "gemini-3.6-flash",
+      "tokens": 267005,
+      "tool_calls": 17
+    },
+    "HHF-012": {
+      "finished": "2026-11-01T22:47:46",
+      "git_dirty": false,
+      "git_sha": "8dc9e0723f42bd735e1c4d5b36e8ad09c7e988d0",
+      "invocation_started": "2026-11-01T22:41:46",
+      "llm_backend": "gemini",
+      "model": "gemini-3.6-flash",
+      "prompt_sha256": {
+        "assess.md": "ff8dd8b37336",
+        "explain.md": "9580d7143059",
+        "investigate.md": "87b9249c670e",
+        "nba.md": "67043e265092",
+        "sar.md": "b68538088664",
+        "system.md": "940a201b9574"
+      },
+      "sar_model": "gemini-3.6-flash",
+      "tokens": 159324,
+      "tool_calls": 17
+    },
+    "HHF-013": {
+      "finished": "2026-11-01T22:56:49",
+      "git_dirty": false,
+      "git_sha": "8dc9e0723f42bd735e1c4d5b36e8ad09c7e988d0",
+      "invocation_started": "2026-11-01T22:41:46",
+      "llm_backend": "gemini",
+      "model": "gemini-3.6-flash",
+      "prompt_sha256": {
+        "assess.md": "ff8dd8b37336",
+        "explain.md": "9580d7143059",
+        "investigate.md": "87b9249c670e",
+        "nba.md": "67043e265092",
+        "sar.md": "b68538088664",
+        "system.md": "940a201b9574"
+      },
+      "sar_model": "gemini-3.6-flash",
+      "tokens": 205155,
+      "tool_calls": 20
+    },
+    "HHF-014": {
+      "finished": "2026-11-01T22:44:55",
+      "git_dirty": false,
+      "git_sha": "8dc9e0723f42bd735e1c4d5b36e8ad09c7e988d0",
+      "invocation_started": "2026-11-01T22:41:46",
+      "llm_backend": "gemini",
+      "model": "gemini-3.6-flash",
+      "prompt_sha256": {
+        "assess.md": "ff8dd8b37336",
+        "explain.md": "9580d7143059",
+        "investigate.md": "87b9249c670e",
+        "nba.md": "67043e265092",
+        "sar.md": "b68538088664",
+        "system.md": "940a201b9574"
+      },
+      "sar_model": "gemini-3.6-flash",
+      "tokens": 185542,
+      "tool_calls": 17
+    },
+    "HHF-015": {
+      "finished": "2026-11-01T22:55:13",
+      "git_dirty": false,
+      "git_sha": "8dc9e0723f42bd735e1c4d5b36e8ad09c7e988d0",
+      "invocation_started": "2026-11-01T22:41:46",
+      "llm_backend": "gemini",
+      "model": "gemini-3.6-flash",
+      "prompt_sha256": {
+        "assess.md": "ff8dd8b37336",
+        "explain.md": "9580d7143059",
+        "investigate.md": "87b9249c670e",
+        "nba.md": "67043e265092",
+        "sar.md": "b68538088664",
+        "system.md": "940a201b9574"
+      },
+      "sar_model": "gemini-3.6-flash",
+      "tokens": 148577,
+      "tool_calls": 17
+    },
+    "HHF-016": {
+      "finished": "2026-11-01T22:44:01",
+      "git_dirty": false,
+      "git_sha": "8dc9e0723f42bd735e1c4d5b36e8ad09c7e988d0",
+      "invocation_started": "2026-11-01T22:41:46",
+      "llm_backend": "gemini",
+      "model": "gemini-3.6-flash",
+      "prompt_sha256": {
+        "assess.md": "ff8dd8b37336",
+        "explain.md": "9580d7143059",
+        "investigate.md": "87b9249c670e",
+        "nba.md": "67043e265092",
+        "sar.md": "b68538088664",
+        "system.md": "940a201b9574"
+      },
+      "sar_model": "gemini-3.6-flash",
+      "tokens": 322107,
+      "tool_calls": 17
+    },
+    "HHF-017": {
+      "finished": "2026-11-01T22:43:04",
+      "git_dirty": false,
+      "git_sha": "8dc9e0723f42bd735e1c4d5b36e8ad09c7e988d0",
+      "invocation_started": "2026-11-01T22:41:46",
+      "llm_backend": "gemini",
+      "model": "gemini-3.6-flash",
+      "prompt_sha256": {
+        "assess.md": "ff8dd8b37336",
+        "explain.md": "9580d7143059",
+        "investigate.md": "87b9249c670e",
+        "nba.md": "67043e265092",
+        "sar.md": "b68538088664",
+        "system.md": "940a201b9574"
+      },
+      "sar_model": "gemini-3.6-flash",
+      "tokens": 174657,
+      "tool_calls": 23
+    },
+    "HHF-018": {
+      "finished": "2026-11-01T22:45:53",
+      "git_dirty": false,
+      "git_sha": "8dc9e0723f42bd735e1c4d5b36e8ad09c7e988d0",
+      "invocation_started": "2026-11-01T22:41:46",
+      "llm_backend": "gemini",
+      "model": "gemini-3.6-flash",
+      "prompt_sha256": {
+        "assess.md": "ff8dd8b37336",
+        "explain.md": "9580d7143059",
+        "investigate.md": "87b9249c670e",
+        "nba.md": "67043e265092",
+        "sar.md": "b68538088664",
+        "system.md": "940a201b9574"
+      },
+      "sar_model": "gemini-3.6-flash",
+      "tokens": 250837,
+      "tool_calls": 23
+    }
+  },
+  "cases": [
+    "HHF-017",
+    "HHF-016",
+    "HHF-014",
+    "HHF-018",
+    "HHF-010",
+    "HHF-012",
+    "HHF-007",
+    "HHF-001",
+    "HHF-002",
+    "HHF-011",
+    "HHF-008",
+    "HHF-015",
+    "HHF-013",
+    "HHF-004",
+    "HHF-009",
+    "HHF-006",
+    "HHF-005",
+    "HHF-003"
+  ],
+  "effort": "high",
+  "embed_dim": 1024,
+  "embed_model": "BAAI/bge-large-en-v1.5",
+  "engine": "engine",
+  "first_started": "2026-11-01T22:41:46",
+  "git_dirty": false,
+  "git_sha": "8dc9e0723f42bd735e1c4d5b36e8ad09c7e988d0",
+  "git_shas": [
+    "8dc9e0723f42bd735e1c4d5b36e8ad09c7e988d0"
+  ],
+  "invocations": [
+    {
+      "cases_selected": [
+        "HHF-017",
+        "HHF-016",
+        "HHF-014",
+        "HHF-018",
+        "HHF-010",
+        "HHF-012",
+        "HHF-007",
+        "HHF-001",
+        "HHF-002",
+        "HHF-011",
+        "HHF-008",
+        "HHF-015",
+        "HHF-013",
+        "HHF-004",
+        "HHF-009",
+        "HHF-006",
+        "HHF-005",
+        "HHF-003"
+      ],
+      "effort": "high",
+      "engine": "engine",
+      "git_dirty": false,
+      "git_sha": "8dc9e0723f42bd735e1c4d5b36e8ad09c7e988d0",
+      "llm_backend": "gemini",
+      "model": "gemini-3.6-flash",
+      "prompt_sha256": {
+        "assess.md": "ff8dd8b37336644797f00c236ad719052c06a709d022443bdd10f5c23344a208",
+        "explain.md": "9580d7143059b075f17c61e0a1245cdd144dd8e4d16afecb95411baaf38153d0",
+        "investigate.md": "87b9249c670e42b31482777b6f7fe1fa600c4b050b187c38b1545baf064f7629",
+        "nba.md": "67043e26509238a8074f3fd65c2443cfeb1776db00e37cccc1e11ceef2a43ef3",
+        "sar.md": "b68538088664e25e8c622c0b3a351e0d6a263858490b03e6a250309d5e7c1e60",
+        "system.md": "940a201b9574c9dc5523f7bce0bbcbd1f4487e89256bf1bbdf4adcf677920212"
+      },
+      "resume": false,
+      "run_mode": "live",
+      "sar_model": "gemini-3.6-flash",
+      "started": "2026-11-01T22:41:46"
+    }
+  ],
+  "llm_backend": "gemini",
+  "max_tool_calls": 12,
+  "model": "gemini-3.6-flash",
+  "prompt_sha256": {
+    "assess.md": "ff8dd8b37336644797f00c236ad719052c06a709d022443bdd10f5c23344a208",
+    "explain.md": "9580d7143059b075f17c61e0a1245cdd144dd8e4d16afecb95411baaf38153d0",
+    "investigate.md": "87b9249c670e42b31482777b6f7fe1fa600c4b050b187c38b1545baf064f7629",
+    "nba.md": "67043e26509238a8074f3fd65c2443cfeb1776db00e37cccc1e11ceef2a43ef3",
+    "sar.md": "b68538088664e25e8c622c0b3a351e0d6a263858490b03e6a250309d5e7c1e60",
+    "system.md": "940a201b9574c9dc5523f7bce0bbcbd1f4487e89256bf1bbdf4adcf677920212"
+  },
+  "run_id": "hhf-final-2",
+  "run_mode": "live",
+  "sar_model": "gemini-3.6-flash",
+  "started": "2026-11-01T22:41:46",
+  "versions": {
+    "anthropic": "1.7.0",
+    "claude-agent-sdk": "0.2.157",
+    "mcp": "2.2.0",
+    "pyTigerGraph": "2.0.4",
+    "pydantic": "2.13.5",
+    "sentence-transformers": "6.1.0",
+    "tigergraph-mcp": "1.0.3",
+    "torch": "2.14.0",
+    "voyageai": "0.5.0"
+  }
+}

@@ -15,7 +15,7 @@ from a fresh clone of `main` (`40ad6ae`): 31 s, 0 validator problems. CI runs th
 RUN_MODE=live LLM_BACKEND=gemini uv run python -m agent.bench --cases HHF-004 --run-id live-drill-1
 ```
 
-The live command calls `typology_scan` on the workspace for the January detectors. The query is installed. In the submitted run, `runs/hhf-final`, the harness called it once per case through MCP: 18 calls, all `ok`. On 30 cases its results match the local detectors exactly (6 hits, 0 differences in `engine/out/typology_parity.json`, from `uv run python graph/check_typology_parity.py --installed --json engine/out/typology_parity.json`). If it fails or is missing, a January case stops with `CaseDataMissing` and writes no answer (see the table below).
+The live command calls `typology_scan` on the workspace for the January detectors. The query is installed. In the submitted run, `runs/hhf-final-2`, the harness called it once per case through MCP: 18 calls, all `ok`. On 30 cases its results match the local detectors exactly (7 hits, 0 differences in `engine/out/typology_parity.json`, from `uv run python graph/check_typology_parity.py --installed --json engine/out/typology_parity.json`). If it fails or is missing, a January case stops with `CaseDataMissing` and writes no answer (see the table below).
 
 ## Dependencies and what leaves the bank's boundary
 
@@ -23,7 +23,7 @@ The live command calls `typology_scan` on the workspace for the January detector
 |---|---|---|
 | TigerGraph Savanna (`FraudGraph`, 4.2) | Source of truth in live mode: base + January loaded and count-checked (`make load-delta`; `ops.check_live_counts` against the 18 `expected_after` types in `data/out_delta/delta_manifest.json`, Transaction 650,938, ClosedCase 5,585). The installed GSQL query library (`graph/queries/`; including `typology_scan`, installed 2026-10-31), TigerVector indexes on `ClosedCase`, `AgentCase` and `PolicyChunk`, and write-back of `AgentCase` / `CaseEvent` / `Approval`. | Pseudonymous dataset ids, amounts, timestamps and 1024-d vectors over TLS. No card numbers or names exist in the data. |
 | Local facts snapshot (`data/hhgoa_engine.duckdb`) | The validator, the SAR id resolver, the offline engine and mock mode read it. On the current code, the January detectors D1-D4 run in the graph (`typology_scan`) in live mode. The snapshot holds their DuckDB twin (`DuckFacts.typology_scan`), and `graph/check_typology_parity.py` compares the two. | Nothing: local file. |
-| LLM: `LLM_BACKEND=gemini` (Google Gemini API, `gemini-2.5-flash` by default), `cli` (Claude Code via claude-agent-sdk) or `api` (Anthropic API). Set `LLM_BACKEND` explicitly: when it is empty and `GEMINI_API_KEY` is set, Gemini is used. | P2 tool choice (read-only typed queries), P4 evidence wording and a probability move of at most ±0.10, P5/P7 action reasons inside the policy's admissible set, P8 SAR draft, P9 summary | The sanitised trigger text (instruction sentences removed), time-boxed query results (`ts <= opened_at`, closed cases only once `closed_at <= opened_at`), and masked closed-case summaries. Never `.env`, file paths or post-opening activity. |
+| LLM: `LLM_BACKEND=gemini` (Google Gemini API; the submitted run used `MODEL=gemini-3.6-flash`, the code's default is `gemini-2.5-flash`), `cli` (Claude Code via claude-agent-sdk) or `api` (Anthropic API). Set `LLM_BACKEND` explicitly: when it is empty and `GEMINI_API_KEY` is set, Gemini is used. | P2 tool choice (read-only typed queries), P4 evidence wording and a probability move of at most ±0.10, P5/P7 action reasons inside the policy's admissible set, P8 SAR draft, P9 summary | The sanitised trigger text (instruction sentences removed), time-boxed query results (`ts <= opened_at`, closed cases only once `closed_at <= opened_at`), and masked closed-case summaries. Never `.env`, file paths or post-opening activity. |
 | Embeddings (`BAAI/bge-large-en-v1.5`, local) | Vectors for closed cases, agent cases and policy chunks | Nothing: runs on this machine. Needs `RUN_MODE=live`; under `RUN_MODE=mock` `rag.embed` writes hashed stand-in vectors by design. |
 | OFAC screening (`rapidfuzz` over a checked-in SDN snapshot) | Subject screening in P8 | Nothing. |
 | Approval inbox (`ui/approvals.sqlite`, approver directory `ui/principals.json`) | Server-side authentication and RBAC, immutable decisions, append-only audit log, mirrored to `Approval` vertices | Nothing. |
@@ -34,31 +34,25 @@ The live command calls `typology_scan` on the workspace for the January detector
 |---|---|---|
 | Graph or MCP unreachable (502/503/504, timeout, dropped connection) | Retries with backoff up to `TG_RESUME_MAX_WAIT_S` (240 s), then raises `GraphUnavailable`. No `answer.json` is written, the run stops, and `--resume` picks up the unfinished case. A missing reply is never treated as evidence. | `phases.jsonl` note, a `FAIL` line on stderr, the case marked failed in the run table |
 | The flagged transaction is not in the graph, or (on a January case) `typology_scan` fails or is missing | `CaseDataMissing`: the case stops and no answer is written. Scoring a January case without the scan would silently drop the evidence that decides the verdict. | `phases.jsonl` (`case failed`) |
-| Model timeout, refusal or unparseable output (this happened in the submitted run, see below) | Gemini HTTP errors (429/5xx) are retried up to 5 attempts. Structured phases validate against strict schemas in up to 3 attempts, then the case fails (`agent/llm.py`). A probability more than ±0.10 from the engine's is clamped (`agent.security.clamp_to_engine`). An action outside `engine.policy.admissible()` is replaced by the policy's own set. A SAR failing V00-V19 falls back to the deterministic attested narrative. | `calls.jsonl` (`kind=llm`, latency, tokens); `phases.jsonl` (`clamped`, `policy_override`) |
+| Model timeout, refusal or unparseable output (this happened in the run the submission superseded, see below) | Gemini HTTP errors (429/5xx) are retried up to 5 attempts. Structured phases validate against strict schemas in up to 3 attempts, then the case fails (`agent/llm.py`). A probability more than ±0.10 from the engine's is clamped (`agent.security.clamp_to_engine`). An action outside `engine.policy.admissible()` is replaced by the policy's own set. A SAR failing V00-V19 falls back to the deterministic attested narrative. | `calls.jsonl` (`kind=llm`, latency, tokens); `phases.jsonl` (`clamped`, `policy_override`) |
 | Hostile or invalid input (trigger text, stored notes, tool rows) | Text is NFKC-normalised and zero-width characters are removed, and every sentence carrying an instruction is dropped before the model sees it. Channel and amount claims are checked against the transaction record. Customer-visible `evidence_requests` are checked for tip-off terms (report, SAR, regulator, AML, law enforcement). The engine's decision never reads free text. `run_attack_ablation()` blocks 23 / 23 attacks (6 planted in the pack, 17 synthetic), and `sanitize_trigger_text` raises 0 false alarms on the 12 HHF triggers that carry no injection. | `CaseEvent(kind=security_alert)`; `phases.jsonl` codes `INJ_*`, `SPOOF_*` |
 | Approval by the wrong role, or editing a decided approval | `decide()` accepts only a session minted by `authenticate()` (scrypt passphrase, server-side directory). The role comes from the directory, never from the request. A team lead decides L1 only; L2 needs a fraud manager. SQLite triggers refuse any update or delete of a decided approval or of the audit log, and there is no reopen. With no directory file, nobody can approve. | `approval_audit_log`: `ok` / `denied_auth` / `denied_rbac` / `denied_immutable`, actor, role, time |
 | A visitor on the public deployment tries to start a run or change its workspace | The Run console refuses unless the session was minted by `authenticate()` and its role holds `run_live` (team lead, fraud manager, admin); another workspace and own-data loads need an admin. Runs from the deployment write `AC-web-<case>` (`AGENT_CASE_NAMESPACE`), so they can never overwrite the submitted `AC-<case>` write-backs. | the refusal on the page; `approval_audit_log` for sign-ins |
-| The same case run twice, or resumed after a failure | Engine output is deterministic: two consecutive `engine.run_cases` runs over HHF-001 … HHF-018 on the frozen commit `b397c2c` give identical drafts apart from `latency_s`. Graph writes are keyed upserts (`AC-<case>`, `AC-<case>-<seq>`, `AP-AC-<case>-<ACTION>`). Case memory excludes the case's own agent case and every case opened at or after it. `written_to_graph` is true only when the `AgentCase` upsert succeeded. | `run_manifest.json` (git SHA, dirty flag, prompt hashes, per-case invocations) |
+| The same case run twice, or resumed after a failure | Engine output is deterministic: two consecutive `engine.run_cases` runs over HHF-001 … HHF-018 on the frozen commit `8dc9e07` give identical drafts apart from `latency_s`, and match the live run's verdict, pattern, SAR decision and final actions on all 18. Graph writes are keyed upserts (`AC-<case>`, `AC-<case>-<seq>`, `AP-AC-<case>-<ACTION>`). Case memory excludes the case's own agent case and every case opened at or after it. `written_to_graph` is true only when the `AgentCase` upsert succeeded. | `run_manifest.json` (git SHA, dirty flag, prompt hashes, per-case invocations) |
 
 ## What happened in the submitted run
 
-`runs/hhf-final` ran from commit `b397c2c` with no local changes (`git_dirty: false`), in two invocations
-(`run_manifest.json`).
+`runs/hhf-final-2` ran from commit `8dc9e07` (tag `hhf-final-2-run`) with no local changes (`git_dirty: false`), in one
+invocation, 2026-11-01 22:41:46 to 23:03:26, on `gemini-3.6-flash`: 18 / 18 cases answered, 0 failed, nothing resumed.
+Every tracked file (642) was hashed before and after the run into `_guard/`, and the two lists hash to the same value
+(`code.list_sha256` in `provenance.json`). All 274 write-back calls were `ok`, and the graph then held 18 `AgentCase`
+with `run_id` `hhf-final-2`, 121 HHF `CaseEvent`s and 17 HHF `Approval`s (`graph_at_end`, read through pyTigerGraph at
+23:03:52). Before the run, the 157 write-backs of the run it replaces were deleted (`graph_before_run`), so a later case's
+memory could not retrieve an earlier run's answer for the same alert.
 
-1. **Main run, 11:02:41.** On HHF-005, Gemini's P5 structured output failed validation three times, each time JSON cut
-   off mid-string at about 33 KB. After the third attempt the case failed, and no answer was written for it. The run
-   went on to HHF-003, the next case in `opened_at` order, and finished it and the other 16 cases.
-2. **Clean-up.** HHF-005's partial write-back was removed from the graph.
-3. **Resume, 11:35:37.** `--resume` re-ran HHF-005 and then HHF-003, in `opened_at` order, so case memory saw the same
-   history it would have seen without the failure. The last case finished at 11:38:45. The first HHF-003 attempt is
-   kept in `_failed_attempt/HHF-003-superseded/`. It has the same verdict, probability, SAR decision and final actions
-   as the promoted one.
-
-Both invocations ran under a guard. Every tracked file was hashed into `_failed_attempt/tracked_files_sha256.txt`
-(534 files), and that list's sha256 is the same at all four checkpoints: before and after the main run, and before and
-after the resume (`code.list_sha256` in `provenance.json`). The final state is 18 / 18 answers with `written_to_graph: true`, and 276 write-back calls, all `ok`
-(`calls.jsonl`, `caller=persist`). The graph holds 18 `AgentCase` with `run_id` `hhf-final`, 122 HHF `CaseEvent`s and 17
-HHF `Approval`s (`graph_at_promotion`, read through pyTigerGraph at 11:45:32). Sources: `runs/hhf-final/provenance.json`
-(`failed_attempt` with the P5 error and resolution, `code.list_sha256`, `graph_at_promotion`) and
-`runs/hhf-final/_failed_attempt/`. An earlier attempt, `r2-submit`, was discarded because tracked files changed while it was
-starting.
+**The fail-closed path, as it happened in the run this one superseded.** `runs/hhf-final` (commit `b397c2c`,
+`gemini-2.5-flash`, kept in the repository) ran in two invocations. In the main run, Gemini's P5 structured output for
+HHF-005 failed validation three times, each time JSON cut off mid-string at about 33 KB; the case failed with no answer
+written, and the run went on. HHF-005's partial write-back was removed, and `--resume` re-ran HHF-005 and then HHF-003 in
+`opened_at` order, so case memory saw the same history it would have without the failure. Sources:
+`runs/hhf-final/provenance.json` (`failed_attempt`) and `runs/hhf-final/_failed_attempt/`.

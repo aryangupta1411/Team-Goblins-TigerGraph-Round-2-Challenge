@@ -1,0 +1,16 @@
+{
+ "read_at": "2026-11-01 23:03:52",
+ "vertex_counts": {
+  "Transaction": 650938,
+  "ClosedCase": 5585,
+  "AgentCase": 20,
+  "CaseEvent": 137,
+  "Approval": 19
+ },
+ "hhf_agentcase_run_ids": {
+  "hhf-final-2": 18
+ },
+ "hhf_case_events": 121,
+ "hhf_approvals": 17,
+ "how": "pyTigerGraph getVertexCount / getVertices on FraudGraph (read-only)"
+}

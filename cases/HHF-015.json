@@ -3,7 +3,7 @@
   "case": {
     "status": "closed_legitimate",
     "verdict": "legitimate",
-    "fraud_probability": 0.01,
+    "fraud_probability": 0.0,
     "pattern": "none",
     "pattern_description": "",
     "affected_txn_ids": [],
@@ -13,58 +13,46 @@
     "exposure_usd": 0.0,
     "evidence": [
       {
-        "claim": "The case was triggered by the real-time model scoring transaction 3601725 ($112.75) at 0.71.",
-        "source": "external",
-        "ref": "trigger",
-        "entity_ids": [
-          "3601725"
-        ]
-      },
-      {
-        "claim": "The flagged transaction 3601725 has a very low calibrated memory score (`cms_p`) of 0.001183.",
+        "claim": "Flagged in-person transaction 3601725 ($112.75) on card C00543-K1 in region 485.0 carries a calibrated cms_p score of 0.001183.",
         "source": "graph",
-        "ref": "query:case_context(txn=3601725)",
-        "entity_ids": [
-          "3601725"
-        ]
-      },
-      {
-        "claim": "The transaction amount of $112.75 is within card C00543-K1's prior spending baseline, below its prior median amount of $167.00 and prior maximum of $418.03 over 116 transactions.",
-        "source": "graph",
-        "ref": "query:case_context(txn=3601725)",
+        "ref": "query:case_context(t=3601725, as_of=2017-01-22 12:21:48)",
         "entity_ids": [
           "3601725",
           "C00543-K1"
         ]
       },
       {
-        "claim": "Transaction 3601725 occurred in billing region 485.0, a region known to card C00543-K1 with 10 prior in-person transactions over 10 days, while its modal region is 325.0.",
+        "claim": "Card C00543-K1 has 116 prior transactions with a median amount of $167.00 and a max amount of $418.03; transaction 3601725 ($112.75) is well within normal baseline.",
         "source": "graph",
-        "ref": "query:region_history(c=C00543-K1, addr1=485.0)",
+        "ref": "query:case_context(t=3601725, as_of=2017-01-22 12:21:48)",
         "entity_ids": [
           "3601725",
           "C00543-K1"
         ]
       },
       {
-        "claim": "Card C00543-K1 also made 3 in-person purchases in its modal region 325.0 (transactions 3601713, 3601724, 3601731) within 48 hours preceding the flagged transaction 3601725, indicating continued home activity.",
+        "claim": "Billing region 485.0 is a known region for card C00543-K1 with 10 prior transactions over 10 distinct days since 2016-07-10.",
         "source": "graph",
-        "ref": "query:card_window(c=C00543-K1, from_ts=2017-01-19 09:21:48, to_ts=2017-01-22 12:21:48)",
+        "ref": "query:region_history(as_of=2017-01-22 12:21:48, addr1=485.0, c=C00543-K1)",
         "entity_ids": [
-          "C00543-K1",
-          "3601713",
-          "3601724",
+          "C00543-K1"
+        ]
+      },
+      {
+        "claim": "Modal region 325.0 had 2 home transactions in the 48 hours prior to case opening, including transaction 3601731 ($206.48) at 2017-01-22 06:01:10.",
+        "source": "graph",
+        "ref": "query:card_window(c=C00543-K1, from_ts=2017-01-19 09:21:48, to_ts=2017-01-22 12:21:48, max_rows=60)",
+        "entity_ids": [
           "3601731",
-          "3601725"
+          "C00543-K1"
         ]
       },
       {
-        "claim": "Customer C00543 has no prior closed cases or agent cases on file for card C00543-K1.",
+        "claim": "Customer C00543 has 0 prior fraud cases or closed agent cases.",
         "source": "graph",
-        "ref": "query:prior_cases_for_customer(cu=C00543)",
+        "ref": "query:prior_cases_for_customer(cu=C00543, as_of=2017-01-22 12:21:48)",
         "entity_ids": [
-          "C00543",
-          "C00543-K1"
+          "C00543"
         ]
       },
       {
@@ -80,18 +68,16 @@
       "CC-3931",
       "CC-5530",
       "CC-4347",
-      "CC-5316",
-      "CC-4615",
-      "CC-4367"
+      "CC-5316"
     ],
-    "summary": "The verdict is legitimate with a probability of 0.01, after the customer confirmed the $112.75 in-person transaction (3601725) in region 485.0. This aligns with the low calibrated memory score and the card's history of use in that region. The episode's exposure is $0.00, and the pattern is none. The recommended action is CLOSE_NO_FRAUD (auto).",
+    "summary": "The case is legitimate with a fraud probability of 0.0003 and pattern none (exposure $0.00). Transaction 3601725 ($112.75) in region 485.0 sits within historical spending baseline, and region 485.0 is a known region for card C00543-K1 (10 prior transactions over 10 days). Following customer validation confirming travel and authorization of the purchase, the recommended actions are ALLOW_TRANSACTION and CLOSE_NO_FRAUD (auto).",
     "written_to_graph": true,
     "graph_case_id": "AC-HHF-015"
   },
   "evidence_requests": [
     {
       "type": "customer_validation",
-      "asked_after_step": 16,
+      "asked_after_step": 17,
       "assumed_response": "ASSUMED (simulated): customer confirmed travel to billing region 485.0 and recognises the $112.75 purchase"
     }
   ],
@@ -100,37 +86,32 @@
       {
         "action": "CREATE_CASE",
         "route": "auto",
-        "reason": "3a: A case is created because customer verification is being requested."
+        "reason": "3a: open case to evaluate risk score alert on transaction 3601725."
       },
       {
         "action": "VERIFY_WITH_CUSTOMER",
         "route": "auto",
-        "reason": "R1: Customer verification is requested as the fraud probability is 0.01, which is below 0.70, and the initial signal from the risk score is weak with multiple legitimacy indicators."
-      },
-      {
-        "action": "ALLOW_TRANSACTION",
-        "route": "auto",
-        "reason": "R3: The transaction is allowed due to the legitimate verdict and a low fraud probability of 0.01, pending customer verification."
+        "reason": "R1: verify transaction 3601725 with customer on a single risk score signal with fraud probability 0.0003 < 0.70."
       }
     ],
     "final": [
       {
         "action": "CREATE_CASE",
         "route": "auto",
-        "reason": "3a: A case was created in the initial phase as customer verification was requested."
+        "reason": "3a: open case to record investigation of transaction 3601725."
       },
       {
         "action": "ALLOW_TRANSACTION",
         "route": "auto",
-        "reason": "R3: The transaction is allowed as the customer confirmed the purchase."
+        "reason": "R3: customer confirmed travel to region 485.0 and recognized transaction 3601725."
       },
       {
         "action": "CLOSE_NO_FRAUD",
         "route": "auto",
-        "reason": "R3: The case is closed with no fraud as the customer confirmed the transaction."
+        "reason": "R3: close case as non-fraud following customer confirmation of transaction 3601725."
       }
     ],
-    "what_changed": "The assumed customer validation reply (confirm) left the probability at 0.01 and kept the verdict legitimate, adding CLOSE_NO_FRAUD, removing VERIFY_WITH_CUSTOMER. Counterfactual: had the customer denied the purchase, R2 would have applied: BLOCK_CARD (L1) and CREATE_CASE."
+    "what_changed": "The assumed customer validation reply (confirm) left the probability at 0.00 and kept the verdict legitimate, adding ALLOW_TRANSACTION, CLOSE_NO_FRAUD, removing VERIFY_WITH_CUSTOMER. Counterfactual: had the customer denied the purchase, R2 would have applied: BLOCK_CARD (L1) and CREATE_CASE."
   },
   "sar": {
     "file": false,
@@ -140,8 +121,8 @@
     "total_amount_usd": 0,
     "activity_dates": []
   },
-  "stop_reason": "Policy §6 test 2: the assumed customer confirmation settled the question. Probability 0.01 with 3 families also meets §6 test 1. Policy \n6 test 2: the assumed customer confirmation settled the question. Probability 0.01 with 3 evidence families also meets \n6 test 1.",
-  "tool_calls": 16,
-  "tokens": 128606,
-  "latency_s": 63.7
+  "stop_reason": "Policy §6 test 2 fired: the customer confirmation settled the question. Probability 0.0003 with three independent evidence families (customer, history, memory) also meets §6 test 1.",
+  "tool_calls": 17,
+  "tokens": 148577,
+  "latency_s": 52.5
 }

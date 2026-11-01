@@ -177,7 +177,8 @@ def test_uncertain_initial_never_blocks_and_r8_is_gated():
     assert "ESCALATE_TO_ANALYST" in adm["required"]                                             # rulebook-chain override
     sc = _sc(0.55, ["customer"], [], denial=True, outcome="inconclusive", asked=True)
     adm = policy.admissible(DISP, sc, "final")
-    assert {"MONITOR_CARD", "DECLINE_TRANSACTION"} <= set(adm["required"]) and "ESCALATE_TO_ANALYST" not in adm["required"]
+    # R4's decline waits for a real 24 h lapse on an uncertain verdict: the verification stays outstanding instead
+    assert "MONITOR_CARD" in adm["required"] and "DECLINE_TRANSACTION" not in adm["required"] and "ESCALATE_TO_ANALYST" not in adm["required"]
     assert status.derive("uncertain", [{"action": a} for a in adm["required"]], True) == "open"
 
 
@@ -223,7 +224,9 @@ def test_r3_r4_finals():
     assert {"CLOSE_NO_FRAUD", "ALLOW_TRANSACTION"} <= set(adm["required"]) and "BLOCK_CARD" in adm["forbidden"]
     sc = _sc(0.55, ["customer"], ["history"], outcome="no_reply", asked=True, denial=True, exposure=600.0)
     adm = policy.admissible(DISP, sc, "final")
-    assert {"MONITOR_CARD", "DECLINE_TRANSACTION", "ESCALATE_TO_ANALYST"} <= set(adm["required"])
+    assert {"MONITOR_CARD", "ESCALATE_TO_ANALYST"} <= set(adm["required"]) and "DECLINE_TRANSACTION" not in adm["required"]
+    sc = _sc(0.80, ["customer", "memory"], ["history"], verdict="fraud", outcome="no_reply", asked=True, exposure=600.0)
+    assert "DECLINE_TRANSACTION" in policy.admissible(CTX, sc, "final")["required"]           # a fraud verdict keeps R4's decline
 
 
 def test_r10_forbids_block_all_cards():

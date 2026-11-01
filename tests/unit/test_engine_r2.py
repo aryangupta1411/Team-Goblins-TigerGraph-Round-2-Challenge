@@ -56,7 +56,7 @@ def test_online_denial_blocks_at_intake_and_steps_up():
     assert ask and "BLOCK_CARD" in branches["fail"] and "BLOCK_CARD" in branches["inconclusive"]
     post = _sc(0.55, ["customer"], [], denial=True, outcome="inconclusive", asked=True)
     fin = policy.admissible(DISP, post, "final")
-    assert fin["required"] == ["CREATE_CASE", "MONITOR_CARD", "DECLINE_TRANSACTION", "BLOCK_CARD"]
+    assert fin["required"] == ["CREATE_CASE", "STEP_UP_AUTH", "MONITOR_CARD", "BLOCK_CARD"]   # R2's block stands; R4's decline waits
     assert "R2's block" in stop.stop_reason(sc, post, True, False)
 
 

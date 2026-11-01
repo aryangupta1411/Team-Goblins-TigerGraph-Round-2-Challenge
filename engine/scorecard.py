@@ -22,7 +22,7 @@ from datetime import datetime
 
 import numpy as np
 
-from engine import config, pattern_rule
+from engine import config, feedback, pattern_rule
 from engine import episode as episode_rule
 from engine.policy import params as policy_params
 from engine.types import CaseContext, Evidence, Facts, Scorecard
@@ -130,6 +130,21 @@ def _r7(facts: Facts, txn: dict, chain: list[dict], P: dict) -> dict:
         and not neighbour_hi
     )
     return {"recurring_match": fires, "recurring_group": grp, "recurring_total_n": int(rc.get("total_n", 0) or 0), "recurring_neighbour_hi": neighbour_hi, "recurring_place": place}
+
+
+def _graph_neighbourhood(pcard: dict, sos: dict) -> dict:
+    """Card.wcc_id / Card.device_degree (graph/run_algos.py) when populated, else the shared_origin_scan twin of the degree."""
+    strong = [d for d in sos.get("devices", []) or [] if d.get("is_strong")]
+    n_fraud = sum(int(d.get("n_fraud_cases", 0) or 0) for d in strong)
+    devices = [str(d["device_id"]) for d in strong if int(d.get("n_fraud_cases", 0) or 0) > 0]
+    wcc_id, deg = int(pcard.get("wcc_id", -1) if pcard.get("wcc_id") is not None else -1), int(pcard.get("device_degree", 0) or 0)
+    if wcc_id >= 0 or deg > 0:
+        source = "tg_wcc/degree"
+    else:
+        source, deg = "offline twin: 30-day strong-profile sharing", sum(max(int(d.get("n_cards_30d", 0) or 0) - 1, 0) for d in strong)
+    G = policy_params()["engine"]["graph_neighbourhood"]
+    fires = G["min_degree"] <= deg <= G["max_degree"] and n_fraud >= 1
+    return {"wcc_id": wcc_id, "degree": deg, "n_fraud": n_fraud, "devices": devices, "source": source, "fires": fires}
 
 
 def _cleared_template_matches(case: dict, txn: dict, rh: dict) -> bool:
@@ -600,6 +615,26 @@ def compute(ctx: CaseContext, facts: Facts, evidence: list[Evidence]) -> Scoreca
                 led.append(Evidence(note, "graph", _q("case_context", txn=txn["id"]), [dev_id, txn["id"]], "device", "neutral", 0.0))
         elif txn["proxy"] == config.ANON_PROXY:
             led.append(Evidence(f"Transaction routed through {txn['proxy']}", "graph", _q("case_context", txn=txn["id"]), [txn["id"]], "device", "fraud", 0.4))
+    # Graph-algorithm signal (graph/run_algos.py): Card.wcc_id / Card.device_degree from tg_wcc + degree on the SHARES_DEVICE projection.
+    # When the algorithms have not been run (wcc_id = -1 and degree 0 on every card, as in the offline facts DB) the degree is
+    # derived from the same 30-day strong-profile sharing shared_origin_scan reports (the projection's edge rule), and the item
+    # says which source it used. Bounded: below family_strength, so on its own it never makes the device family count for fraud.
+    flags["graph_neighbourhood"] = _graph_neighbourhood(pcard, sos)
+    gn = flags["graph_neighbourhood"]
+    if gn["fires"] and not flags["ring_hit"] and len(shared_fraud_cards) < 2:
+        led.append(
+            Evidence(
+                f"SHARES_DEVICE neighbourhood ({gn['source']}): the card has device degree {gn['degree']}"
+                + (f" in weakly connected component {gn['wcc_id']}" if gn["wcc_id"] >= 0 else "")
+                + f", and {gn['n_fraud']} confirmed-fraud case(s) sit on the strong profiles it shares ({', '.join(gn['devices'])})",
+                "graph",
+                _q("card_profile", card=cid) if gn["source"] == "tg_wcc/degree" else _q("shared_origin_scan", card=cid),
+                [cid] + gn["devices"],
+                "device",
+                "fraud",
+                P["graph_neighbourhood_bump"],
+            )
+        )
     # R6 recipient-email clause: only a rare recipient domain (<= 40 other cards in 30 d) shared with >= 2 other cards' fraud
     # A domain shared by many cards in 30 days with no fraud behind it is D4's to judge (it also needs <= 40 cards ever and 60
     # days of history): a 30-day count alone cannot tell a mule hub (sc.rr.com) from a webmail domain (mac.com, HHF-014).
@@ -793,9 +828,16 @@ def compute(ctx: CaseContext, facts: Facts, evidence: list[Evidence]) -> Scoreca
     if analyst:
         led.append(Evidence("Analyst request: several cards this month show purchases from the same unusual device profile", "customer", "trigger", [txn["id"], cid], "customer", "neutral", 0.0))
 
+    # ---------------------------------------------------------------- analyst feedback (Challenge 8, engine/feedback.py)
+    det_id = str(r2_det.get("detector_id") or "")
+    fb = feedback.apply(ctx, flags, [str(o.get("id")) for o in prof.get("other_cards", []) or []], P, detector_id=det_id)
+    led.extend(fb["evidence"])
+    if fb["rows"]:
+        flags["analyst_feedback"] = fb["rows"]
+
     # ---------------------------------------------------------------- families and adjustments
     fam_f, fam_l = _families(led)
-    adj: list[tuple[str, float]] = []
+    adj: list[tuple[str, float]] = list(fb["adjustments"])
     if flags["r5_run"]:
         adj.append(("R5 card-testing run feeding the flagged purchase", P["card_testing_bump"]))
     if flags["recurring_match"]:
@@ -806,6 +848,8 @@ def compute(ctx: CaseContext, facts: Facts, evidence: list[Evidence]) -> Scoreca
         adj.append(("recent card-testing / CNP case on the card", P["recent_case_bump"]))
     if len(shared_fraud_cards) >= 2 and not flags["ring_hit"]:
         adj.append(("strong shared profile with >= 2 other fraud cards within +-30 d", P["shared_profile_bump"]))
+    if gn["fires"] and not flags["ring_hit"] and len(shared_fraud_cards) < 2:
+        adj.append((f"graph neighbourhood: device degree {gn['degree']} with {gn['n_fraud']} fraud case(s) on shared profiles ({gn['source']})", P["graph_neighbourhood_bump"]))
     if denial and cal_p >= 0.5 and not flags["recurring_match"]:
         adj.append(("customer denial corroborated by the scorer (calibrated >= 0.5)", P["denial_bump_when_scorer_agrees"]))
     total = max(-P["max_abs_adjustment"], min(P["max_abs_adjustment"], sum(a for _, a in adj)))
@@ -844,6 +888,9 @@ def compute(ctx: CaseContext, facts: Facts, evidence: list[Evidence]) -> Scoreca
     elif denial and not flags["recurring_match"]:
         floor = P["denial_floor"]
         adj.append(("customer denial not explained by R7 → floor", floor))
+    if floor and feedback.floor_kind(flags, det_id) in fb["lifted"]:
+        adj.append((f"analyst rejected the finding behind the floor ({feedback.floor_kind(flags, det_id)}) → floor lifted", 0.0))
+        floor = 0.0
     p = round(max(p1, floor), 4)
     flags["floor"] = floor
     flags["families_conflict"] = _families_conflict(fam_f, fam_l)

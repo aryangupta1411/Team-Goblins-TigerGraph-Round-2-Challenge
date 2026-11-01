@@ -209,12 +209,18 @@ def infer_variant_mapping(variant_dir: str | Path) -> dict[str, Any]:
             table_roles[fname] = "unknown"
 
     mappings: list[dict[str, Any]] = []
+    unmapped: list[dict[str, Any]] = []
     for fname, prof in profiles.items():
         role = table_roles.get(fname, "unknown")
         cols = prof["columns"]
         for cname, cprof in cols.items():
             if role == "transactions":
                 target, xform, conf, reason = _score_tx_column(cname, cprof, cols)
+                if not target:
+                    # a flat file carries the identity columns next to the transaction ones
+                    target, xform, conf, reason = _score_id_column(cname, cprof)
+                    if target == "TransactionID":
+                        target, xform, conf, reason = None, "unmapped", 0.0, "No high-confidence canonical fingerprint match"
             elif role == "identity":
                 target, xform, conf, reason = _score_id_column(cname, cprof)
             elif role == "case_pack":
@@ -222,6 +228,8 @@ def infer_variant_mapping(variant_dir: str | Path) -> dict[str, Any]:
             else:
                 target, xform, conf, reason = (cname, "identity", 0.90, "Direct name match on closed_cases")
             if not target:
+                unmapped.append({"source_file": fname, "table_role": role, "source_column": cname, "reason": reason,
+                                 "top_values": cprof.get("top_values", [])[:5]})
                 continue
             sample_rows = [
                 {
@@ -259,6 +267,10 @@ def infer_variant_mapping(variant_dir: str | Path) -> dict[str, Any]:
         "table_roles": table_roles,
         "mappings": mappings,
         "n_mapped_columns": len(mappings),
+        # for a human to review before the mapping is used: what nothing matched, and what matched below 0.95
+        "unmapped_columns": unmapped,
+        "low_confidence": [{k: m[k] for k in ("source_file", "source_column", "canonical_column", "confidence", "rationale")}
+                           for m in mappings if m["confidence"] < 0.95],
     }
 
 

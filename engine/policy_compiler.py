@@ -272,8 +272,10 @@ def _backtest_r7(con: Any, det: dict[str, Any]) -> dict[str, Any]:
     sql, rows = run_sql(con, det, BACKTEST_AS_OF, target_ids=ids)
     matched = {str(r[0]): r for r in rows}
     hit = [r for r in firsts if str(r[5]) in matched]
-    cases = lambda rs: [{"case_id": r[0], "pattern": r[2], "customer_id": r[3], "card_id": r[4], "txn_id": str(r[5]),
-                         "n_prior": matched[str(r[5])][6], "median_gap_days": round(matched[str(r[5])][7], 2)} for r in rs]
+    def cases(rs: list) -> list[dict]:
+        return [{"case_id": r[0], "pattern": r[2], "customer_id": r[3], "card_id": r[4], "txn_id": str(r[5]),
+                 "n_prior": matched[str(r[5])][6], "median_gap_days": round(matched[str(r[5])][7], 2)} for r in rs]
+
     blocked_legit = con.execute("SELECT count(*) FROM cc WHERE outcome = 'cleared' AND actions_taken LIKE '%BLOCK%'").fetchone()[0]
     return {
         "query": " ".join(sql.split())[:600] + " ... (target_ids = every closed case's first_fraud_txn_id, or its first txn when cleared)", "params": det["sql_params"],

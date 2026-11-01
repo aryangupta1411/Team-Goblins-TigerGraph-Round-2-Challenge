@@ -6,7 +6,301 @@
   "pre_as_of": 4835.96,
   "post_as_of": 13369.32,
   "legit_touched_targeted": 0,
-  "broad_rule_extra_customers": 55
+  "broad_rule_extra_customers": 55,
+  "as_of": "2017-01-15 01:25:19",
+  "legit_penalty_usd": 25.0,
+  "block_k": 11,
+  "block_set": [
+   "C06220-K1",
+   "C07925-K1",
+   "C00450-K1",
+   "C10553-K1",
+   "C11309-K1",
+   "C05704-K2",
+   "C07997-K1",
+   "C09251-K1",
+   "C06962-K2",
+   "C05770-K1",
+   "C02342-K1"
+  ],
+  "block_exposure_stopped": 13369.32,
+  "block_legit_customers": [
+   {
+    "customer_id": "C06220",
+    "card_id": "C06220-K1",
+    "legit_spend_after_asof_usd": 8265.95,
+    "legit_txns_after_asof": 43
+   },
+   {
+    "customer_id": "C07925",
+    "card_id": "C07925-K1",
+    "legit_spend_after_asof_usd": 5630.53,
+    "legit_txns_after_asof": 41
+   },
+   {
+    "customer_id": "C00450",
+    "card_id": "C00450-K1",
+    "legit_spend_after_asof_usd": 1552.39,
+    "legit_txns_after_asof": 15
+   },
+   {
+    "customer_id": "C10553",
+    "card_id": "C10553-K1",
+    "legit_spend_after_asof_usd": 19088.04,
+    "legit_txns_after_asof": 66
+   },
+   {
+    "customer_id": "C11309",
+    "card_id": "C11309-K1",
+    "legit_spend_after_asof_usd": 9055.57,
+    "legit_txns_after_asof": 85
+   },
+   {
+    "customer_id": "C05704",
+    "card_id": "C05704-K2",
+    "legit_spend_after_asof_usd": 20018.73,
+    "legit_txns_after_asof": 74
+   },
+   {
+    "customer_id": "C07997",
+    "card_id": "C07997-K1",
+    "legit_spend_after_asof_usd": 2505.22,
+    "legit_txns_after_asof": 16
+   },
+   {
+    "customer_id": "C09251",
+    "card_id": "C09251-K1",
+    "legit_spend_after_asof_usd": 6121.06,
+    "legit_txns_after_asof": 74
+   },
+   {
+    "customer_id": "C06962",
+    "card_id": "C06962-K2",
+    "legit_spend_after_asof_usd": 11179.69,
+    "legit_txns_after_asof": 71
+   },
+   {
+    "customer_id": "C05770",
+    "card_id": "C05770-K1",
+    "legit_spend_after_asof_usd": 652.68,
+    "legit_txns_after_asof": 4
+   },
+   {
+    "customer_id": "C02342",
+    "card_id": "C02342-K1",
+    "legit_spend_after_asof_usd": 11223.47,
+    "legit_txns_after_asof": 50
+   }
+  ],
+  "block_objective": 13094.32,
+  "block_whole_wave_legit_customers": [
+   {
+    "customer_id": "C06220",
+    "card_id": "C06220-K1",
+    "legit_spend_after_asof_usd": 8265.95,
+    "legit_txns_after_asof": 43
+   },
+   {
+    "customer_id": "C07925",
+    "card_id": "C07925-K1",
+    "legit_spend_after_asof_usd": 5630.53,
+    "legit_txns_after_asof": 41
+   },
+   {
+    "customer_id": "C00450",
+    "card_id": "C00450-K1",
+    "legit_spend_after_asof_usd": 1552.39,
+    "legit_txns_after_asof": 15
+   },
+   {
+    "customer_id": "C10553",
+    "card_id": "C10553-K1",
+    "legit_spend_after_asof_usd": 19088.04,
+    "legit_txns_after_asof": 66
+   },
+   {
+    "customer_id": "C11309",
+    "card_id": "C11309-K1",
+    "legit_spend_after_asof_usd": 9055.57,
+    "legit_txns_after_asof": 85
+   },
+   {
+    "customer_id": "C05704",
+    "card_id": "C05704-K2",
+    "legit_spend_after_asof_usd": 20018.73,
+    "legit_txns_after_asof": 74
+   },
+   {
+    "customer_id": "C07997",
+    "card_id": "C07997-K1",
+    "legit_spend_after_asof_usd": 2505.22,
+    "legit_txns_after_asof": 16
+   },
+   {
+    "customer_id": "C09251",
+    "card_id": "C09251-K1",
+    "legit_spend_after_asof_usd": 6121.06,
+    "legit_txns_after_asof": 74
+   },
+   {
+    "customer_id": "C06962",
+    "card_id": "C06962-K2",
+    "legit_spend_after_asof_usd": 11179.69,
+    "legit_txns_after_asof": 71
+   },
+   {
+    "customer_id": "C05770",
+    "card_id": "C05770-K1",
+    "legit_spend_after_asof_usd": 652.68,
+    "legit_txns_after_asof": 4
+   },
+   {
+    "customer_id": "C02342",
+    "card_id": "C02342-K1",
+    "legit_spend_after_asof_usd": 11223.47,
+    "legit_txns_after_asof": 50
+   },
+   {
+    "customer_id": "C05061",
+    "card_id": "C05061-K1",
+    "legit_spend_after_asof_usd": 1263.02,
+    "legit_txns_after_asof": 12
+   },
+   {
+    "customer_id": "C11543",
+    "card_id": "C11543-K2",
+    "legit_spend_after_asof_usd": 8216.46,
+    "legit_txns_after_asof": 48
+   },
+   {
+    "customer_id": "C07212",
+    "card_id": "C07212-K2",
+    "legit_spend_after_asof_usd": 11719.78,
+    "legit_txns_after_asof": 74
+   }
+  ],
+  "curve": [
+   {
+    "k": 0,
+    "card_added": null,
+    "exposure_stopped_usd": 0.0,
+    "legit_customers_touched": 0,
+    "legit_spend_interrupted_usd": 0.0,
+    "objective_usd": 0.0
+   },
+   {
+    "k": 1,
+    "card_added": "C06220-K1",
+    "exposure_stopped_usd": 2166.71,
+    "legit_customers_touched": 1,
+    "legit_spend_interrupted_usd": 8265.95,
+    "objective_usd": 2141.71
+   },
+   {
+    "k": 2,
+    "card_added": "C07925-K1",
+    "exposure_stopped_usd": 3681.77,
+    "legit_customers_touched": 2,
+    "legit_spend_interrupted_usd": 13896.48,
+    "objective_usd": 3631.77
+   },
+   {
+    "k": 3,
+    "card_added": "C00450-K1",
+    "exposure_stopped_usd": 5064.41,
+    "legit_customers_touched": 3,
+    "legit_spend_interrupted_usd": 15448.87,
+    "objective_usd": 4989.41
+   },
+   {
+    "k": 4,
+    "card_added": "C10553-K1",
+    "exposure_stopped_usd": 6405.8,
+    "legit_customers_touched": 4,
+    "legit_spend_interrupted_usd": 34536.91,
+    "objective_usd": 6305.8
+   },
+   {
+    "k": 5,
+    "card_added": "C11309-K1",
+    "exposure_stopped_usd": 7655.97,
+    "legit_customers_touched": 5,
+    "legit_spend_interrupted_usd": 43592.48,
+    "objective_usd": 7530.97
+   },
+   {
+    "k": 6,
+    "card_added": "C05704-K2",
+    "exposure_stopped_usd": 8869.27,
+    "legit_customers_touched": 6,
+    "legit_spend_interrupted_usd": 63611.21,
+    "objective_usd": 8719.27
+   },
+   {
+    "k": 7,
+    "card_added": "C07997-K1",
+    "exposure_stopped_usd": 9964.2,
+    "legit_customers_touched": 7,
+    "legit_spend_interrupted_usd": 66116.43,
+    "objective_usd": 9789.2
+   },
+   {
+    "k": 8,
+    "card_added": "C09251-K1",
+    "exposure_stopped_usd": 11025.55,
+    "legit_customers_touched": 8,
+    "legit_spend_interrupted_usd": 72237.49,
+    "objective_usd": 10825.55
+   },
+   {
+    "k": 9,
+    "card_added": "C06962-K2",
+    "exposure_stopped_usd": 12048.21,
+    "legit_customers_touched": 9,
+    "legit_spend_interrupted_usd": 83417.18,
+    "objective_usd": 11823.21
+   },
+   {
+    "k": 10,
+    "card_added": "C05770-K1",
+    "exposure_stopped_usd": 12775.84,
+    "legit_customers_touched": 10,
+    "legit_spend_interrupted_usd": 84069.86,
+    "objective_usd": 12525.84
+   },
+   {
+    "k": 11,
+    "card_added": "C02342-K1",
+    "exposure_stopped_usd": 13369.32,
+    "legit_customers_touched": 11,
+    "legit_spend_interrupted_usd": 95293.33,
+    "objective_usd": 13094.32
+   },
+   {
+    "k": 12,
+    "card_added": "C05061-K1",
+    "exposure_stopped_usd": 13369.32,
+    "legit_customers_touched": 12,
+    "legit_spend_interrupted_usd": 96556.35,
+    "objective_usd": 13069.32
+   },
+   {
+    "k": 13,
+    "card_added": "C11543-K2",
+    "exposure_stopped_usd": 13369.32,
+    "legit_customers_touched": 13,
+    "legit_spend_interrupted_usd": 104772.81,
+    "objective_usd": 13044.32
+   },
+   {
+    "k": 14,
+    "card_added": "C07212-K2",
+    "exposure_stopped_usd": 13369.32,
+    "legit_customers_touched": 14,
+    "legit_spend_interrupted_usd": 116492.59,
+    "objective_usd": 13019.32
+   }
+  ]
  },
  "HHF-003": {
   "wave": "D2_ESCALATING_C_DRAIN",
@@ -15,7 +309,80 @@
   "pre_as_of": 25602.59,
   "post_as_of": 0.0,
   "legit_touched_targeted": 0,
-  "broad_rule_extra_customers": 3
+  "broad_rule_extra_customers": 3,
+  "as_of": "2017-01-31 20:31:28",
+  "legit_penalty_usd": 25.0,
+  "block_k": 0,
+  "block_set": [],
+  "block_exposure_stopped": 0.0,
+  "block_legit_customers": [],
+  "block_objective": 0.0,
+  "block_whole_wave_legit_customers": [
+   {
+    "customer_id": "C11663",
+    "card_id": "C11663-K1",
+    "legit_spend_after_asof_usd": 104.08,
+    "legit_txns_after_asof": 1
+   }
+  ],
+  "curve": [
+   {
+    "k": 0,
+    "card_added": null,
+    "exposure_stopped_usd": 0.0,
+    "legit_customers_touched": 0,
+    "legit_spend_interrupted_usd": 0.0,
+    "objective_usd": 0.0
+   },
+   {
+    "k": 1,
+    "card_added": "C04096-K1",
+    "exposure_stopped_usd": 0.0,
+    "legit_customers_touched": 0,
+    "legit_spend_interrupted_usd": 0.0,
+    "objective_usd": 0.0
+   },
+   {
+    "k": 2,
+    "card_added": "C07847-K1",
+    "exposure_stopped_usd": 0.0,
+    "legit_customers_touched": 0,
+    "legit_spend_interrupted_usd": 0.0,
+    "objective_usd": 0.0
+   },
+   {
+    "k": 3,
+    "card_added": "C08563-K1",
+    "exposure_stopped_usd": 0.0,
+    "legit_customers_touched": 0,
+    "legit_spend_interrupted_usd": 0.0,
+    "objective_usd": 0.0
+   },
+   {
+    "k": 4,
+    "card_added": "C09026-K1",
+    "exposure_stopped_usd": 0.0,
+    "legit_customers_touched": 0,
+    "legit_spend_interrupted_usd": 0.0,
+    "objective_usd": 0.0
+   },
+   {
+    "k": 5,
+    "card_added": "C09148-K1",
+    "exposure_stopped_usd": 0.0,
+    "legit_customers_touched": 0,
+    "legit_spend_interrupted_usd": 0.0,
+    "objective_usd": 0.0
+   },
+   {
+    "k": 6,
+    "card_added": "C11663-K1",
+    "exposure_stopped_usd": 0.0,
+    "legit_customers_touched": 1,
+    "legit_spend_interrupted_usd": 104.08,
+    "objective_usd": -25.0
+   }
+  ]
  },
  "HHF-004": {
   "wave": "D3_MICRO_CHARGE_SKIMMING",
@@ -24,7 +391,252 @@
   "pre_as_of": 243.1,
   "post_as_of": 35.6,
   "legit_touched_targeted": 0,
-  "broad_rule_extra_customers": 91
+  "broad_rule_extra_customers": 91,
+  "as_of": "2017-01-26 21:09:37",
+  "legit_penalty_usd": 25.0,
+  "block_k": 0,
+  "block_set": [],
+  "block_exposure_stopped": 0.0,
+  "block_legit_customers": [],
+  "block_objective": 0.0,
+  "block_whole_wave_legit_customers": [
+   {
+    "customer_id": "C05263",
+    "card_id": "C05263-K2",
+    "legit_spend_after_asof_usd": 1034.2,
+    "legit_txns_after_asof": 24
+   },
+   {
+    "customer_id": "C00348",
+    "card_id": "C00348-K1",
+    "legit_spend_after_asof_usd": 611.48,
+    "legit_txns_after_asof": 4
+   },
+   {
+    "customer_id": "C10035",
+    "card_id": "C10035-K2",
+    "legit_spend_after_asof_usd": 779.56,
+    "legit_txns_after_asof": 13
+   },
+   {
+    "customer_id": "C13290",
+    "card_id": "C13290-K1",
+    "legit_spend_after_asof_usd": 261.57,
+    "legit_txns_after_asof": 2
+   },
+   {
+    "customer_id": "C11332",
+    "card_id": "C11332-K1",
+    "legit_spend_after_asof_usd": 182.48,
+    "legit_txns_after_asof": 2
+   },
+   {
+    "customer_id": "C06198",
+    "card_id": "C06198-K1",
+    "legit_spend_after_asof_usd": 387.86,
+    "legit_txns_after_asof": 7
+   },
+   {
+    "customer_id": "C04528",
+    "card_id": "C04528-K1",
+    "legit_spend_after_asof_usd": 467.77,
+    "legit_txns_after_asof": 3
+   },
+   {
+    "customer_id": "C01326",
+    "card_id": "C01326-K2",
+    "legit_spend_after_asof_usd": 708.62,
+    "legit_txns_after_asof": 2
+   },
+   {
+    "customer_id": "C03427",
+    "card_id": "C03427-K2",
+    "legit_spend_after_asof_usd": 1521.97,
+    "legit_txns_after_asof": 19
+   },
+   {
+    "customer_id": "C10654",
+    "card_id": "C10654-K1",
+    "legit_spend_after_asof_usd": 878.74,
+    "legit_txns_after_asof": 6
+   },
+   {
+    "customer_id": "C05083",
+    "card_id": "C05083-K1",
+    "legit_spend_after_asof_usd": 39.26,
+    "legit_txns_after_asof": 1
+   },
+   {
+    "customer_id": "C04274",
+    "card_id": "C04274-K1",
+    "legit_spend_after_asof_usd": 155.35,
+    "legit_txns_after_asof": 2
+   },
+   {
+    "customer_id": "C03611",
+    "card_id": "C03611-K2",
+    "legit_spend_after_asof_usd": 647.02,
+    "legit_txns_after_asof": 5
+   },
+   {
+    "customer_id": "C12975",
+    "card_id": "C12975-K2",
+    "legit_spend_after_asof_usd": 815.35,
+    "legit_txns_after_asof": 4
+   },
+   {
+    "customer_id": "C09471",
+    "card_id": "C09471-K2",
+    "legit_spend_after_asof_usd": 4254.85,
+    "legit_txns_after_asof": 32
+   }
+  ],
+  "curve": [
+   {
+    "k": 0,
+    "card_added": null,
+    "exposure_stopped_usd": 0.0,
+    "legit_customers_touched": 0,
+    "legit_spend_interrupted_usd": 0.0,
+    "objective_usd": 0.0
+   },
+   {
+    "k": 1,
+    "card_added": "C05263-K2",
+    "exposure_stopped_usd": 7.73,
+    "legit_customers_touched": 1,
+    "legit_spend_interrupted_usd": 1034.2,
+    "objective_usd": -17.27
+   },
+   {
+    "k": 2,
+    "card_added": "C00129-K1",
+    "exposure_stopped_usd": 13.16,
+    "legit_customers_touched": 1,
+    "legit_spend_interrupted_usd": 1034.2,
+    "objective_usd": -11.84
+   },
+   {
+    "k": 3,
+    "card_added": "C00348-K1",
+    "exposure_stopped_usd": 17.21,
+    "legit_customers_touched": 2,
+    "legit_spend_interrupted_usd": 1645.68,
+    "objective_usd": -32.79
+   },
+   {
+    "k": 4,
+    "card_added": "C10035-K2",
+    "exposure_stopped_usd": 20.68,
+    "legit_customers_touched": 3,
+    "legit_spend_interrupted_usd": 2425.24,
+    "objective_usd": -54.32
+   },
+   {
+    "k": 5,
+    "card_added": "C13290-K1",
+    "exposure_stopped_usd": 23.55,
+    "legit_customers_touched": 4,
+    "legit_spend_interrupted_usd": 2686.81,
+    "objective_usd": -76.45
+   },
+   {
+    "k": 6,
+    "card_added": "C11332-K1",
+    "exposure_stopped_usd": 26.38,
+    "legit_customers_touched": 5,
+    "legit_spend_interrupted_usd": 2869.29,
+    "objective_usd": -98.62
+   },
+   {
+    "k": 7,
+    "card_added": "C06198-K1",
+    "exposure_stopped_usd": 28.75,
+    "legit_customers_touched": 6,
+    "legit_spend_interrupted_usd": 3257.15,
+    "objective_usd": -121.25
+   },
+   {
+    "k": 8,
+    "card_added": "C04528-K1",
+    "exposure_stopped_usd": 30.69,
+    "legit_customers_touched": 7,
+    "legit_spend_interrupted_usd": 3724.92,
+    "objective_usd": -144.31
+   },
+   {
+    "k": 9,
+    "card_added": "C01326-K2",
+    "exposure_stopped_usd": 32.6,
+    "legit_customers_touched": 8,
+    "legit_spend_interrupted_usd": 4433.54,
+    "objective_usd": -167.4
+   },
+   {
+    "k": 10,
+    "card_added": "C03427-K2",
+    "exposure_stopped_usd": 34.26,
+    "legit_customers_touched": 9,
+    "legit_spend_interrupted_usd": 5955.51,
+    "objective_usd": -190.74
+   },
+   {
+    "k": 11,
+    "card_added": "C10654-K1",
+    "exposure_stopped_usd": 35.6,
+    "legit_customers_touched": 10,
+    "legit_spend_interrupted_usd": 6834.25,
+    "objective_usd": -214.4
+   },
+   {
+    "k": 12,
+    "card_added": "C03488-K1",
+    "exposure_stopped_usd": 35.6,
+    "legit_customers_touched": 10,
+    "legit_spend_interrupted_usd": 6834.25,
+    "objective_usd": -214.4
+   },
+   {
+    "k": 13,
+    "card_added": "C05083-K1",
+    "exposure_stopped_usd": 35.6,
+    "legit_customers_touched": 11,
+    "legit_spend_interrupted_usd": 6873.51,
+    "objective_usd": -239.4
+   },
+   {
+    "k": 14,
+    "card_added": "C04274-K1",
+    "exposure_stopped_usd": 35.6,
+    "legit_customers_touched": 12,
+    "legit_spend_interrupted_usd": 7028.86,
+    "objective_usd": -264.4
+   },
+   {
+    "k": 15,
+    "card_added": "C03611-K2",
+    "exposure_stopped_usd": 35.6,
+    "legit_customers_touched": 13,
+    "legit_spend_interrupted_usd": 7675.88,
+    "objective_usd": -289.4
+   },
+   {
+    "k": 16,
+    "card_added": "C12975-K2",
+    "exposure_stopped_usd": 35.6,
+    "legit_customers_touched": 14,
+    "legit_spend_interrupted_usd": 8491.23,
+    "objective_usd": -314.4
+   },
+   {
+    "k": 17,
+    "card_added": "C09471-K2",
+    "exposure_stopped_usd": 35.6,
+    "legit_customers_touched": 15,
+    "legit_spend_interrupted_usd": 12746.08,
+    "objective_usd": -339.4
+   }
+  ]
  },
  "HHF-006": {
   "wave": "D4_RECIPIENT_EMAIL_MULE",
@@ -33,7 +645,243 @@
   "pre_as_of": 7612.44,
   "post_as_of": 235.85,
   "legit_touched_targeted": 0,
-  "broad_rule_extra_customers": 26
+  "broad_rule_extra_customers": 26,
+  "as_of": "2017-01-28 10:59:42",
+  "legit_penalty_usd": 25.0,
+  "block_k": 1,
+  "block_set": [
+   "C11743-K2"
+  ],
+  "block_exposure_stopped": 235.85,
+  "block_legit_customers": [
+   {
+    "customer_id": "C11743",
+    "card_id": "C11743-K2",
+    "legit_spend_after_asof_usd": 179.42,
+    "legit_txns_after_asof": 3
+   }
+  ],
+  "block_objective": 210.85,
+  "block_whole_wave_legit_customers": [
+   {
+    "customer_id": "C11743",
+    "card_id": "C11743-K2",
+    "legit_spend_after_asof_usd": 179.42,
+    "legit_txns_after_asof": 3
+   },
+   {
+    "customer_id": "C08384",
+    "card_id": "C08384-K1",
+    "legit_spend_after_asof_usd": 39.37,
+    "legit_txns_after_asof": 1
+   },
+   {
+    "customer_id": "C01507",
+    "card_id": "C01507-K1",
+    "legit_spend_after_asof_usd": 39.53,
+    "legit_txns_after_asof": 1
+   },
+   {
+    "customer_id": "C02167",
+    "card_id": "C02167-K2",
+    "legit_spend_after_asof_usd": 47.94,
+    "legit_txns_after_asof": 1
+   },
+   {
+    "customer_id": "C11940",
+    "card_id": "C11940-K1",
+    "legit_spend_after_asof_usd": 57.88,
+    "legit_txns_after_asof": 2
+   },
+   {
+    "customer_id": "C05610",
+    "card_id": "C05610-K1",
+    "legit_spend_after_asof_usd": 70.02,
+    "legit_txns_after_asof": 2
+   },
+   {
+    "customer_id": "C06115",
+    "card_id": "C06115-K1",
+    "legit_spend_after_asof_usd": 113.45,
+    "legit_txns_after_asof": 1
+   },
+   {
+    "customer_id": "C10350",
+    "card_id": "C10350-K1",
+    "legit_spend_after_asof_usd": 173.74,
+    "legit_txns_after_asof": 3
+   },
+   {
+    "customer_id": "C03060",
+    "card_id": "C03060-K1",
+    "legit_spend_after_asof_usd": 243.11,
+    "legit_txns_after_asof": 5
+   },
+   {
+    "customer_id": "C00534",
+    "card_id": "C00534-K2",
+    "legit_spend_after_asof_usd": 317.8,
+    "legit_txns_after_asof": 2
+   },
+   {
+    "customer_id": "C04668",
+    "card_id": "C04668-K1",
+    "legit_spend_after_asof_usd": 408.73,
+    "legit_txns_after_asof": 1
+   },
+   {
+    "customer_id": "C04146",
+    "card_id": "C04146-K1",
+    "legit_spend_after_asof_usd": 661.82,
+    "legit_txns_after_asof": 6
+   }
+  ],
+  "curve": [
+   {
+    "k": 0,
+    "card_added": null,
+    "exposure_stopped_usd": 0.0,
+    "legit_customers_touched": 0,
+    "legit_spend_interrupted_usd": 0.0,
+    "objective_usd": 0.0
+   },
+   {
+    "k": 1,
+    "card_added": "C11743-K2",
+    "exposure_stopped_usd": 235.85,
+    "legit_customers_touched": 1,
+    "legit_spend_interrupted_usd": 179.42,
+    "objective_usd": 210.85
+   },
+   {
+    "k": 2,
+    "card_added": "C01357-K1",
+    "exposure_stopped_usd": 235.85,
+    "legit_customers_touched": 1,
+    "legit_spend_interrupted_usd": 179.42,
+    "objective_usd": 210.85
+   },
+   {
+    "k": 3,
+    "card_added": "C01594-K1",
+    "exposure_stopped_usd": 235.85,
+    "legit_customers_touched": 1,
+    "legit_spend_interrupted_usd": 179.42,
+    "objective_usd": 210.85
+   },
+   {
+    "k": 4,
+    "card_added": "C01727-K2",
+    "exposure_stopped_usd": 235.85,
+    "legit_customers_touched": 1,
+    "legit_spend_interrupted_usd": 179.42,
+    "objective_usd": 210.85
+   },
+   {
+    "k": 5,
+    "card_added": "C06639-K1",
+    "exposure_stopped_usd": 235.85,
+    "legit_customers_touched": 1,
+    "legit_spend_interrupted_usd": 179.42,
+    "objective_usd": 210.85
+   },
+   {
+    "k": 6,
+    "card_added": "C11617-K1",
+    "exposure_stopped_usd": 235.85,
+    "legit_customers_touched": 1,
+    "legit_spend_interrupted_usd": 179.42,
+    "objective_usd": 210.85
+   },
+   {
+    "k": 7,
+    "card_added": "C08384-K1",
+    "exposure_stopped_usd": 235.85,
+    "legit_customers_touched": 2,
+    "legit_spend_interrupted_usd": 218.79,
+    "objective_usd": 185.85
+   },
+   {
+    "k": 8,
+    "card_added": "C01507-K1",
+    "exposure_stopped_usd": 235.85,
+    "legit_customers_touched": 3,
+    "legit_spend_interrupted_usd": 258.32,
+    "objective_usd": 160.85
+   },
+   {
+    "k": 9,
+    "card_added": "C02167-K2",
+    "exposure_stopped_usd": 235.85,
+    "legit_customers_touched": 4,
+    "legit_spend_interrupted_usd": 306.26,
+    "objective_usd": 135.85
+   },
+   {
+    "k": 10,
+    "card_added": "C11940-K1",
+    "exposure_stopped_usd": 235.85,
+    "legit_customers_touched": 5,
+    "legit_spend_interrupted_usd": 364.14,
+    "objective_usd": 110.85
+   },
+   {
+    "k": 11,
+    "card_added": "C05610-K1",
+    "exposure_stopped_usd": 235.85,
+    "legit_customers_touched": 6,
+    "legit_spend_interrupted_usd": 434.16,
+    "objective_usd": 85.85
+   },
+   {
+    "k": 12,
+    "card_added": "C06115-K1",
+    "exposure_stopped_usd": 235.85,
+    "legit_customers_touched": 7,
+    "legit_spend_interrupted_usd": 547.61,
+    "objective_usd": 60.85
+   },
+   {
+    "k": 13,
+    "card_added": "C10350-K1",
+    "exposure_stopped_usd": 235.85,
+    "legit_customers_touched": 8,
+    "legit_spend_interrupted_usd": 721.35,
+    "objective_usd": 35.85
+   },
+   {
+    "k": 14,
+    "card_added": "C03060-K1",
+    "exposure_stopped_usd": 235.85,
+    "legit_customers_touched": 9,
+    "legit_spend_interrupted_usd": 964.46,
+    "objective_usd": 10.85
+   },
+   {
+    "k": 15,
+    "card_added": "C00534-K2",
+    "exposure_stopped_usd": 235.85,
+    "legit_customers_touched": 10,
+    "legit_spend_interrupted_usd": 1282.26,
+    "objective_usd": -14.15
+   },
+   {
+    "k": 16,
+    "card_added": "C04668-K1",
+    "exposure_stopped_usd": 235.85,
+    "legit_customers_touched": 11,
+    "legit_spend_interrupted_usd": 1690.99,
+    "objective_usd": -39.15
+   },
+   {
+    "k": 17,
+    "card_added": "C04146-K1",
+    "exposure_stopped_usd": 235.85,
+    "legit_customers_touched": 12,
+    "legit_spend_interrupted_usd": 2352.81,
+    "objective_usd": -64.15
+   }
+  ]
  },
  "HHG-014": {
   "wave": "R0_SM_G935F_DEVICE_RING",
@@ -42,6 +890,965 @@
   "pre_as_of": 11465.15,
   "post_as_of": 6727.4,
   "legit_touched_targeted": 0,
-  "broad_rule_extra_customers": 953
+  "broad_rule_extra_customers": 953,
+  "as_of": "2016-11-22 20:11:00",
+  "legit_penalty_usd": 25.0,
+  "block_k": 30,
+  "block_set": [
+   "C09195-K1",
+   "C03528-K1",
+   "C02975-K1",
+   "C13291-K1",
+   "C10193-K2",
+   "C02910-K1",
+   "C12033-K1",
+   "C07472-K1",
+   "C13487-K1",
+   "C11702-K1",
+   "C07762-K1",
+   "C01996-K2",
+   "C12645-K1",
+   "C09975-K1",
+   "C10020-K1",
+   "C09906-K1",
+   "C08972-K2",
+   "C03744-K1",
+   "C06031-K2",
+   "C09049-K1",
+   "C11670-K2",
+   "C04274-K1",
+   "C06650-K2",
+   "C06710-K1",
+   "C01289-K1",
+   "C05448-K2",
+   "C06617-K1",
+   "C10326-K1",
+   "C08168-K1",
+   "C03676-K2"
+  ],
+  "block_exposure_stopped": 6727.4,
+  "block_legit_customers": [
+   {
+    "customer_id": "C09195",
+    "card_id": "C09195-K1",
+    "legit_spend_after_asof_usd": 587.95,
+    "legit_txns_after_asof": 6
+   },
+   {
+    "customer_id": "C03528",
+    "card_id": "C03528-K1",
+    "legit_spend_after_asof_usd": 28.8,
+    "legit_txns_after_asof": 1
+   },
+   {
+    "customer_id": "C02975",
+    "card_id": "C02975-K1",
+    "legit_spend_after_asof_usd": 105.47,
+    "legit_txns_after_asof": 2
+   },
+   {
+    "customer_id": "C13291",
+    "card_id": "C13291-K1",
+    "legit_spend_after_asof_usd": 3145.86,
+    "legit_txns_after_asof": 25
+   },
+   {
+    "customer_id": "C10193",
+    "card_id": "C10193-K2",
+    "legit_spend_after_asof_usd": 16351.78,
+    "legit_txns_after_asof": 118
+   },
+   {
+    "customer_id": "C02910",
+    "card_id": "C02910-K1",
+    "legit_spend_after_asof_usd": 4032.6,
+    "legit_txns_after_asof": 39
+   },
+   {
+    "customer_id": "C12033",
+    "card_id": "C12033-K1",
+    "legit_spend_after_asof_usd": 1024.08,
+    "legit_txns_after_asof": 20
+   },
+   {
+    "customer_id": "C07472",
+    "card_id": "C07472-K1",
+    "legit_spend_after_asof_usd": 6287.26,
+    "legit_txns_after_asof": 46
+   },
+   {
+    "customer_id": "C13487",
+    "card_id": "C13487-K1",
+    "legit_spend_after_asof_usd": 1410.78,
+    "legit_txns_after_asof": 26
+   },
+   {
+    "customer_id": "C11702",
+    "card_id": "C11702-K1",
+    "legit_spend_after_asof_usd": 505.8,
+    "legit_txns_after_asof": 11
+   },
+   {
+    "customer_id": "C07762",
+    "card_id": "C07762-K1",
+    "legit_spend_after_asof_usd": 3400.17,
+    "legit_txns_after_asof": 17
+   },
+   {
+    "customer_id": "C01996",
+    "card_id": "C01996-K2",
+    "legit_spend_after_asof_usd": 33264.25,
+    "legit_txns_after_asof": 418
+   },
+   {
+    "customer_id": "C12645",
+    "card_id": "C12645-K1",
+    "legit_spend_after_asof_usd": 219.14,
+    "legit_txns_after_asof": 6
+   },
+   {
+    "customer_id": "C09975",
+    "card_id": "C09975-K1",
+    "legit_spend_after_asof_usd": 138.32,
+    "legit_txns_after_asof": 3
+   },
+   {
+    "customer_id": "C10020",
+    "card_id": "C10020-K1",
+    "legit_spend_after_asof_usd": 1831.62,
+    "legit_txns_after_asof": 25
+   },
+   {
+    "customer_id": "C09906",
+    "card_id": "C09906-K1",
+    "legit_spend_after_asof_usd": 3151.85,
+    "legit_txns_after_asof": 36
+   },
+   {
+    "customer_id": "C08972",
+    "card_id": "C08972-K2",
+    "legit_spend_after_asof_usd": 4043.6,
+    "legit_txns_after_asof": 33
+   },
+   {
+    "customer_id": "C03744",
+    "card_id": "C03744-K1",
+    "legit_spend_after_asof_usd": 168.54,
+    "legit_txns_after_asof": 2
+   },
+   {
+    "customer_id": "C06031",
+    "card_id": "C06031-K2",
+    "legit_spend_after_asof_usd": 39147.05,
+    "legit_txns_after_asof": 409
+   },
+   {
+    "customer_id": "C09049",
+    "card_id": "C09049-K1",
+    "legit_spend_after_asof_usd": 2001.52,
+    "legit_txns_after_asof": 23
+   },
+   {
+    "customer_id": "C11670",
+    "card_id": "C11670-K2",
+    "legit_spend_after_asof_usd": 45006.17,
+    "legit_txns_after_asof": 440
+   },
+   {
+    "customer_id": "C04274",
+    "card_id": "C04274-K1",
+    "legit_spend_after_asof_usd": 3018.6,
+    "legit_txns_after_asof": 21
+   },
+   {
+    "customer_id": "C06650",
+    "card_id": "C06650-K2",
+    "legit_spend_after_asof_usd": 4359.18,
+    "legit_txns_after_asof": 51
+   },
+   {
+    "customer_id": "C06710",
+    "card_id": "C06710-K1",
+    "legit_spend_after_asof_usd": 387.13,
+    "legit_txns_after_asof": 7
+   },
+   {
+    "customer_id": "C01289",
+    "card_id": "C01289-K1",
+    "legit_spend_after_asof_usd": 965.26,
+    "legit_txns_after_asof": 9
+   },
+   {
+    "customer_id": "C05448",
+    "card_id": "C05448-K2",
+    "legit_spend_after_asof_usd": 1848.43,
+    "legit_txns_after_asof": 18
+   },
+   {
+    "customer_id": "C06617",
+    "card_id": "C06617-K1",
+    "legit_spend_after_asof_usd": 1214.77,
+    "legit_txns_after_asof": 13
+   },
+   {
+    "customer_id": "C10326",
+    "card_id": "C10326-K1",
+    "legit_spend_after_asof_usd": 2423.39,
+    "legit_txns_after_asof": 21
+   },
+   {
+    "customer_id": "C08168",
+    "card_id": "C08168-K1",
+    "legit_spend_after_asof_usd": 1290.35,
+    "legit_txns_after_asof": 24
+   },
+   {
+    "customer_id": "C03676",
+    "card_id": "C03676-K2",
+    "legit_spend_after_asof_usd": 24255.86,
+    "legit_txns_after_asof": 203
+   }
+  ],
+  "block_objective": 5977.4,
+  "block_whole_wave_legit_customers": [
+   {
+    "customer_id": "C09195",
+    "card_id": "C09195-K1",
+    "legit_spend_after_asof_usd": 587.95,
+    "legit_txns_after_asof": 6
+   },
+   {
+    "customer_id": "C03528",
+    "card_id": "C03528-K1",
+    "legit_spend_after_asof_usd": 28.8,
+    "legit_txns_after_asof": 1
+   },
+   {
+    "customer_id": "C02975",
+    "card_id": "C02975-K1",
+    "legit_spend_after_asof_usd": 105.47,
+    "legit_txns_after_asof": 2
+   },
+   {
+    "customer_id": "C13291",
+    "card_id": "C13291-K1",
+    "legit_spend_after_asof_usd": 3145.86,
+    "legit_txns_after_asof": 25
+   },
+   {
+    "customer_id": "C10193",
+    "card_id": "C10193-K2",
+    "legit_spend_after_asof_usd": 16351.78,
+    "legit_txns_after_asof": 118
+   },
+   {
+    "customer_id": "C02910",
+    "card_id": "C02910-K1",
+    "legit_spend_after_asof_usd": 4032.6,
+    "legit_txns_after_asof": 39
+   },
+   {
+    "customer_id": "C12033",
+    "card_id": "C12033-K1",
+    "legit_spend_after_asof_usd": 1024.08,
+    "legit_txns_after_asof": 20
+   },
+   {
+    "customer_id": "C07472",
+    "card_id": "C07472-K1",
+    "legit_spend_after_asof_usd": 6287.26,
+    "legit_txns_after_asof": 46
+   },
+   {
+    "customer_id": "C13487",
+    "card_id": "C13487-K1",
+    "legit_spend_after_asof_usd": 1410.78,
+    "legit_txns_after_asof": 26
+   },
+   {
+    "customer_id": "C11702",
+    "card_id": "C11702-K1",
+    "legit_spend_after_asof_usd": 505.8,
+    "legit_txns_after_asof": 11
+   },
+   {
+    "customer_id": "C07762",
+    "card_id": "C07762-K1",
+    "legit_spend_after_asof_usd": 3400.17,
+    "legit_txns_after_asof": 17
+   },
+   {
+    "customer_id": "C01996",
+    "card_id": "C01996-K2",
+    "legit_spend_after_asof_usd": 33264.25,
+    "legit_txns_after_asof": 418
+   },
+   {
+    "customer_id": "C12645",
+    "card_id": "C12645-K1",
+    "legit_spend_after_asof_usd": 219.14,
+    "legit_txns_after_asof": 6
+   },
+   {
+    "customer_id": "C09975",
+    "card_id": "C09975-K1",
+    "legit_spend_after_asof_usd": 138.32,
+    "legit_txns_after_asof": 3
+   },
+   {
+    "customer_id": "C10020",
+    "card_id": "C10020-K1",
+    "legit_spend_after_asof_usd": 1831.62,
+    "legit_txns_after_asof": 25
+   },
+   {
+    "customer_id": "C09906",
+    "card_id": "C09906-K1",
+    "legit_spend_after_asof_usd": 3151.85,
+    "legit_txns_after_asof": 36
+   },
+   {
+    "customer_id": "C08972",
+    "card_id": "C08972-K2",
+    "legit_spend_after_asof_usd": 4043.6,
+    "legit_txns_after_asof": 33
+   },
+   {
+    "customer_id": "C03744",
+    "card_id": "C03744-K1",
+    "legit_spend_after_asof_usd": 168.54,
+    "legit_txns_after_asof": 2
+   },
+   {
+    "customer_id": "C06031",
+    "card_id": "C06031-K2",
+    "legit_spend_after_asof_usd": 39147.05,
+    "legit_txns_after_asof": 409
+   },
+   {
+    "customer_id": "C09049",
+    "card_id": "C09049-K1",
+    "legit_spend_after_asof_usd": 2001.52,
+    "legit_txns_after_asof": 23
+   },
+   {
+    "customer_id": "C11670",
+    "card_id": "C11670-K2",
+    "legit_spend_after_asof_usd": 45006.17,
+    "legit_txns_after_asof": 440
+   },
+   {
+    "customer_id": "C04274",
+    "card_id": "C04274-K1",
+    "legit_spend_after_asof_usd": 3018.6,
+    "legit_txns_after_asof": 21
+   },
+   {
+    "customer_id": "C06650",
+    "card_id": "C06650-K2",
+    "legit_spend_after_asof_usd": 4359.18,
+    "legit_txns_after_asof": 51
+   },
+   {
+    "customer_id": "C06710",
+    "card_id": "C06710-K1",
+    "legit_spend_after_asof_usd": 387.13,
+    "legit_txns_after_asof": 7
+   },
+   {
+    "customer_id": "C01289",
+    "card_id": "C01289-K1",
+    "legit_spend_after_asof_usd": 965.26,
+    "legit_txns_after_asof": 9
+   },
+   {
+    "customer_id": "C05448",
+    "card_id": "C05448-K2",
+    "legit_spend_after_asof_usd": 1848.43,
+    "legit_txns_after_asof": 18
+   },
+   {
+    "customer_id": "C06617",
+    "card_id": "C06617-K1",
+    "legit_spend_after_asof_usd": 1214.77,
+    "legit_txns_after_asof": 13
+   },
+   {
+    "customer_id": "C10326",
+    "card_id": "C10326-K1",
+    "legit_spend_after_asof_usd": 2423.39,
+    "legit_txns_after_asof": 21
+   },
+   {
+    "customer_id": "C08168",
+    "card_id": "C08168-K1",
+    "legit_spend_after_asof_usd": 1290.35,
+    "legit_txns_after_asof": 24
+   },
+   {
+    "customer_id": "C03676",
+    "card_id": "C03676-K2",
+    "legit_spend_after_asof_usd": 24255.86,
+    "legit_txns_after_asof": 203
+   },
+   {
+    "customer_id": "C00255",
+    "card_id": "C00255-K1",
+    "legit_spend_after_asof_usd": 159.78,
+    "legit_txns_after_asof": 4
+   },
+   {
+    "customer_id": "C01935",
+    "card_id": "C01935-K1",
+    "legit_spend_after_asof_usd": 535.7,
+    "legit_txns_after_asof": 7
+   },
+   {
+    "customer_id": "C04311",
+    "card_id": "C04311-K1",
+    "legit_spend_after_asof_usd": 557.81,
+    "legit_txns_after_asof": 5
+   },
+   {
+    "customer_id": "C03551",
+    "card_id": "C03551-K2",
+    "legit_spend_after_asof_usd": 941.02,
+    "legit_txns_after_asof": 10
+   },
+   {
+    "customer_id": "C08112",
+    "card_id": "C08112-K2",
+    "legit_spend_after_asof_usd": 1052.88,
+    "legit_txns_after_asof": 11
+   },
+   {
+    "customer_id": "C12574",
+    "card_id": "C12574-K1",
+    "legit_spend_after_asof_usd": 1436.13,
+    "legit_txns_after_asof": 8
+   },
+   {
+    "customer_id": "C07485",
+    "card_id": "C07485-K1",
+    "legit_spend_after_asof_usd": 1705.68,
+    "legit_txns_after_asof": 15
+   },
+   {
+    "customer_id": "C06197",
+    "card_id": "C06197-K2",
+    "legit_spend_after_asof_usd": 1781.5,
+    "legit_txns_after_asof": 12
+   },
+   {
+    "customer_id": "C09354",
+    "card_id": "C09354-K1",
+    "legit_spend_after_asof_usd": 2372.17,
+    "legit_txns_after_asof": 54
+   },
+   {
+    "customer_id": "C11468",
+    "card_id": "C11468-K2",
+    "legit_spend_after_asof_usd": 2934.06,
+    "legit_txns_after_asof": 32
+   },
+   {
+    "customer_id": "C09733",
+    "card_id": "C09733-K1",
+    "legit_spend_after_asof_usd": 3596.87,
+    "legit_txns_after_asof": 27
+   },
+   {
+    "customer_id": "C12796",
+    "card_id": "C12796-K1",
+    "legit_spend_after_asof_usd": 3684.86,
+    "legit_txns_after_asof": 10
+   },
+   {
+    "customer_id": "C10350",
+    "card_id": "C10350-K1",
+    "legit_spend_after_asof_usd": 4060.02,
+    "legit_txns_after_asof": 49
+   },
+   {
+    "customer_id": "C11082",
+    "card_id": "C11082-K1",
+    "legit_spend_after_asof_usd": 4145.43,
+    "legit_txns_after_asof": 14
+   },
+   {
+    "customer_id": "C12395",
+    "card_id": "C12395-K2",
+    "legit_spend_after_asof_usd": 4517.59,
+    "legit_txns_after_asof": 29
+   },
+   {
+    "customer_id": "C12900",
+    "card_id": "C12900-K2",
+    "legit_spend_after_asof_usd": 6352.83,
+    "legit_txns_after_asof": 16
+   },
+   {
+    "customer_id": "C09998",
+    "card_id": "C09998-K1",
+    "legit_spend_after_asof_usd": 7837.28,
+    "legit_txns_after_asof": 52
+   },
+   {
+    "customer_id": "C11687",
+    "card_id": "C11687-K2",
+    "legit_spend_after_asof_usd": 8065.72,
+    "legit_txns_after_asof": 95
+   },
+   {
+    "customer_id": "C12132",
+    "card_id": "C12132-K2",
+    "legit_spend_after_asof_usd": 15555.17,
+    "legit_txns_after_asof": 126
+   },
+   {
+    "customer_id": "C10955",
+    "card_id": "C10955-K2",
+    "legit_spend_after_asof_usd": 19023.94,
+    "legit_txns_after_asof": 124
+   },
+   {
+    "customer_id": "C09174",
+    "card_id": "C09174-K1",
+    "legit_spend_after_asof_usd": 24929.56,
+    "legit_txns_after_asof": 60
+   },
+   {
+    "customer_id": "C04108",
+    "card_id": "C04108-K2",
+    "legit_spend_after_asof_usd": 103817.44,
+    "legit_txns_after_asof": 449
+   }
+  ],
+  "curve": [
+   {
+    "k": 0,
+    "card_added": null,
+    "exposure_stopped_usd": 0.0,
+    "legit_customers_touched": 0,
+    "legit_spend_interrupted_usd": 0.0,
+    "objective_usd": 0.0
+   },
+   {
+    "k": 1,
+    "card_added": "C09195-K1",
+    "exposure_stopped_usd": 939.03,
+    "legit_customers_touched": 1,
+    "legit_spend_interrupted_usd": 587.95,
+    "objective_usd": 914.03
+   },
+   {
+    "k": 2,
+    "card_added": "C03528-K1",
+    "exposure_stopped_usd": 1436.15,
+    "legit_customers_touched": 2,
+    "legit_spend_interrupted_usd": 616.75,
+    "objective_usd": 1386.15
+   },
+   {
+    "k": 3,
+    "card_added": "C02975-K1",
+    "exposure_stopped_usd": 1926.38,
+    "legit_customers_touched": 3,
+    "legit_spend_interrupted_usd": 722.22,
+    "objective_usd": 1851.38
+   },
+   {
+    "k": 4,
+    "card_added": "C13291-K1",
+    "exposure_stopped_usd": 2367.04,
+    "legit_customers_touched": 4,
+    "legit_spend_interrupted_usd": 3868.08,
+    "objective_usd": 2267.04
+   },
+   {
+    "k": 5,
+    "card_added": "C10193-K2",
+    "exposure_stopped_usd": 2695.23,
+    "legit_customers_touched": 5,
+    "legit_spend_interrupted_usd": 20219.86,
+    "objective_usd": 2570.23
+   },
+   {
+    "k": 6,
+    "card_added": "C02910-K1",
+    "exposure_stopped_usd": 3001.82,
+    "legit_customers_touched": 6,
+    "legit_spend_interrupted_usd": 24252.46,
+    "objective_usd": 2851.82
+   },
+   {
+    "k": 7,
+    "card_added": "C12033-K1",
+    "exposure_stopped_usd": 3276.84,
+    "legit_customers_touched": 7,
+    "legit_spend_interrupted_usd": 25276.54,
+    "objective_usd": 3101.84
+   },
+   {
+    "k": 8,
+    "card_added": "C07472-K1",
+    "exposure_stopped_usd": 3542.69,
+    "legit_customers_touched": 8,
+    "legit_spend_interrupted_usd": 31563.8,
+    "objective_usd": 3342.69
+   },
+   {
+    "k": 9,
+    "card_added": "C13487-K1",
+    "exposure_stopped_usd": 3794.97,
+    "legit_customers_touched": 9,
+    "legit_spend_interrupted_usd": 32974.58,
+    "objective_usd": 3569.97
+   },
+   {
+    "k": 10,
+    "card_added": "C11702-K1",
+    "exposure_stopped_usd": 4047.08,
+    "legit_customers_touched": 10,
+    "legit_spend_interrupted_usd": 33480.38,
+    "objective_usd": 3797.08
+   },
+   {
+    "k": 11,
+    "card_added": "C07762-K1",
+    "exposure_stopped_usd": 4294.72,
+    "legit_customers_touched": 11,
+    "legit_spend_interrupted_usd": 36880.55,
+    "objective_usd": 4019.72
+   },
+   {
+    "k": 12,
+    "card_added": "C01996-K2",
+    "exposure_stopped_usd": 4539.7,
+    "legit_customers_touched": 12,
+    "legit_spend_interrupted_usd": 70144.8,
+    "objective_usd": 4239.7
+   },
+   {
+    "k": 13,
+    "card_added": "C12645-K1",
+    "exposure_stopped_usd": 4731.14,
+    "legit_customers_touched": 13,
+    "legit_spend_interrupted_usd": 70363.94,
+    "objective_usd": 4406.14
+   },
+   {
+    "k": 14,
+    "card_added": "C09975-K1",
+    "exposure_stopped_usd": 4921.72,
+    "legit_customers_touched": 14,
+    "legit_spend_interrupted_usd": 70502.26,
+    "objective_usd": 4571.72
+   },
+   {
+    "k": 15,
+    "card_added": "C10020-K1",
+    "exposure_stopped_usd": 5110.4,
+    "legit_customers_touched": 15,
+    "legit_spend_interrupted_usd": 72333.88,
+    "objective_usd": 4735.4
+   },
+   {
+    "k": 16,
+    "card_added": "C09906-K1",
+    "exposure_stopped_usd": 5293.64,
+    "legit_customers_touched": 16,
+    "legit_spend_interrupted_usd": 75485.73,
+    "objective_usd": 4893.64
+   },
+   {
+    "k": 17,
+    "card_added": "C08972-K2",
+    "exposure_stopped_usd": 5464.01,
+    "legit_customers_touched": 17,
+    "legit_spend_interrupted_usd": 79529.33,
+    "objective_usd": 5039.01
+   },
+   {
+    "k": 18,
+    "card_added": "C03744-K1",
+    "exposure_stopped_usd": 5616.13,
+    "legit_customers_touched": 18,
+    "legit_spend_interrupted_usd": 79697.87,
+    "objective_usd": 5166.13
+   },
+   {
+    "k": 19,
+    "card_added": "C06031-K2",
+    "exposure_stopped_usd": 5761.39,
+    "legit_customers_touched": 19,
+    "legit_spend_interrupted_usd": 118844.92,
+    "objective_usd": 5286.39
+   },
+   {
+    "k": 20,
+    "card_added": "C09049-K1",
+    "exposure_stopped_usd": 5906.24,
+    "legit_customers_touched": 20,
+    "legit_spend_interrupted_usd": 120846.44,
+    "objective_usd": 5406.24
+   },
+   {
+    "k": 21,
+    "card_added": "C11670-K2",
+    "exposure_stopped_usd": 6045.04,
+    "legit_customers_touched": 21,
+    "legit_spend_interrupted_usd": 165852.61,
+    "objective_usd": 5520.04
+   },
+   {
+    "k": 22,
+    "card_added": "C04274-K1",
+    "exposure_stopped_usd": 6164.57,
+    "legit_customers_touched": 22,
+    "legit_spend_interrupted_usd": 168871.21,
+    "objective_usd": 5614.57
+   },
+   {
+    "k": 23,
+    "card_added": "C06650-K2",
+    "exposure_stopped_usd": 6262.18,
+    "legit_customers_touched": 23,
+    "legit_spend_interrupted_usd": 173230.39,
+    "objective_usd": 5687.18
+   },
+   {
+    "k": 24,
+    "card_added": "C06710-K1",
+    "exposure_stopped_usd": 6354.34,
+    "legit_customers_touched": 24,
+    "legit_spend_interrupted_usd": 173617.52,
+    "objective_usd": 5754.34
+   },
+   {
+    "k": 25,
+    "card_added": "C01289-K1",
+    "exposure_stopped_usd": 6437.53,
+    "legit_customers_touched": 25,
+    "legit_spend_interrupted_usd": 174582.78,
+    "objective_usd": 5812.53
+   },
+   {
+    "k": 26,
+    "card_added": "C05448-K2",
+    "exposure_stopped_usd": 6520.0,
+    "legit_customers_touched": 26,
+    "legit_spend_interrupted_usd": 176431.21,
+    "objective_usd": 5870.0
+   },
+   {
+    "k": 27,
+    "card_added": "C06617-K1",
+    "exposure_stopped_usd": 6596.37,
+    "legit_customers_touched": 27,
+    "legit_spend_interrupted_usd": 177645.98,
+    "objective_usd": 5921.37
+   },
+   {
+    "k": 28,
+    "card_added": "C10326-K1",
+    "exposure_stopped_usd": 6642.56,
+    "legit_customers_touched": 28,
+    "legit_spend_interrupted_usd": 180069.37,
+    "objective_usd": 5942.56
+   },
+   {
+    "k": 29,
+    "card_added": "C08168-K1",
+    "exposure_stopped_usd": 6686.99,
+    "legit_customers_touched": 29,
+    "legit_spend_interrupted_usd": 181359.72,
+    "objective_usd": 5961.99
+   },
+   {
+    "k": 30,
+    "card_added": "C03676-K2",
+    "exposure_stopped_usd": 6727.4,
+    "legit_customers_touched": 30,
+    "legit_spend_interrupted_usd": 205615.58,
+    "objective_usd": 5977.4
+   },
+   {
+    "k": 31,
+    "card_added": "C00255-K1",
+    "exposure_stopped_usd": 6727.4,
+    "legit_customers_touched": 31,
+    "legit_spend_interrupted_usd": 205775.36,
+    "objective_usd": 5952.4
+   },
+   {
+    "k": 32,
+    "card_added": "C01935-K1",
+    "exposure_stopped_usd": 6727.4,
+    "legit_customers_touched": 32,
+    "legit_spend_interrupted_usd": 206311.06,
+    "objective_usd": 5927.4
+   },
+   {
+    "k": 33,
+    "card_added": "C04311-K1",
+    "exposure_stopped_usd": 6727.4,
+    "legit_customers_touched": 33,
+    "legit_spend_interrupted_usd": 206868.87,
+    "objective_usd": 5902.4
+   },
+   {
+    "k": 34,
+    "card_added": "C03551-K2",
+    "exposure_stopped_usd": 6727.4,
+    "legit_customers_touched": 34,
+    "legit_spend_interrupted_usd": 207809.89,
+    "objective_usd": 5877.4
+   },
+   {
+    "k": 35,
+    "card_added": "C08112-K2",
+    "exposure_stopped_usd": 6727.4,
+    "legit_customers_touched": 35,
+    "legit_spend_interrupted_usd": 208862.77,
+    "objective_usd": 5852.4
+   },
+   {
+    "k": 36,
+    "card_added": "C12574-K1",
+    "exposure_stopped_usd": 6727.4,
+    "legit_customers_touched": 36,
+    "legit_spend_interrupted_usd": 210298.9,
+    "objective_usd": 5827.4
+   },
+   {
+    "k": 37,
+    "card_added": "C07485-K1",
+    "exposure_stopped_usd": 6727.4,
+    "legit_customers_touched": 37,
+    "legit_spend_interrupted_usd": 212004.58,
+    "objective_usd": 5802.4
+   },
+   {
+    "k": 38,
+    "card_added": "C06197-K2",
+    "exposure_stopped_usd": 6727.4,
+    "legit_customers_touched": 38,
+    "legit_spend_interrupted_usd": 213786.08,
+    "objective_usd": 5777.4
+   },
+   {
+    "k": 39,
+    "card_added": "C09354-K1",
+    "exposure_stopped_usd": 6727.4,
+    "legit_customers_touched": 39,
+    "legit_spend_interrupted_usd": 216158.25,
+    "objective_usd": 5752.4
+   },
+   {
+    "k": 40,
+    "card_added": "C11468-K2",
+    "exposure_stopped_usd": 6727.4,
+    "legit_customers_touched": 40,
+    "legit_spend_interrupted_usd": 219092.31,
+    "objective_usd": 5727.4
+   },
+   {
+    "k": 41,
+    "card_added": "C09733-K1",
+    "exposure_stopped_usd": 6727.4,
+    "legit_customers_touched": 41,
+    "legit_spend_interrupted_usd": 222689.18,
+    "objective_usd": 5702.4
+   },
+   {
+    "k": 42,
+    "card_added": "C12796-K1",
+    "exposure_stopped_usd": 6727.4,
+    "legit_customers_touched": 42,
+    "legit_spend_interrupted_usd": 226374.04,
+    "objective_usd": 5677.4
+   },
+   {
+    "k": 43,
+    "card_added": "C10350-K1",
+    "exposure_stopped_usd": 6727.4,
+    "legit_customers_touched": 43,
+    "legit_spend_interrupted_usd": 230434.06,
+    "objective_usd": 5652.4
+   },
+   {
+    "k": 44,
+    "card_added": "C11082-K1",
+    "exposure_stopped_usd": 6727.4,
+    "legit_customers_touched": 44,
+    "legit_spend_interrupted_usd": 234579.49,
+    "objective_usd": 5627.4
+   },
+   {
+    "k": 45,
+    "card_added": "C12395-K2",
+    "exposure_stopped_usd": 6727.4,
+    "legit_customers_touched": 45,
+    "legit_spend_interrupted_usd": 239097.08,
+    "objective_usd": 5602.4
+   },
+   {
+    "k": 46,
+    "card_added": "C12900-K2",
+    "exposure_stopped_usd": 6727.4,
+    "legit_customers_touched": 46,
+    "legit_spend_interrupted_usd": 245449.91,
+    "objective_usd": 5577.4
+   },
+   {
+    "k": 47,
+    "card_added": "C09998-K1",
+    "exposure_stopped_usd": 6727.4,
+    "legit_customers_touched": 47,
+    "legit_spend_interrupted_usd": 253287.19,
+    "objective_usd": 5552.4
+   },
+   {
+    "k": 48,
+    "card_added": "C11687-K2",
+    "exposure_stopped_usd": 6727.4,
+    "legit_customers_touched": 48,
+    "legit_spend_interrupted_usd": 261352.91,
+    "objective_usd": 5527.4
+   },
+   {
+    "k": 49,
+    "card_added": "C12132-K2",
+    "exposure_stopped_usd": 6727.4,
+    "legit_customers_touched": 49,
+    "legit_spend_interrupted_usd": 276908.08,
+    "objective_usd": 5502.4
+   },
+   {
+    "k": 50,
+    "card_added": "C10955-K2",
+    "exposure_stopped_usd": 6727.4,
+    "legit_customers_touched": 50,
+    "legit_spend_interrupted_usd": 295932.02,
+    "objective_usd": 5477.4
+   },
+   {
+    "k": 51,
+    "card_added": "C09174-K1",
+    "exposure_stopped_usd": 6727.4,
+    "legit_customers_touched": 51,
+    "legit_spend_interrupted_usd": 320861.58,
+    "objective_usd": 5452.4
+   },
+   {
+    "k": 52,
+    "card_added": "C04108-K2",
+    "exposure_stopped_usd": 6727.4,
+    "legit_customers_touched": 52,
+    "legit_spend_interrupted_usd": 424679.02,
+    "objective_usd": 5427.4
+   }
+  ]
  }
 }

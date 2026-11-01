@@ -31,6 +31,13 @@ from engine.detectors import SCAN_SINCE, WAVE_SQL, scan_card
 from schema_engine.attestation import attest
 
 ROOT = Path(__file__).resolve().parents[1]
+SUMMARY = ROOT / "engine" / "out" / "containment_summary.json"
+
+# What blocking one legitimate customer's card costs, in dollars of fraud it must stop to be worth it (a reissue plus the
+# service call, the usual industry figure): the block-k choice maximises exposure stopped - LEGIT_PENALTY_USD x legitimate
+# customers touched. A legitimate customer touched is one whose card also carries non-wave spend after the alert (the
+# block interrupts it, named with that amount) or who sits in a case the bank cleared.
+LEGIT_PENALTY_USD = 25.0
 
 
 @dataclass
@@ -45,6 +52,9 @@ class CardContainmentRow:
     recommended_action: str
     approval_route: str
     is_legitimate_customer_harmed: bool = False
+    exposure_prevented_post_asof_usd: float = 0.0
+    legit_spend_after_asof_usd: float = 0.0
+    legit_txns_after_asof: int = 0
 
 
 @dataclass
@@ -67,6 +77,14 @@ class ContainmentPlan:
     per_card_plan: list[dict[str, Any]] = field(default_factory=list)
     replay_frames: list[dict[str, Any]] = field(default_factory=list)
     attestation: dict[str, Any] = field(default_factory=dict)
+    # Challenge 7: the smallest block set, chosen on the block-k curve (cards ranked by exposure prevented after as_of)
+    legit_penalty_usd: float = 0.0
+    block_curve: list[dict[str, Any]] = field(default_factory=list)
+    recommended_block_set: list[str] = field(default_factory=list)
+    recommended_k: int = 0
+    recommended_exposure_stopped_usd: float = 0.0
+    recommended_legit_customers: list[dict[str, Any]] = field(default_factory=list)
+    recommended_objective_usd: float = 0.0
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -183,6 +201,14 @@ def build_containment_plan(
             "SELECT DISTINCT c.customer_id FROM cc c JOIN cc_txn x USING (case_id) JOIN txc t USING (TransactionID) JOIN _wave w ON w.id = t.TransactionID::VARCHAR WHERE c.outcome = 'cleared'"
         ).fetchall()}
     touched_targeted = sorted(set(wave_custs) & cleared_custs)
+    # the card's own spend after the alert that is not in the wave: what a block would also stop
+    legit_after: dict[str, tuple[int, float]] = {}
+    if wave_txn_ids:
+        con.execute("CREATE OR REPLACE TEMP TABLE _wc(card_id VARCHAR)")
+        con.executemany("INSERT INTO _wc VALUES (?)", [[c] for c in wave_cards])
+        legit_after = {str(r[0]): (int(r[1]), round(float(r[2]), 2)) for r in con.execute(
+            "SELECT t.card_id, count(*), sum(t.amt) FROM txc t JOIN _wc USING (card_id) "
+            "WHERE t.ts > ?::TIMESTAMP AND t.TransactionID::VARCHAR NOT IN (SELECT id FROM _wave) GROUP BY 1", [as_of]).fetchall()}
 
     per_card: list[dict[str, Any]] = []
     tot_exp = 0.0
@@ -215,7 +241,10 @@ def build_containment_plan(
                     txn_ids=tids,
                     recommended_action=act,
                     approval_route=rt,
-                    is_legitimate_customer_harmed=str(c_rows[0][2]) in cleared_custs,
+                    is_legitimate_customer_harmed=str(c_rows[0][2]) in cleared_custs or cid in legit_after,
+                    exposure_prevented_post_asof_usd=c_post,
+                    legit_spend_after_asof_usd=legit_after.get(cid, (0, 0.0))[1],
+                    legit_txns_after_asof=legit_after.get(cid, (0, 0.0))[0],
                 )
             )
         )
@@ -247,6 +276,8 @@ def build_containment_plan(
         )
 
     con.close()
+    curve = block_curve(per_card, LEGIT_PENALTY_USD)
+    best = choose_block_set(curve)
     tot_exp = round(tot_exp, 2)
     pre_exp = round(pre_exp, 2)
     post_exp = round(post_exp, 2)
@@ -281,7 +312,71 @@ def build_containment_plan(
         per_card_plan=per_card,
         replay_frames=frames,
         attestation=claim.to_dict(),
+        legit_penalty_usd=LEGIT_PENALTY_USD,
+        block_curve=curve,
+        recommended_block_set=best["cards"],
+        recommended_k=best["k"],
+        recommended_exposure_stopped_usd=best["exposure_stopped_usd"],
+        recommended_legit_customers=best["legit_customers"],
+        recommended_objective_usd=best["objective_usd"],
     )
+
+
+def block_curve(per_card: list[dict[str, Any]], penalty_usd: float = LEGIT_PENALTY_USD) -> list[dict[str, Any]]:
+    """Exposure stopped vs legitimate customers touched for blocking the top k cards, k = 0..n. Cards are ranked by the
+    exposure a block still prevents (wave spend after as_of), ties broken by less legitimate spend interrupted, then id."""
+    ranked = sorted(per_card, key=lambda r: (-r["exposure_prevented_post_asof_usd"], r["legit_spend_after_asof_usd"], r["card_id"]))
+    points = [{"k": 0, "card_added": None, "exposure_stopped_usd": 0.0, "legit_customers_touched": 0, "legit_spend_interrupted_usd": 0.0,
+               "objective_usd": 0.0, "legit_customers": []}]
+    stopped, spend, legit = 0.0, 0.0, []
+    for k, r in enumerate(ranked, 1):
+        stopped = round(stopped + r["exposure_prevented_post_asof_usd"], 2)
+        if r["is_legitimate_customer_harmed"]:
+            spend = round(spend + r["legit_spend_after_asof_usd"], 2)
+            legit = legit + [{"customer_id": r["customer_id"], "card_id": r["card_id"], "legit_spend_after_asof_usd": r["legit_spend_after_asof_usd"],
+                              "legit_txns_after_asof": r["legit_txns_after_asof"]}]
+        points.append({"k": k, "card_added": r["card_id"], "exposure_stopped_usd": stopped, "legit_customers_touched": len(legit),
+                       "legit_spend_interrupted_usd": spend, "objective_usd": round(stopped - penalty_usd * len(legit), 2), "legit_customers": legit})
+    return points
+
+
+def choose_block_set(curve: list[dict[str, Any]]) -> dict[str, Any]:
+    """The smallest k with the highest objective on the curve, and the cards that make it up."""
+    best = max(curve, key=lambda p: (p["objective_usd"], -p["k"]))
+    cards = [p["card_added"] for p in curve[1:best["k"] + 1]]
+    return {"k": best["k"], "cards": cards, "exposure_stopped_usd": best["exposure_stopped_usd"], "legit_customers": best["legit_customers"],
+            "objective_usd": best["objective_usd"]}
+
+
+def summary_entry(plan: ContainmentPlan) -> dict[str, Any]:
+    """One case's row of engine/out/containment_summary.json (the original keys first; the UI reads those)."""
+    return {
+        "wave": plan.wave_id, "cards": plan.n_cards_in_wave, "exposure": plan.total_wave_exposure_usd,
+        "pre_as_of": plan.exposure_already_settled_pre_asof_usd, "post_as_of": plan.exposure_prevented_post_asof_usd,
+        "legit_touched_targeted": len(plan.legitimate_customers_touched_by_targeted_plan),
+        "broad_rule_extra_customers": len(plan.legitimate_customers_touched_if_broad_rule_used),
+        "as_of": plan.as_of, "legit_penalty_usd": plan.legit_penalty_usd,
+        "block_k": plan.recommended_k, "block_set": plan.recommended_block_set,
+        "block_exposure_stopped": plan.recommended_exposure_stopped_usd,
+        "block_legit_customers": plan.recommended_legit_customers, "block_objective": plan.recommended_objective_usd,
+        "block_whole_wave_legit_customers": plan.block_curve[-1]["legit_customers"] if plan.block_curve else [],
+        "curve": [{k: p[k] for k in ("k", "card_added", "exposure_stopped_usd", "legit_customers_touched", "legit_spend_interrupted_usd", "objective_usd")}
+                  for p in plan.block_curve],
+    }
+
+
+def write_summary(case_ids: list[str], db_path: str | Path = ROOT / "data" / "hhgoa_engine.duckdb", out: str | Path = SUMMARY) -> dict[str, Any]:
+    """Plan each case's wave (found by wave_for_case) and write the summary the Detectors page reads."""
+    import json
+
+    res: dict[str, Any] = {}
+    for cid in case_ids:
+        wave_id, params = wave_for_case(cid, db_path)
+        if not wave_id:
+            continue
+        res[cid] = summary_entry(build_containment_plan(wave_id, params["as_of"], db_path, params.get("r_email", "")))
+    Path(out).write_text(json.dumps(res, indent=1) + "\n", encoding="utf-8")
+    return res
 
 
 def resolution_lifecycle(answer: dict[str, Any], approval_rows: list[dict[str, Any]] | None = None) -> dict[str, Any]:
@@ -353,3 +448,13 @@ def resolution_lifecycle(answer: dict[str, Any], approval_rows: list[dict[str, A
         "pending_l1_count": sum(1 for x in human_gated if x["route"] == "L1" and x["status"] == "pending"),
         "pending_l2_count": sum(1 for x in human_gated if x["route"] == "L2" and x["status"] == "pending"),
     }
+
+
+if __name__ == "__main__":
+    import sys
+
+    cases = sys.argv[1:] or ["HHF-001", "HHF-003", "HHF-004", "HHF-006", "HHG-014"]
+    for cid, e in write_summary(cases).items():
+        names = ", ".join(f"{c['customer_id']} (${c['legit_spend_after_asof_usd']:,.2f})" for c in e["block_legit_customers"]) or "none"
+        print(f"{cid} {e['wave']}: block {e['block_k']} of {e['cards']} cards, stops ${e['block_exposure_stopped']:,.2f} of "
+              f"${e['post_as_of']:,.2f} preventable; legitimate customers touched: {names}")

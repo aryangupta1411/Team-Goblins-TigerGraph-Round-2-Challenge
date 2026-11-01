@@ -115,6 +115,10 @@ def translate(variant_dir: str | Path, mapping: dict, facts_db: str | Path = FAC
         raise ValueError("the mapper found no transactions table in the variant")
     tx = _canonical_rows(vdir, roles["transactions"])
     idn = {str(r["TransactionID"]): r for r in _canonical_rows(vdir, roles["identity"])} if "identity" in roles else {}
+    if not idn:
+        # a flat file: identity fields sit on the transaction row; a row with none of them has no identity record
+        keys = ("DeviceType", "id_15", "id_23", "DeviceInfo", "id_30", "id_31", "id_33")
+        idn = {str(t["TransactionID"]): t for t in tx if any(t.get(k) for k in keys)}
     cases = _canonical_rows(vdir, roles["case_pack"]) if "case_pack" in roles else []
     con = duckdb.connect(str(facts_db), read_only=True)
     # the card rule: a customer's card is identified by its funding type (card_feat.card_type), as etl.card_rule numbers it
@@ -230,6 +234,74 @@ def decide(db: str | Path, case_ids: list[str]) -> dict[str, dict]:
 
 
 # ------------------------------------------------------------------------------------------------ a fresh variant
+GROUND_TRUTH = "ground_truth.json"
+# the fresh variant's true renames (written next to it so the mapping can be scored; the mapper never reads this file)
+FRESH_TRUTH = {
+    "c_postings.csv": {"posting_time": "ts", "gross_usd": "TransactionAmt", "party": "customer_id", "ref": "TransactionID",
+                       "presence": "channel", "product_line": "ProductCD", "funding": "card6", "scheme": "card4",
+                       "billing_region_cd": "addr1", "country_code": "addr2", "home_distance": "dist1", "buyer_domain": "P_emaildomain",
+                       "payee_domain": "R_emaildomain", "fraud_prob": "risk_score", "batch_no": None, "posting_date": "ts"},
+    "c_sessions.csv": {"ref": "TransactionID", "screen": "id_33", "browser_name": "id_31", "os_name": "id_30", "hw_model": "DeviceInfo",
+                       "form_factor": "DeviceType", "seen_before": "id_15", "proxy": "id_23"},
+    "c_tickets.csv": {"ticket": "case_id", "card_ref": "card_id", "raised_at": "opened_at", "subject_ref": "flagged_txn_id",
+                      "origin": "trigger_type", "message": "trigger_text", "alert_score": "risk_score"},
+}
+
+# Bank B's true renames, from schema_engine.mapper.build_variant_fixture (which writes those files)
+BANK_B_TRUTH = {
+    "bank_b_ledger.csv": {"tx_ref_id": "TransactionID", "acct_holder_id": "customer_id", "event_epoch": "ts", "amount_cents": "TransactionAmt",
+                          "lob_code": "ProductCD", "pos_or_web": "channel", "card_funding_type": "card6", "network_brand": "card4",
+                          "billing_zip_region": "addr1", "country_num": "addr2", "miles_dist": "dist1", "buyer_email_host": "P_emaildomain",
+                          "payee_email_host": "R_emaildomain", "realtime_risk_pct": "risk_score"},
+    "bank_b_telemetry.csv": {"tx_ref_id": "TransactionID", "client_form_factor": "DeviceType", "device_seen_flag": "id_15",
+                             "proxy_classification": "id_23", "ua_device_bundle": "device_bundle"},
+    "bank_b_alerts.csv": {"alert_ticket_id": "case_id", "alert_opened_iso": "opened_at", "intake_source": "trigger_type",
+                          "intake_narrative": "trigger_text", "subject_tx_ref": "flagged_txn_id", "instrument_id": "card_id",
+                          "acct_holder_id": "customer_id", "model_score": "risk_score"},
+}
+
+
+def score_mapping(mapping: dict, truth: dict[str, dict[str, str | None]]) -> dict[str, Any]:
+    """Per-column precision / recall of a mapping against a ground-truth spec {file: {column: canonical or None}}."""
+    got = {(m["source_file"], m["source_column"]): m["canonical_column"] for m in mapping["mappings"]}
+    wrong, missed, right = [], [], 0
+    for f, cols in truth.items():
+        for c, want in cols.items():
+            have = got.get((f, c))
+            if want is None:
+                if have is not None:
+                    wrong.append({"column": f"{f}:{c}", "want": None, "got": have})
+            elif have == want:
+                right += 1
+            elif have is None:
+                missed.append({"column": f"{f}:{c}", "want": want})
+            else:
+                wrong.append({"column": f"{f}:{c}", "want": want, "got": have})
+    n_pred = right + len(wrong)
+    n_true = sum(1 for cols in truth.values() for v in cols.values() if v is not None)
+    return {"correct": right, "wrong": wrong, "missed": missed, "precision": round(right / n_pred, 4) if n_pred else 0.0,
+            "recall": round(right / n_true, 4) if n_true else 0.0}
+
+
+def flatten_variant(src: str | Path, out_dir: str | Path) -> Path:
+    """The fresh variant with its transactions and device sessions in ONE flat file (a left join on the transaction ref)."""
+    src, out = Path(src), Path(out_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    sess = {r["ref"]: r for r in _read(src, "c_sessions.csv")}
+    post = _read(src, "c_postings.csv")
+    extra = [k for k in next(iter(sess.values())) if k != "ref"] if sess else []
+    with (out / "c_flat.csv").open("w", encoding="utf-8", newline="") as fh:
+        w = csv.DictWriter(fh, fieldnames=list(post[0]) + extra)
+        w.writeheader()
+        for r in post:
+            w.writerow({**r, **{k: (sess.get(r["ref"]) or {}).get(k, "") for k in extra}})
+    shutil.copyfile(src / "c_tickets.csv", out / "c_tickets.csv")
+    truth = {"c_flat.csv": {**FRESH_TRUTH["c_postings.csv"], **{k: v for k, v in FRESH_TRUTH["c_sessions.csv"].items() if k != "ref"}},
+             "c_tickets.csv": FRESH_TRUTH["c_tickets.csv"]}
+    (out / GROUND_TRUTH).write_text(json.dumps(truth, indent=1) + "\n", encoding="utf-8")
+    return out
+
+
 def make_fresh_variant(out_dir: str | Path, round2_dir: str | Path = ROUND2, max_tx_rows: int = 3000) -> Path:
     """A second, differently reshaped variant from the raw January files: other file and column names, column order
     shuffled, the timestamp split into a date and a time, USD with no hint of cents, presence / funding words, a 0..1
@@ -268,6 +340,7 @@ def make_fresh_variant(out_dir: str | Path, round2_dir: str | Path = ROUND2, max
         w.writerow(["ticket", "card_ref", "raised_at", "subject_ref", "origin", "message", "alert_score"])
         for r in cp:
             w.writerow([r["case_id"], r["card_id"], r["opened_at"], r["flagged_txn_id"], r["trigger_type"], r["trigger_text"], r.get("risk_score") or ""])
+    (out / GROUND_TRUTH).write_text(json.dumps(FRESH_TRUTH, indent=1) + "\n", encoding="utf-8")
     return out
 
 
@@ -282,6 +355,15 @@ def rehearse(variant_dir: str | Path, out_dir: str | Path | None = None, case_id
     mapping = infer_variant_mapping(vdir)
     (out / "mapping.json").write_text(json.dumps(mapping, indent=1, default=str) + "\n", encoding="utf-8")
     ok(f"{mapping['n_mapped_columns']} columns mapped; roles {mapping['table_roles']} -> {out / 'mapping.json'}")
+    if mapping["unmapped_columns"] or mapping["low_confidence"]:
+        warn("for review: unmapped " + (", ".join(f"{u['source_file']}:{u['source_column']}" for u in mapping["unmapped_columns"]) or "none")
+             + "; below 0.95 " + (", ".join(f"{m['source_column']}->{m['canonical_column']}" for m in mapping["low_confidence"]) or "none"))
+    truth_path = vdir / GROUND_TRUTH
+    truth = json.loads(truth_path.read_text()) if truth_path.exists() else BANK_B_TRUTH if set(mapping["table_roles"]) == set(BANK_B_TRUTH) else None
+    accuracy = score_mapping(mapping, truth) if truth else None
+    if accuracy:
+        (ok if not accuracy["wrong"] and not accuracy["missed"] else warn)(
+            f"against the ground truth: precision {accuracy['precision']:.0%}, recall {accuracy['recall']:.0%}; wrong {accuracy['wrong']}, missed {accuracy['missed']}")
     step("translating the variant to canonical columns with that mapping")
     tr = translate(vdir, mapping, facts_db)
     step(f"comparing {len(tr['txc']):,} translated transactions with the canonical facts DB")
@@ -300,6 +382,7 @@ def rehearse(variant_dir: str | Path, out_dir: str | Path | None = None, case_id
     report = {"variant_dir": str(vdir), "generated_at": dt.datetime.now(dt.UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
               "table_roles": mapping["table_roles"], "n_mapped_columns": mapping["n_mapped_columns"],
               "mapped": [{k: m[k] for k in ("source_file", "source_column", "canonical_column", "transform", "confidence")} for m in mapping["mappings"]],
+              "unmapped_columns": mapping["unmapped_columns"], "low_confidence": mapping["low_confidence"], "accuracy": accuracy,
               "row_comparison": rows, "cases": cmp, "n_cases": len(ids), "n_same_decision": sum(1 for v in cmp.values() if v["same"]),
               "rehearsal_db": str(db)}
     (out / "rehearsal.json").write_text(json.dumps(report, indent=1, default=str) + "\n", encoding="utf-8")
@@ -310,11 +393,14 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("variant_dir", nargs="?", default=str(ROOT / "data" / "variant_bank_b"))
     ap.add_argument("--make-fresh", metavar="DIR", help="first build a freshly reshaped variant from data/raw/round2 into DIR, and rehearse that")
+    ap.add_argument("--flat", action="store_true", help="with --make-fresh: put transactions and device sessions in one flat file")
     ap.add_argument("--cases", nargs="*", help="case ids to translate and decide (default: every case in the variant)")
     ap.add_argument("--out", help=f"where mapping.json, rehearsal.json and the rehearsal DB go (default {OUT}/<variant>)")
     ap.add_argument("--facts", default=str(FACTS))
     a = ap.parse_args(argv)
     vdir = make_fresh_variant(a.make_fresh) if a.make_fresh else Path(a.variant_dir)
+    if a.make_fresh and a.flat:
+        vdir = flatten_variant(vdir, Path(a.make_fresh).with_name(Path(a.make_fresh).name + "_flat"))
     header("ops.variant_rehearsal", "Challenge 13: map, translate and investigate on a variant schema", {"variant": str(vdir), "facts": a.facts})
     try:
         rep = rehearse(vdir, a.out, a.cases, a.facts)

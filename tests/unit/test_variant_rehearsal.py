@@ -36,6 +36,19 @@ def test_a_split_timestamp_and_separate_device_columns_are_mapped_from_values(tm
     assert m[("t.csv", "words")][0] == "trigger_text"
 
 
+def test_a_flat_file_maps_identity_columns_and_lists_what_it_cannot_map(tmp_path):
+    _write(tmp_path / "flat.csv", ["ref", "who", "usd_value", "form", "seen", "agent", "junk"],
+           [[f"36000{h:02d}", f"C0000{h}", f"{50 + h}.25", ["mobile", "desktop"][h % 2], ["New", "Found"][h % 2],
+             ["chrome 62.0", "safari generic"][h % 2], f"zz{h}"] for h in range(8)])
+    rep = infer_variant_mapping(tmp_path)
+    m = {r["source_column"]: r["canonical_column"] for r in rep["mappings"]}
+    assert rep["table_roles"] == {"flat.csv": "transactions"}
+    assert m["form"] == "DeviceType" and m["seen"] == "id_15" and m["agent"] == "id_31" and m["ref"] == "TransactionID"
+    assert [u["source_column"] for u in rep["unmapped_columns"]] == ["junk"]
+    score = V.score_mapping(rep, {"flat.csv": {"ref": "TransactionID", "form": "DeviceType", "junk": None, "who": "customer_id"}})
+    assert score["precision"] == 1.0 and score["recall"] == 1.0
+
+
 @pytest.mark.skipif(not (HAVE_FACTS and HAVE_RAW), reason="needs the facts DB and the raw January files (git-ignored)")
 def test_a_fresh_variant_translates_to_the_canonical_rows_and_the_same_decisions(tmp_path):
     vdir = V.make_fresh_variant(tmp_path / "src", max_tx_rows=300)
@@ -43,12 +56,14 @@ def test_a_fresh_variant_translates_to_the_canonical_rows_and_the_same_decisions
     assert rep["row_comparison"]["all_equal"], {c: v["examples"] for c, v in rep["row_comparison"]["columns"].items() if v["differ"]}
     assert rep["n_same_decision"] == rep["n_cases"] == 2
     assert (tmp_path / "out" / "mapping.json").exists()
+    assert rep["accuracy"]["precision"] == rep["accuracy"]["recall"] == 1.0
 
 
 @pytest.mark.skipif(not HAVE_FACTS, reason="needs the facts DB")
 def test_bank_b_decides_every_case_as_the_canonical_schema_does(tmp_path):
     rep = V.rehearse(ROOT / "data" / "variant_bank_b", tmp_path, ["HHF-001", "HHF-004"])
     assert rep["n_same_decision"] == 2
+    assert rep["accuracy"]["recall"] == 1.0, rep["accuracy"]
     # Bank B's export drops the 'charge card' funding type: the one row it cannot place on its card is reported, not guessed right
     differ = {c: v["differ"] for c, v in rep["row_comparison"]["columns"].items() if v["differ"]}
     assert differ in ({}, {"card_id": 1})

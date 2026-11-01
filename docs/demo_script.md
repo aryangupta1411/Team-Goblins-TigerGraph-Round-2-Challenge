@@ -7,7 +7,9 @@ is quoted from memory.
 
 1. Wake the workspace and keep it awake: `make demo-warm` (`make awake` + `make keepalive`).
 2. Start the dashboard: `make ui`, at http://localhost:8501. It opens on the canonical run `runs/hhf-final`, the
-   source of `cases/HHF-*.json`.
+   source of `cases/HHF-*.json`. The same app is live at
+   https://team-goblins-tigergraph-round-2-challenge-production.up.railway.app, connected to FraudGraph: open it in a
+   second tab as the fallback if the laptop's workspace connection drops, and to show that it runs outside this machine.
 3. Approvals needs an approver directory (`ui/principals.json`, git-ignored). Without one, nobody can approve; the page says
    "missing → nobody can approve (fail closed)". To show a real sign-in, create one team lead and one fraud manager:
    `uv run python -m ui.approvals_db add-principal lead@bank --role team_lead` and the same with `--role fraud_manager` (each prompts for a passphrase). The wrong-role drill itself needs no directory, because it runs in a temp store.
@@ -37,7 +39,8 @@ is quoted from memory.
 
 If there is time, or if the judge asks for a live run: on the **Case file**, the re-run dialog lists its side effects. It
 writes `AC-<case>` and its events to the shared graph, adds inbox rows, spends tokens, and writes `runs/<run_id>/`. It
-starts only after the checkbox is ticked. A live re-run takes about as long as the decision card's latency (median
+starts only after the checkbox is ticked. On the public deployment, sign in first (a team lead, fraud manager or admin;
+anyone else is refused), and the run writes `AC-web-<case>`, so the submitted write-backs stay as they are. A live re-run takes about as long as the decision card's latency (median
 92.1 s, max 186.4 s in `runs/hhf-final`).
 
 ## If the live re-run fails

@@ -2,7 +2,7 @@
 
 ![Animated End-to-End Architecture](./architecture.svg)
 
-> **Interactive Web Version:** Open [`architecture/index.html`](./index.html) in any browser, or launch the Streamlit dashboard (`make ui` &rarr; **How it works** under System) for the pipeline map with the page that proves each stage. Per-case phase payloads are in the Case file's **Decision path P0–P10** tab; a live pipeline view and clickable phase inspector are being ported into the new pages.
+> **Interactive Web Version:** Open [`architecture/index.html`](./index.html) in any browser, or launch the Streamlit dashboard (`make ui` &rarr; **How it works** under System) for the pipeline map with the page that proves each stage. Per-case phase payloads are in the Case file's **Decision path P0–P10** tab, the Run console shows the S0–P10 stage strip live, and **Live architecture** (under System) plays one case's path back step by step.
 
 ---
 

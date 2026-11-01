@@ -2,10 +2,14 @@
 
 An agent that takes an alert from the HHGOA case pack, investigates it through **TigerGraph** (GSQL query library + graph algorithms, exposed as **TigerGraph MCP** tools), grounds itself with **GraphRAG** over closed cases and FinCEN/FFIEC/FATF guidance (TigerVector), decides under the written **Fraud Policy** with a deterministic policy gate, asks for evidence when the policy says so, explains itself, and **writes its case back into the graph** so later investigations retrieve it. Streamlit UI with an approval inbox.
 
+- **Submission index** (frozen commit, answers, clean-clone command, resilience, innovation): [`SUBMISSION.md`](SUBMISSION.md)
+- **Live demo**, connected to the live FraudGraph workspace: https://team-goblins-tigergraph-round-2-challenge-production.up.railway.app
+
 ## Final Round (HHF-001 … HHF-018)
 
 | Deliverable | Where |
 |---|---|
+| Everything the brief asks for, in one place | [`SUBMISSION.md`](SUBMISSION.md) |
 | 18 answer files | [`cases/HHF-001.json`](cases/) … `HHF-018.json`, per-case table in [`cases/MANIFEST.md`](cases/MANIFEST.md) |
 | The run they come from | `runs/hhf-final/` (`answer.json`, `calls.jsonl`, `phases.jsonl`, `sar.md` per case; `run_manifest.json`) |
 | Innovation claim, with measurements | [`docs/INNOVATION.md`](docs/INNOVATION.md) |
@@ -19,10 +23,11 @@ No keys, no graph, no dataset download. The 18 cases and the base + January fact
 `data/hhgoa_engine.duckdb`, and the ids the validator checks are in `data/ids.duckdb`:
 
 ```bash
-git clone <REPO_URL> Tiger-graph && cd Tiger-graph && make install && RUN_MODE=mock uv run python -m agent.bench --cases HHF-004 --run-id drill-1 --mock && uv run python -m agent.validator --db data/ids.duckdb runs/drill-1/HHF-004/answer.json
+git clone https://github.com/aryangupta1411/Team-Goblins-TigerGraph-Round-2-Challenge.git Team-Goblins && cd Team-Goblins && make install && RUN_MODE=mock uv run python -m agent.bench --cases HHF-004 --run-id drill-1 --mock && uv run python -m agent.validator --db data/ids.duckdb runs/drill-1/HHF-004/answer.json
 ```
 
-The answer lands in `runs/drill-1/HHF-004/`. In mock mode the model replies are recorded fixtures and the facts come from
+Run on 2026-11-01 from a fresh clone of `main` (`40ad6ae`): 31 s including `make install` with a warm uv cache, 0
+validator problems. The answer lands in `runs/drill-1/HHF-004/`. In mock mode the model replies are recorded fixtures and the facts come from
 DuckDB (including the DuckDB twin of the January typology scan). CI runs the same drill on Ubuntu (step "Final Round
 clean-clone drill" in `.github/workflows/ci.yml`).
 
@@ -138,19 +143,42 @@ out (`nav_pages()`).
 | Top bar | **Overview** (default, `/`) | Source provenance and measured tiles: decided n / 18; the verdict mix next to the brief's 9 legitimate; hard actions on non-fraud verdicts; agreement with the submitted files. Then proof cards and the 18-case decision board, where one click opens a case. |
 | Top bar | **Case file** (`/case?case=HHF-0xx`) | The decision card comes first: verdict, how p moved, actions with routes and their real approval state, the simulated evidence reply, the stop rule and the SAR decision. Below it: the untrusted trigger verbatim with the defences that fired, then "TigerGraph in this case" (reads, write-backs, vector-search precedents with distances). Then five tabs: Decision path P0–P10, Evidence ledger (what / evidence / how / when per claim), SAR & citations, Approvals & handover, Raw files. |
 | Top bar | **Graph** | The case subgraph. In mock mode it is rebuilt from the answer and labelled that way. |
-| Top bar | **Approvals** | A read-only inbox, with sign-in through a server-side approver directory. Sign-in fails closed when `ui/principals.json` is missing. Also the wrong-role drill in a sandbox and the immutable audit log. |
+| Top bar | **Approvals** | The inbox, with sign-in through a server-side approver directory (`ui/principals.json`, or `APPROVER_DIRECTORY_JSON` on a host). Sign-in fails closed when there is no directory. Also who may decide what, the wrong-role drill in a sandbox, the immutable audit log and, for an admin, the list of principals (names and roles, never hashes). |
 | Proof | **Detectors & containment** | The backtest over 5,585 closed cases, with the cleared customers each detector would act against. Self-growing detector proposals awaiting approval, containment per wave, and a ring replay slider. |
 | Proof | **Security & drills** | The 23-attack ablation (`agent.security.run_attack_ablation()`), a hostile-input sandbox and the drills ledger |
 | Proof | **Data quality & schema** | Data quality (C11), schema drift (C12) and mapping another bank's schema (C13; mapping only, no investigation run on a variant), from `engine/out/proof_snapshot.json` and `data/schema_approvals.json` |
 | Proof | **Runs & consistency** | p50 / p95 per case, numbers to quote, same-case agreement across runs |
-| System | **Run console** | Starts agent runs only after a confirm dialog; live backends are disabled in mock mode; with `DEPLOY_READONLY=1` it replays recorded cases and starts no runs |
+| System | **Run console** | Starts agent runs after a confirm dialog, with a live S0–P10 stage strip and replay. Per session: Mock or Live, and the `.env` workspace or another one checked with a read-only probe (its secret stays in session memory). Cases come from the case pack, an uploaded alerts CSV or a form. "Bring your own data" builds a month with `etl.delta` and loads it only into another workspace, never FraudGraph. With `DEPLOY_READONLY=1` it replays recorded cases and starts nothing. |
 | System | **How it works** | The TigerGraph-use checklist, known limits and the system map |
+| System | **Live architecture** | One alert's path through the system, played back step by step from a real case's trace |
 
-The Run console's live pipeline view and a clickable phase inspector are being ported into the new pages; until that
-lands, the Case file's Decision path tab is where each phase's recorded payload is shown.
+### Who may do what
 
-To add approvers, run `uv run python -m ui.approvals_db add-principal <name> --role team_lead` (or
-`--role fraud_manager`). Each run prompts for a passphrase.
+Sign-in is a scrypt passphrase checked against the server-side directory; the role comes from the directory, never from
+the request. `ui/approvals_db.py` (`ROLE_PERMISSIONS`) is the single source:
+
+| Role | May |
+|---|---|
+| analyst | record feedback on a card |
+| team lead | feedback, approve L1 actions, approve the schema migration, start live runs |
+| fraud manager | everything a team lead may, plus approve L2 actions (`BLOCK_ALL_CARDS`, `FILE_REPORT`, large blocks) and admit detectors |
+| admin | every permission, plus connecting another workspace, loading own data and seeing the principals |
+
+On a deployment with `RUNS_NEED_APPROVER=1` (the Docker image's default), starting a live run needs `run_live`, and
+another workspace or own data needs an admin.
+
+Add one approver (it prompts for a passphrase of at least 12 characters):
+
+```bash
+uv run python -m ui.approvals_db add-principal you@team --role fraud_manager
+```
+
+Or create one demo account per role, with random passphrases written to the git-ignored `demo_accounts.local.txt`
+(mode 0600, never printed):
+
+```bash
+uv run python -m ui.approvals_db seed-demo
+```
 
 ## Round 1 (HHG-001 … HHG-020)
 
@@ -172,7 +200,7 @@ repository (they are gitignored), so the checked-in `data/ids.duckdb` (id tables
 Clone the repository:
 
 ```bash
-git clone <REPO_URL> Tiger-graph && cd Tiger-graph
+git clone https://github.com/aryangupta1411/Team-Goblins-TigerGraph-Round-2-Challenge.git Team-Goblins && cd Team-Goblins
 ```
 
 Install the dependencies and create `.env` from `.env.example` (`RUN_MODE=mock`, no keys needed):
@@ -355,7 +383,7 @@ and carries on.
 ## Setup (macOS Apple Silicon, Python 3.12 via uv)
 
 ```bash
-git clone <repo> && cd <repo>
+git clone https://github.com/aryangupta1411/Team-Goblins-TigerGraph-Round-2-Challenge.git Team-Goblins && cd Team-Goblins
 ```
 
 ```bash
@@ -502,7 +530,8 @@ make ids
 
 ## Deploy on Railway
 
-The whole app runs on [Railway](https://railway.com) as one container: the analyst dashboard and everything a live
+Live at https://team-goblins-tigergraph-round-2-challenge-production.up.railway.app, deployed from this repository's
+`main`. The whole app runs on [Railway](https://railway.com) as one container: the analyst dashboard and everything a live
 agent run needs. The root `Dockerfile` installs torch from the PyTorch CPU index, then `requirements-live.txt` (the
 `uv.lock` pins without the CUDA wheels, generated by the command in its header). It bakes the `BAAI/bge-large-en-v1.5`
 embedding model into the image and ships:
@@ -528,7 +557,7 @@ the image starts in mock mode and read-only: it replays the recorded runs, needs
 The Run console (Investigate on a case, or the queue's Run console) starts `agent.bench` in the container: the agent
 reads the graph through the MCP launcher, calls Gemini and writes its AgentCase, CaseEvents and Approvals back. On a
 public URL that spends tokens and writes to the shared graph, so the image sets `RUNS_NEED_APPROVER=1`: only a
-signed-in approver can start a live run.
+signed-in team lead, fraud manager or admin can start a live run ([who may do what](#who-may-do-what)).
 
 1. Attach a volume at `/data` (**right-click the service → Attach volume**), so runs and decisions survive redeploys.
 2. Create the approver directory locally, then copy its content into a sealed variable:

@@ -1118,9 +1118,19 @@ class PhaseMachine:
             self.log.note("answer validation problems", problems=problems)
         answer["_validation"] = problems
         (self.log.root / "answer.json").write_text(json.dumps({k: v for k, v in answer.items() if k != "_validation"}, indent=2, ensure_ascii=False), encoding="utf-8")
-        (self.log.root / "sar.md").write_text((sar["narrative"] or f"No SAR. {sar['reason']}") + "\n", encoding="utf-8")
+        self._write_sar_md(answer, ctx.case_id)
         self.log.record_phase("P9", {"validation": problems, "totals": self.log.totals()})
         return answer
+
+    def _write_sar_md(self, answer: dict, case_id: str) -> None:
+        """`sar.md` = the fileable document (agent.sar_doc): cited narrative, timeline, evidence graph, attestation."""
+        from agent import sar_doc
+        from engine import config as ecfg
+
+        stats = sar_doc.write(self.log.root / "sar.md", answer, case_id, ecfg.FACTS_DB)
+        if stats.get("dropped") or stats.get("error"):
+            self.log.note("sar.md: sentences left out or plain form written", stats={k: v for k, v in stats.items() if k != "dropped"},
+                          dropped=[w for _, w in stats.get("dropped", [])])
 
     async def _short_summary(self, closing: Closing) -> Closing:
         """README: the summary is 'two to six sentences' and 'short' (the evidence list carries the detail). One

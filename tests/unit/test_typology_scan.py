@@ -50,8 +50,24 @@ def test_d4_rows_win_the_precedence():
     assert hit and hit.detector_id == "D4_RECIPIENT_EMAIL_MULE" and "rare.example" in hit.name
 
 
+def test_d4_names_a_ring_card_alerted_on_another_purchase():
+    cards = [f"C0000{i}-K1" for i in range(12)]
+    scan = {"d4_rows": wave(cards, 2), "d4_domain": "rare.example"}
+    hit = hit_from_scan(scan, cards[0], "3600123", "2017-01-31 00:00:00")      # an in-person alert, not a ring payment
+    assert hit and hit.detector_id == "D4_RECIPIENT_EMAIL_MULE" and hit.episode_txn_ids == ["3660000", "3660001"]
+    assert "3600123 is not one of these payments" in hit.description and hit.connected_card_ids == sorted(cards[1:])
+
+
+def test_a_detector_holding_the_flagged_purchase_beats_a_card_level_d4_hit():
+    cards = [f"C0000{i}-K1" for i in range(12)]
+    scan = {"d4_rows": wave(cards, 1, ts="2017-01-05 10:00:00"), "d4_domain": "rare.example",
+            "d3_rows": [{**r, "id": str(int(r["id"]) + 5)} for r in wave(cards[:3], 4)]}
+    hit = hit_from_scan(scan, cards[0], "3660005", "2017-01-31 00:00:00")
+    assert hit and hit.detector_id == "D3_MICRO_CHARGE_SKIMMING"
+
+
 @needs_db
-@pytest.mark.parametrize("case_id", ["HHF-001", "HHF-002", "HHF-003", "HHF-004", "HHF-005", "HHF-006", "HHF-007", "HHF-010"])
+@pytest.mark.parametrize("case_id", ["HHF-001", "HHF-002", "HHF-003", "HHF-004", "HHF-005", "HHF-006", "HHF-007", "HHF-010", "HHF-013", "HHF-014"])
 def test_duckdb_twin_matches_scan_card(case_id):
     import duckdb
 
@@ -77,3 +93,20 @@ def test_the_waves_are_the_ones_the_innovation_doc_names():
         hits[cid] = h.detector_id if h else None
     assert hits == {"HHF-001": "D1_MOBILE_ANON_PROXY_WAVE", "HHF-002": "D1_MOBILE_ANON_PROXY_WAVE", "HHF-003": "D2_ESCALATING_C_DRAIN",
                     "HHF-004": "D3_MICRO_CHARGE_SKIMMING", "HHF-005": "D3_MICRO_CHARGE_SKIMMING", "HHF-006": "D4_RECIPIENT_EMAIL_MULE"}
+
+
+@needs_db
+def test_d4_finds_hhf_013s_ring_payments_and_ignores_a_webmail_domain():
+    """HHF-013's alert is a genuine in-person purchase on a card that paid the sc.rr.com mule hub twice before the case opened;
+    HHF-014's card paid mac.com, which 20 cards use in 30 days but far more than 40 ever: no hit."""
+    import duckdb
+
+    con = duckdb.connect(str(config.FACTS_DB), read_only=True)
+    out = {}
+    for cid in ("HHF-013", "HHF-014"):
+        card, tid, opened = con.execute("SELECT card_id, CAST(flagged_txn_id AS VARCHAR), strftime(opened_at, '%Y-%m-%d %H:%M:%S') FROM cp_all WHERE case_id = ?", [cid]).fetchone()
+        out[cid] = scan_card(con, card, tid, opened)
+    h = out["HHF-013"]
+    assert h and h.detector_id == "D4_RECIPIENT_EMAIL_MULE" and "sc.rr.com" in h.name
+    assert h.episode_txn_ids == ["3660311", "3660312"] and h.exposure_usd == 321.75 and "3626720" not in h.episode_txn_ids
+    assert out["HHF-014"] is None

@@ -9,7 +9,9 @@
 //                                            region or an identity record, on a card with no earlier ProductCD='C' < $10
 //   D4 recipient-email mule                  the flagged transaction's recipient domain took online 'C' payments from 10-35
 //                                            cards in the 30 days to as_of, <= 40 cards ever, and the data starts >= 60 days
-//                                            before as_of (rarity needs history)
+//                                            before as_of (rarity needs history). When the flagged transaction pays no
+//                                            recipient domain (an in-person alert), each domain card c paid online on 'C'
+//                                            in those 30 days is judged on its own (a ring card alerted on another purchase)
 // Peers are NOT time-boxed for D1-D3 (the wave is defined over the whole dataset, as WAVE_SQL does); D4 is boxed to as_of.
 // Rows are (id, card_id, ts, amt, device_id). `card_rows` are the full rows of card c's own transactions <= as_of that sit in
 // any wave: the facts engine.scorecard reads as round2_detector_rows. engine.detectors.hit_from_scan turns the rows into the
@@ -27,7 +29,9 @@ CREATE OR REPLACE QUERY typology_scan(VERTEX<Card> c, VERTEX<Transaction> t, DAT
   MapAccum<STRING, MinAccum<FLOAT>> @@d2_min;
   MapAccum<STRING, MinAccum<INT>> @@d2_first;
   SetAccum<INT> @d3_days;
-  SetAccum<STRING> @@d1_ok, @@woke, @@has_prev, @@d3_shape, @@d3_excl, @@wave_ids, @@d4_win, @@d4_ever;
+  SetAccum<STRING> @@d1_ok, @@woke, @@has_prev, @@d3_shape, @@d3_excl, @@wave_ids;
+  SetAccum<STRING> @d4_win, @d4_ever;
+  SumAccum<INT> @@d4_flagged;
   MaxAccum<STRING> @@d4_domain;
 
   // ---- candidates: three filtered scans of the Transaction vertices, each keeping its vertex set and per-card counters
@@ -92,22 +96,29 @@ CREATE OR REPLACE QUERY typology_scan(VERTEX<Card> c, VERTEX<Transaction> t, DAT
   R3 = SELECT x FROM (x:V3) WHERE @@d3_shape.contains(x.card_id) AND NOT @@d3_excl.contains(x.card_id)
        ACCUM @@d3_rows += WaveRow(x.id, x.card_id, x.ts_str, x.amt, x.device_id), @@wave_ids += x.id;
 
-  // ---- D4: the flagged transaction's recipient domain, judged on the 30 days to as_of
+  // ---- D4: the flagged transaction's recipient domain, or else card c's own recipient domains, each judged on its own
+  // card counts over the 30 days to as_of (accumulators on the domain vertex, so candidate domains never pool their cards)
+  S = {c};
   T0 = {t};
-  T1 = SELECT x FROM (x:T0) WHERE x.product_cd == "C" AND x.channel == "online" AND x.r_email != "";
+  T1a = SELECT x FROM (x:T0) WHERE x.product_cd == "C" AND x.channel == "online" AND x.r_email != "" ACCUM @@d4_flagged += 1;
+  T1b = SELECT x FROM (s:S)-[:MADE]->(x:Transaction)
+        WHERE @@d4_flagged == 0 AND x.product_cd == "C" AND x.channel == "online" AND x.r_email != "" AND x.ts <= as_of
+          AND datetime_to_epoch(x.ts) > datetime_to_epoch(as_of) - 30 * 86400;
+  T1 = T1a UNION T1b;
   E1 = SELECT e FROM (x:T1)-[:RECIPIENT_EMAIL]->(e:EmailDomain);
   U1 = SELECT u FROM (e:E1)-[:REV_RECIPIENT_EMAIL]->(u:Transaction)
        WHERE u.product_cd == "C" AND u.channel == "online" AND u.ts <= as_of
-       ACCUM @@d4_ever += u.card_id,
-             IF datetime_to_epoch(u.ts) > datetime_to_epoch(as_of) - 30 * 86400 THEN @@d4_win += u.card_id END;
-  R4 = SELECT u FROM (u:U1)
-       WHERE datetime_to_epoch(u.ts) > datetime_to_epoch(as_of) - 30 * 86400
-         AND @@d4_win.size() >= 10 AND @@d4_win.size() <= 35 AND @@d4_ever.size() <= 40
-         AND datetime_to_epoch(data_start) <= datetime_to_epoch(as_of) - 60 * 86400
+       ACCUM e.@d4_ever += u.card_id,
+             IF datetime_to_epoch(u.ts) > datetime_to_epoch(as_of) - 30 * 86400 THEN e.@d4_win += u.card_id END;
+  E2 = SELECT e FROM (e:E1)
+       WHERE e.@d4_win.size() >= 10 AND e.@d4_win.size() <= 35 AND e.@d4_ever.size() <= 40
+         AND datetime_to_epoch(data_start) <= datetime_to_epoch(as_of) - 60 * 86400;
+  R4 = SELECT u FROM (e:E2)-[:REV_RECIPIENT_EMAIL]->(u:Transaction)
+       WHERE u.product_cd == "C" AND u.channel == "online" AND u.ts <= as_of
+         AND datetime_to_epoch(u.ts) > datetime_to_epoch(as_of) - 30 * 86400
        ACCUM @@d4_rows += WaveRow(u.id, u.card_id, u.ts_str, u.amt, u.device_id), @@wave_ids += u.id, @@d4_domain += u.r_email;
 
   // ---- the card's own transactions that sit in any wave, in full (round2_detector_rows)
-  S = {c};
   M = SELECT x FROM (s:S)-[:MADE]->(x:Transaction)
       WHERE x.ts <= as_of AND @@wave_ids.contains(x.id)
       ACCUM @@card_rows += CardRow(x.id, x.ts_str, x.amt, x.product_cd, x.channel, x.addr1, x.p_email, x.r_email,

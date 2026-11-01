@@ -30,7 +30,7 @@
   },
   "ok": true,
   "diffs": [],
-  "seconds": 1.3
+  "seconds": 1.7
  },
  {
   "case": "HHF-002",
@@ -92,7 +92,7 @@
   },
   "ok": true,
   "diffs": [],
-  "seconds": 1.0
+  "seconds": 0.9
  },
  {
   "case": "HHF-004",
@@ -170,7 +170,7 @@
   },
   "ok": true,
   "diffs": [],
-  "seconds": 0.7
+  "seconds": 0.9
  },
  {
   "case": "HHF-006",
@@ -233,7 +233,7 @@
   "hit": null,
   "ok": true,
   "diffs": [],
-  "seconds": 0.8
+  "seconds": 1.1
  },
  {
   "case": "HHF-010",
@@ -242,7 +242,7 @@
   "hit": null,
   "ok": true,
   "diffs": [],
-  "seconds": 0.8
+  "seconds": 1.0
  },
  {
   "case": "HHF-011",
@@ -251,7 +251,7 @@
   "hit": null,
   "ok": true,
   "diffs": [],
-  "seconds": 0.7
+  "seconds": 1.0
  },
  {
   "case": "HHF-012",
@@ -260,16 +260,42 @@
   "hit": null,
   "ok": true,
   "diffs": [],
-  "seconds": 0.7
+  "seconds": 1.0
  },
  {
   "case": "HHF-013",
   "card": "C06115-K1",
   "txn": "3626720",
-  "hit": null,
+  "hit": {
+   "detector": "D4_RECIPIENT_EMAIL_MULE",
+   "episode": [
+    "3660311",
+    "3660312"
+   ],
+   "exposure": 321.75,
+   "connected": [
+    "C00534-K2",
+    "C01357-K1",
+    "C01507-K1",
+    "C01594-K1",
+    "C01727-K2",
+    "C02167-K2",
+    "C03060-K1",
+    "C04146-K1",
+    "C04668-K1",
+    "C05610-K1",
+    "C06639-K1",
+    "C08384-K1",
+    "C10350-K1",
+    "C11617-K1",
+    "C11743-K2",
+    "C11940-K1"
+   ],
+   "p_floor": 0.92
+  },
   "ok": true,
   "diffs": [],
-  "seconds": 0.7
+  "seconds": 0.8
  },
  {
   "case": "HHF-014",
@@ -278,7 +304,7 @@
   "hit": null,
   "ok": true,
   "diffs": [],
-  "seconds": 0.8
+  "seconds": 0.9
  },
  {
   "case": "HHF-015",
@@ -287,7 +313,7 @@
   "hit": null,
   "ok": true,
   "diffs": [],
-  "seconds": 0.8
+  "seconds": 0.9
  },
  {
   "case": "HHF-016",
@@ -296,7 +322,7 @@
   "hit": null,
   "ok": true,
   "diffs": [],
-  "seconds": 0.7
+  "seconds": 0.9
  },
  {
   "case": "HHF-017",
@@ -305,7 +331,7 @@
   "hit": null,
   "ok": true,
   "diffs": [],
-  "seconds": 0.7
+  "seconds": 0.9
  },
  {
   "case": "HHF-018",
@@ -314,7 +340,7 @@
   "hit": null,
   "ok": true,
   "diffs": [],
-  "seconds": 0.7
+  "seconds": 0.8
  },
  {
   "case": "JAN-3632789",
@@ -323,7 +349,7 @@
   "hit": null,
   "ok": true,
   "diffs": [],
-  "seconds": 0.8
+  "seconds": 0.9
  },
  {
   "case": "JAN-3622858",
@@ -332,7 +358,7 @@
   "hit": null,
   "ok": true,
   "diffs": [],
-  "seconds": 0.8
+  "seconds": 1.5
  },
  {
   "case": "JAN-3653581",
@@ -341,7 +367,7 @@
   "hit": null,
   "ok": true,
   "diffs": [],
-  "seconds": 0.8
+  "seconds": 1.0
  },
  {
   "case": "JAN-3630200",
@@ -350,7 +376,7 @@
   "hit": null,
   "ok": true,
   "diffs": [],
-  "seconds": 0.8
+  "seconds": 1.0
  },
  {
   "case": "JAN-3629482",
@@ -359,7 +385,7 @@
   "hit": null,
   "ok": true,
   "diffs": [],
-  "seconds": 0.8
+  "seconds": 1.0
  },
  {
   "case": "JAN-3600946",
@@ -368,7 +394,7 @@
   "hit": null,
   "ok": true,
   "diffs": [],
-  "seconds": 0.8
+  "seconds": 0.9
  },
  {
   "case": "JAN-3654213",
@@ -377,7 +403,7 @@
   "hit": null,
   "ok": true,
   "diffs": [],
-  "seconds": 0.8
+  "seconds": 0.9
  },
  {
   "case": "JAN-3627937",
@@ -386,7 +412,7 @@
   "hit": null,
   "ok": true,
   "diffs": [],
-  "seconds": 0.8
+  "seconds": 0.9
  },
  {
   "case": "JAN-3638315",
@@ -395,7 +421,7 @@
   "hit": null,
   "ok": true,
   "diffs": [],
-  "seconds": 0.8
+  "seconds": 0.9
  },
  {
   "case": "JAN-3654658",
@@ -404,7 +430,7 @@
   "hit": null,
   "ok": true,
   "diffs": [],
-  "seconds": 0.7
+  "seconds": 0.9
  },
  {
   "case": "JAN-3620210",
@@ -413,7 +439,7 @@
   "hit": null,
   "ok": true,
   "diffs": [],
-  "seconds": 0.8
+  "seconds": 1.0
  },
  {
   "case": "JAN-3656927",
@@ -422,6 +448,6 @@
   "hit": null,
   "ok": true,
   "diffs": [],
-  "seconds": 0.8
+  "seconds": 0.9
  }
 ]

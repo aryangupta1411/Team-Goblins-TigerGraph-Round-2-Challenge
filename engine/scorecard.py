@@ -548,7 +548,34 @@ def compute(ctx: CaseContext, facts: Facts, evidence: list[Evidence]) -> Scoreca
     flags["shared_device_fraud"] = len(shared_fraud_cards) >= 2 or flags["ring_hit"]
     prior_n = int(dh.get("prior_n", 0) or 0)
     flags["device_known"] = bool(dev_id) and (prior_n >= 3 or (txn["device_new"] == "Found" and prior_n >= 1))
-    if dev_id and not flags["ring_hit"]:
+    # A card-present purchase has no browser, so a device record on an in-person transaction contradicts its channel. A
+    # fingerprint copied from the cardholder's own devices must not vouch for it as "known" (HHF-008: the only in-person
+    # rows in January carrying one, each presenting a different one of the cardholder's devices).
+    ip_dev = (
+        [m for m in chain if m.get("channel") == "in_person" and m.get("device_id") and str(m["ts"]) <= str(as_of)]
+        if txn["channel"] == "in_person" and dev_id
+        else []
+    )
+    flags["in_person_device"] = bool(ip_dev)
+    flags["in_person_device_ids"] = sorted({str(m["id"]) for m in ip_dev} | ({str(txn["id"])} if ip_dev else set()))
+    if flags["in_person_device"] and not flags["ring_hit"]:
+        ids = flags["in_person_device_ids"]
+        regions = sorted({str(m.get("addr1") or "") for m in ip_dev if m.get("addr1")})
+        led.append(
+            Evidence(
+                f"In-person purchase {txn['id']} carries an online device record (`{dev_id}`"
+                + (f", {txn['proxy']}" if txn["proxy"] else "")
+                + "): a card-present purchase has no browser, so the record contradicts the channel"
+                + (f"; {len(ids)} in-person purchases on this card carry one ({', '.join(ids)}), in billing region {', '.join(regions)}" if len(ids) > 1 else ""),
+                "graph",
+                _q("episode_candidates", txn=txn["id"]),
+                ids + [dev_id],
+                "device",
+                "fraud",
+                0.8,
+            )
+        )
+    if dev_id and not flags["ring_hit"] and not flags["in_person_device"]:
         n_cards = int(dev.get("n_cards_alltime", 0) or 0)
         if flags["device_known"]:
             led.append(
@@ -574,12 +601,9 @@ def compute(ctx: CaseContext, facts: Facts, evidence: list[Evidence]) -> Scoreca
         elif txn["proxy"] == config.ANON_PROXY:
             led.append(Evidence(f"Transaction routed through {txn['proxy']}", "graph", _q("case_context", txn=txn["id"]), [txn["id"]], "device", "fraud", 0.4))
     # R6 recipient-email clause: only a rare recipient domain (<= 40 other cards in 30 d) shared with >= 2 other cards' fraud
+    # A domain shared by many cards in 30 days with no fraud behind it is D4's to judge (it also needs <= 40 cards ever and 60
+    # days of history): a 30-day count alone cannot tell a mule hub (sc.rr.com) from a webmail domain (mac.com, HHF-014).
     rem_fraud = [e for e in sos.get("recipient_emails", []) or [] if int(e.get("n_fraud_cases", 0)) >= 2 and 0 < int(e.get("n_cards_30d", 0)) <= 40]
-    rem_mule = [
-        e
-        for e in sos.get("recipient_emails", []) or []
-        if 10 <= int(e.get("n_cards_30d", 0)) <= 30 and int(e.get("n_fraud_cases", 0)) == 0 and config.in_final_round(as_of)
-    ]
     flags["shared_recipient_email"] = [e["domain"] for e in rem_fraud]
     if rem_fraud:
         e = rem_fraud[0]
@@ -592,19 +616,6 @@ def compute(ctx: CaseContext, facts: Facts, evidence: list[Evidence]) -> Scoreca
                 "device",
                 "fraud",
                 1.0,
-            )
-        )
-    elif rem_mule and not flags["r2_detector_hit"]:
-        e = rem_mule[0]
-        led.append(
-            Evidence(
-                f"Recent online ProductCD='C' activity on this card paid recipient email domain {e['domain']}, which is shared by {e['n_cards_30d']} other cards in 30 days",
-                "graph",
-                _q("shared_origin_scan", card=cid),
-                [e["domain"], cid],
-                "device",
-                "fraud",
-                0.8,
             )
         )
     if flags["r2_detector_hit"]:
@@ -807,6 +818,13 @@ def compute(ctx: CaseContext, facts: Facts, evidence: list[Evidence]) -> Scoreca
         lo, hi = P["conflict_clamp"]
         p1 = min(max(p1, lo), hi)
         adj.append((f"conflict override: rulebook chain ${flags['rulebook_chain_sum']:,.2f} vs scorer {cms_p:.2f} → clamp [{lo}, {hi}]", 0.0))
+    if flags["in_person_device"] and not flags["ring_hit"] and not flags.get("r2_detector_hit"):
+        # channel and telemetry disagree: neither the scorer's low score nor the copied fingerprint settles it (R1 / R8)
+        flags["conflict"] = flags["conflict_chain"] = True
+        flags["conflict_chain_ids"] = list(flags["in_person_device_ids"])
+        lo, hi = P["conflict_clamp"]
+        p1 = min(max(p1, lo), hi)
+        adj.append((f"in-person purchase carrying a device record: channel and telemetry disagree → clamp [{lo}, {hi}]", 0.0))
     floor = 0.0
     if flags["ring_hit"]:
         floor = P["ring_floor"]
@@ -826,24 +844,6 @@ def compute(ctx: CaseContext, facts: Facts, evidence: list[Evidence]) -> Scoreca
     elif denial and not flags["recurring_match"]:
         floor = P["denial_floor"]
         adj.append(("customer denial not explained by R7 → floor", floor))
-    # Round 2 mixed-channel / recipient-email conflict check on high-exposure in-person risk alerts (HHF-010, HHF-013)
-    # Mixed-channel / recipient-email conflict check on in-person risk alerts with concurrent un-identitied online ProductCD='C' activity
-    if (
-        config.in_final_round(as_of)
-        and not flags.get("r2_detector_hit")
-        and risk_alert
-        and txn["channel"] == "in_person"
-        and (
-            bool(rem_mule)
-            or any(m.get("channel") == "online" and m.get("product_cd") == "C" and float(m.get("amt", 0)) >= 80.0 and not m.get("device_id") for m in raw48)
-        )
-    ):
-        flags["conflict_chain"] = True
-        flags["conflict"] = True
-        flags["conflict_chain_ids"] = [str(txn["id"])]
-        lo, hi = P["conflict_clamp"]
-        p1 = min(max(p1, lo), hi)
-        adj.append(("Mixed-channel / recipient-email conflict override → clamp [0.30, 0.50]", 0.0))
     p = round(max(p1, floor), 4)
     flags["floor"] = floor
     flags["families_conflict"] = _families_conflict(fam_f, fam_l)

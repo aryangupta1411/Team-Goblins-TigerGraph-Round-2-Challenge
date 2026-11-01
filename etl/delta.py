@@ -44,6 +44,7 @@ from etl.delta_base import (
     git_state,
     quiet,
     reconstruct_base,
+    require_migration_approval,
     sha256_file,
     sql_path,
 )
@@ -245,17 +246,20 @@ def fill_cms(con: duckdb.DuckDBPyConnection, score: str, models_dir: str | Path)
     return scorer
 
 
-def build(base_db: str | Path, files: MonthFiles, work_db: str | Path, score: str = "frozen", models_dir: str | Path = MODELS_DIR) -> tuple[list[Gate], dict]:
+def build(base_db: str | Path, files: MonthFiles, work_db: str | Path, score: str = "frozen", models_dir: str | Path = MODELS_DIR,
+          allow_unapproved: bool = False) -> tuple[list[Gate], dict]:
     """Base + month -> the work DB (ETL-shaped), then the build gates. Returns (gates, stats); the work DB is kept even when a
-    gate fails so the failure can be inspected, but `export` refuses to run on it."""
+    gate fails so the failure can be inspected, but `export` refuses to run on it. Refuses to start unless the schema
+    migration is approved (`allow_unapproved` is for the offline fixtures only)."""
     if score not in ("frozen", "none"):
         raise DeltaError(f"--score must be 'frozen' or 'none', not {score!r}")
+    approval = require_migration_approval(allow_unapproved)
     t0 = time.time()
     work = Path(work_db)
     work.parent.mkdir(parents=True, exist_ok=True)
     for suffix in ("", ".wal"):
         Path(str(work) + suffix).unlink(missing_ok=True)
-    stats: dict = {"score": score, "base_db": str(base_db), "work_db": str(work)}
+    stats: dict = {"score": score, "base_db": str(base_db), "work_db": str(work), "migration_approval": approval}
     step("hashing the inputs")
     stats["inputs"] = input_provenance(files, base_db, models_dir)
     con = duckdb.connect(str(work))
@@ -328,6 +332,8 @@ def _common(ap: argparse.ArgumentParser, month: bool, out: bool) -> None:
     if month:
         ap.add_argument("--month-dir", default=os.getenv("MONTH_DIR", MONTH_DIR), help="folder with transactions_*.csv, identity_*.csv, closed_cases_history.csv, cases/case_pack_final.csv")
         ap.add_argument("--score", choices=("frozen", "none"), default="frozen", help="frozen = the Round 1 scorer, unchanged; none = leave cms_p at -1")
+    ap.add_argument("--allow-unapproved-fixture", action="store_true",
+                    help="offline fixtures only: build/export without the signed schema migration (never for the real month)")
     if out:
         ap.add_argument("--out", default=os.getenv("DELTA_OUT", OUT_DIR), help="where the delta chunks and the undo pack go")
 
@@ -356,13 +362,14 @@ def main(argv: list[str] | None = None) -> int:
     r.add_argument("--no-facts", action="store_true")
     a = ap.parse_args(argv)
     try:
+        require_migration_approval(a.allow_unapproved_fixture)          # before any input is read
         if a.cmd in ("build", "run"):
             files = find_month_files(a.month_dir)
             if a.score == "frozen":
                 ensure_lightgbm()
             header("etl.delta " + a.cmd, "append one month to the base snapshot (delta mode)",
                    {"base": a.base, "month dir": a.month_dir, "work db": a.work, "score": a.score})
-            gates, stats = build(a.base, files, a.work, a.score)
+            gates, stats = build(a.base, files, a.work, a.score, allow_unapproved=a.allow_unapproved_fixture)
             code = _print_build(gates, stats, a.work)
             if code or a.cmd == "build":
                 return code
@@ -370,7 +377,7 @@ def main(argv: list[str] | None = None) -> int:
 
         if a.cmd in ("export", "run"):
             header("etl.delta export", "only the rows that change, in the loader's format, plus the undo pack", {"base": a.base, "work db": a.work, "out": a.out})
-            code = delta_export.export_delta(a.base, a.work, a.out)
+            code = delta_export.export_delta(a.base, a.work, a.out, allow_unapproved=a.allow_unapproved_fixture)
             if code or a.cmd == "export":
                 return code
         if a.cmd == "run" and not a.no_facts:

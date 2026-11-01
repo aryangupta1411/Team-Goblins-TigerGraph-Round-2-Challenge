@@ -30,7 +30,7 @@ import duckdb
 import yaml
 
 from etl import export_graph_csvs as X
-from etl.delta_base import BASE_GRAPH_COUNTS, DeltaError, git_state, graph_counts, load_meta, reconstruct_base, sql_path
+from etl.delta_base import BASE_GRAPH_COUNTS, DeltaError, git_state, graph_counts, load_meta, reconstruct_base, require_migration_approval, sql_path
 from etl.delta_gates import FAIL, PASS, WARN, Gate, failed, render
 from ops.console import Col, Table, fail, ok, step, summary
 
@@ -155,8 +155,9 @@ def parse_check(path: Path, n_cols: int, n_lines: int) -> str | None:
     return None if got == n_lines else f"{path.name}: {got} rows read back, {n_lines} written"
 
 
-def export_delta(base_db: str, work_db: str, out_dir: str, yaml_path: str = CONTRACT) -> int:
+def export_delta(base_db: str, work_db: str, out_dir: str, yaml_path: str = CONTRACT, allow_unapproved: bool = False) -> int:
     t0 = time.time()
+    require_migration_approval(allow_unapproved)          # the loader's input is never written for an unsigned migration
     meta = load_meta(work_db)
     build_gates = [Gate(**g) for g in meta["gates"]]
     if failed(build_gates):

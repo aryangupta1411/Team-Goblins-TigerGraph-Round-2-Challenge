@@ -6,6 +6,7 @@ from __future__ import annotations
 import copy
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -1285,3 +1286,16 @@ def test_regression_follow_ups(tree, tmp_path, monkeypatch):
         con.close()
     common._SAR_OPENABLE.clear()
     common._SAR_EXISTS.clear()
+
+
+def test_number_input_formats_are_numeric():
+    """st.number_input raises StreamlitInvalidNumberFormatError unless float(format % 2) works ("%d h" does not). Some
+    inputs render only in live mode (the Graph page's hours box), so no AppTest in mock mode reaches them."""
+    pat = re.compile(r"number_input\((?:[^()]|\([^()]*\))*?format=(['\"])(.+?)\1", re.S)
+    found = []
+    for path in sorted((Path(__file__).resolve().parents[2] / "ui").rglob("*.py")):
+        for m in pat.finditer(path.read_text(encoding="utf-8")):
+            fmt = m.group(2)
+            found.append(fmt)
+            float(fmt % 2)  # raises on a format Streamlit would refuse
+    assert found, "no st.number_input format= found under ui/: the pattern no longer matches"

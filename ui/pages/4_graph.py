@@ -587,8 +587,8 @@ if sub is not None:
                               + (" · dashed: case memory" if memory else "") + "</div>")
             with st.container(horizontal=True, vertical_alignment="center", gap="small", width="content", key="graph-tools"):
                 if live:
-                    st.number_input("Hours before opened_at", 1, 24 * 30, 72, key="graph_hours", format="%d h", width=104,
-                                    label_visibility="collapsed", help="Window of case_subgraph before opened_at")
+                    st.number_input("Hours before opened_at", 1, 24 * 30, 72, key="graph_hours", format="%d", width=104,
+                                    label_visibility="collapsed", help="Hours of case_subgraph before opened_at")
                 st.download_button("JSON", json.dumps(sub, indent=1, default=str), file_name=f"{case_id}_subgraph.json", mime="application/json",
                                    on_click="ignore", icon=":material/download:", type="tertiary", help="Download this subgraph as JSON")
                 st.button("Reset layout", key="graph_reset", type="tertiary", icon=":material/restart_alt:",

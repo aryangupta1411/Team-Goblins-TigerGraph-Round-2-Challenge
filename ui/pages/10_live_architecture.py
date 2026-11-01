@@ -134,10 +134,12 @@ def _stage_rows(view: common.CaseView) -> list[dict]:
             state, sentence = "offline", "Runs once, offline, before any case: January's schema drift and data-quality checks."
         else:
             state = stages.get(code, {}).get("state", "pending")
-            sentence = str(e.get("sentence") or ("No row in the trace for this stage." if view.has_trace else "No trace in this source."))
+            reason = stages.get(code, {}).get("skip_reason", "")
+            sentence = str(e.get("sentence") or (f"Skipped: {reason}." if reason else
+                                                 "No row in the trace for this stage." if view.has_trace else "No trace in this source."))
         rows.append({
             "code": code, "label": spec["label"], "module": spec["module"], "why": STAGE_WHY.get(code, ""), "llm": bool(spec["llm"]), "state": state,
-            "t": e.get("t"), "duration": e.get("duration"), "sentence": sentence, "edges": edges,
+            "state_label": stages.get(code, {}).get("state_label", "") if code != "S0" else "", "t": e.get("t"), "duration": e.get("duration"), "sentence": sentence, "edges": edges,
             "calls": [{"name": str(c.get("name") or "").split("__")[-1], "params": common.compact_params(c.get("params"), 90),
                        "latency": c.get("latency_s"), "ok": c.get("ok") is not False} for c in calls],
             "llm_calls": [{"model": x.get("model") or "model not recorded", "tokens": x.get("tokens") or 0, "latency": x.get("latency_s")} for x in llm],
@@ -277,7 +279,7 @@ phases.forEach((s, i) => {
   el('rect', {x: S.x + 4, y: y + 2, width: S.w - 8, height: S.row - 4, rx: 5}, g);
   txt(s.code, {x: S.x + 16, y: y + S.row / 2 + 4, class: 'c'}, g);
   txt(s.label, {x: S.x + 56, y: y + S.row / 2 + 4, class: 'l'}, g);
-  const dur = s.duration != null ? s.duration.toFixed(1) + ' s' : (s.state === 'skipped' ? 'no row' : '');
+  const dur = s.duration != null ? s.duration.toFixed(1) + ' s' : (s.state === 'skipped' ? 'skipped' : '');
   txt(dur, {x: S.x + S.w - 14, y: y + S.row / 2 + 4, class: 'd', 'text-anchor': 'end'}, g);
   g.addEventListener('click', () => go(codes.indexOf(s.code), true));
 });
@@ -349,7 +351,7 @@ function go(k, user) {
   const h = document.getElementById('dh'); h.textContent = '';
   const b = document.createElement('b'); b.textContent = s.code + ' · ' + s.label; h.appendChild(b);
   const chip = (t, c) => { const x = document.createElement('span'); x.className = 'chip ' + (c || ''); x.textContent = t; h.appendChild(x); };
-  chip(s.state === 'skipped' ? 'no row in trace' : s.state, s.state === 'done' ? 'done' : s.state === 'stopped' ? 'warn' : s.state);
+  chip(s.state === 'skipped' ? (s.state_label || 'skipped') : s.state, s.state === 'done' ? 'done' : s.state === 'stopped' ? 'warn' : s.state);
   if (s.duration != null) chip(s.duration.toFixed(2) + ' s');
   if (s.llm_calls.length) chip(s.llm_calls.length + ' model call' + (s.llm_calls.length > 1 ? 's' : ''), 'llm');
   document.getElementById('dm').textContent = s.module;

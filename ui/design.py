@@ -143,6 +143,23 @@ def inject() -> None:
     outside .stApp, where light-dark() would resolve light, so it gets the active theme's color-scheme."""
     dialog = f'[data-testid="stDialog"]{{color-scheme:{theme_type()}}}'
     st.markdown(f"<style>{tokens_css()}\n{dialog}\n{_stylesheet()}\n{glyph_css()}</style>", unsafe_allow_html=True)
+    if not st.session_state.get("_tc_light_default"):
+        st.session_state["_tc_light_default"] = True
+        st.html(LIGHT_DEFAULT_JS, unsafe_allow_javascript=True)
+
+
+# Open in light whatever the viewer's OS says. With both themes in config.toml Streamlit follows the OS and ignores
+# theme.base, so on a browser's first visit this writes "Light" to the key the app menu's theme switcher uses and
+# reloads once. The marker key makes it once per browser: a theme picked later in the menu (System or Dark) is kept.
+LIGHT_DEFAULT_JS = """<script>
+try {
+  const ls = window.localStorage, key = "stActiveTheme-/-v2", mark = "tc-light-default-v1";
+  if (!ls.getItem(mark)) {
+    ls.setItem(mark, "1");
+    if (ls.getItem(key) !== JSON.stringify("Light")) { ls.setItem(key, JSON.stringify("Light")); window.location.reload(); }
+  }
+} catch (e) {}
+</script>"""
 
 
 def html_block(markup: str) -> None:

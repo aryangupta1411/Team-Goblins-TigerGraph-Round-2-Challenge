@@ -1800,7 +1800,7 @@ STAGE_STYLE = {  # state -> (badge color, material icon)
     "done": ("green", ":material/check_circle:"), "active": ("blue", ":material/autorenew:"), "stopped": ("orange", ":material/error:"),
     "skipped": ("gray", ":material/remove:"), "pending": ("gray", ":material/radio_button_unchecked:"), "offline": ("violet", ":material/database:"),
 }
-STAGE_LABELS = {"done": "done", "active": "running", "stopped": "stopped here", "skipped": "no row", "pending": "not reached", "offline": "offline gate"}
+STAGE_LABELS = {"done": "done", "active": "running", "stopped": "stopped here", "skipped": "skipped", "pending": "not reached", "offline": "offline gate"}
 _SAR_OR_CLOSING = "an LLM call: the SAR draft when a SAR is filed (after its OFAC and grounding reads), else the P9 closing"
 # What a case that has not finished waits on after its newest row, in agent/phase_machine.py's order:
 # (row kind, phase) -> (stage now running, what it waits on, the model it waits on: '' no LLM call, 'main', 'sar' for the
@@ -1931,8 +1931,28 @@ def llm_models(views: Any) -> Counter:
     return Counter(str(c.get("model")) for v in views for c in getattr(v, "calls", None) or [] if c.get("kind") == "llm" and c.get("model"))
 
 
+def _skip_reason(view: Any, code: str) -> dict:
+    """{state_label, skip_reason} for a stage that wrote no row although a later one did, from what the trace records:
+    P6/P7 when P5's value-of-information step decided not to ask (settled before any evidence, or no reply could change
+    the actions), P8 when the answer files no SAR. Empty when the trace gives no reason."""
+    if code in ("P6", "P7"):
+        voi = phase_payload(view, "P5-voi")
+        if voi and not voi.get("ask"):
+            if voi.get("settled_pre"):
+                return {"state_label": "skipped: settled at P5",
+                        "skip_reason": "P5 found the case settled before any evidence (P5-voi settled_pre), so no evidence request "
+                                       "was made and P5's initial actions are final"}
+            return {"state_label": "skipped: no request",
+                    "skip_reason": "P5's value-of-information check found that no reply would change the actions (P5-voi ask = false), "
+                                   "so no evidence request was made and P5's initial actions are final"}
+    if code == "P8" and ((getattr(view, "answer", None) or {}).get("sar") or {}).get("file") is False:
+        return {"state_label": "skipped: no SAR owed", "skip_reason": "the answer's sar.file is false, so there was no SAR to draft"}
+    return {}
+
+
 def pipeline_state(view: Any, run_model: str = "", run_sar_model: str = "", since: str = "") -> dict:
-    """The S0 + P0-P10 stages of one case, each with a state (done, active, stopped, skipped = no row, pending; S0 is
+    """The S0 + P0-P10 stages of one case, each with a state (done, active, stopped, skipped = no row although a later stage
+    wrote one, with the trace's reason in state_label / skip_reason when it records one, pending; S0 is
     'offline') and its row count, read from the newest attempt in the case's phases.jsonl and calls.jsonl only. For a case
     that has not finished, the stage after its newest row and what that stage waits on follow agent/phase_machine.py's
     order: an inference, as rows are written when a step completes. A newer retry / re-prompt note (structured_retry,
@@ -1993,7 +2013,8 @@ def pipeline_state(view: Any, run_model: str = "", run_sar_model: str = "", sinc
             st_ = "active" if state == "running" else "stopped"
         else:  # P10 is written before the P9 row, so a stage after the active one can be done
             st_ = "done" if n else ("skipped" if i < ai else "pending")
-        stages.append({**s, "state": st_, "rows": n} | ({"state_label": "stopped (inferred)"} if st_ == "stopped" and basis == "inferred" else {}))
+        stages.append({**s, "state": st_, "rows": n} | ({"state_label": "stopped (inferred)"} if st_ == "stopped" and basis == "inferred" else {})
+                      | (_skip_reason(view, s["code"]) if st_ == "skipped" else {}))
     llm_rows = [c for c in calls if c.get("kind") == "llm" and c.get("model") and str(c.get("ts") or "") >= since]
     own = {"main": [str(c["model"]) for c in llm_rows if _fold(c.get("phase")) != "P8"], "sar": [str(c["model"]) for c in llm_rows if _fold(c.get("phase")) == "P8"]}
     run = {"main": run_model, "sar": run_sar_model}

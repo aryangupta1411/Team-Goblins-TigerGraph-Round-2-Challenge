@@ -43,7 +43,7 @@ the case stops with `CaseDataMissing` and writes no answer (see [the typology sc
 ### Results of the promoted run `runs/hhf-final-3`
 
 The 18 files in `cases/HHF-*.json` are byte-identical to `runs/hhf-final-3/HHF-*/answer.json`. They come from one live run
-against FraudGraph through MCP on `gemini-3.6-flash`, from the frozen commit `c2bcb29` in a clean detached worktree
+against FraudGraph through MCP on `gemini-3.6-flash`, from commit `c2bcb29` (tag `hhf-final-3-run`) in a clean detached worktree
 (`git_dirty: false`): one invocation, 2026-11-01 23:42:21 to 2026-11-02 00:01:37, 18 / 18 completed, 0 failed, nothing
 resumed. Every tracked file (747) was hashed before and after the run, and the two lists are identical
 (`runs/hhf-final-3/provenance.json`, `code.list_sha256`; `runs/hhf-final-3/_guard/`).

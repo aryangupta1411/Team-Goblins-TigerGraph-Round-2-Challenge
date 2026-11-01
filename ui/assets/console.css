@@ -110,6 +110,11 @@ span.stMarkdownBadge { border-radius: 3px !important; font-weight: 500; font-siz
 [data-testid="stTabs"] [role="tab"] .react-aria-SelectionIndicator { display: none; }
 [data-testid="stTabs"] [role="tab"]:focus-visible { outline-offset: -4px; }
 [data-testid="stTabs"] [role="tabpanel"] { padding-top: 1.1rem; }
+/* Switching a lazy tab (on_change="rerun") clears the old panel before the new one renders, and a pill inside a panel can
+ * swap a long block for a short one: the page shrank under the reader, the browser clamped the scroll and the strip jumped
+ * down the screen. A panel at least a screen tall keeps the page from collapsing below the strip, and no anchor inside the
+ * panel lets the browser hold the strip, not the content being replaced, where it was. */
+[data-testid="stTabs"] [role="tabpanel"] { min-height: 100vh; overflow-anchor: none; }
 
 /* main-menu cleanup: keep Print and the theme toggle, drop the screen recorder and the version footer */
 [data-testid="stMainMenuItem-recordScreencast"] { display: none !important; }

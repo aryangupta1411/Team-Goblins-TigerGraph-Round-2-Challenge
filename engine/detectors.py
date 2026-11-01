@@ -534,11 +534,11 @@ def approve_detector(proposal_id: str, session: Any, decision: str = "approved",
     import datetime as dt
     import json
 
-    from ui.approvals_db import verify_session
+    from ui.approvals_db import roles_with, verify_session
 
     who = verify_session(session)
-    if who.role != "fraud_manager":
-        raise PermissionError(f"{who.principal} ({who.role}) cannot admit a detector; fraud_manager only")
+    if who.role not in roles_with("approve_detector"):
+        raise PermissionError(f"{who.principal} ({who.role}) cannot admit a detector; {' or '.join(roles_with('approve_detector'))} only")
     if decision not in ("approved", "rejected"):
         raise ValueError(decision)
     data = _approvals()

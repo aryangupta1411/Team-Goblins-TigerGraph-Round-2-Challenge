@@ -35,14 +35,14 @@ ro = common.read_only()
 graph_writes = ctx.mode == "live" and not ro  # DEPLOY_READONLY=1 keeps decisions local even in live mode
 allowed_routes = approvals_db.ROLE_ALLOWED_ROUTES.get(session.role, set()) if session else set()
 fail_closed = bool(dirst["error"]) or not dirst["n"]
-GATE_ROLES = ("team_lead", "fraud_manager")
+GATE_ROLES = tuple(approvals_db.roles_with("approve_migration"))
 SUBMITTED_FOR = {"HHF-": "submitted", "HHG-": "submitted-r1"}
 ROUNDS = {"final": "Final Round", "round1": "Round 1", "all": "All rounds"}
 STATUSES = ("pending", "approved", "rejected", "all")
 STATUS_TAG = {"pending": "ochre", "approved": "green", "rejected": ""}  # design.tag kinds: ochre waits on a human
 MIGRATION_ID = "round2_2017q1_migration"
-ROLE_WORDS = {"team_lead": "team lead", "fraud_manager": "fraud manager", "analyst": "analyst", "unauthorized": "unauthorized"}
-ROUTE_NEEDS = {"L1": "a team lead or a fraud manager", "L2": "a fraud manager"}
+ROLE_WORDS = approvals_db.ROLE_LABELS
+ROUTE_NEEDS = {r: " or ".join(f"a {approvals_db.ROLE_LABELS[x]}" for x in approvals_db.roles_with(f"approve_{r}")) for r in ("L1", "L2")}
 # audit outcome codes in plain words (the codes stay in the audit table's help)
 OUTCOME_WORDS = {"ok": "decided", "denied_rbac": "refused: wrong role", "denied_auth": "refused: no valid sign-in",
                  "denied_immutable": "refused: already decided", "denied_signin": "sign-in refused", "error": "error"}
@@ -480,7 +480,8 @@ def _authority() -> str:
                f"which role, {dir_html}), so every approval fails closed.")
     elif session is None:
         roles = ", ".join(f"{n} {_role_word(r)}" for r, n in sorted(dirst["roles"].items()))
-        who = f'{esc(dirst["n"])} approvers are registered ({esc(roles)}); <b class="ochre">signed out</b>, so nothing can be decided from this session.'
+        who = (f'{esc(dirst["n"])} principal{"s are" if dirst["n"] != 1 else " is"} registered ({esc(roles)}); <b class="ochre">signed out</b>, '
+               "so nothing can be decided from this session (Sign in, top right).")
     else:
         left = approvals_db.session_expires_in_s(session)
         may = " and ".join(sorted(allowed_routes)) or "nothing"
@@ -707,21 +708,31 @@ if t_enf.open:
         l1 = list((routes_cfg or {}).get("L1") or ["DECLINE_TRANSACTION", "BLOCK_CARD"])
         l2 = list((routes_cfg or {}).get("L2") or ["BLOCK_ALL_CARDS", "FILE_REPORT"])
         fmt = [f"BLOCK_CARD ≤ ${limit:,.0f}" if a == "BLOCK_CARD" else a for a in l1]
-        cols = [("L1", "L1 · team lead", ", ".join(fmt)), ("L2", "L2 · fraud manager", ", ".join([f"BLOCK_CARD > ${limit:,.0f}", *l2])),
-                ("migration", "Schema migration", "team lead or fraud manager"), ("detector", "Detector proposals", "fraud manager only")]
-        may = {"migration": set(GATE_ROLES), "detector": {"fraud_manager"}}
+        gated = "where RUNS_NEED_APPROVER is set" + (" (set here)" if common.runs_need_approver() else " (not set here: open to all)")
+        cols = [("approve_L1", "L1 · team lead", ", ".join(fmt)), ("approve_L2", "L2 · fraud manager", ", ".join([f"BLOCK_CARD > ${limit:,.0f}", *l2])),
+                ("approve_migration", "Schema migration", "team lead or above"), ("approve_detector", "Detector proposals", "fraud manager or above"),
+                ("run_live", "Live runs", gated), ("own_data", "Workspaces & own data", gated), ("users_view", "Principals list", "this page")]
 
         def _cell(role: str, col: str) -> str:
-            ok = role in may[col] if col in may else col in approvals_db.ROLE_ALLOWED_ROUTES.get(role, set())
-            return f'<td class="ap-yn {"ok" if ok else "no"}">{glyph("check" if ok else "cross", title="may decide" if ok else "refused")}</td>'
+            ok = col in approvals_db.ROLE_PERMISSIONS.get(role, frozenset())
+            return f'<td class="ap-yn {"ok" if ok else "no"}">{glyph("check" if ok else "cross", title="may" if ok else "refused")}</td>'
 
         head = "".join(f'<th>{esc(t)}<span class="sub">{esc(s)}</span></th>' for _, t, s in cols)
         body = "".join(f"<tr><td>{esc(_role_word(role).capitalize())}</td>{''.join(_cell(role, c) for c, _, _ in cols)}"
                        f'<td class="num">{esc(dirst["roles"].get(role, 0)) if dirst["exists"] and not dirst["error"] else "—"}</td></tr>'
                        for role in approvals_db.ROLE_ALLOWED_ROUTES)
         design.html_block(design.section("", "Who decides what", note=policy_note)
-                          + f'<table class="tc-table ap-matrix"><thead><tr><th>Role</th>{head}<th class="num">Approvers registered'
+                          + f'<table class="tc-table ap-matrix"><thead><tr><th>Role</th>{head}<th class="num">Registered'
                           f'<span class="sub">{esc(dir_rel)}</span></th></tr></thead><tbody>{body}</tbody></table>')
+        if approvals_db.has_permission(session, "users_view"):  # the server admin: who exists, never a hash
+            people = approvals_db.directory_rows()
+            order = list(approvals_db.PERMISSIONS)
+            prow = "".join(f'<tr><td class="mono">{esc(r["principal"])}</td><td>{esc(_role_word(r["role"]))}</td><td>'
+                           + esc("; ".join(approvals_db.PERMISSIONS[x] for x in sorted(approvals_db.ROLE_PERMISSIONS.get(r["role"], frozenset()), key=order.index)) or "viewing only")
+                           + "</td></tr>" for r in people)
+            design.html_block(design.section("", "Principals", note=f"{dir_rel} · shown to the server admin; passphrase hashes are never shown")
+                              + f'<table class="tc-table ap-matrix"><thead><tr><th>Principal</th><th>Role</th><th>May</th></tr></thead><tbody>{prow}</tbody></table>')
+            st.caption(md(f"Added or changed on the server only, never from this page: {common.ADD_PRINCIPAL_CMD} · demo set: {common.SEED_DEMO_CMD}"))
 
         # 3. the audit log, latest refusal first
         n_ref = sum(refusals.values())
@@ -793,7 +804,7 @@ if t_gates.open:
                              hide_index=True, width="stretch", column_config={"exposure_usd": st.column_config.NumberColumn("Exposure", format="dollar")})
                 _, dets_why = common.optional_import("engine.detectors")
                 why = dets_why or ("read-only deployment" if ro else None) or ("Sign in first" if session is None else None) or \
-                    (None if session.role == "fraud_manager" else "Needs a fraud manager")
+                    (None if session.role in approvals_db.roles_with("approve_detector") else "Needs a fraud manager or the server admin")
                 if why:
                     design.html_block(f'<p class="tc ap-block">{glyph("gate")}<span>{esc(why)}</span></p>')
                 for p in props:

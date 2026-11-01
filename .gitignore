@@ -3,6 +3,8 @@
 ui/approvals*.sqlite
 # approver directory (scrypt hashes, server-side only; ui/approvals_db.py add-principal)
 ui/principals.json
+# demo passphrases written by `python -m ui.approvals_db seed-demo` (also outside the Docker build context)
+demo_accounts.local.txt
 # runs are local output, except the canonical final run (the source of cases/*.json), which the
 # dashboard and the Railway image show. `runs/*` rather than `runs/` so the exceptions can apply.
 runs/*

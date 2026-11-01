@@ -49,7 +49,7 @@ CUSTOM = "custom"
 SCHEMA_DIR = common.ROOT / "data" / "schemas"
 VARIANT_DIR = common.ROOT / "data" / "variant_bank_b"
 GRADER = common.ROOT / "data" / "raw" / "round2" / "grade.py"
-GATE_ROLES = ("team_lead", "fraud_manager")
+GATE_ROLES = tuple(approvals_db.roles_with("approve_migration"))
 # a defect or a drift is a data warning: orange for critical and high, grey below (red stays for fraud and hard actions)
 SEVERITY = {"critical": "orange", "high": "orange", "medium": "gray", "low": "gray"}
 VERIFIED_COLORS = {"yes": "green", "partly": "orange", "NO": "red", "—": "gray"}
@@ -496,7 +496,7 @@ if view == "drift":
         st.caption(md(f"{GATE_FILE} · as of {appr_p['as_of']}" if gate_here else f"{GATE_FILE} is not in this deployment ({appr_p['error'] or 'missing'})"))
         gate_why = (f"schema_engine.drift: {drift_err}" if drift_mod is None else None) or ("read-only deployment" if ro else None) \
             or ("Sign in first (identity menu in the top bar)" if session is None else None) \
-            or (None if session.role in GATE_ROLES else f"{session.role} cannot approve: needs team_lead or fraud_manager") \
+            or (None if session.role in GATE_ROLES else f"{session.role} cannot approve: needs {' or '.join(GATE_ROLES)}") \
             or (None if gate_status == "pending" else f"already {gate_word}")
 
         @st.dialog("Approve schema migration")

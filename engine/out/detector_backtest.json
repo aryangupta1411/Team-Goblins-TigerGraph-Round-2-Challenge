@@ -76,7 +76,7 @@
           }
         },
         "when": {
-          "at": "2026-11-01 17:41:43",
+          "at": "2026-11-02 04:13:33",
           "dataset": "hhgoa_round2_201607_201701"
         }
       }
@@ -120,7 +120,7 @@
           }
         },
         "when": {
-          "at": "2026-11-01 17:41:43",
+          "at": "2026-11-02 04:13:33",
           "dataset": "hhgoa_round2_201607_201701"
         }
       }
@@ -204,7 +204,7 @@
           }
         },
         "when": {
-          "at": "2026-11-01 17:41:43",
+          "at": "2026-11-02 04:13:33",
           "dataset": "hhgoa_round2_201607_201701"
         }
       }
@@ -296,7 +296,7 @@
           }
         },
         "when": {
-          "at": "2026-11-01 17:41:45",
+          "at": "2026-11-02 04:13:35",
           "dataset": "hhgoa_round2_201607_201701"
         }
       }
@@ -411,7 +411,7 @@
           }
         },
         "when": {
-          "at": "2026-11-01 17:41:45",
+          "at": "2026-11-02 04:13:35",
           "dataset": "hhgoa_round2_201607_201701"
         }
       }
@@ -505,7 +505,7 @@
           }
         },
         "when": {
-          "at": "2026-11-01 17:41:45",
+          "at": "2026-11-02 04:13:35",
           "dataset": "hhgoa_round2_201607_201701"
         }
       }
@@ -523,9 +523,9 @@
       "closed_case_true_positives": [],
       "closed_case_false_positives": 0,
       "legitimate_customers_acted_against": [],
-      "approval_status": "pending",
-      "approved_by": null,
-      "approved_at": null
+      "approval_status": "approved",
+      "approved_by": "manager@demo",
+      "approved_at": "2026-11-02 04:13:04"
     },
     {
       "proposal_id": "AUTO-DET-03",
@@ -538,9 +538,9 @@
       "closed_case_true_positives": [],
       "closed_case_false_positives": 0,
       "legitimate_customers_acted_against": [],
-      "approval_status": "pending",
-      "approved_by": null,
-      "approved_at": null
+      "approval_status": "approved",
+      "approved_by": "manager@demo",
+      "approved_at": "2026-11-02 04:13:04"
     },
     {
       "proposal_id": "AUTO-DET-04",
@@ -553,9 +553,9 @@
       "closed_case_true_positives": [],
       "closed_case_false_positives": 0,
       "legitimate_customers_acted_against": [],
-      "approval_status": "pending",
-      "approved_by": null,
-      "approved_at": null
+      "approval_status": "approved",
+      "approved_by": "manager@demo",
+      "approved_at": "2026-11-02 04:13:04"
     }
   ]
 }

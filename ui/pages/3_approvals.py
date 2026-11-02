@@ -843,14 +843,39 @@ if t_store.open:
             fb, fb_err = approvals_db.feedback_rows_ro(path=db_path), None
         except sqlite3.Error as exc:
             fb, fb_err = [], f"feedback log unreadable: {exc}"
-        with st.expander(f"Analyst feedback log ({len(fb)})"):
-            st.caption("Analyst accept / reject decisions on findings (Challenge 8): recorded, not yet used by the engine.")
+        fb_demo_path = common.ROOT / "engine" / "out" / "feedback_before_after.json"
+        fb_demo, _ = common._read_json(fb_demo_path) if fb_demo_path.is_file() else (None, "")
+        with st.expander(f"Challenge 8 · Analyst feedback loop ({len(fb)} in store · {len((fb_demo or {}).get('feedback_rows') or [])} in before/after re-run)", expanded=True):
+            st.caption("Analyst accept / reject decisions on findings (Challenge 8): read by engine/feedback.py and engine/scorecard.py on the next run (lifts detector floors on rejection and adjusts log-odds at card or customer scope).")
             if fb_err:
                 st.warning(md(fb_err))
             elif fb:
                 st.dataframe(fb, hide_index=True, width="stretch")
             else:
-                st.caption(md(f"No analyst feedback in {db_rel}."))
+                st.caption(md(f"No analyst feedback in {db_rel} yet."))
+            if isinstance(fb_demo, dict) and fb_demo.get("cases"):
+                st.markdown(f"**Measured Before → After Re-Run (`engine/out/feedback_before_after.json` · wrongly acted-against cases `{len(fb_demo.get('wrongly_acted_against_before') or [])}` → `{len(fb_demo.get('wrongly_acted_against_after') or [])}`)**")
+                fb_table = []
+                for cid_f, cdata in fb_demo["cases"].items():
+                    bef_f, aft_f = cdata.get("before") or {}, cdata.get("after") or {}
+                    causes = ", ".join(f"{x.get('finding_kind')} {x.get('decision')} ({x.get('scope')})" for x in (cdata.get("caused_by") or []))
+                    fb_table.append({
+                        "Case": cid_f,
+                        "Feedback recorded": causes,
+                        "Before (verdict · p · actions)": f"{bef_f.get('verdict')} ({bef_f.get('p')}) · {', '.join(bef_f.get('actions') or [])}",
+                        "After re-run (verdict · p · actions)": f"{aft_f.get('verdict')} ({aft_f.get('p')}) · {', '.join(aft_f.get('actions') or [])}",
+                    })
+                st.dataframe(fb_table, hide_index=True, width="stretch")
+            if not ro and session and session.role in approvals_db.FEEDBACK_ROLES:
+                fc1, fc2, fc3 = st.columns([1.2, 1.5, 1.3])
+                fb_case = fc1.selectbox("Case to reject finding on", ["HHG-019", "HHG-007"], key="fb_live_case")  # Round 1 closed cases only: the shared store feeds the engine, so never a submitted HHF case
+                fb_kind = fc2.selectbox("Finding to reject", ["fraud_verdict", "graph_neighbourhood"], key="fb_live_kind")
+                if fc3.button("Reject finding & re-score", key="fb_live_btn", type="primary", icon=":material/Sync:"):
+                    card_map = {"HHG-019": "C07987-K2", "HHG-007": "C09933-K1"}
+                    approvals_db.record_feedback(fb_case, card_map[fb_case], fb_kind, "rejected", session, "Rejected via UI analyst loop", path=db_path)
+                    from engine import feedback as eng_fb
+                    eng_fb.demo(common.ROOT / "engine" / "out" / "feedback_before_after.json")
+                    st.rerun()
 
 # --------------------------------------------------------------------------- #
 # The open dialog, if any                                                     #

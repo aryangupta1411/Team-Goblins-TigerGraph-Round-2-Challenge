@@ -1,10 +1,10 @@
 {
- "generated_at": "2026-11-01T18:19:03Z",
- "git_sha": "c2bcb296411a5e06ca0f5fec6e028433b37862f8",
+ "generated_at": "2026-11-02T04:57:28Z",
+ "git_sha": "f095eae1ff7822f86f3ab35da744980be0892a9a",
  "git_dirty": true,
- "git_root": "/Users/aryangupta1411/GIT PERSONAL/Tiger-graph-dev",
+ "git_root": "/Users/jayanth-gvs/Documents/Tiger-graph-dev",
  "command": "python -m ops.proof_snapshot",
- "python": "3.12.15",
+ "python": "3.12.9",
  "run_mode": "",
  "sections": {
   "attacks": {
@@ -56,7 +56,7 @@
      ],
      "clean_text": "Real-time model scored transaction 3660353 ($165.65, online) at 0.81. Review and decide. [record check: transaction 3660353 channel is in_person]",
      "blocked": true,
-     "observed": "answer: uncertain (p=0.3) -> CREATE_CASE, MONITOR_CARD, DECLINE_TRANSACTION, ESCALATE_TO_ANALYST; SAR not filed",
+     "observed": "answer: uncertain (p=0.3) -> CREATE_CASE, VERIFY_WITH_CUSTOMER, MONITOR_CARD, ESCALATE_TO_ANALYST; SAR not filed",
      "entity_ids": [
       "3660353"
      ]
@@ -466,7 +466,7 @@
   },
   "drift": {
    "migration_id": "round2_2017q1_migration",
-   "detected_at": "2026-11-01 18:19:03",
+   "detected_at": "2026-11-02 04:57:28",
    "drifts": [
     {
      "drift_id": "DRIFT-01",
@@ -509,7 +509,7 @@
        "sql": "SELECT TransactionID FROM txc WHERE TransactionID >= 3600000 LIMIT 25"
       },
       "when": {
-       "at": "2026-11-01 18:19:03",
+       "at": "2026-11-02 04:57:28",
        "dataset": "hhgoa_round2_201607_201701"
       }
      }
@@ -583,7 +583,7 @@
        "sql": "SELECT id FROM txc WHERE TransactionID IN (3660137, 3660142, 3660159, 3660164, 3660179, 3660198, 3660290, 3660296)"
       },
       "when": {
-       "at": "2026-11-01 18:19:03",
+       "at": "2026-11-02 04:57:28",
        "dataset": "hhgoa_round2_201607_201701"
       }
      }
@@ -664,7 +664,7 @@
        "sql": "SELECT case_id FROM cc WHERE case_id >= 'CC-5566' ORDER BY case_id"
       },
       "when": {
-       "at": "2026-11-01 18:19:03",
+       "at": "2026-11-02 04:57:28",
        "dataset": "hhgoa_round2_201607_201701"
       }
      }
@@ -712,19 +712,19 @@
        "sql": "SELECT id FROM txc WHERE TransactionID IN (3660351, 3660352, 3660353)"
       },
       "when": {
-       "at": "2026-11-01 18:19:03",
+       "at": "2026-11-02 04:57:28",
        "dataset": "hhgoa_round2_201607_201701"
       }
      }
     }
    ],
    "approval": {
-    "approved_at": null,
-    "approved_by": null,
+    "approved_at": "2026-11-02 04:13:04",
+    "approved_by": "manager@demo",
     "migration_id": "round2_2017q1_migration",
-    "notes": "Pending: the earlier record named fraud-manager@bank without an authenticated approver. Approve with `python -m schema_engine.cli approve --by <principal>` or on the Schema page after signing in.",
-    "role": null,
-    "status": "pending"
+    "notes": "Approved Round 2 January 2017 schema drift recovery and canonical remapping.",
+    "role": "fraud_manager",
+    "status": "approved"
    }
   },
   "dq": {
@@ -835,7 +835,7 @@
        "sql": "SELECT id FROM txc WHERE ts >= '2017-01-01' AND channel = 'online' AND NOT has_identity LIMIT 25"
       },
       "when": {
-       "at": "2026-11-01 18:19:03",
+       "at": "2026-11-02 04:57:29",
        "dataset": "hhgoa_round2_201607_201701"
       }
      }
@@ -871,7 +871,7 @@
        "sql": "SELECT id FROM txc WHERE ts >= '2017-01-01' AND channel = 'in_person' AND has_identity"
       },
       "when": {
-       "at": "2026-11-01 18:19:03",
+       "at": "2026-11-02 04:57:29",
        "dataset": "hhgoa_round2_201607_201701"
       }
      }
@@ -979,7 +979,7 @@
        "sql": "SELECT t.id FROM txc t JOIN card_feat c ON c.id = t.card_id WHERE t.ts >= '2017-01-01' AND c.card_type = 'unknown' LIMIT 25"
       },
       "when": {
-       "at": "2026-11-01 18:19:03",
+       "at": "2026-11-02 04:57:29",
        "dataset": "hhgoa_round2_201607_201701"
       }
      }
@@ -1050,7 +1050,7 @@
        "sql": "SELECT id FROM txc WHERE ts >= '2017-01-01' AND device_type = 'mobile' AND split_part(device_id, ' | ', 2) LIKE 'Windows%'"
       },
       "when": {
-       "at": "2026-11-01 18:19:03",
+       "at": "2026-11-02 04:57:29",
        "dataset": "hhgoa_round2_201607_201701"
       }
      }
@@ -1083,7 +1083,7 @@
        "sql": "SELECT card_id FROM txc WHERE ts < '2017-01-01' GROUP BY 1 HAVING count(*) < 20 LIMIT 25"
       },
       "when": {
-       "at": "2026-11-01 18:19:03",
+       "at": "2026-11-02 04:57:29",
        "dataset": "hhgoa_round2_201607_201701"
       }
      }
@@ -1186,7 +1186,7 @@
        "sql": "SELECT id FROM txc WHERE ts >= '2017-01-01' AND addr1 = '' LIMIT 25"
       },
       "when": {
-       "at": "2026-11-01 18:19:03",
+       "at": "2026-11-02 04:57:29",
        "dataset": "hhgoa_round2_201607_201701"
       }
      }
@@ -1929,7 +1929,7 @@
       }
      },
      "when": {
-      "at": "2026-11-01 18:19:03",
+      "at": "2026-11-02 04:57:29",
       "dataset": "gsql:Bank_ISO20022"
      }
     },
@@ -2898,7 +2898,7 @@
       }
      },
      "when": {
-      "at": "2026-11-01 18:19:03",
+      "at": "2026-11-02 04:57:29",
       "dataset": "gsql:Bank_BIAN"
      }
     },
@@ -3855,7 +3855,7 @@
       }
      },
      "when": {
-      "at": "2026-11-01 18:19:03",
+      "at": "2026-11-02 04:57:29",
       "dataset": "gsql:Bank_CoreT24"
      }
     },
@@ -4231,7 +4231,7 @@
   },
   "variant": {
    "variant_dir": "data/variant_bank_b",
-   "discovered_at": "2026-11-01 18:19:04",
+   "discovered_at": "2026-11-02 04:57:29",
    "table_roles": {
     "bank_b_alerts.csv": "case_pack",
     "bank_b_ledger.csv": "transactions",
@@ -4293,7 +4293,7 @@
        }
       },
       "when": {
-       "at": "2026-11-01 18:19:04",
+       "at": "2026-11-02 04:57:29",
        "dataset": "variant:variant_bank_b"
       }
      }
@@ -4353,7 +4353,7 @@
        }
       },
       "when": {
-       "at": "2026-11-01 18:19:04",
+       "at": "2026-11-02 04:57:29",
        "dataset": "variant:variant_bank_b"
       }
      }
@@ -4413,7 +4413,7 @@
        }
       },
       "when": {
-       "at": "2026-11-01 18:19:04",
+       "at": "2026-11-02 04:57:29",
        "dataset": "variant:variant_bank_b"
       }
      }
@@ -4473,7 +4473,7 @@
        }
       },
       "when": {
-       "at": "2026-11-01 18:19:04",
+       "at": "2026-11-02 04:57:29",
        "dataset": "variant:variant_bank_b"
       }
      }
@@ -4533,7 +4533,7 @@
        }
       },
       "when": {
-       "at": "2026-11-01 18:19:04",
+       "at": "2026-11-02 04:57:29",
        "dataset": "variant:variant_bank_b"
       }
      }
@@ -4593,7 +4593,7 @@
        }
       },
       "when": {
-       "at": "2026-11-01 18:19:04",
+       "at": "2026-11-02 04:57:29",
        "dataset": "variant:variant_bank_b"
       }
      }
@@ -4653,7 +4653,7 @@
        }
       },
       "when": {
-       "at": "2026-11-01 18:19:04",
+       "at": "2026-11-02 04:57:29",
        "dataset": "variant:variant_bank_b"
       }
      }
@@ -4713,7 +4713,7 @@
        }
       },
       "when": {
-       "at": "2026-11-01 18:19:04",
+       "at": "2026-11-02 04:57:29",
        "dataset": "variant:variant_bank_b"
       }
      }
@@ -4773,7 +4773,7 @@
        }
       },
       "when": {
-       "at": "2026-11-01 18:19:04",
+       "at": "2026-11-02 04:57:29",
        "dataset": "variant:variant_bank_b"
       }
      }
@@ -4833,7 +4833,7 @@
        }
       },
       "when": {
-       "at": "2026-11-01 18:19:04",
+       "at": "2026-11-02 04:57:29",
        "dataset": "variant:variant_bank_b"
       }
      }
@@ -4893,7 +4893,7 @@
        }
       },
       "when": {
-       "at": "2026-11-01 18:19:04",
+       "at": "2026-11-02 04:57:29",
        "dataset": "variant:variant_bank_b"
       }
      }
@@ -4953,7 +4953,7 @@
        }
       },
       "when": {
-       "at": "2026-11-01 18:19:04",
+       "at": "2026-11-02 04:57:29",
        "dataset": "variant:variant_bank_b"
       }
      }
@@ -5013,7 +5013,7 @@
        }
       },
       "when": {
-       "at": "2026-11-01 18:19:04",
+       "at": "2026-11-02 04:57:29",
        "dataset": "variant:variant_bank_b"
       }
      }
@@ -5073,7 +5073,7 @@
        }
       },
       "when": {
-       "at": "2026-11-01 18:19:04",
+       "at": "2026-11-02 04:57:29",
        "dataset": "variant:variant_bank_b"
       }
      }
@@ -5133,7 +5133,7 @@
        }
       },
       "when": {
-       "at": "2026-11-01 18:19:04",
+       "at": "2026-11-02 04:57:29",
        "dataset": "variant:variant_bank_b"
       }
      }
@@ -5193,7 +5193,7 @@
        }
       },
       "when": {
-       "at": "2026-11-01 18:19:04",
+       "at": "2026-11-02 04:57:29",
        "dataset": "variant:variant_bank_b"
       }
      }
@@ -5253,7 +5253,7 @@
        }
       },
       "when": {
-       "at": "2026-11-01 18:19:04",
+       "at": "2026-11-02 04:57:29",
        "dataset": "variant:variant_bank_b"
       }
      }
@@ -5313,7 +5313,7 @@
        }
       },
       "when": {
-       "at": "2026-11-01 18:19:04",
+       "at": "2026-11-02 04:57:29",
        "dataset": "variant:variant_bank_b"
       }
      }
@@ -5373,7 +5373,7 @@
        }
       },
       "when": {
-       "at": "2026-11-01 18:19:04",
+       "at": "2026-11-02 04:57:29",
        "dataset": "variant:variant_bank_b"
       }
      }
@@ -5433,7 +5433,7 @@
        }
       },
       "when": {
-       "at": "2026-11-01 18:19:04",
+       "at": "2026-11-02 04:57:29",
        "dataset": "variant:variant_bank_b"
       }
      }
@@ -5493,7 +5493,7 @@
        }
       },
       "when": {
-       "at": "2026-11-01 18:19:04",
+       "at": "2026-11-02 04:57:29",
        "dataset": "variant:variant_bank_b"
       }
      }
@@ -5553,7 +5553,7 @@
        }
       },
       "when": {
-       "at": "2026-11-01 18:19:04",
+       "at": "2026-11-02 04:57:29",
        "dataset": "variant:variant_bank_b"
       }
      }
@@ -5613,7 +5613,7 @@
        }
       },
       "when": {
-       "at": "2026-11-01 18:19:04",
+       "at": "2026-11-02 04:57:29",
        "dataset": "variant:variant_bank_b"
       }
      }
@@ -5673,7 +5673,7 @@
        }
       },
       "when": {
-       "at": "2026-11-01 18:19:04",
+       "at": "2026-11-02 04:57:29",
        "dataset": "variant:variant_bank_b"
       }
      }
@@ -5733,7 +5733,7 @@
        }
       },
       "when": {
-       "at": "2026-11-01 18:19:04",
+       "at": "2026-11-02 04:57:29",
        "dataset": "variant:variant_bank_b"
       }
      }
@@ -5793,7 +5793,7 @@
        }
       },
       "when": {
-       "at": "2026-11-01 18:19:04",
+       "at": "2026-11-02 04:57:29",
        "dataset": "variant:variant_bank_b"
       }
      }
@@ -5853,7 +5853,7 @@
        }
       },
       "when": {
-       "at": "2026-11-01 18:19:04",
+       "at": "2026-11-02 04:57:29",
        "dataset": "variant:variant_bank_b"
       }
      }
@@ -22960,15 +22960,15 @@
  },
  "errors": {},
  "timings_s": {
-  "attacks": 0.567,
-  "intake_scans": 0.002,
-  "drift": 0.014,
-  "dq": 0.051,
-  "gsql": 0.051,
-  "variant": 0.021,
-  "containment_plans": 0.218,
+  "attacks": 0.351,
+  "intake_scans": 0.003,
+  "drift": 0.028,
+  "dq": 0.342,
+  "gsql": 0.038,
+  "variant": 0.028,
+  "containment_plans": 0.266,
   "c3_built": 0.0,
   "facts": 0.005,
-  "scorecard": 0.011
+  "scorecard": 0.028
  }
 }

@@ -27,6 +27,11 @@ The live command calls `typology_scan` on the workspace for the January detector
 | Embeddings (`BAAI/bge-large-en-v1.5`, local) | Vectors for closed cases, agent cases and policy chunks | Nothing: runs on this machine. Needs `RUN_MODE=live`; under `RUN_MODE=mock` `rag.embed` writes hashed stand-in vectors by design. |
 | OFAC screening (`rapidfuzz` over a checked-in SDN snapshot) | Subject screening in P8 | Nothing. |
 | Approval inbox (`ui/approvals.sqlite`, approver directory `ui/principals.json`) | Server-side authentication and RBAC, immutable decisions, append-only audit log, mirrored to `Approval` vertices | Nothing. |
+| Google Fonts (`fonts.googleapis.com`; `.streamlit/config.toml`, `ui/pages/10_live_architecture.py`, `architecture/index.html`) | Typefaces for the dashboard and architecture page, fetched by the viewer's browser | The viewer's IP address and browser headers go to Google. No case, customer or graph data, and the agent and the server never call it. |
+| Regulatory corpus download (`rag.fetch_corpus`, FinCEN and OFAC files) | Offline build step that produced the checked-in policy corpus and SDN snapshot | Nothing from the bank: plain downloads of public files. Not run at runtime or in a case run. |
+| Hugging Face Hub (`BAAI/bge-large-en-v1.5`, Docker build only) | The embedding model is downloaded once into the image; the running container sets `HF_HUB_OFFLINE=1` | Nothing from the bank: a model download at build time only. |
+
+Gemini data terms: the submitted run used the paid Gemini API tier (cost per case in `SUBMISSION.md` uses paid-tier prices). We rely on Google's published paid-tier terms for prompt retention and training use; we have not negotiated a separate agreement. Nothing is sent to Gemini beyond the masked inputs listed in the LLM row.
 
 ## Fail-closed behaviour under the drills
 

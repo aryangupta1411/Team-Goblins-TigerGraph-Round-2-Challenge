@@ -139,6 +139,7 @@ def demo(out_path: Path) -> dict:
     case_ids = DEMO_CASES
     with tempfile.TemporaryDirectory() as td:
         db, directory = Path(td) / "approvals.sqlite", Path(td) / "principals.json"
+        saved = {k: os.environ.get(k) for k in ("APPROVALS_DB", "ENGINE_FEEDBACK")}
         os.environ["APPROVALS_DB"] = str(db)
         os.environ.pop("ENGINE_FEEDBACK", None)
         before = _run(case_ids)
@@ -147,7 +148,11 @@ def demo(out_path: Path) -> dict:
         for case_id, card, kind, decision, reason in DEMO_FEEDBACK:
             adb.record_feedback(case_id, card or before[case_id]["card_id"], kind, decision, lead, reason, db)
         after = _run(case_ids)
-        os.environ.pop("APPROVALS_DB", None)
+        for k, v in saved.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
     rejected = {c for c, _, _, d, _ in DEMO_FEEDBACK if d == "rejected"}
     wrong_before = sorted(c for c, v in before.items() if c in rejected and v["acted_against"])
     wrong_after = sorted(c for c, v in after.items() if c in rejected and v["acted_against"])

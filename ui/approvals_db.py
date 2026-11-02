@@ -73,6 +73,11 @@ CREATE TABLE IF NOT EXISTS analyst_feedback (
     reason       TEXT NOT NULL DEFAULT '',
     at           TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS notification_recipients (
+    phone    TEXT PRIMARY KEY,
+    name     TEXT NOT NULL DEFAULT '',
+    added_at TEXT NOT NULL
+);
 -- Guideline "approvals not editable afterwards", enforced by the database itself, not only by this module.
 CREATE TRIGGER IF NOT EXISTS approvals_immutable BEFORE UPDATE ON approvals
 WHEN OLD.status != 'pending'
@@ -481,6 +486,17 @@ def decide(
 def _lifecycle_after_decision(row: dict, path: str | os.PathLike | None) -> None:
     """Record the decision as a case state change and close the case once nothing is pending (agent/lifecycle.py).
     The decision itself is already committed; a lifecycle failure is logged to the audit log, never raised."""
+    try:
+        from ops.notify import notify_approval_decision
+        notify_approval_decision(
+            case_id=row["case_id"],
+            action=row["action"],
+            route=row["route"],
+            status=row["status"],
+            actor=row.get("decided_by") or "unknown",
+        )
+    except Exception:
+        pass
     try:
         from agent import lifecycle
         lifecycle.on_approval_decided(row, path=path)

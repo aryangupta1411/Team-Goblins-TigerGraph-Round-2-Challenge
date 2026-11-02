@@ -7,15 +7,24 @@ asks for is listed here, each with where to find it and how it was checked.
 
 | Brief asks for | Where | Checked |
 |---|---|---|
-| Frozen commit | The final pushed commit of `main`, tagged [`round2-freeze`](https://github.com/aryangupta1411/Team-Goblins-TigerGraph-Round-2-Challenge/tree/round2-freeze); its hash is the one we hand over at the freeze. The answers were produced at [`c2bcb29`](https://github.com/aryangupta1411/Team-Goblins-TigerGraph-Round-2-Challenge/commit/c2bcb296411a5e06ca0f5fec6e028433b37862f8), tagged [`hhf-final-3-run`](https://github.com/aryangupta1411/Team-Goblins-TigerGraph-Round-2-Challenge/tree/hhf-final-3-run), and the decision code is unchanged between the two ([below](#what-changed-between-the-run-and-the-freeze)) | `runs/hhf-final-3/run_manifest.json` records `c2bcb29` with `git_dirty: false` for the run's one invocation and all 18 cases, run from a clean detached worktree; `engine.run_cases` at the freeze reproduces all 18 answers |
+| Frozen commit | The final pushed commit of `main`, tagged [`round2-freeze`](https://github.com/aryangupta1411/Team-Goblins-TigerGraph-Round-2-Challenge/tree/round2-freeze); its hash is the one we hand over at the freeze. The answers were produced at [`05bc21d`](https://github.com/aryangupta1411/Team-Goblins-TigerGraph-Round-2-Challenge/commit/05bc21de1e5ad0f3f81e75d515131f036377efff), tagged [`hhf-final-3-run`](https://github.com/aryangupta1411/Team-Goblins-TigerGraph-Round-2-Challenge/tree/hhf-final-3-run), and the decision code is unchanged between the two ([below](#what-changed-between-the-run-and-the-freeze)) | `runs/hhf-final-3/run_manifest.json` records `c2bcb29` (`05bc21d` since the history rewrite, see [Commit hashes](#commit-hashes)) with `git_dirty: false` for the run's one invocation and all 18 cases, run from a clean detached worktree; `engine.run_cases` at the freeze reproduces all 18 answers |
 | 18 answers produced by the frozen code | [`cases/HHF-001.json`](cases/HHF-001.json) … `HHF-018.json`, per-case table in [`cases/MANIFEST.md`](cases/MANIFEST.md) | byte-identical to `runs/hhf-final-3/HHF-*/answer.json`; validator: 0 problems; the organisers' `grade.py` (sha256 b27e39ce…44b3): 18 / 18 clean, 0 hard, 0 policy, 1 warning |
 | The run behind them | [`runs/hhf-final-3/`](runs/hhf-final-3/): `answer.json`, `calls.jsonl`, `phases.jsonl` and `sar.md` per case, `run_manifest.json`, `provenance.json`, `_guard/` | one live run on `gemini-3.6-flash` against FraudGraph through MCP, 18 / 18 with no failure; tracked-file fingerprints (747 files) identical before and after (`provenance.json`, `code.list_sha256`); identical to the offline engine at the same commit |
-| One clean-clone, single-case command | [below](#clean-clone-one-command-one-case) | run on 2026-11-01 from a fresh clone of this repository (`main` at `40ad6ae`): 31 s, 0 validator problems; CI runs it on Ubuntu |
+| One clean-clone, single-case command | [below](#clean-clone-one-command-one-case) | run on 2026-11-01 from a fresh clone of this repository (`main` at `ac248db`): 31 s, 0 validator problems; CI runs it on Ubuntu |
 | One-page resilience statement | [`docs/RESILIENCE.md`](docs/RESILIENCE.md) | |
 | Innovation claim | [`docs/INNOVATION.md`](docs/INNOVATION.md) | every number names the file or command it comes from |
 | Live demo | https://team-goblins-tigergraph-round-2-challenge-production.up.railway.app | [below](#live-deployment) |
 | 5-minute demo script | [`docs/demo_script.md`](docs/demo_script.md) | |
 | Architecture | [`architecture/README.md`](architecture/README.md), [`architecture/architecture.svg`](architecture/architecture.svg) | |
+
+
+## Commit hashes
+
+On 2026-11-02 this repository's history was rewritten to remove a co-author line from commit messages. Files, authors
+and dates are unchanged; every commit hash changed (tags moved with them). Run records keep the hashes they were written
+with: `c2bcb29` in `runs/hhf-final-3/run_manifest.json` is `05bc21d` here (tag `hhf-final-3-run`), and hashing every
+tracked file at `05bc21d` reproduces the run's recorded fingerprint `77ecb484…`. Every old → new hash:
+[`docs/COMMIT_MAP.md`](docs/COMMIT_MAP.md).
 
 ## Clean clone: one command, one case
 
@@ -49,9 +58,9 @@ RUN_MODE=live LLM_BACKEND=gemini MODEL=gemini-3.6-flash uv run python -m agent.b
 | Per case | latency median 62.7 s (p95 84.2 s), tokens median 202,270 (p95 318,654; 3,907,730 in all), tool calls median 21 (p95 25) |
 | Cost per case | p50 $0.10, p95 $0.18, $1.96 for 18 cases (Gemini paid-tier prices read 2026-11-01; `engine/out/cost_latency.json`) |
 
-This run supersedes `runs/hhf-final-2` (commit `8dc9e07`): the verdicts are the same, HHF-008 no longer carries
+This run supersedes `runs/hhf-final-2` (commit `0010621`): the verdicts are the same, HHF-008 no longer carries
 `DECLINE_TRANSACTION`, and `sar.md` is the cited filing. `hhf-final-2` superseded the earliest run, `runs/hhf-final`
-(commit `b397c2c`, `gemini-2.5-flash`), kept in the repository; the engine change between those two moved four verdicts:
+(commit `6945275`, `gemini-2.5-flash`), kept in the repository; the engine change between those two moved four verdicts:
 HHF-008 legitimate → uncertain, HHF-010 and HHF-014 uncertain → legitimate, HHF-013 uncertain → fraud. Before this run
 the `hhf-final-2` write-backs were deleted from the graph. Every figure here is sourced in
 [`README.md`](README.md#results-of-the-promoted-run-runshhf-final-3).
@@ -75,7 +84,7 @@ Deploy instructions and every variable: [`README.md`](README.md#deploy-on-railwa
 
 ## What the frozen commit contains
 
-The answers were produced at `c2bcb29`. Since the previous run (`hhf-final-2`, `8dc9e07`) the answer path gained:
+The answers were produced at `05bc21d`. Since the previous run (`hhf-final-2`, `0010621`) the answer path gained:
 
 - `agent/sar_doc.py` and `agent/phase_machine.py` (`_write_sar_md`): `sar.md` is a fileable filing with every
   sentence cited (59 / 59), a timeline and a Mermaid evidence graph (Challenge 4). The answer's `sar` object is unchanged.
@@ -97,19 +106,19 @@ The answers were produced at `c2bcb29`. Since the previous run (`hhf-final-2`, `
 ## What changed between the run and the freeze
 
 The freeze (`round2-freeze`) is the final pushed commit, so all the work above and the commits after the run count.
-Between `c2bcb29` and the freeze:
+Between `05bc21d` and the freeze:
 
-- `3152d89`: the graph page redesign (icon nodes in semantic colours, the case layer in live mode, a full-screen view)
+- `09426c4`: the graph page redesign (icon nodes in semantic colours, the case layer in live mode, a full-screen view)
   and a light theme on every page;
-- `dc079e2`: the proof board reads the measured evidence (Challenges 2, 3, 8, 9, 12, 13), and cost per case on Gemini 3.6
+- `f4fa85b`: the proof board reads the measured evidence (Challenges 2, 3, 8, 9, 12, 13), and cost per case on Gemini 3.6
   Flash prices (`agent/pricing.py`, `ops/cost_report.py`, `engine/out/cost_latency.json`);
-- `a29ac25`: Challenge 13 in the dashboard (upload or generate a variant, the attested mapping, run on variant, accept or
+- `10dcac5`: Challenge 13 in the dashboard (upload or generate a variant, the attested mapping, run on variant, accept or
   reject the mapping);
-- `3bfde5f` and later: the promotion of `hhf-final-3` and documentation.
+- `cc33926` and later: the promotion of `hhf-final-3` and documentation.
 
 On the answer path (`agent/`, `engine/`, `graph/`, `mcp/`, `rag/`, `policy/`, `etl/`, `schema_engine/`) the only code
 change is `agent/pricing.py`, which only the cost report and the Runs page import; `agent.bench` never reads it. The
 rest is regenerated outputs under `engine/out/`. Checked at the freeze: `engine.run_cases` gives the same verdict,
 pattern, SAR decision and final actions with routes as `cases/HHF-*.json` on all 18 cases, probability within 0.10, as
-it does at `c2bcb29`. `git diff hhf-final-3-run round2-freeze -- agent/ engine/ graph/ mcp/ rag/ policy/ etl/ schema_engine/`
+it does at `05bc21d`. `git diff hhf-final-3-run round2-freeze -- agent/ engine/ graph/ mcp/ rag/ policy/ etl/ schema_engine/`
 shows every change.

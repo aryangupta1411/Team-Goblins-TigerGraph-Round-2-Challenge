@@ -22,7 +22,7 @@ case_pack_final.csv ──► agent/security.py (Prompt-Injection Shield + Trigg
                     engine/ (Deterministic Scorecard · D1–D4 Wave Detectors · Policy Gate R1–R10 · VoI · Simulator)
                               │
                               ▼
-                    cases/HHF-001..018.json (run hhf-final-3, commit c2bcb29) + Graph Write-Back + RBAC Approvals Inbox
+                    cases/HHF-001..018.json (run hhf-final-3, commit 05bc21d) + Graph Write-Back + RBAC Approvals Inbox
 ```
 
 | Stage / Phase | Subsystem | Authority | What Happens |

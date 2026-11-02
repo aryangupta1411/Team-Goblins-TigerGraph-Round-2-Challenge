@@ -18,11 +18,11 @@ is quoted from memory.
    submitted run did so on all 18 cases (`runs/hhf-final-3/*/calls.jsonl`). Confirm the query is still there before the
    demo with `graph/check_typology_parity.py --installed`, which is read-only. If it is missing, a live re-run stops
    with `CaseDataMissing` and writes no answer, which is the fail-closed drill below.
-6. Know the run's history, in case a judge asks. The submitted run `runs/hhf-final-3` (commit `c2bcb29`, clean
+6. Know the run's history, in case a judge asks. The submitted run `runs/hhf-final-3` (commit `05bc21d`, clean
    detached worktree, `gemini-3.6-flash`) completed 18 / 18 in one invocation with no failure. It replaced
-   `runs/hhf-final-2` (`8dc9e07`): same verdicts, but HHF-008 no longer carries `DECLINE_TRANSACTION` (the R4 decline
+   `runs/hhf-final-2` (`0010621`): same verdicts, but HHF-008 no longer carries `DECLINE_TRANSACTION` (the R4 decline
    waits on a real reply) and `sar.md` is now the cited filing. `hhf-final-2` had replaced the earliest run,
-   `runs/hhf-final` (`b397c2c`, `gemini-2.5-flash`), after an engine change moved four verdicts (HHF-008 → uncertain,
+   `runs/hhf-final` (`6945275`, `gemini-2.5-flash`), after an engine change moved four verdicts (HHF-008 → uncertain,
    HHF-010 and HHF-014 → legitimate, HHF-013 → fraud with a SAR). That earliest run's one incident is the fail-closed
    example: Gemini returned degenerate P5 output for HHF-005 three times, the case failed with no answer, and
    `--resume` re-ran it (`runs/hhf-final/provenance.json`, `failed_attempt`; `docs/RESILIENCE.md`).

@@ -26,7 +26,7 @@ No keys, no graph, no dataset download. The 18 cases and the base + January fact
 git clone https://github.com/aryangupta1411/Team-Goblins-TigerGraph-Round-2-Challenge.git Team-Goblins && cd Team-Goblins && make install && RUN_MODE=mock uv run python -m agent.bench --cases HHF-004 --run-id drill-1 --mock && uv run python -m agent.validator --db data/ids.duckdb runs/drill-1/HHF-004/answer.json
 ```
 
-Run on 2026-11-01 from a fresh clone of `main` (`40ad6ae`): 31 s including `make install` with a warm uv cache, 0
+Run on 2026-11-01 from a fresh clone of `main` (`ac248db`): 31 s including `make install` with a warm uv cache, 0
 validator problems. The answer lands in `runs/drill-1/HHF-004/`. In mock mode the model replies are recorded fixtures and the facts come from
 DuckDB (including the DuckDB twin of the January typology scan). CI runs the same drill on Ubuntu (step "Final Round
 clean-clone drill" in `.github/workflows/ci.yml`).
@@ -43,12 +43,12 @@ the case stops with `CaseDataMissing` and writes no answer (see [the typology sc
 ### Results of the promoted run `runs/hhf-final-3`
 
 The 18 files in `cases/HHF-*.json` are byte-identical to `runs/hhf-final-3/HHF-*/answer.json`. They come from one live run
-against FraudGraph through MCP on `gemini-3.6-flash`, from commit `c2bcb29` (tag `hhf-final-3-run`) in a clean detached worktree
+against FraudGraph through MCP on `gemini-3.6-flash`, from commit `05bc21d` (tag `hhf-final-3-run`) in a clean detached worktree
 (`git_dirty: false`): one invocation, 2026-11-01 23:42:21 to 2026-11-02 00:01:37, 18 / 18 completed, 0 failed, nothing
 resumed. Every tracked file (747) was hashed before and after the run, and the two lists are identical
 (`runs/hhf-final-3/provenance.json`, `code.list_sha256`; `runs/hhf-final-3/_guard/`).
 
-It supersedes `runs/hhf-final-2` (commit `8dc9e07`), which superseded `runs/hhf-final` (commit `b397c2c`,
+It supersedes `runs/hhf-final-2` (commit `0010621`), which superseded `runs/hhf-final` (commit `6945275`,
 `gemini-2.5-flash`); both are kept for the record. The engine change from `hhf-final` to `hhf-final-2` follows the raw
 January data on four cases: HHF-008 legitimate → uncertain, HHF-010 and HHF-014 uncertain → legitimate, HHF-013
 uncertain → fraud. From `hhf-final-2` to `hhf-final-3` the verdicts are unchanged; HHF-008's final set drops
@@ -93,11 +93,11 @@ Sources: the `tool_calls`, `tokens` and `latency_s` fields of the 18 `runs/hhf-f
 
 Sources: `runs/hhf-final-3/HHF-*/calls.jsonl` (fields `kind`, `model`, `caller`, `name`, `ok`); `runs/hhf-final-3/run_manifest.json`. The graph counts are `graph_at_end` in `runs/hhf-final-3/provenance.json` (read-only listing). An answer's `tool_calls` counts the harness and model rows (303 + 66 = 369), not the write-backs.
 
-**Agreement with the deterministic engine.** `engine.run_cases`, re-run offline at `c2bcb29`, gives the same verdict,
+**Agreement with the deterministic engine.** `engine.run_cases`, re-run offline at `05bc21d`, gives the same verdict,
 pattern, SAR decision and final action set with routes as `runs/hhf-final-3` on all 18 cases, and a probability within
 0.10 on all 18. This shows self-consistency, not accuracy: the organisers hold the answer key.
 
-Source: `uv run python -m engine.run_cases --cases HHF-001 … HHF-018 --out <dir> --sheet <dir>/sheet.md` in a checkout of `c2bcb29`, with each `<dir>/HHF-*.draft.json` compared to `runs/hhf-final-3/HHF-*/answer.json`.
+Source: `uv run python -m engine.run_cases --cases HHF-001 … HHF-018 --out <dir> --sheet <dir>/sheet.md` in a checkout of `05bc21d`, with each `<dir>/HHF-*.draft.json` compared to `runs/hhf-final-3/HHF-*/answer.json`.
 
 **Live workspace.** FraudGraph holds July 2016 to January 2017. `uv run python -m ops.check_live_counts` compares the
 live vertex and edge counts with `expected_after` in `data/out_delta/delta_manifest.json`, which covers 18 types
@@ -240,7 +240,7 @@ make test lint
 
 These are the Round 1 numbers, not the Final Round ones. The 20 files `cases/HHG-*.json` are byte-identical to
 `runs/live-final-2/HHG-*/answer.json`. That run is one live pass against TigerGraph through MCP, from commit
-`be03533` with no local changes (`git_dirty: false`), with all 100 model calls on `claude-sonnet-5` (subscription
+`50f227f` with no local changes (`git_dirty: false`), with all 100 model calls on `claude-sonnet-5` (subscription
 backend `cli`). [`cases/MANIFEST.md`](cases/MANIFEST.md) has the per-case rows. The ordered rerun commands are in
 [`docs/RERUN.md`](docs/RERUN.md).
 

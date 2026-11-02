@@ -9,7 +9,7 @@ git clone https://github.com/aryangupta1411/Team-Goblins-TigerGraph-Round-2-Chal
 ```
 
 That writes `runs/drill-1/HHF-004/{answer.json,calls.jsonl,phases.jsonl,sar.md}` and validates it. Run on 2026-11-01
-from a fresh clone of `main` (`40ad6ae`): 31 s, 0 validator problems. CI runs the same drill (`.github/workflows/ci.yml`, step "Final Round clean-clone drill"). The same case against the live graph and a real model (needs `TG_HOST`, `TG_SECRET` and, for Gemini, `GEMINI_API_KEY` in `.env`):
+from a fresh clone of `main` (`ac248db`): 31 s, 0 validator problems. CI runs the same drill (`.github/workflows/ci.yml`, step "Final Round clean-clone drill"). The same case against the live graph and a real model (needs `TG_HOST`, `TG_SECRET` and, for Gemini, `GEMINI_API_KEY` in `.env`):
 
 ```bash
 RUN_MODE=live LLM_BACKEND=gemini uv run python -m agent.bench --cases HHF-004 --run-id live-drill-1
@@ -38,19 +38,19 @@ The live command calls `typology_scan` on the workspace for the January detector
 | Hostile or invalid input (trigger text, stored notes, tool rows) | Text is NFKC-normalised and zero-width characters are removed, and every sentence carrying an instruction is dropped before the model sees it. Channel and amount claims are checked against the transaction record. Customer-visible `evidence_requests` are checked for tip-off terms (report, SAR, regulator, AML, law enforcement). The engine's decision never reads free text. `run_attack_ablation()` blocks 23 / 23 attacks (6 planted in the pack, 17 synthetic), and `sanitize_trigger_text` raises 0 false alarms on the 12 HHF triggers that carry no injection. | `CaseEvent(kind=security_alert)`; `phases.jsonl` codes `INJ_*`, `SPOOF_*` |
 | Approval by the wrong role, or editing a decided approval | `decide()` accepts only a session minted by `authenticate()` (scrypt passphrase, server-side directory). The role comes from the directory, never from the request. A team lead decides L1 only; L2 needs a fraud manager. SQLite triggers refuse any update or delete of a decided approval or of the audit log, and there is no reopen. With no directory file, nobody can approve. | `approval_audit_log`: `ok` / `denied_auth` / `denied_rbac` / `denied_immutable`, actor, role, time |
 | A visitor on the public deployment tries to start a run or change its workspace | The Run console refuses unless the session was minted by `authenticate()` and its role holds `run_live` (team lead, fraud manager, admin); another workspace and own-data loads need an admin. Runs from the deployment write `AC-web-<case>` (`AGENT_CASE_NAMESPACE`), so they can never overwrite the submitted `AC-<case>` write-backs. | the refusal on the page; `approval_audit_log` for sign-ins |
-| The same case run twice, or resumed after a failure | Engine output is deterministic: two consecutive `engine.run_cases` runs over HHF-001 … HHF-018 (checked on the previous frozen commit `8dc9e07`) give identical drafts apart from `latency_s`, and at the frozen commit `c2bcb29` the engine matches the live run's verdict, pattern, SAR decision and final actions with routes on all 18, probability within 0.10. Graph writes are keyed upserts (`AC-<case>`, `AC-<case>-<seq>`, `AP-AC-<case>-<ACTION>`). Case memory excludes the case's own agent case and every case opened at or after it. `written_to_graph` is true only when the `AgentCase` upsert succeeded. | `run_manifest.json` (git SHA, dirty flag, prompt hashes, per-case invocations) |
+| The same case run twice, or resumed after a failure | Engine output is deterministic: two consecutive `engine.run_cases` runs over HHF-001 … HHF-018 (checked on the previous frozen commit `0010621`) give identical drafts apart from `latency_s`, and at the frozen commit `05bc21d` the engine matches the live run's verdict, pattern, SAR decision and final actions with routes on all 18, probability within 0.10. Graph writes are keyed upserts (`AC-<case>`, `AC-<case>-<seq>`, `AP-AC-<case>-<ACTION>`). Case memory excludes the case's own agent case and every case opened at or after it. `written_to_graph` is true only when the `AgentCase` upsert succeeded. | `run_manifest.json` (git SHA, dirty flag, prompt hashes, per-case invocations) |
 
 ## What happened in the submitted run
 
-`runs/hhf-final-3` ran from commit `c2bcb29` in a clean detached worktree with no local changes (`git_dirty: false`),
+`runs/hhf-final-3` ran from commit `05bc21d` in a clean detached worktree with no local changes (`git_dirty: false`),
 in one invocation, 2026-11-01 23:42:21 to 2026-11-02 00:01:37, on `gemini-3.6-flash`: 18 / 18 cases answered, 0 failed,
 nothing resumed. Every tracked file (747) was hashed before and after the run into `_guard/`, and the two lists are
 identical (`code.list_sha256` in `provenance.json`). All 272 write-back calls were `ok`, and the graph then held 18
 `AgentCase`, 121 HHF `CaseEvent`s and 16 HHF `Approval`s (`graph_at_end`). Before the run, the 156 write-backs of the
-run it replaces, `hhf-final-2` (`8dc9e07`), were deleted, plus 3 that survived the first pass (`graph_before_run`), so a
+run it replaces, `hhf-final-2` (`0010621`), were deleted, plus 3 that survived the first pass (`graph_before_run`), so a
 later case's memory could not retrieve an earlier run's answer for the same alert.
 
-**The fail-closed path, as it happened in the earliest superseded run.** `runs/hhf-final` (commit `b397c2c`,
+**The fail-closed path, as it happened in the earliest superseded run.** `runs/hhf-final` (commit `6945275`,
 `gemini-2.5-flash`, kept in the repository) ran in two invocations. In the main run, Gemini's P5 structured output for
 HHF-005 failed validation three times, each time JSON cut off mid-string at about 33 KB; the case failed with no answer
 written, and the run went on. HHF-005's partial write-back was removed, and `--resume` re-ran HHF-005 and then HHF-003 in

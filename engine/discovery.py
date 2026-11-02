@@ -190,9 +190,16 @@ def backtest(con: Any, attrs: dict[str, str]) -> dict[str, Any]:
     # billing (a protect signal, like R7), a rising or large amount as a drain (an alert)
     fixed = all(len(v["distinct_amounts"]) == 1 for v in profile.values())
     small = all(max(v["distinct_amounts"]) < 50 for v in profile.values())
+    exam_hits = [
+        {"case_id": str(r[0]), "card_id": str(r[1]), "customer_id": str(r[2]), "flagged_txn_id": str(r[3]), "opened_at": str(r[4]), "matched_txn_ids": [str(x[0]) for x in jan if str(x[1]) == str(r[1])]}
+        for r in con.execute(
+            "SELECT DISTINCT case_id, card_id, customer_id, flagged_txn_id, opened_at FROM cp_all WHERE card_id IN (SELECT DISTINCT card_id FROM txc JOIN _dh USING (id)) ORDER BY 1"
+        ).fetchall()
+    ]
     return {"query": sql, "as_of": "2017-01-31 23:59:59", "txns_matched": len(rows), "cards_matched": len({r[1] for r in rows}),
-            "january_txn_ids": [str(r[0]) for r in jan], "january_card_ids": sorted({str(r[1]) for r in jan}),
+            "january_txn_ids": [str(r[0]) for r in jan], "january_rows": [{"txn_id": str(r[0]), "card_id": str(r[1]), "ts": str(r[2]), "amt": float(r[3])} for r in jan], "january_card_ids": sorted({str(r[1]) for r in jan}),
             "january_exposure_usd": round(sum(float(r[3]) for r in jan), 2), "per_card_profile": profile,
+            "exam_cases_caught": exam_hits,
             "reading": ("fixed small amount per card on a fixed schedule: looks like merchant batch billing, propose as a do-not-block "
                         "(protect) signal and verify with the customers, not as a fraud alert") if fixed and small else
                        "varying or large amounts: propose as a fraud alert for analyst review",
@@ -202,6 +209,36 @@ def backtest(con: Any, attrs: dict[str, str]) -> dict[str, Any]:
 
 def _proposal_id(attrs: dict[str, str]) -> str:
     return "AUTO-DISC-" + hashlib.sha1(json.dumps(attrs, sort_keys=True).encode()).hexdigest()[:8].upper()
+
+
+def _catch_demo(bt: dict[str, Any], pid: str, status: str, approver: str | None) -> dict[str, Any] | None:
+    """Before/after approval for the first exam case the detector touches, built only from the backtest's own rows."""
+    exam = bt["exam_cases_caught"]
+    if not exam:
+        return None
+    e = exam[0]
+    card = e["card_id"]
+    rows = bt["january_rows"]
+    mine = [r for r in rows if r["card_id"] == card]
+    peers = [c for c in bt["january_card_ids"] if c != card]
+    prof = bt["per_card_profile"]
+    after = [r for r in mine if r["ts"] > e["opened_at"]]
+    peer_txt = "; ".join(f"{c}: {prof[c]['n']} charges of {prof[c]['distinct_amounts']}" for c in peers)
+    return {
+        "exam_case_id": e["case_id"], "card_id": card, "customer_id": e["customer_id"],
+        "flagged_txn_id": e["flagged_txn_id"], "case_opened_at": e["opened_at"],
+        "before_approval": {"detector_active": False, "matched_txn_ids": [], "connected_card_ids": []},
+        "after_approval": {
+            "detector_active": status == "approved",
+            "matched_txn_ids": [r["txn_id"] for r in mine], "matched_ts": [r["ts"] for r in mine],
+            "matched_after_case_opened": [r["txn_id"] for r in after],
+            "connected_card_ids": peers, "cluster_txn_ids": bt["january_txn_ids"],
+            "decision": (f"{pid} approved by {approver} matches {len(mine)} charges on {card} {sorted(prof[card]['distinct_amounts'])} "
+                         f"and links {len(peers)} other cards ({peer_txt}); {bt['reading']}. "
+                         f"{len(after)} of the {len(mine)} matched charges post-date {e['case_id']}'s opening at {e['opened_at']}.")
+            if status == "approved" else f"Pending approval of {pid} by fraud_manager",
+        },
+    }
 
 
 def discover(con: Any | None = None, write: bool = True, top: int = 10) -> dict[str, Any]:
@@ -226,10 +263,13 @@ def discover(con: Any | None = None, write: bool = True, top: int = 10) -> dict[
     if best:
         pid = _proposal_id(best["attributes"])
         ap = _approvals().get(pid, {})
+        status = ap.get("status", "pending")
+        catch_demo = _catch_demo(bt, pid, status, ap.get("by"))
         proposal = {"proposal_id": pid, "name": "Mined cluster: " + ", ".join(f"{k}={v}" for k, v in sorted(best["attributes"].items())),
                     "discovered_by": "engine.discovery.mine (attribute-combination burst over uncovered January transactions)",
                     "cluster": best, "synthesized_sql": bt["query"], "backtest": bt,
-                    "approval_status": ap.get("status", "pending"), "approved_by": ap.get("by"), "approved_at": ap.get("at"),
+                    "case_catch_demo": catch_demo,
+                    "approval_status": status, "approved_by": ap.get("by"), "approved_at": ap.get("at"),
                     "approve_with": f"engine.detectors.approve_detector('{pid}', session)  # fraud_manager or admin session"}
     out = {"universe": {"january_txns": jan_total, "covered_by_existing": {k: len(v) for k, v in cov.items()},
                         "covered_total_any_period": len(covered_jan)},

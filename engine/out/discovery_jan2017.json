@@ -319,6 +319,62 @@
         "3660310",
         "3660306"
       ],
+      "january_rows": [
+        {
+          "txn_id": "3660300",
+          "card_id": "C12223-K1",
+          "ts": "2017-01-11 09:00:00",
+          "amt": 7.42
+        },
+        {
+          "txn_id": "3660304",
+          "card_id": "C12030-K1",
+          "ts": "2017-01-11 09:00:19",
+          "amt": 7.78
+        },
+        {
+          "txn_id": "3660308",
+          "card_id": "C04105-K2",
+          "ts": "2017-01-11 09:00:57",
+          "amt": 6.57
+        },
+        {
+          "txn_id": "3660305",
+          "card_id": "C12030-K1",
+          "ts": "2017-01-18 09:00:12",
+          "amt": 7.78
+        },
+        {
+          "txn_id": "3660309",
+          "card_id": "C04105-K2",
+          "ts": "2017-01-18 09:00:35",
+          "amt": 6.57
+        },
+        {
+          "txn_id": "3660301",
+          "card_id": "C12223-K1",
+          "ts": "2017-01-18 09:00:45",
+          "amt": 7.42
+        },
+        {
+          "txn_id": "3660302",
+          "card_id": "C12223-K1",
+          "ts": "2017-01-25 09:00:02",
+          "amt": 7.42
+        },
+        {
+          "txn_id": "3660310",
+          "card_id": "C04105-K2",
+          "ts": "2017-01-25 09:00:04",
+          "amt": 6.57
+        },
+        {
+          "txn_id": "3660306",
+          "card_id": "C12030-K1",
+          "ts": "2017-01-25 09:00:43",
+          "amt": 7.78
+        }
+      ],
       "january_card_ids": [
         "C04105-K2",
         "C12030-K1",
@@ -348,15 +404,75 @@
           "total_usd": 22.26
         }
       },
+      "exam_cases_caught": [
+        {
+          "case_id": "HHF-012",
+          "card_id": "C12223-K1",
+          "customer_id": "C12223",
+          "flagged_txn_id": "3655457",
+          "opened_at": "2017-01-09 04:34:19",
+          "matched_txn_ids": [
+            "3660300",
+            "3660301",
+            "3660302"
+          ]
+        }
+      ],
       "reading": "fixed small amount per card on a fixed schedule: looks like merchant batch billing, propose as a do-not-block (protect) signal and verify with the customers, not as a fraud alert",
       "closed_case_true_positives": [],
       "legitimate_customers_acted_against": []
     },
-    "approval_status": "pending",
-    "approved_by": null,
-    "approved_at": null,
+    "case_catch_demo": {
+      "exam_case_id": "HHF-012",
+      "card_id": "C12223-K1",
+      "customer_id": "C12223",
+      "flagged_txn_id": "3655457",
+      "case_opened_at": "2017-01-09 04:34:19",
+      "before_approval": {
+        "detector_active": false,
+        "matched_txn_ids": [],
+        "connected_card_ids": []
+      },
+      "after_approval": {
+        "detector_active": true,
+        "matched_txn_ids": [
+          "3660300",
+          "3660301",
+          "3660302"
+        ],
+        "matched_ts": [
+          "2017-01-11 09:00:00",
+          "2017-01-18 09:00:45",
+          "2017-01-25 09:00:02"
+        ],
+        "matched_after_case_opened": [
+          "3660300",
+          "3660301",
+          "3660302"
+        ],
+        "connected_card_ids": [
+          "C04105-K2",
+          "C12030-K1"
+        ],
+        "cluster_txn_ids": [
+          "3660300",
+          "3660304",
+          "3660308",
+          "3660305",
+          "3660309",
+          "3660301",
+          "3660302",
+          "3660310",
+          "3660306"
+        ],
+        "decision": "AUTO-DISC-E583474A approved by manager@demo matches 3 charges on C12223-K1 [7.42] and links 2 other cards (C04105-K2: 3 charges of [6.57]; C12030-K1: 3 charges of [7.78]); fixed small amount per card on a fixed schedule: looks like merchant batch billing, propose as a do-not-block (protect) signal and verify with the customers, not as a fraud alert. 3 of the 3 matched charges post-date HHF-012's opening at 2017-01-09 04:34:19."
+      }
+    },
+    "approval_status": "approved",
+    "approved_by": "manager@demo",
+    "approved_at": "2026-11-02 04:13:04",
     "approve_with": "engine.detectors.approve_detector('AUTO-DISC-E583474A', session)  # fraud_manager or admin session"
   },
   "honest_note": null,
-  "elapsed_s": 3.48
+  "elapsed_s": 3.55
 }

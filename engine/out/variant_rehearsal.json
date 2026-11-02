@@ -3,8 +3,8 @@
  "how": "python -m ops.variant_rehearsal <variant> [--make-fresh DIR [--flat]]; python -m ops.variant_rehearsal --summary",
  "variants": {
   "bank_c": {
-   "variant_dir": "data/variant_rehearsal/bank_c_src",
-   "generated_at": "2026-11-01T17:51:37Z",
+   "variant_dir": "data/variant_rehearsal/bank_c",
+   "generated_at": "2026-11-02T04:57:14Z",
    "table_roles": {
     "c_postings.csv": "transactions",
     "c_sessions.csv": "identity",
@@ -69,124 +69,6 @@
    "missed": [],
    "rows_translated": 4039,
    "rows_all_equal": true,
-   "n_cases": 18,
-   "n_same_decision": 18
-  },
-  "bank_c--flat": {
-   "variant_dir": "data/variant_rehearsal/bank_c_src_flat",
-   "generated_at": "2026-11-01T17:51:42Z",
-   "table_roles": {
-    "c_flat.csv": "transactions",
-    "c_tickets.csv": "case_pack"
-   },
-   "n_mapped_columns": 29,
-   "unmapped_columns": [
-    {
-     "source_file": "c_flat.csv",
-     "table_role": "transactions",
-     "source_column": "batch_no",
-     "reason": "No identity column match",
-     "top_values": [
-      "B000",
-      "B001",
-      "B002",
-      "B003",
-      "B004"
-     ]
-    }
-   ],
-   "low_confidence": [
-    {
-     "source_file": "c_flat.csv",
-     "source_column": "billing_region_cd",
-     "canonical_column": "addr1",
-     "confidence": 0.94,
-     "rationale": "Billing region code in [100..600] (p50=299.0)"
-    },
-    {
-     "source_file": "c_flat.csv",
-     "source_column": "country_code",
-     "canonical_column": "addr2",
-     "confidence": 0.92,
-     "rationale": "Billing country code (p50=87.0)"
-    },
-    {
-     "source_file": "c_flat.csv",
-     "source_column": "home_distance",
-     "canonical_column": "dist1",
-     "confidence": 0.9,
-     "rationale": "Distance metric (p50=8.0, max=2751.0)"
-    },
-    {
-     "source_file": "c_flat.csv",
-     "source_column": "hw_model",
-     "canonical_column": "DeviceInfo",
-     "confidence": 0.93,
-     "rationale": "Hardware/device model identifier (DeviceInfo)"
-    },
-    {
-     "source_file": "c_tickets.csv",
-     "source_column": "alert_score",
-     "canonical_column": "risk_score",
-     "confidence": 0.94,
-     "rationale": "Alert risk_score column"
-    }
-   ],
-   "precision": 1.0,
-   "recall": 1.0,
-   "wrong": [],
-   "missed": [],
-   "rows_translated": 4039,
-   "rows_all_equal": false,
-   "n_cases": 18,
-   "n_same_decision": 18
-  },
-  "variant_bank_b": {
-   "variant_dir": "data/variant_bank_b",
-   "generated_at": "2026-11-01T17:52:04Z",
-   "table_roles": {
-    "bank_b_alerts.csv": "case_pack",
-    "bank_b_ledger.csv": "transactions",
-    "bank_b_telemetry.csv": "identity"
-   },
-   "n_mapped_columns": 27,
-   "unmapped_columns": [],
-   "low_confidence": [
-    {
-     "source_file": "bank_b_alerts.csv",
-     "source_column": "model_score",
-     "canonical_column": "risk_score",
-     "confidence": 0.94,
-     "rationale": "Alert risk_score column"
-    },
-    {
-     "source_file": "bank_b_ledger.csv",
-     "source_column": "billing_zip_region",
-     "canonical_column": "addr1",
-     "confidence": 0.94,
-     "rationale": "Billing region code in [100..600] (p50=299.0)"
-    },
-    {
-     "source_file": "bank_b_ledger.csv",
-     "source_column": "country_num",
-     "canonical_column": "addr2",
-     "confidence": 0.92,
-     "rationale": "Billing country code (p50=87.0)"
-    },
-    {
-     "source_file": "bank_b_ledger.csv",
-     "source_column": "miles_dist",
-     "canonical_column": "dist1",
-     "confidence": 0.9,
-     "rationale": "Distance metric (p50=8.0, max=2576.0)"
-    }
-   ],
-   "precision": 1.0,
-   "recall": 1.0,
-   "wrong": [],
-   "missed": [],
-   "rows_translated": 2495,
-   "rows_all_equal": false,
    "n_cases": 18,
    "n_same_decision": 18
   }

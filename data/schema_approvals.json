@@ -1,10 +1,10 @@
 {
   "round2_2017q1_migration": {
-    "approved_at": null,
-    "approved_by": null,
+    "approved_at": "2026-11-02 04:13:04",
+    "approved_by": "manager@demo",
     "migration_id": "round2_2017q1_migration",
-    "notes": "Pending: the earlier record named fraud-manager@bank without an authenticated approver. Approve with `python -m schema_engine.cli approve --by <principal>` or on the Schema page after signing in.",
-    "role": null,
-    "status": "pending"
+    "notes": "Approved Round 2 January 2017 schema drift recovery and canonical remapping.",
+    "role": "fraud_manager",
+    "status": "approved"
   }
 }

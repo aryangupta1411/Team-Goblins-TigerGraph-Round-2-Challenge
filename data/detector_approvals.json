@@ -1,0 +1,30 @@
+{
+  "AUTO-DET-02": {
+    "at": "2026-11-02 04:13:04",
+    "by": "manager@demo",
+    "note": "Admitted multi-day sub- micro-charge skimming wave detector (0 false positives on 910 cleared cases).",
+    "role": "fraud_manager",
+    "status": "approved"
+  },
+  "AUTO-DET-03": {
+    "at": "2026-11-02 04:13:04",
+    "by": "manager@demo",
+    "note": "Admitted new-mobile anonymous-proxy burst wave detector (0 false positives on 910 cleared cases).",
+    "role": "fraud_manager",
+    "status": "approved"
+  },
+  "AUTO-DET-04": {
+    "at": "2026-11-02 04:13:04",
+    "by": "manager@demo",
+    "note": "Admitted dormant-wake escalating drain wave detector (0 false positives on 910 cleared cases).",
+    "role": "fraud_manager",
+    "status": "approved"
+  },
+  "AUTO-DISC-E583474A": {
+    "at": "2026-11-02 04:13:04",
+    "by": "manager@demo",
+    "note": "Admitted mined weekly Wed 09 same-amount batch billing cluster as a customer-verification protect signal.",
+    "role": "fraud_manager",
+    "status": "approved"
+  }
+}

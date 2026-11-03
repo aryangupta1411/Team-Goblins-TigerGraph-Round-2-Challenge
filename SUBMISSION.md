@@ -122,3 +122,36 @@ rest is regenerated outputs under `engine/out/`. Checked at the freeze: `engine.
 pattern, SAR decision and final actions with routes as `cases/HHF-*.json` on all 18 cases, probability within 0.10, as
 it does at `05bc21d`. `git diff hhf-final-3-run round2-freeze -- agent/ engine/ graph/ mcp/ rag/ policy/ etl/ schema_engine/`
 shows every change.
+
+## Changes after the freeze (the post-freeze merge)
+
+Merged on top of `round2-freeze`. None of it changes an answer: `cases/HHF-*.json` and `runs/hhf-final-3` are untouched.
+
+- **Dashboard.** The Challenge 2 case-catch demo is built from the detector backtest, not typed ids; the Challenge 8
+  feedback loop is in the UI; the Challenge 9 alert-watcher panel is on the Runs page; the Challenge 14 hand-over page can
+  approve pending actions and close the case; Challenge 13 infers a mapping for any unseen `.gsql` schema.
+- **Resilience statement.** It now also declares Google Fonts (the viewer's browser), the corpus download and the Hugging
+  Face model fetch (build time only), Gemini's data terms, and the optional notification webhook below.
+- **Approvals.** The January schema migration and four detectors are recorded as approved by the `manager@demo` demo
+  account. All five decisions carry one timestamp, so they were recorded in a single scripted run; they are a demo
+  account's signatures, not a named person's. This is what makes Challenges 2 and 12 read "built" on the proof board.
+- **Optional notifications** (`ops/notify.py`, the Notifications page). Off and unconfigured by default: nothing is sent
+  unless an operator sets `NOTIFY_ENABLED`, an https `NOTIFY_SERVICE_URL` and a `NOTIFY_API_KEY`, and registers a
+  recipient. There is no built-in endpoint, key or number. `agent.bench` and the investigation path never call it (the
+  clean-clone drill and the submitted run make no outbound call for it). Messages carry the case id, the verdict word and
+  the probability, never a report flag, action, pattern, customer or card id, or error text. Changing recipients needs the
+  `manage_notifications` permission (fraud manager, admin). See `docs/RESILIENCE.md`.
+
+Files under the answer-path folders (`agent/`, `engine/`, `graph/`, `mcp/`, `rag/`, `policy/`, `etl/`, `schema_engine/`)
+that differ from `round2-freeze`, apart from regenerated outputs in `engine/out/`:
+
+| File | What changed | On the decision path? |
+|---|---|---|
+| `engine/discovery.py` | builds the "which cases this detector catches" demo from the backtest's own rows | No: only the dashboard and `engine/out/discovery_jan2017.json` use it |
+| `engine/feedback.py` | the `--demo` command restores `APPROVALS_DB` and `ENGINE_FEEDBACK` after it runs | No: inside `demo()`; the scorecard's read of feedback is unchanged |
+| `schema_engine/ai_analyst.py` | infers a mapping for an unseen schema | No: not imported by the runner, the scorecard or the policy gate |
+
+Checked on the merged tree: `agent.bench`, `engine.scorecard`, `engine.run_cases`, `engine.policy` and
+`agent.phase_machine` import none of `engine.discovery`, `schema_engine.ai_analyst` or `ops.notify`; `agent/bench.py` is
+byte-identical to `round2-freeze`; and `engine.run_cases` gives the same verdict, pattern, SAR decision and final actions
+with routes as `cases/HHF-*.json` on all 18 cases, probability within 0.10.

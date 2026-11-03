@@ -56,8 +56,8 @@ COPY runs/hhf-final/ runs/hhf-final/
 COPY runs/live-final-2/ runs/live-final-2/
 COPY ui/ ui/
 
-# runs/ is where agent.bench writes when RUNS_DIR is not a volume
-RUN useradd --create-home --uid 10001 app && chown -R app runs
+# runs/ and data/ are where agent.bench and the UI write when not on an external volume
+RUN useradd --create-home --uid 10001 app && chown -R app runs data
 USER app
 
 # Railway variables override any of these at runtime (see the header). HF_HUB_OFFLINE: the model is in the image.

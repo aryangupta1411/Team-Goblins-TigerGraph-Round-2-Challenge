@@ -52,3 +52,6 @@ logs/
 
 # design tool working state and mocks (the decisions are in DESIGN.md / PRODUCT.md)
 .impeccable/
+
+# notification recipients (phone numbers): local state, never committed (ops/notify.py)
+data/notification_recipients.json

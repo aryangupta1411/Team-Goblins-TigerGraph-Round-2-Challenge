@@ -73,6 +73,26 @@ CREATE TABLE IF NOT EXISTS analyst_feedback (
     reason       TEXT NOT NULL DEFAULT '',
     at           TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS notification_recipients (
+    phone    TEXT PRIMARY KEY,
+    name     TEXT NOT NULL DEFAULT '',
+    added_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS notification_audit_log (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    at          TEXT NOT NULL,
+    trigger     TEXT NOT NULL,
+    case_id     TEXT NOT NULL DEFAULT '',
+    phone       TEXT NOT NULL,
+    status_code INTEGER NOT NULL,
+    ok          INTEGER NOT NULL,
+    detail      TEXT NOT NULL DEFAULT '',
+    msg_snippet TEXT NOT NULL DEFAULT ''
+);
+CREATE TABLE IF NOT EXISTS notification_settings (
+    key   TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
 -- Guideline "approvals not editable afterwards", enforced by the database itself, not only by this module.
 CREATE TRIGGER IF NOT EXISTS approvals_immutable BEFORE UPDATE ON approvals
 WHEN OLD.status != 'pending'
@@ -86,6 +106,10 @@ CREATE TRIGGER IF NOT EXISTS audit_no_delete BEFORE DELETE ON approval_audit_log
 BEGIN SELECT RAISE(ABORT, 'the approval audit log is append-only'); END;
 CREATE TRIGGER IF NOT EXISTS feedback_no_update BEFORE UPDATE ON analyst_feedback
 BEGIN SELECT RAISE(ABORT, 'analyst feedback is append-only'); END;
+CREATE TRIGGER IF NOT EXISTS notify_audit_no_update BEFORE UPDATE ON notification_audit_log
+BEGIN SELECT RAISE(ABORT, 'the notification audit log is append-only'); END;
+CREATE TRIGGER IF NOT EXISTS notify_audit_no_delete BEFORE DELETE ON notification_audit_log
+BEGIN SELECT RAISE(ABORT, 'the notification audit log is append-only'); END;
 """
 
 STATUSES = ("pending", "approved", "rejected")
@@ -112,6 +136,7 @@ PERMISSIONS: dict[str, str] = {
     "approve_migration": "approve the schema migration",
     "approve_detector": "admit or reject a proposed detector",
     "run_live": "start live agent runs (TigerGraph and a paid LLM)",
+    "manage_notifications": "add or remove notification recipients, send test notifications and switch notifications on or off",
     "workspace": "connect another TigerGraph workspace on the Run console",
     "own_data": "upload data and run the load steps into another workspace",
     "variant": "upload a bank's variant CSVs and rehearse the agent on them (Challenge 13)",
@@ -119,7 +144,7 @@ PERMISSIONS: dict[str, str] = {
 }
 ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
     "admin": frozenset(PERMISSIONS),
-    "fraud_manager": frozenset({"feedback", "approve_L1", "approve_L2", "approve_migration", "approve_detector", "run_live", "variant"}),
+    "fraud_manager": frozenset({"feedback", "approve_L1", "approve_L2", "approve_migration", "approve_detector", "run_live", "variant", "manage_notifications"}),
     "team_lead": frozenset({"feedback", "approve_L1", "approve_migration", "run_live"}),
     "analyst": frozenset({"feedback"}),
     "unauthorized": frozenset(),
@@ -481,6 +506,15 @@ def decide(
 def _lifecycle_after_decision(row: dict, path: str | os.PathLike | None) -> None:
     """Record the decision as a case state change and close the case once nothing is pending (agent/lifecycle.py).
     The decision itself is already committed; a lifecycle failure is logged to the audit log, never raised."""
+    is_drill = path is not None and Path(path).resolve() != default_path().resolve()
+    if not is_drill:
+        try:
+            from ops.notify import notify_approval_decision
+            # no-op unless notifications are enabled and configured; sends only the case id, the decision and the route (the
+            # action name and the approver are deliberately not passed), in the background
+            notify_approval_decision(case_id=row["case_id"], action="", route=row["route"], status=row["status"], actor="")
+        except Exception:
+            pass
     try:
         from agent import lifecycle
         lifecycle.on_approval_decided(row, path=path)

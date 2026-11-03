@@ -155,7 +155,7 @@ the request. `ui/approvals_db.py` (`ROLE_PERMISSIONS`) is the single source:
 |---|---|
 | analyst | record feedback on a card |
 | team lead | feedback, approve L1 actions, approve the schema migration, start live runs |
-| fraud manager | everything a team lead may, plus approve L2 actions (`BLOCK_ALL_CARDS`, `FILE_REPORT`, large blocks) and admit detectors |
+| fraud manager | everything a team lead may, plus approve L2 actions (`BLOCK_ALL_CARDS`, `FILE_REPORT`, large blocks) admit detectors and manage the optional notifications (recipients, switches, test sends) |
 | admin | every permission, plus connecting another workspace, loading own data and seeing the principals |
 
 On a deployment with `RUNS_NEED_APPROVER=1` (the Docker image's default), starting a live run needs `run_live`, and

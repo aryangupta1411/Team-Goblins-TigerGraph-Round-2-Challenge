@@ -2835,6 +2835,7 @@ PAGES: dict[str, dict[str, str]] = {
     "data": {"file": "pages/6_schema.py", "title": "Data quality & schema", "icon": ":material/rule:", "url_path": "data", "section": "Proof"},
     "runs": {"file": "pages/5_runs.py", "title": "Runs & consistency", "icon": ":material/monitoring:", "url_path": "runs", "section": "Proof"},
     "console": {"file": "pages/1_queue.py", "title": "Run console", "icon": ":material/play_circle:", "url_path": "console", "section": "System"},
+    "notifications": {"file": "pages/12_notifications.py", "title": "Notifications", "icon": ":material/notifications:", "url_path": "notifications", "section": "System"},
     "system": {"file": "pages/7_architecture.py", "title": "How it works", "icon": ":material/account_tree:", "url_path": "system", "section": "System"},
     "live_architecture": {"file": "pages/10_live_architecture.py", "title": "Live architecture", "icon": ":material/animation:", "url_path": "live-architecture", "section": "System"},
 }

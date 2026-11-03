@@ -497,8 +497,9 @@ if view == "drift":
                if appr and appr.get("approved_by") else "")
         state = (f'is {design.tag(gate_status, kind, "gate")}{who}' if gate_here and appr is not None
                  else f"has {design.tag('no record', '', 'gate')} in {esc(GATE_FILE)}" if gate_here else f"is {design.tag('not in this deployment', '', 'gate')}")
-        design.html_block(f'<p class="tc dq-gate">The January migration {state}. <b>What the gate blocks today: nothing</b>; the January delta path '
-                          f'(<span class="tc-mono">etl/delta*.py</span>) never checks it, and the engine facts and FraudGraph already include January.</p>')
+        design.html_block(f'<p class="tc dq-gate">The January migration {state}. <b>What the gate blocks:</b> building or loading a month through the delta '
+                          f'pipeline (<span class="tc-mono">etl/delta*.py</span>, first step of <span class="tc-mono">make delta-build</span> and of Upload a month). '
+                          f'January itself is already in the engine facts and FraudGraph.</p>')
         st.caption(md(f"{GATE_FILE} · as of {appr_p['as_of']}" if gate_here else f"{GATE_FILE} is not in this deployment ({appr_p['error'] or 'missing'})"))
         gate_why = (f"schema_engine.drift: {drift_err}" if drift_mod is None else None) or ("read-only deployment" if ro else None) \
             or ("Sign in first (identity menu in the top bar)" if session is None else None) \
@@ -531,6 +532,25 @@ if view == "drift":
             common.page_link("approvals", "Approvals › Other gates", icon=":material/arrow_forward:")
         if (m := st.session_state.get("data_gate_msg")):
             (st.success if m["ok"] else st.error)(md(m["text"]))
+
+        # the first check of `make delta-build`, run on its own: the real function, so the page repeats no rule
+        with st.container(horizontal=True, vertical_alignment="center", gap="medium", key="dq-gate-check"):
+            if st.button("Check the build gate", key="data_gate_check", icon=":material/rule:"):
+                try:
+                    from etl.delta_base import DeltaError, require_migration_approval
+                except ImportError as exc:
+                    st.session_state["data_gate_check_msg"] = {"ok": False, "text": f"etl.delta is not available on this deployment: {exc}"}
+                else:
+                    try:
+                        rec = require_migration_approval()
+                    except DeltaError as exc:
+                        st.session_state["data_gate_check_msg"] = {"ok": False, "text": "Refused: " + str(exc).replace(str(common.ROOT) + "/", "")}
+                    else:
+                        st.session_state["data_gate_check_msg"] = {"ok": True, "text": f"Gate passes: approved by {rec.get('approved_by')} ({rec.get('role')}) at "
+                                                                                    f"{rec.get('approved_at')}. make delta-build would go on to read the month files."}
+            st.caption("The first check of make delta-build, run on its own: nothing is built, loaded or written.")
+        if (c := st.session_state.get("data_gate_check_msg")):
+            (st.success if c["ok"] else st.error)(md(c["text"]))
 
     design.html_block(design.section("", "Schema drifts, Round 1 to January", note=drift_label if drift else "",
                                      aside=esc(f"{drift_src}" + (f" · detected {_when(drift.get('detected_at'))}" if drift and drift.get("detected_at") else ""))))

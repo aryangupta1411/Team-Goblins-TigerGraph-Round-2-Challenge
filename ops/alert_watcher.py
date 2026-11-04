@@ -61,7 +61,7 @@ def start_case(row: dict, run_id: str, mock: bool, work: Path, python: str = sys
         w.writerow(row)
     cmd = [python, "-m", "agent.bench", "--run-id", run_id, "--cases", row["case_id"], "--case-pack", str(pack)]
     if mock:
-        cmd.append("--mock")
+        cmd.extend(["--mock", "--llm-backend", "mock"])
     t0, started = time.monotonic(), _now()
     proc = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True)
     answer = ROOT / "runs" / run_id / row["case_id"] / "answer.json"

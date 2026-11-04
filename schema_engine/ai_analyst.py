@@ -299,7 +299,7 @@ def _infer_ast_mappings(ast: GsqlSchemaAST) -> list[OntologyMappingItem]:
         add("InvestigationCase.status", "attribute", "exact", "CustomerCaseProcedure.customerCaseStatus", "", 0.99, "Case status on CustomerCaseProcedure.")
         add("account_under_investigation", "attribute", "exact", "caseConcernsFacility from open CustomerCaseProcedure", "", 0.99, "Facility linked via caseConcernsFacility to an open CustomerCaseProcedure.")
 
-    else:  # TEMENOS_T24_CORE_BANKING or general
+    elif fam == "TEMENOS_T24_CORE_BANKING":
         add("OWNS", "edge", "exact", "reverse_ACCOUNT_CUSTOMER and reverse_JOINT_HOLDER", "CUSTOMER -> ACCOUNT", 0.99, "Both primary owner (ACCOUNT_CUSTOMER) and joint holder (JOINT_HOLDER) link ACCOUNT to CUSTOMER.")
         add("INITIATED", "edge", "exact", "reverse_FT_DEBIT_ACCT_NO; reverse_TT_ACCOUNT_1 where DR_CR_MARKER = 'DEBIT'", "", 0.98, "Debited account on FUNDS_TRANSFER and debit TELLER cash withdrawals.")
         add("PAYS_TO_ACCOUNT", "edge", "exact", "FT_CREDIT_ACCT_NO; TT_ACCOUNT_1 where DR_CR_MARKER = 'CREDIT'", "", 0.98, "Credited account on FUNDS_TRANSFER and credit TELLER deposits.")
@@ -320,6 +320,57 @@ def _infer_ast_mappings(ast: GsqlSchemaAST) -> list[OntologyMappingItem]:
         add("Beneficiary.name_hash", "attribute", "exact", "BENEFICIARY.BEN_SHORT_NAME_HASH", "", 0.99, "Hashed beneficiary short name.")
         add("InvestigationCase.status", "attribute", "unmapped", "", "", 1.0, "No InvestigationCase vertex in T24.")
         add("account_under_investigation", "attribute", "approximate", "ACCOUNT.POSTING_RESTRICT = 25", "fraud block code 25", 0.96, "POSTING_RESTRICT code 25 marks an account under fraud investigation block.")
+
+    else:  # GENERIC_BANK_GRAPH: dynamic topology + attribute-token inference for any unseen .gsql schema
+        ent_map = {m.canonical_target: m.mapped_to.split(",")[0].strip() for m in items if m.category == "entity" and m.status != "unmapped" and m.mapped_to}
+        for cname, u_ent, v_ent in (
+            ("OWNS", "Person", "Account"),
+            ("INITIATED", "Account", "Transaction"),
+            ("PAYS_TO_ACCOUNT", "Transaction", "Account"),
+            ("PAYS", "Transaction", "Beneficiary"),
+            ("FROM_DEVICE", "Transaction", "Device"),
+            ("FROM_IP", "Transaction", "IPAddress"),
+            ("AT", "Transaction", "Merchant"),
+            ("VIA", "Transaction", "Card"),
+            ("HOLDS", "Account", "Card"),
+            ("LOGGED_IN", "LoginEvent", "Account"),
+            ("LOGIN_FROM_DEVICE", "LoginEvent", "Device"),
+            ("LOGIN_FROM_IP", "LoginEvent", "IPAddress"),
+            ("INVESTIGATED_IN", "Account", "InvestigationCase"),
+        ):
+            u, v = ent_map.get(u_ent, ""), ent_map.get(v_ent, "")
+            paths = find_graph_paths(ast, u, v, max_hops=3) if u and v and u in vnames and v in vnames else []
+            if paths:
+                p_str = " -> ".join(e for _, e, _ in paths[0])
+                hop_str = " -> ".join([paths[0][0][0]] + [t for _, _, t in paths[0]])
+                add(cname, "edge", "exact" if len(paths[0]) == 1 else "approximate", p_str, hop_str, 0.95 if len(paths[0]) == 1 else 0.90, f"Discovered {len(paths[0])}-hop graph path between {u} and {v}.")
+            else:
+                add(cname, "edge", "unmapped", "", "", 1.0, f"No path in DDL between {u_ent} and {v_ent}.")
+
+        def _find_attr(ent_key: str, keywords: tuple[str, ...]) -> str:
+            v = ent_map.get(ent_key, "")
+            if v and v in ast.vertices:
+                for a in ast.vertices[v].attr_names:
+                    if any(k in a.lower() for k in keywords):
+                        return f"{v}.{a}"
+            return ""
+
+        for attr_target, ent_k, kw in (
+            ("Transaction.amount", "Transaction", ("amt", "amount", "val", "sum")),
+            ("Transaction.timestamp", "Transaction", ("ts", "time", "date", "dt")),
+            ("Transaction.channel", "Transaction", ("channel", "mode", "rail", "type", "mech")),
+            ("Account.open_date", "Account", ("open", "start", "create")),
+            ("Account.status", "Account", ("status", "sts", "state", "restrict")),
+            ("Account.kyc_score", "Account", ("kyc", "risk", "score")),
+            ("Person.anonymized_ssn_hash", "Person", ("ssn", "legal_id", "tax", "ident", "nid")),
+            ("Person.kyc_verified_at", "Person", ("kyc", "verif", "review")),
+            ("Beneficiary.bank_identifier", "Beneficiary", ("bic", "swift", "sort", "bank", "aba")),
+            ("Beneficiary.name_hash", "Beneficiary", ("name", "nm")),
+            ("InvestigationCase.status", "InvestigationCase", ("status", "state", "outcome")),
+            ("account_under_investigation", "Account", ("alert", "aml", "fraud", "invest", "restrict")),
+        ):
+            found_a = _find_attr(ent_k, kw)
+            add(attr_target, "attribute", "exact" if found_a else "unmapped", found_a, "", 0.92 if found_a else 1.0, f"Matched attribute on {ent_k}" if found_a else f"No matching attribute on {ent_k}")
 
     return items
 

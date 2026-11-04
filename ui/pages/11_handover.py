@@ -69,20 +69,32 @@ else:
     st.caption("No state change recorded since the agent's run: the first decision, reply or hand-over starts the record.")
 
 if h["state"] != "closed" and not ctx.read_only:
-    who = common.approver_session()
+    who = ctx.session
     if who is None:
-        st.caption("Sign in as an approver (Approvals page) to record a reply or hand the case over.")
+        st.caption("Sign in as an approver (top-right sign-in badge) to record a reply, hand the case over, or decide pending approvals to close the case.")
     else:
-        a, b = st.columns(2)
+        a, b, c = st.columns(3)
         with a.form("ho_reply"):
-            text = st.text_area("Customer reply", max_chars=1000)
-            if st.form_submit_button("Record reply") and text.strip():
+            text = st.text_area("Customer reply", max_chars=1000, placeholder="e.g. Customer confirmed they did not make the charges; card destroyed.")
+            if st.form_submit_button("Record reply & advance") and text.strip():
                 out = lifecycle.on_customer_reply(case_id, text.strip(), who.principal, db, answer)
                 st.success("Recorded" + (f"; case closed ({out['closed']['outcome']})" if "closed" in out else ""))
                 st.rerun()
         with b.form("ho_handover"):
-            to = st.text_input("Hand to", max_chars=120)
-            note = st.text_input("Note", max_chars=500)
-            if st.form_submit_button("Hand over") and to.strip():
-                lifecycle.hand_over(case_id, who.principal, to.strip(), note.strip(), db)
+            to = st.text_input("Hand to", max_chars=120, value="manager@demo")
+            note = st.text_input("Note", max_chars=500, value="Cold shift hand-over: reviewed graph evidence, ready for final sign-off.")
+            if st.form_submit_button("Hand over"):
+                if to.strip():
+                    lifecycle.hand_over(case_id, who.principal, to.strip(), note.strip(), db)
+                    st.rerun()
+        with c.form("ho_close_approvals"):
+            st.markdown("**Approve pending & close case**")
+            pend_list = h["waiting_on"]["approvals"]
+            st.caption(f"{len(pend_list)} pending approval(s) on {case_id}" if pend_list else "No pending approvals on this case.")
+            close_note = st.text_input("Decision reason", value="Approved after cold hand-over review", max_chars=300)
+            if st.form_submit_button("Approve all & close case", type="primary", disabled=not pend_list):
+                from ui import approvals_db
+                for ap in pend_list:
+                    approvals_db.decide(int(ap["id"]), "approved", who, close_note, path=db)
+                    lifecycle.on_approval_decided(case_id, str(ap["action"]), "approved", who.principal, path=db, answer=answer)
                 st.rerun()

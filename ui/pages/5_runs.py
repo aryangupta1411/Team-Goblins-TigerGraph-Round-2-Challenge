@@ -632,3 +632,25 @@ with st.expander(f"Graph hygiene log · {len(hygiene)} ledger{'s' if len(hygiene
         st.caption(md("runs/*/stale_writebacks.json from ops.clear_case_writebacks; these folders are never a source"))
     else:
         st.caption(md("No runs/*/stale_writebacks.json on this deployment"))
+
+watch_log = common.runs_root() / "watch-demo" / "watcher.jsonl"
+watch_rows = [json.loads(x) for x in watch_log.read_text(encoding="utf-8").splitlines() if x.strip()] if watch_log.is_file() else []
+with st.expander(f"Challenge 9 · Autonomous Alert Watcher (ops/alert_watcher.py · {len(watch_rows)} alert(s) pre-investigated)", expanded=bool(watch_rows)):
+    st.caption(md("Watches `alerts/inbox/*.csv`, runs `agent.bench` the moment an alert lands, records `alert_to_ready_s` in `runs/watch-demo/watcher.jsonl`, and opens the case lifecycle before anyone opens the UI."))
+    if watch_rows:
+        st.dataframe(pd.DataFrame(watch_rows), hide_index=True, width="stretch")
+    if not ctx.read_only:
+        wc1, wc2 = st.columns([2, 1])
+        pick_alert = wc1.selectbox("Drop alert into alerts/inbox/", ["HHF-004", "HHF-001", "HHF-007", "HHF-008", "HHF-012"], key="watch_pick_case")
+        if wc2.button("Drop alert & run watcher sweep", icon=":material/bolt:", key="watch_run_btn", type="primary"):
+            from ops import alert_watcher
+            inbox_dir = common.ROOT / "alerts" / "inbox"
+            inbox_dir.mkdir(parents=True, exist_ok=True)
+            meta = common.case_meta(pick_alert)
+            (inbox_dir / f"drop_{pick_alert}.csv").write_text(
+                "case_id,opened_at,trigger_type,flagged_txn_id,card_id,customer_id,risk_score,trigger_text\n"
+                f"{pick_alert},{meta.get('opened_at','')},{meta.get('trigger_type','')},{meta.get('flagged_txn_id','')},{meta.get('card_id','')},{meta.get('customer_id','')},{meta.get('risk_score') or ''},\"{str(meta.get('trigger_text','')).replace('\"','\"\"')}\"\n",
+                encoding="utf-8",
+            )
+            alert_watcher.main(["--inbox", str(inbox_dir), "--run-id", "watch-demo", "--mock", "--once"])
+            st.rerun()

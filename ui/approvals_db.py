@@ -73,6 +73,26 @@ CREATE TABLE IF NOT EXISTS analyst_feedback (
     reason       TEXT NOT NULL DEFAULT '',
     at           TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS notification_recipients (
+    phone    TEXT PRIMARY KEY,
+    name     TEXT NOT NULL DEFAULT '',
+    added_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS notification_audit_log (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    at          TEXT NOT NULL,
+    trigger     TEXT NOT NULL,
+    case_id     TEXT NOT NULL DEFAULT '',
+    phone       TEXT NOT NULL,
+    status_code INTEGER NOT NULL,
+    ok          INTEGER NOT NULL,
+    detail      TEXT NOT NULL DEFAULT '',
+    msg_snippet TEXT NOT NULL DEFAULT ''
+);
+CREATE TABLE IF NOT EXISTS notification_settings (
+    key   TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
 -- Guideline "approvals not editable afterwards", enforced by the database itself, not only by this module.
 CREATE TRIGGER IF NOT EXISTS approvals_immutable BEFORE UPDATE ON approvals
 WHEN OLD.status != 'pending'
@@ -86,6 +106,10 @@ CREATE TRIGGER IF NOT EXISTS audit_no_delete BEFORE DELETE ON approval_audit_log
 BEGIN SELECT RAISE(ABORT, 'the approval audit log is append-only'); END;
 CREATE TRIGGER IF NOT EXISTS feedback_no_update BEFORE UPDATE ON analyst_feedback
 BEGIN SELECT RAISE(ABORT, 'analyst feedback is append-only'); END;
+CREATE TRIGGER IF NOT EXISTS notify_audit_no_update BEFORE UPDATE ON notification_audit_log
+BEGIN SELECT RAISE(ABORT, 'the notification audit log is append-only'); END;
+CREATE TRIGGER IF NOT EXISTS notify_audit_no_delete BEFORE DELETE ON notification_audit_log
+BEGIN SELECT RAISE(ABORT, 'the notification audit log is append-only'); END;
 """
 
 STATUSES = ("pending", "approved", "rejected")
@@ -481,6 +505,19 @@ def decide(
 def _lifecycle_after_decision(row: dict, path: str | os.PathLike | None) -> None:
     """Record the decision as a case state change and close the case once nothing is pending (agent/lifecycle.py).
     The decision itself is already committed; a lifecycle failure is logged to the audit log, never raised."""
+    is_drill = path is not None and Path(path).resolve() != default_path().resolve()
+    if not is_drill:
+        try:
+            from ops.notify import notify_approval_decision
+            notify_approval_decision(
+                case_id=row["case_id"],
+                action=row["action"],
+                route=row["route"],
+                status=row["status"],
+                actor=row.get("decided_by") or "unknown",
+            )
+        except Exception:
+            pass
     try:
         from agent import lifecycle
         lifecycle.on_approval_decided(row, path=path)

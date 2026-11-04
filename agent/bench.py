@@ -439,7 +439,7 @@ async def run(args: argparse.Namespace) -> int:
         Col("problems", align="right", width=8),
         title=f"run {args.run_id}: {len(cases)} case(s), opened_at order",
     )
-    totals = {"sar": 0, "tools": 0, "tokens": 0, "problems": 0, "skipped": 0, "not_run": 0}
+    totals = {"sar": 0, "fraud": 0, "tools": 0, "tokens": 0, "problems": 0, "skipped": 0, "not_run": 0}
     async with open_session(read_only=False, settings=settings) as (session, _tools):
         stop = asyncio.Event()
         ka = asyncio.create_task(keep_alive(session, settings.keep_alive_s, stop)) if not settings.mock else None
@@ -482,6 +482,11 @@ async def run(args: argparse.Namespace) -> int:
                 if err is not None:
                     failures += 1
                     log.note("case failed", error=repr(err)[:800])
+                    try:
+                        from ops.notify import notify_case_failure
+                        notify_case_failure(ctx.case_id, str(err))
+                    except Exception:
+                        pass
                     with _on_stderr():
                         fail(f"{ctx.case_id} FAILED: {err!r}")
                         detail(f"after {time.time() - t0:.1f}s, {tail.tools} tool call(s), {tail.llm_calls} llm call(s)")
@@ -505,6 +510,7 @@ async def run(args: argparse.Namespace) -> int:
                     problems = answer.get("_validation", []) or []
                     sar = bool(answer["sar"]["file"])
                     totals["sar"] += int(sar)
+                    totals["fraud"] += int(c.get("verdict") == "fraud")
                     totals["tools"] += int(answer["tool_calls"])
                     totals["tokens"] += int(answer["tokens"])
                     totals["problems"] += len(problems)
@@ -524,6 +530,18 @@ async def run(args: argparse.Namespace) -> int:
                     detail(f"answer -> {out}")
                     for p in problems:
                         detail(f"validator: {p}")
+                    try:
+                        from ops.notify import notify_case_result
+                        notify_case_result(
+                            case_id=ctx.case_id,
+                            verdict=c["verdict"],
+                            fraud_probability=float(c.get("fraud_probability", 0.0) or 0.0),
+                            pattern=c.get("pattern"),
+                            sar=sar,
+                            actions=actions,
+                        )
+                    except Exception:
+                        pass
                 except Exception as e:
                     failures += 1
                     with _on_stderr():
@@ -551,6 +569,19 @@ async def run(args: argparse.Namespace) -> int:
         },
         status="fail" if failures else ("warn" if totals["problems"] else "ok"),
     )
+    try:
+        from ops.notify import notify_run_summary
+        completed_cases = len(cases) - failures - totals["skipped"] - totals["not_run"]
+        notify_run_summary(
+            run_id=args.run_id,
+            total_cases=len(cases),
+            completed=completed_cases,
+            fraud_count=totals["fraud"],
+            sar_count=totals["sar"],
+            failures=failures,
+        )
+    except Exception:
+        pass
     return 1 if failures else 0
 
 

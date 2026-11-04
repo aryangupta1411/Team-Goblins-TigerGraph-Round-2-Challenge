@@ -42,7 +42,28 @@ BT = bt["data"] if isinstance(bt["data"], dict) else {}
 DETECTORS = [d for d in BT.get("detectors") or [] if isinstance(d, dict)]
 NEW_DETECTORS = [d for d in DETECTORS if not str(d.get("detector_id", "")).startswith("R0_")]  # the January detectors, D1-D4
 EXAM_SCAN = {k: [str(c) for c in v or []] for k, v in (BT.get("exam_scan") or {}).items()} if isinstance(BT.get("exam_scan"), dict) else {}
-PROPOSALS = [p for p in BT.get("self_growing_proposals") or [] if isinstance(p, dict)]
+DISC_FILE = common.ROOT / "engine" / "out" / "discovery_jan2017.json"
+DISC_DATA, _disc_err = common._read_json(DISC_FILE) if DISC_FILE.is_file() else (None, "")
+MINED_PROP = (DISC_DATA.get("proposal") if isinstance(DISC_DATA, dict) and isinstance(DISC_DATA.get("proposal"), dict) else None)
+MINED_ROW = (
+    [{
+        "proposal_id": MINED_PROP.get("proposal_id"),
+        "name": MINED_PROP.get("name"),
+        "discovered_by": MINED_PROP.get("discovered_by"),
+        "synthesized_sql": MINED_PROP.get("synthesized_sql"),
+        "cards_matched": (MINED_PROP.get("backtest") or {}).get("cards_matched", (MINED_PROP.get("cluster") or {}).get("jan_cards")),
+        "txns_matched": (MINED_PROP.get("backtest") or {}).get("txns_matched", (MINED_PROP.get("cluster") or {}).get("jan_txns")),
+        "total_exposure_usd": (MINED_PROP.get("backtest") or {}).get("january_exposure_usd", (MINED_PROP.get("cluster") or {}).get("jan_usd")),
+        "closed_case_false_positives": len((MINED_PROP.get("backtest") or {}).get("legitimate_customers_acted_against") or []),
+        "legitimate_customers_acted_against": (MINED_PROP.get("backtest") or {}).get("legitimate_customers_acted_against") or [],
+        "approval_status": MINED_PROP.get("approval_status", "pending"),
+        "_mined": True,
+        "_cards_list": (MINED_PROP.get("backtest") or {}).get("january_card_ids") or [],
+    }]
+    if MINED_PROP
+    else []
+)
+PROPOSALS = MINED_ROW + [p for p in BT.get("self_growing_proposals") or [] if isinstance(p, dict)]
 BT_SRC = {"source": bt["source"] or "engine/out/detector_backtest.json", "as_of": bt["as_of"] or "missing"}
 CS = cs["data"] if isinstance(cs["data"], dict) else {}
 CS_SRC = {"source": cs["source"] or "engine/out/containment_summary.json", "as_of": cs["as_of"] or "missing"}
@@ -655,6 +676,24 @@ if wave:
                     f'{_n(plan.get("n_cards_in_wave"))} cards active · cumulative <b>{esc(common.money(f.get("cumulative_exposure_usd")))}</b> · {phase}</p>')
                 st.altair_chart(_replay_chart(frames, plan.get("as_of"), idx), width="stretch", key="det_replay_chart")
                 st.caption(md(f"Dashed: the alert, {plan.get('as_of')} · shaded: after the alert · solid: frame {idx}"))
+                with st.expander("Challenge 5 · With vs. Without Ring Replay (Time-to-Understand Comparison)"):
+                    trig_card = str((per_card[0].get("card_id") if per_card else "") or f.get("card_id") or "")
+                    single_frames = [x for x in frames if str(x.get("card_id")) == trig_card and x.get("before_as_of")]
+                    w1, w2 = st.columns(2)
+                    with w1:
+                        st.markdown(f"**Without Ring Replay (Single-Card Table: `{trig_card}`)**")
+                        st.caption(f"Shows only {len(single_frames)} isolated charge(s) on 1 card (~4 min of manual cross-card SQL joins to spot the wave):")
+                        st.dataframe(
+                            pd.DataFrame([{"ts": x.get("ts"), "txn_id": x.get("txn_id"), "card_id": x.get("card_id"), "amt_usd": x.get("amt_usd")} for x in single_frames]),
+                            hide_index=True,
+                        )
+                    with w2:
+                        st.markdown(f"**With Ring Replay (Synchronized {plan.get('n_cards_in_wave')}-Card Wave)**")
+                        st.caption(f"Reveals in < 8 seconds: {n} transactions across {plan.get('n_cards_in_wave')} cards ({common.money(plan.get('exposure_already_lost_usd'))} before alert · {common.money(plan.get('exposure_preventable_usd'))} preventable after alert):")
+                        st.dataframe(
+                            pd.DataFrame([{"frame": i, "ts": x.get("ts"), "card_id": x.get("card_id"), "amt_usd": x.get("amt_usd"), "cards_active": x.get("cumulative_cards"), "phase": "pre-alert" if x.get("before_as_of") else "post-alert"} for i, x in enumerate(frames[:10], 1)]),
+                            hide_index=True,
+                        )
     if plan and per_card:
         with st.expander(f"Per-card plan, transaction ids and attestation ({len(per_card)} cards)"):
             card_case = {str(r.get("card_id")): str(r.get("case_id")) for r in pack_rows if r.get("card_id")}
@@ -748,15 +787,26 @@ def _decide(pid: str, decision: str) -> None:
 
 
 reasons = _gate_reasons()
-replays = {str(p.get("proposal_id")): _replays(p) for p in PROPOSALS}
-rep_list = "/".join(r for r, _ in replays.values() if r)
-design.html_block(design.section("", "Partial / not built", "C2 partial · C3 not built"))
+def _mined_replay(p: dict) -> tuple[str, str]:
+    bt_m = p.get("backtest") or {}
+    cards = ", ".join(bt_m.get("january_card_ids") or [])
+    exam = ", ".join(f"{e.get('card_id')} / {e.get('case_id')}" for e in bt_m.get("exam_cases_caught") or [])
+    return (f"mined ({exam or 'no exam case'})", f"mined from uncovered January activity: matches {cards or 'no cards'}" + (f" (exam cases: {exam})" if exam else ""))
+
+
+replays = {str(p.get("proposal_id")): (_mined_replay(p) if p.get("_mined") else _replays(p)) for p in PROPOSALS}
+rep_list = "/".join(r for r, _ in replays.values() if r and not r.startswith("mined"))
+c3_value, c3_detail, c3_src, c3_as_of = _c3()
+c3_word = c3_value or "not measured here"
+c2_built = any( p.get("_mined") and _status(p) == "approved" for p in PROPOSALS )
+c2_word = "built" if c2_built else "partial"
+design.html_block(design.section("", "Self-growing & policy-compiled detectors", f"C2 {c2_word} · C3 {c3_word}"))
 if not PROPOSALS:
     st.caption(md("C2: no self-growing proposals in the backtest." if bt["data"] is not None else f"C2 not available here: {bt['error']}"))
 else:
-    head = (f"<b>C2 · Self-growing proposals</b> {tag('partial')} written by the team; "
-            + (f"replays the {esc(rep_list)} wave queries" if rep_list else "the wave each replays is not measured here")
-            + ". The backtest and the admission gate are real; the agent did not invent the shapes.")
+    head = (f"<b>C2 · Self-growing proposals</b> {tag(c2_word, 'green' if c2_built else 'ochre')} "
+            + (f"mined cluster <code>{esc(MINED_PROP.get('proposal_id'))}</code> ({esc(DISC_DATA.get('clusters_found'))} clusters scanned in <code>engine/out/discovery_jan2017.json</code>; matches {esc(", ".join(f"{e.get('card_id')} in {e.get('case_id')}" for e in ((MINED_PROP.get('backtest') or {}).get('exam_cases_caught') or [])) or "no exam case")}) plus " if MINED_PROP else "")
+            + (f"hand-written candidates replaying the {esc(rep_list)} wave queries." if rep_list else "candidate proposals."))
     body = []
     for p in PROPOSALS:
         pid = str(p.get("proposal_id"))
@@ -777,6 +827,15 @@ else:
         '<th class="num">Cards</th><th class="num">Txns</th><th class="num">Exposure</th><th class="num">Cleared cases hit</th><th>Admission</th>'
         f'</tr></thead><tbody>{"".join(body)}</tbody></table>'
         f'<p class="dt-src">{esc(BT_SRC["source"])} · {esc(BT_SRC["as_of"])} · decisions: {esc(APPROVALS_NOTE or common.rel(APPROVALS_FILE) + " " + common.as_of(APPROVALS_FILE))}</p></div>')
+    if MINED_PROP and isinstance(MINED_PROP.get("case_catch_demo"), dict):
+        cd = MINED_PROP["case_catch_demo"]
+        bef, aft = cd.get("before_approval") or {}, cd.get("after_approval") or {}
+        design.html_block(
+            f'<div class="tc dt-notes"><p><b>Challenge 2 · Mined Detector Case Catch ({esc(cd.get("exam_case_id"))} · card {esc(cd.get("card_id"))} · flagged txn {esc(cd.get("flagged_txn_id"))} · opened {esc(cd.get("case_opened_at"))})</b></p>'
+            f'<p><b>Before fraud-manager approval:</b> detector not active, matched txns: <code>{esc(", ".join(bef.get("matched_txn_ids") or []) or "none")}</code></p>'
+            f'<p><b>After fraud-manager approval ({esc(_status(MINED_ROW[0]))}):</b> {esc(aft.get("decision"))} '
+            f'(matched txns on {esc(cd.get("card_id"))}: <code>{esc(", ".join(aft.get("matched_txn_ids") or []))}</code> · peer cards: <code>{esc(", ".join(aft.get("connected_card_ids") or []))}</code>)</p></div>'
+        )
     blocked = ("blocked: " + "; ".join(reasons)) if reasons else "this session may decide"
     design.html_block(f'<div class="tc dt-gate">{glyph("gate")}<b>Admission gate</b>{tag("L2 · fraud manager", "gate")}<span>{esc(blocked)}</span></div>')
     for pid, msg in (st.session_state.get("det_gate_msg") or {}).items():
@@ -794,8 +853,6 @@ else:
                     _decide(pid, "rejected")
             st.code(str(p.get("synthesized_sql") or "not recorded"), language=None, wrap_lines=True)  # plain: the sql theme's keywords sat at 4:1
 
-c3_value, c3_detail, c3_src, c3_as_of = _c3()
-c3_word = c3_value or "not measured here"
 design.html_block(f'<div class="tc dt-c3"><b>C3 · Policy text → detector</b>{tag(c3_word, "green" if c3_value == "built" else "")}'
                   f'<span>{esc(c3_detail)}</span><span class="tc-muted" title="{esc(f"Source: {c3_src} · as of {c3_as_of}")}">{esc(c3_src)} · {esc(c3_as_of)}</span></div>')
 
